@@ -27,7 +27,15 @@
       "Bash(PATH=__TRACKED_VAR__/.local/bin:__TRACKED_VAR__ npm run build)",
       "Bash(git init *)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(PATH=__TRACKED_VAR__/.local/bin:__TRACKED_VAR__ npm install googleapis nodemailer)",
+      "Bash(PATH=__TRACKED_VAR__/.local/bin:__TRACKED_VAR__ npm install -D @types/nodemailer)",
+      "Bash(PATH=__TRACKED_VAR__/.local/bin:__TRACKED_VAR__ npm run typecheck)",
+      "Bash(git -C /Users/doriankantor/newsroom-pm add src/main/ipc/index.ts src/preload/index.ts src/renderer/src/components/ClaudeAISidebar.tsx src/renderer/src/components/ConnectClaude.tsx src/renderer/src/env.d.ts src/renderer/src/pages/FirstLogin.tsx src/renderer/src/pages/Settings.tsx)",
+      "Bash(git -C /Users/doriankantor/newsroom-pm commit -m ' *)",
+      "Bash(git -C /Users/doriankantor/newsroom-pm status)",
+      "Bash(git -C /Users/doriankantor/newsroom-pm diff)",
+      "Bash(git -C /Users/doriankantor/newsroom-pm add .claude/settings.local.json)"
     ]
   }
 }
