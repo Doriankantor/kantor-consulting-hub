@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Task, ChatMessage } from '../types'
 import { CONTENT_TYPE_LABELS, AREA_LABELS } from '../types'
+import { useAuth } from '../contexts/AuthContext'
 
 // ── Quick actions ──────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ interface Props {
 }
 
 export default function ClaudeAISidebar({ task, onClose }: Props) {
+  const { localUser } = useAuth()
   const [messages, setMessages] = useState<(ChatMessage & { streaming?: boolean })[]>([
     {
       role: 'assistant',
@@ -83,6 +85,7 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [noKey, setNoKey] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -153,10 +156,15 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
     const result = await window.api.claude.sendMessage({
       messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
       taskContext: buildContext(),
+      userId: localUser?.id,
     })
 
     if (result?.error) {
-      setError(result.error)
+      if (result.error === 'no_key') {
+        setNoKey(true)
+      } else {
+        setError(result.error)
+      }
       setMessages(prev => prev.filter((_, i) => i !== prev.length - 1))
       setStreaming(false)
       window.api.claude.removeListeners()
@@ -216,6 +224,19 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
         {messages.map((msg, i) => (
           <MessageBubble key={i} msg={msg} />
         ))}
+        {noKey && (
+          <div className="mx-4 mb-3 p-3.5 rounded-xl bg-hub-gold/8 border border-hub-gold/20 flex items-start gap-2.5">
+            <svg className="shrink-0 mt-0.5" width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <circle cx="7" cy="7" r="6" stroke="#d97706" strokeWidth="1.2"/>
+              <path d="M7 4v3.5M7 9.5v.5" stroke="#d97706" strokeWidth="1.2" strokeLinecap="round"/>
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-white/70 font-medium">No Claude account connected</p>
+              <p className="text-[11px] text-white/35 mt-0.5 leading-relaxed">Go to Settings → Claude AI to connect your account.</p>
+            </div>
+            <button onClick={() => setNoKey(false)} className="titlebar-no-drag text-white/20 hover:text-white/45 transition text-sm">×</button>
+          </div>
+        )}
         {error && (
           <div className="mx-1 mb-3 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
             {error}

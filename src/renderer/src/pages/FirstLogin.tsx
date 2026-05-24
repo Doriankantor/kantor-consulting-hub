@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import ConnectClaude from '../components/ConnectClaude'
 
 type Step = 1 | 2 | 3
 
@@ -14,9 +15,6 @@ export default function FirstLogin() {
   const [pwError,   setPwError]   = useState('')
   const [pwLoading, setPwLoading] = useState(false)
 
-  // Step 2
-  const [apiKey,  setApiKey]  = useState('')
-
   // Step 3
   const [emailNotif, setEmailNotif] = useState(true)
   const [saving,     setSaving]     = useState(false)
@@ -30,15 +28,6 @@ export default function FirstLogin() {
     if (result.error) { setPwError(result.error); setPwLoading(false); return }
     setPwLoading(false)
     setStep(2)
-  }
-
-  async function handleApiKeyStep() {
-    if (apiKey.trim() && localUser) {
-      await window.api.settings.set('anthropic_api_key', apiKey.trim())
-      await window.api.settings.delete('setup_skipped')
-      await window.api.team.markApiKeySet(localUser.id)
-    }
-    setStep(3)
   }
 
   async function handleFinish() {
@@ -73,8 +62,8 @@ export default function FirstLogin() {
           )}
           {step === 2 && (
             <>
-              <h1 className="text-xl font-bold text-white">AI assistant</h1>
-              <p className="text-white/40 text-sm mt-1.5">Optionally add your Anthropic API key to unlock Claude AI features.</p>
+              <h1 className="text-xl font-bold text-white">Connect Claude</h1>
+              <p className="text-white/40 text-sm mt-1.5">Use AI to draft reports and analyse engagements — or skip for now.</p>
             </>
           )}
           {step === 3 && (
@@ -118,25 +107,11 @@ export default function FirstLogin() {
           )}
 
           {step === 2 && (
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[10px] font-semibold text-white/35 uppercase tracking-widest mb-1.5">Anthropic API Key</label>
-                <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} autoFocus
-                  placeholder="sk-ant-api03-…"
-                  className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white/[0.06] border border-white/[0.1] text-white placeholder-white/25 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition" />
-              </div>
-              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-                <p className="text-xs text-white/35 leading-relaxed">
-                  Get a key at <span className="text-white/55 font-medium">console.anthropic.com</span> → API Keys.
-                  You can add this later in Settings.
-                </p>
-              </div>
-              <button onClick={handleApiKeyStep}
-                disabled={!!apiKey.trim() && apiKey.trim().length < 10}
-                className="titlebar-no-drag w-full py-2.5 rounded-xl bg-hub-gold hover:bg-hub-gold-light disabled:opacity-50 text-white font-semibold text-sm transition">
-                {apiKey.trim() ? 'Save key →' : 'Skip for now →'}
-              </button>
-            </div>
+            <ConnectClaude
+              userId={localUser?.id ?? ''}
+              onConnected={() => setStep(3)}
+              onSkip={() => setStep(3)}
+            />
           )}
 
           {step === 3 && (

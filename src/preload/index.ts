@@ -52,7 +52,7 @@ const api = {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
   },
   claude: {
-    sendMessage: (params: { messages: { role: 'user' | 'assistant'; content: string }[]; taskContext: Record<string, string | null> }) =>
+    sendMessage: (params: { messages: { role: 'user' | 'assistant'; content: string }[]; taskContext: Record<string, string | null>; userId?: string }) =>
       ipcRenderer.invoke('claude:sendMessage', params),
     onChunk:         (cb: (text: string) => void) => ipcRenderer.on('claude:chunk', (_e, text) => cb(text)),
     onDone:          (cb: () => void)              => ipcRenderer.on('claude:done', () => cb()),
@@ -62,6 +62,9 @@ const api = {
       ipcRenderer.removeAllListeners('claude:done')
       ipcRenderer.removeAllListeners('claude:error')
     },
+    saveUserKey:      (userId: string, apiKey: string) => ipcRenderer.invoke('claude:saveUserKey', userId, apiKey),
+    removeUserKey:    (userId: string)                 => ipcRenderer.invoke('claude:removeUserKey', userId),
+    getUserKeyStatus: (userId: string)                 => ipcRenderer.invoke('claude:getUserKeyStatus', userId),
   },
 }
 

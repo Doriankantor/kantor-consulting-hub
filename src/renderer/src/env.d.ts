@@ -79,11 +79,14 @@ interface Window {
       getVersion: () => Promise<string>
     }
     claude: {
-      sendMessage: (params: { messages: { role: 'user' | 'assistant'; content: string }[]; taskContext: Record<string, string | null> }) => Promise<{ started?: boolean; error?: string }>
+      sendMessage: (params: { messages: { role: 'user' | 'assistant'; content: string }[]; taskContext: Record<string, string | null>; userId?: string }) => Promise<{ started?: boolean; error?: string }>
       onChunk:         (cb: (text: string) => void) => void
       onDone:          (cb: () => void) => void
       onError:         (cb: (err: string) => void) => void
       removeListeners: () => void
+      saveUserKey:      (userId: string, apiKey: string) => Promise<{ ok?: boolean }>
+      removeUserKey:    (userId: string)                 => Promise<{ ok?: boolean }>
+      getUserKeyStatus: (userId: string)                 => Promise<{ hasKey: boolean }>
     }
   }
 }

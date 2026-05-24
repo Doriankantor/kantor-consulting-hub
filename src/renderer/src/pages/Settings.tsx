@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import ConnectClaude from '../components/ConnectClaude'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -50,6 +51,11 @@ export default function Settings() {
   const [keyMsg,     setKeyMsg]     = useState<{type:'ok'|'err';text:string}|null>(null)
   const [savingKey,  setSavingKey]  = useState(false)
 
+  // ── Claude per-user ────────────────────────────────────────────────────────
+  const [claudeConnected,   setClaudeConnected]   = useState(false)
+  const [showClaudeConnect, setShowClaudeConnect] = useState(false)
+  const [teamKeyExists,     setTeamKeyExists]     = useState(false)
+
   // ── Drive ──────────────────────────────────────────────────────────────────
   const [driveConnected, setDriveConnected] = useState(false)
   const [driveAuthUrl,   setDriveAuthUrl]   = useState<string|null>(null)
@@ -83,12 +89,18 @@ export default function Settings() {
   const [appVersion, setAppVersion] = useState('')
 
   useEffect(() => {
-    window.api.settings.get('anthropic_api_key').then(k => { if (k) setMaskedKey(`sk-ant-…${k.slice(-6)}`) })
+    window.api.settings.get('anthropic_api_key').then(k => {
+      setTeamKeyExists(!!k)
+      if (k) setMaskedKey(`sk-ant-…${k.slice(-6)}`)
+    })
+    if (localUser) {
+      window.api.claude.getUserKeyStatus(localUser.id).then(s => setClaudeConnected(s.hasKey))
+    }
     window.api.drive.isConnected().then(setDriveConnected)
     window.api.app.getVersion().then(setAppVersion)
     window.api.settings.get('gmail_app_password').then(p => setGmailSaved(!!p))
     if (isAdmin) loadTeam()
-  }, [isAdmin])
+  }, [isAdmin, localUser])
 
   async function loadTeam() {
     setLoadingTeam(true)
@@ -108,6 +120,14 @@ export default function Settings() {
     setKeyMsg({ type: 'ok', text: 'API key updated.' })
     setSavingKey(false)
     setTimeout(() => setKeyMsg(null), 3000)
+  }
+
+  // Claude disconnect
+  async function handleDisconnectClaude() {
+    if (!localUser) return
+    if (!confirm('Disconnect your Claude account? You will lose access to personal AI features.')) return
+    await window.api.claude.removeUserKey(localUser.id)
+    setClaudeConnected(false)
   }
 
   // Drive
@@ -210,36 +230,81 @@ export default function Settings() {
           </Row>
         </Section>
 
-        {/* AI Configuration */}
-        <Section title="AI Configuration">
+        {/* Claude AI */}
+        <Section title="Claude AI">
           <div className="px-5 py-4">
-            <div className="flex items-center justify-between mb-1">
-              <div>
-                <p className="text-sm font-medium text-white">Anthropic API Key</p>
-                <p className="text-xs text-white/35 mt-0.5 font-mono">{maskedKey ?? 'Not configured'}</p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium text-white">Your Claude account</p>
+                  {claudeConnected && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-400">Connected</span>
+                  )}
+                  {!claudeConnected && teamKeyExists && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400">Team key active</span>
+                  )}
+                </div>
+                <p className="text-xs text-white/35 mt-0.5 leading-relaxed">
+                  {claudeConnected
+                    ? 'AI features are active using your personal API key.'
+                    : teamKeyExists
+                      ? "AI is available via your team's shared key. Connect your own for dedicated access."
+                      : 'Connect your Claude account to unlock AI-assisted drafting and analysis.'}
+                </p>
               </div>
-              <button onClick={() => { setEditingKey(v => !v); setNewKey(''); setKeyMsg(null) }}
-                className="titlebar-no-drag px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.08] hover:bg-white/[0.13] text-white/60 hover:text-white transition">
-                {editingKey ? 'Cancel' : maskedKey ? 'Update' : 'Add key'}
-              </button>
-            </div>
-            {editingKey && (
-              <form onSubmit={handleSaveKey} className="mt-3 space-y-2">
-                <input type="password" value={newKey} onChange={e => setNewKey(e.target.value)} placeholder="sk-ant-api03-…" autoFocus
-                  className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-black/20 border border-white/10 text-white placeholder-white/25 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition" />
-                <button type="submit" disabled={savingKey || newKey.trim().length < 20}
-                  className="titlebar-no-drag w-full py-2 rounded-xl bg-hub-gold hover:bg-hub-gold-light disabled:opacity-50 text-white text-sm font-semibold transition">
-                  {savingKey ? 'Saving…' : 'Save key'}
+              {claudeConnected ? (
+                <button onClick={handleDisconnectClaude}
+                  className="titlebar-no-drag px-3 py-1.5 rounded-lg text-xs bg-red-500/10 hover:bg-red-500/15 text-red-400/80 hover:text-red-400 border border-red-500/15 transition shrink-0">
+                  Disconnect
                 </button>
-              </form>
+              ) : localUser ? (
+                <button onClick={() => setShowClaudeConnect(v => !v)}
+                  className="titlebar-no-drag px-3 py-1.5 rounded-lg text-xs bg-hub-gold/15 hover:bg-hub-gold/25 border border-hub-gold/30 text-hub-gold font-medium transition shrink-0">
+                  {showClaudeConnect ? 'Cancel' : 'Connect →'}
+                </button>
+              ) : null}
+            </div>
+            {showClaudeConnect && !claudeConnected && localUser && (
+              <div className="mt-5 pt-4 border-t border-white/[0.06]">
+                <ConnectClaude
+                  userId={localUser.id}
+                  onConnected={() => { setClaudeConnected(true); setShowClaudeConnect(false) }}
+                  onSkip={() => setShowClaudeConnect(false)}
+                />
+              </div>
             )}
-            {keyMsg && <p className={`mt-2 text-xs ${keyMsg.type === 'ok' ? 'text-green-400' : 'text-red-400'}`}>{keyMsg.text}</p>}
           </div>
         </Section>
 
         {/* Integrations (admin only) */}
         {isAdmin && (
           <Section title="Integrations">
+            {/* Team shared API key */}
+            <div className="px-5 py-4 border-b border-white/[0.06]">
+              <div className="flex items-center justify-between mb-1">
+                <div>
+                  <p className="text-sm font-medium text-white">Team shared key</p>
+                  <p className="text-xs text-white/35 mt-0.5 font-mono">{maskedKey ?? 'Not set'}</p>
+                  <p className="text-[11px] text-white/20 mt-1 leading-relaxed">Fallback key for team members who haven't connected their own Claude account.</p>
+                </div>
+                <button onClick={() => { setEditingKey(v => !v); setNewKey(''); setKeyMsg(null) }}
+                  className="titlebar-no-drag px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.08] hover:bg-white/[0.13] text-white/60 hover:text-white transition shrink-0">
+                  {editingKey ? 'Cancel' : maskedKey ? 'Update' : 'Add key'}
+                </button>
+              </div>
+              {editingKey && (
+                <form onSubmit={handleSaveKey} className="mt-3 space-y-2">
+                  <input type="password" value={newKey} onChange={e => setNewKey(e.target.value)} placeholder="sk-ant-api03-…" autoFocus
+                    className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-black/20 border border-white/10 text-white placeholder-white/25 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition" />
+                  <button type="submit" disabled={savingKey || newKey.trim().length < 20}
+                    className="titlebar-no-drag w-full py-2 rounded-xl bg-hub-gold hover:bg-hub-gold-light disabled:opacity-50 text-white text-sm font-semibold transition">
+                    {savingKey ? 'Saving…' : 'Save key'}
+                  </button>
+                </form>
+              )}
+              {keyMsg && <p className={`mt-2 text-xs ${keyMsg.type === 'ok' ? 'text-green-400' : 'text-red-400'}`}>{keyMsg.text}</p>}
+            </div>
+
             {/* Google Drive */}
             <div className="px-5 py-4 border-b border-white/[0.06]">
               <div className="flex items-start justify-between gap-3 mb-2">

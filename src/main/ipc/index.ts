@@ -244,16 +244,36 @@ Guidelines:
 - When suggesting deadlines, consider that Policy Briefs take 1–2 weeks, Research Reports 2–4 weeks, Briefing Notes 2–5 days, Client Advisories 3–7 days, Consulting Engagements are ongoing, and Op-Eds take 3–7 days`
 }
 
+function getUserPreferences(userId: string): Record<string, unknown> {
+  const row = getDatabase()
+    .prepare('SELECT preferences_json FROM local_users WHERE id=?')
+    .get(userId) as { preferences_json: string | null } | undefined
+  if (!row?.preferences_json) return {}
+  try { return JSON.parse(row.preferences_json) } catch { return {} }
+}
+
 function registerClaudeHandlers() {
   ipcMain.handle('claude:sendMessage', async (event, params: {
     messages: { role: 'user' | 'assistant'; content: string }[]
     taskContext: Record<string, string | null>
+    userId?: string
   }) => {
-    const keyRow = getDatabase()
-      .prepare('SELECT value FROM settings WHERE key=?')
-      .get('anthropic_api_key') as { value: string } | undefined
-    if (!keyRow?.value) return { error: 'No Anthropic API key found. Please add your key in Settings → AI Configuration.' }
-    const anthropic = new Anthropic({ apiKey: keyRow.value })
+    // Check user's personal key first, then fall back to global team key
+    let apiKey: string | null = null
+    if (params.userId) {
+      const prefs = getUserPreferences(params.userId)
+      if (typeof prefs.anthropicApiKey === 'string' && prefs.anthropicApiKey) {
+        apiKey = prefs.anthropicApiKey
+      }
+    }
+    if (!apiKey) {
+      const keyRow = getDatabase()
+        .prepare('SELECT value FROM settings WHERE key=?')
+        .get('anthropic_api_key') as { value: string } | undefined
+      apiKey = keyRow?.value ?? null
+    }
+    if (!apiKey) return { error: 'no_key' }
+    const anthropic = new Anthropic({ apiKey })
     ;(async () => {
       try {
         const stream = anthropic.messages.stream({
@@ -274,6 +294,29 @@ function registerClaudeHandlers() {
       }
     })()
     return { started: true }
+  })
+
+  ipcMain.handle('claude:saveUserKey', (_e, userId: string, apiKey: string) => {
+    const db = getDatabase()
+    const prefs = getUserPreferences(userId)
+    prefs.anthropicApiKey = apiKey
+    db.prepare('UPDATE local_users SET preferences_json=?, anthropic_key_set=1 WHERE id=?')
+      .run(JSON.stringify(prefs), userId)
+    return { ok: true }
+  })
+
+  ipcMain.handle('claude:removeUserKey', (_e, userId: string) => {
+    const db = getDatabase()
+    const prefs = getUserPreferences(userId)
+    delete prefs.anthropicApiKey
+    db.prepare('UPDATE local_users SET preferences_json=?, anthropic_key_set=0 WHERE id=?')
+      .run(JSON.stringify(prefs), userId)
+    return { ok: true }
+  })
+
+  ipcMain.handle('claude:getUserKeyStatus', (_e, userId: string) => {
+    const prefs = getUserPreferences(userId)
+    return { hasKey: typeof prefs.anthropicApiKey === 'string' && prefs.anthropicApiKey.length > 0 }
   })
 }
 
