@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Kantor Consulting Hub</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self';
+        style-src 'self' 'unsafe-inline';
+        connect-src 'self'
+          https://*.supabase.co
+          wss://*.supabase.co
+          https://www.googleapis.com
+          https://oauth2.googleapis.com
+          https://accounts.google.com;
+        img-src 'self' data: https: blob:;
+        font-src 'self' data:;
+      "
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

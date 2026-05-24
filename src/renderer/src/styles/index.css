@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  background-color: #0f1624;
+  color: #fff;
+}
+
+/* ── macOS window dragging ──────────────────────────────────────────────── */
+.titlebar-drag {
+  -webkit-app-region: drag;
+}
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* ── Custom scrollbar ───────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* ── Focus ring ─────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid rgba(217, 119, 6, 0.6);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── TipTap rich text editor ────────────────────────────────────────────── */
+.tiptap {
+  outline: none;
+  min-height: 80px;
+  color: rgba(255,255,255,0.85);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.tiptap p { margin: 0 0 0.5em; }
+.tiptap p:last-child { margin-bottom: 0; }
+.tiptap h1 { font-size: 1.1rem; font-weight: 700; color: #fff; margin: 0.75em 0 0.25em; }
+.tiptap h2 { font-size: 1rem;   font-weight: 600; color: #fff; margin: 0.65em 0 0.2em; }
+.tiptap h3 { font-size: 0.9rem; font-weight: 600; color: rgba(255,255,255,0.9); margin: 0.5em 0 0.15em; }
+.tiptap ul, .tiptap ol { padding-left: 1.4em; margin: 0.25em 0; }
+.tiptap ul { list-style: disc; }
+.tiptap ol { list-style: decimal; }
+.tiptap li { margin: 0.15em 0; }
+.tiptap strong { color: #fff; font-weight: 600; }
+.tiptap em { font-style: italic; }
+.tiptap blockquote {
+  border-left: 2px solid rgba(217,119,6,0.5);
+  padding-left: 0.75em;
+  color: rgba(255,255,255,0.5);
+  margin: 0.5em 0;
+}
+.tiptap .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: rgba(255,255,255,0.2);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+/* ── Input autofill dark mode fix ───────────────────────────────────────── */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #fff;
+  -webkit-box-shadow: 0 0 0 1000px #1a2744 inset;
+  transition: background-color 5000s ease-in-out 0s;
+}

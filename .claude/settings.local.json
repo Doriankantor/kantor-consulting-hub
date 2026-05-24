@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /usr /opt /home /Users/doriankantor -name \"node\" -type f 2>/dev/null | head -10; find /usr /opt -name \"npm\" -type f 2>/dev/null | head -5)",
+      "Bash(command -v node npm bun pnpm yarn)",
+      "Bash(ls /Applications/ | grep -i node; ls ~/Applications/ 2>/dev/null | grep -i node; ls /usr/local/ 2>/dev/null)",
+      "Bash(cat ~/.zshrc 2>/dev/null | grep -E 'nvm|node|npm|PATH' | head -20; cat ~/.zprofile 2>/dev/null | grep -E 'nvm|node|PATH' | head -10)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(ls /opt/ 2>/dev/null; uname -m)",
+      "Bash(curl -fsSL https://nodejs.org/dist/v20.15.0/node-v20.15.0-darwin-arm64.tar.gz -o /tmp/node-arm64.tar.gz)",
+      "Read(//tmp/**)",
+      "Bash(mkdir -p ~/.local)",
+      "Bash(tar -xzf /tmp/node-arm64.tar.gz -C ~/.local --strip-components=1)",
+      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")",
+      "Bash(npm --version)",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('electron'\\)\")",
+      "Bash(node -e \"require\\('./node_modules/electron/package.json'\\).version |> console.log\")",
+      "Bash(npm run *)",
+      "Bash(~/.local/bin/npm run *)",
+      "Bash(PATH=__TRACKED_VAR__/.local/bin:__TRACKED_VAR__ node --version)",
+      "Bash(PATH=__TRACKED_VAR__/.local/bin:__TRACKED_VAR__ npm --version)",
+      "Bash(PATH=__TRACKED_VAR__/.local/bin:__TRACKED_VAR__ npm run dev)",
+      "Bash(pkill -f \"electron\")",
+      "Bash(PATH=\"$HOME/.local/bin:$PATH\" npm run dev > /tmp/kantor-dev.log 2>&1 & *)",
+      "Bash(PATH=__TRACKED_VAR__/.local/bin:__TRACKED_VAR__ npm run build)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}

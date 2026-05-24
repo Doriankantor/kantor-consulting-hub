@@ -1,0 +1,44 @@
+appId: com.kantorconsulting.hub
+productName: Kantor Consulting Hub
+copyright: Copyright © 2024 Kantor Consulting
+
+directories:
+  buildResources: resources
+  output: dist
+
+files:
+  - out/**/*
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!{.eslintignore,.eslintrc.*,.prettierrc.*}'
+  - '!{.env,.env.*,.npmrc}'
+  - '!{tsconfig,tsconfig.*}.json'
+  - '!{karma,jest}.config.*'
+
+asarUnpack:
+  - resources/**
+  - '**/*.{node,dll}'
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  category: public.app-category.productivity
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSDocumentsFolderUsageDescription: Application requests access to the Documents folder.
+    NSDownloadsFolderUsageDescription: Application requests access to the Downloads folder.
+  notarize: false
+  darkModeSupport: true
+
+dmg:
+  artifactName: KantorConsultingHub-${version}.${ext}
+  title: Kantor Consulting Hub
+  window:
+    width: 540
+    height: 380
+
+npmRebuild: true
