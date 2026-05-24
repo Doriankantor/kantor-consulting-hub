@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import Header from './Header'
 import Sidebar from './Sidebar'
+import SyncStatus from './SyncStatus'
 
 export default function Layout() {
   return (
@@ -8,8 +9,13 @@ export default function Layout() {
       <Header />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
-        <main className="flex-1 overflow-hidden bg-hub-navy/80">
-          <Outlet />
+        <main className="flex-1 overflow-hidden bg-hub-navy/80 flex flex-col">
+          <div className="flex-1 overflow-hidden">
+            <Outlet />
+          </div>
+          <div className="shrink-0 border-t border-white/[0.04]">
+            <SyncStatus />
+          </div>
         </main>
       </div>
     </div>

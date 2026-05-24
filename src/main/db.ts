@@ -136,5 +136,49 @@ export function initDatabase(): void {
     console.log('[DB] Local admin account created')
   }
 
+  // ── New tables for Step 5 ─────────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS local_users (
+      id                   TEXT PRIMARY KEY,
+      email                TEXT NOT NULL UNIQUE,
+      full_name            TEXT,
+      role                 TEXT DEFAULT 'member',
+      status               TEXT DEFAULT 'active',
+      password_hash        TEXT NOT NULL,
+      password_salt        TEXT NOT NULL,
+      must_change_password INTEGER DEFAULT 0,
+      anthropic_key_set    INTEGER DEFAULT 0,
+      preferences_json     TEXT,
+      created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_active          DATETIME,
+      invited_by           TEXT
+    );
+    CREATE TABLE IF NOT EXISTS drive_sync_queue (
+      id         TEXT PRIMARY KEY,
+      task_id    TEXT,
+      type       TEXT NOT NULL,
+      payload    TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      synced_at  DATETIME
+    );
+  `)
+
+  // Migrate admin from settings → local_users (idempotent)
+  {
+    const _gs = (k: string) =>
+      (db.prepare('SELECT value FROM settings WHERE key=?').get(k) as {value:string}|undefined)?.value ?? null
+    const _aE = _gs('local_admin_email')
+    const _aN = _gs('local_admin_name') ?? 'Dorian Kantor'
+    const _aS = _gs('local_admin_salt')
+    const _aH = _gs('local_admin_hash')
+    if (_aE && _aS && _aH) {
+      db.prepare(`
+        INSERT OR IGNORE INTO local_users
+          (id, email, full_name, role, status, password_hash, password_salt, must_change_password)
+        VALUES (?, ?, ?, 'admin', 'active', ?, ?, 0)
+      `).run('local-admin', _aE, _aN, _aH, _aS)
+    }
+  }
+
   console.log(`[DB] Initialized at ${dbPath}`)
 }
