@@ -116,8 +116,21 @@ export default function Sidebar() {
     return () => clearInterval(interval)
   }, [refreshInboxCount])
 
+  // Dashboard badge: only count urgent tasks updated AFTER the last time
+  // the user viewed the dashboard for ≥3 seconds
+  const [dashSeenAt, setDashSeenAt] = useState<string>(() =>
+    localStorage.getItem('dashboardSeenAt') ?? new Date(0).toISOString()
+  )
+  useEffect(() => {
+    const onSeen = () => setDashSeenAt(localStorage.getItem('dashboardSeenAt') ?? new Date().toISOString())
+    window.addEventListener('dashboardSeen', onSeen)
+    return () => window.removeEventListener('dashboardSeen', onSeen)
+  }, [])
+
   const urgentCount = tasks.filter(t =>
-    t.priority === 'urgent' && t.column_id !== 'col-published'
+    t.priority === 'urgent' &&
+    t.column_id !== 'col-published' &&
+    t.updated_at > dashSeenAt
   ).length
 
   const navItems: NavItem[] = [

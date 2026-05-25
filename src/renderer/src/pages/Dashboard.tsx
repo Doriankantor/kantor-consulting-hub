@@ -85,6 +85,15 @@ export default function Dashboard() {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   })
 
+  // Clear Dashboard badge after 3 seconds of viewing
+  useEffect(() => {
+    const t = setTimeout(() => {
+      localStorage.setItem('dashboardSeenAt', new Date().toISOString())
+      window.dispatchEvent(new CustomEvent('dashboardSeen'))
+    }, 3000)
+    return () => clearTimeout(t)
+  }, [])
+
   // Activity feed
   const [feed, setFeed] = useState<FeedEntry[]>([])
   useEffect(() => {
