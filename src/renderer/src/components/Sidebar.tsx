@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
@@ -46,6 +47,19 @@ const SettingsIcon = () => (
   </svg>
 )
 
+const InboxIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+    <path d="M1.5 9.5h3l1.5 2h3l1.5-2h3" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+    <rect x="1.5" y="2.5" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+  </svg>
+)
+
+const ChatIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+    <path d="M2 2.5h11v8H8.5l-2 2v-2H2v-8z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+  </svg>
+)
+
 // ── View switcher (inside workspace section) ───────────────────────────────
 
 const VIEW_BUTTONS: { id: ViewMode; label: string }[] = [
@@ -83,14 +97,31 @@ function WorkspaceViewSwitcher() {
 // ── Main sidebar ───────────────────────────────────────────────────────────
 
 export default function Sidebar() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, localUser } = useAuth()
   const { tasks } = useWorkspace()
+  const [inboxUnread, setInboxUnread] = useState(0)
+
+  const userId = localUser?.id ?? 'local-admin'
+
+  const refreshInboxCount = useCallback(async () => {
+    try {
+      const count = await window.api.notifications.unreadCount(userId)
+      setInboxUnread(count)
+    } catch {}
+  }, [userId])
+
+  useEffect(() => {
+    refreshInboxCount()
+    const interval = setInterval(refreshInboxCount, 30000)
+    return () => clearInterval(interval)
+  }, [refreshInboxCount])
 
   const urgentCount = tasks.filter(t =>
     t.priority === 'urgent' && t.column_id !== 'col-published'
   ).length
 
   const navItems: NavItem[] = [
+    { to: '/inbox',     label: 'Inbox',     icon: <InboxIcon />,     badge: inboxUnread || undefined },
     { to: '/dashboard', label: 'Dashboard', icon: <DashboardIcon />, badge: urgentCount || undefined },
     { to: '/workspace', label: 'Workspace',  icon: <WorkspaceIcon /> },
     { to: '/team',      label: 'Team',       icon: <TeamIcon /> },
@@ -125,6 +156,17 @@ export default function Sidebar() {
           </div>
         ))}
       </nav>
+
+      {/* Chat toggle */}
+      <div className="px-2.5 mb-1">
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('toggleChat'))}
+          className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/75 hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+        >
+          <span className="shrink-0"><ChatIcon /></span>
+          <span className="flex-1 text-left">Team Chat</span>
+        </button>
+      </div>
 
       {/* Admin indicator */}
       {isAdmin && (

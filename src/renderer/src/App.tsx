@@ -9,7 +9,9 @@ import Dashboard from './pages/Dashboard'
 import Settings  from './pages/Settings'
 import Team      from './pages/Team'
 import Workspace from './pages/Workspace'
+import Inbox     from './pages/Inbox'
 import Layout    from './components/Layout'
+import ChatPanel from './components/ChatPanel'
 
 function Loader() {
   return (
@@ -49,6 +51,7 @@ function AppRoutes() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="/inbox"     element={<Inbox />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/workspace" element={<Workspace />} />
           <Route path="/team"      element={<Team />} />
@@ -56,6 +59,7 @@ function AppRoutes() {
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
+      <ChatPanel />
     </WorkspaceProvider>
   )
 }

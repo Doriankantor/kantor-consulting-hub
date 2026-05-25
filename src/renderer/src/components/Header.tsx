@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { useNavigate } from 'react-router-dom'
@@ -19,10 +20,35 @@ function MoonIcon() {
   )
 }
 
+function BellIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M7 1.5A4 4 0 0 0 3 5.5v3l-1 1.5h10l-1-1.5v-3A4 4 0 0 0 7 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+      <path d="M5.5 10.5a1.5 1.5 0 0 0 3 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
 export default function Header() {
   const { profile, user, localUser, isAdmin } = useAuth()
   const { resolvedTheme, setTheme } = useTheme()
   const navigate = useNavigate()
+  const [inboxUnread, setInboxUnread] = useState(0)
+
+  const userId = localUser?.id ?? 'local-admin'
+
+  const refreshUnread = useCallback(async () => {
+    try {
+      const count = await window.api.notifications.unreadCount(userId)
+      setInboxUnread(count)
+    } catch {}
+  }, [userId])
+
+  useEffect(() => {
+    refreshUnread()
+    const interval = setInterval(refreshUnread, 30000)
+    return () => clearInterval(interval)
+  }, [refreshUnread])
 
   const displayName = profile?.full_name || localUser?.name || user?.email?.split('@')[0] || 'User'
   const initials = displayName[0].toUpperCase()
@@ -30,7 +56,7 @@ export default function Header() {
 
   return (
     <header className="titlebar-drag h-[52px] shrink-0 bg-white/70 dark:bg-hub-navy/70 backdrop-blur-md border-b border-black/[0.07] dark:border-white/[0.07] flex items-center px-4 z-10">
-      <div className="w-[72px] shrink-0" />
+      <div className="w-[110px] shrink-0" />
 
       <div className="flex-1 flex items-center justify-center">
         <span className="text-[13px] font-semibold text-gray-500 dark:text-white/50 tracking-tight select-none">
@@ -38,7 +64,21 @@ export default function Header() {
         </span>
       </div>
 
-      <div className="titlebar-no-drag w-[72px] flex items-center justify-end gap-2">
+      <div className="titlebar-no-drag flex items-center justify-end gap-2">
+        {/* Inbox bell */}
+        <button
+          onClick={() => navigate('/inbox')}
+          className="relative w-7 h-7 rounded-full flex items-center justify-center text-gray-400 dark:text-white/35 hover:text-gray-600 dark:hover:text-white/60 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition"
+          title="Inbox"
+        >
+          <BellIcon />
+          {inboxUnread > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center px-0.5 leading-none">
+              {inboxUnread > 9 ? '9+' : inboxUnread}
+            </span>
+          )}
+        </button>
+
         {/* Theme toggle */}
         <button
           onClick={() => setTheme(isDark ? 'light' : 'dark')}

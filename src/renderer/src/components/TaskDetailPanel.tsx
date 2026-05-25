@@ -703,89 +703,229 @@ export default function TaskDetailPanel() {
                 />
               </div>
 
-              {/* ── Attachments ──────────────────────────────────────────── */}
+              {/* ── Labels ───────────────────────────────────────────────── */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <SectionLabel title="Attachments" />
+                  <SectionLabel title="Labels" />
                   <button
-                    onClick={() => setShowAddAtt(v => !v)}
+                    onClick={() => setShowLabelPicker(v => !v)}
                     className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/35 hover:text-hub-gold transition -mt-0.5"
                   >
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                       <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                     </svg>
-                    Add link
+                    Manage
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mb-1">
+                  {taskLabels.length === 0 && !showLabelPicker && (
+                    <p className="text-xs text-gray-300 dark:text-white/20 italic">No labels.</p>
+                  )}
+                  {taskLabels.map(lbl => (
+                    <span
+                      key={lbl.id}
+                      style={{ backgroundColor: lbl.color + '22', borderColor: lbl.color + '55', color: lbl.color }}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border"
+                    >
+                      <span style={{ backgroundColor: lbl.color }} className="w-1.5 h-1.5 rounded-full" />
+                      {lbl.name}
+                      <button onClick={() => handleToggleLabel(lbl.id)} className="titlebar-no-drag ml-0.5 hover:opacity-70 transition">×</button>
+                    </span>
+                  ))}
+                </div>
+                {showLabelPicker && (
+                  <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] space-y-1">
+                    {labels.map(lbl => {
+                      const selected = taskLabels.some(l => l.id === lbl.id)
+                      return (
+                        <button
+                          key={lbl.id}
+                          onClick={() => handleToggleLabel(lbl.id)}
+                          className="titlebar-no-drag w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-black/[0.04] dark:hover:bg-white/[0.05] transition text-left"
+                        >
+                          <span style={{ backgroundColor: lbl.color }} className="w-3 h-3 rounded-sm shrink-0" />
+                          <span className="flex-1 text-xs text-gray-700 dark:text-white/80">{lbl.name}</span>
+                          {selected && <span className="text-hub-gold text-xs">✓</span>}
+                        </button>
+                      )
+                    })}
+                    <button onClick={() => setShowLabelPicker(false)} className="titlebar-no-drag w-full mt-1 py-1 text-[11px] text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/50 transition">Done</button>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Checklists ────────────────────────────────────────────── */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <SectionLabel title="Checklist" />
+                  <button
+                    onClick={() => setShowAddChecklist(v => !v)}
+                    className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/35 hover:text-hub-gold transition -mt-0.5"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                      <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                    Add checklist
                   </button>
                 </div>
 
-                {attachments.length === 0 && !showAddAtt && (
-                  <p className="text-xs text-gray-300 dark:text-white/20 italic">No attachments — add Google Docs or Drive links.</p>
+                {checklists.length === 0 && !showAddChecklist && (
+                  <p className="text-xs text-gray-300 dark:text-white/20 italic">No checklists yet.</p>
+                )}
+
+                {checklists.map(cl => {
+                  const done = cl.items.filter(i => i.checked).length
+                  const total = cl.items.length
+                  const pct = total > 0 ? Math.round((done / total) * 100) : 0
+                  return (
+                    <div key={cl.id} className="mb-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-gray-700 dark:text-white/70">{cl.title}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-gray-400 dark:text-white/30 tabular-nums">{done}/{total}</span>
+                          <button onClick={() => handleDeleteChecklist(cl.id)} className="titlebar-no-drag text-[10px] text-gray-300 dark:text-white/20 hover:text-red-400 transition">✕</button>
+                        </div>
+                      </div>
+                      {total > 0 && (
+                        <div className="h-1 rounded-full bg-gray-200 dark:bg-white/10 mb-2 overflow-hidden">
+                          <div className={`h-full rounded-full transition-all ${pct === 100 ? 'bg-green-500' : 'bg-hub-blue'}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      )}
+                      <div className="space-y-1">
+                        {cl.items.map(item => (
+                          <div key={item.id} className="flex items-center gap-2 group px-1">
+                            <input
+                              type="checkbox"
+                              checked={!!item.checked}
+                              onChange={() => handleToggleItem(item.id, !!item.checked)}
+                              className="titlebar-no-drag w-3.5 h-3.5 rounded accent-hub-gold shrink-0 cursor-pointer"
+                            />
+                            <span className={`flex-1 text-xs leading-relaxed ${item.checked ? 'line-through text-gray-300 dark:text-white/25' : 'text-gray-700 dark:text-white/75'}`}>
+                              {item.text}
+                            </span>
+                            <button onClick={() => handleDeleteItem(item.id)} className="titlebar-no-drag shrink-0 text-[10px] text-gray-300 dark:text-white/15 hover:text-red-400 transition opacity-0 group-hover:opacity-100">✕</button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-1.5 mt-1.5">
+                        <input
+                          type="text"
+                          value={newItemText[cl.id] ?? ''}
+                          onChange={e => setNewItemText(prev => ({ ...prev, [cl.id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') handleAddChecklistItem(cl.id) }}
+                          placeholder="Add item…"
+                          className="titlebar-no-drag flex-1 px-2 py-1 rounded-lg bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07] text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                        />
+                        <button
+                          onClick={() => handleAddChecklistItem(cl.id)}
+                          disabled={!(newItemText[cl.id] ?? '').trim()}
+                          className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-hub-gold/80 hover:bg-hub-gold disabled:opacity-40 text-white text-xs font-semibold transition"
+                        >Add</button>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {showAddChecklist && (
+                  <div className="flex gap-1.5 mt-1">
+                    <input
+                      type="text"
+                      value={newChecklistTitle}
+                      onChange={e => setNewChecklistTitle(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleCreateChecklist(); if (e.key === 'Escape') setShowAddChecklist(false) }}
+                      autoFocus
+                      placeholder="Checklist title…"
+                      className="titlebar-no-drag flex-1 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                    />
+                    <button onClick={handleCreateChecklist} disabled={!newChecklistTitle.trim()} className="titlebar-no-drag px-2.5 py-1.5 rounded-lg bg-hub-gold hover:bg-hub-gold-light disabled:opacity-40 text-white text-xs font-semibold transition">Create</button>
+                    <button onClick={() => setShowAddChecklist(false)} className="titlebar-no-drag px-2 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.05] text-gray-500 dark:text-white/40 text-xs transition hover:bg-gray-200 dark:hover:bg-white/[0.09]">✕</button>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Attachments ──────────────────────────────────────────── */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <SectionLabel title={`Attachments${attachments.length ? ` (${attachments.length})` : ''}`} />
+                  <div className="flex items-center gap-2 -mt-0.5">
+                    <button
+                      onClick={handleAddFile}
+                      disabled={attLoading}
+                      className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/35 hover:text-hub-gold transition disabled:opacity-50"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                        <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                      {attLoading ? 'Adding…' : 'File'}
+                    </button>
+                    <button
+                      onClick={() => setShowAddAttUrl(v => !v)}
+                      className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/35 hover:text-hub-gold transition"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                        <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                      URL / GDoc
+                    </button>
+                  </div>
+                </div>
+
+                {attachments.length === 0 && !showAddAttUrl && (
+                  <p className="text-xs text-gray-300 dark:text-white/20 italic">No attachments yet.</p>
                 )}
 
                 {attachments.length > 0 && (
                   <div className="space-y-1.5 mb-2">
-                    {attachments.map(att => (
-                      <div key={att.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] group">
-                        <span className="text-sm shrink-0">📄</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-gray-700 dark:text-white/80 font-medium truncate">{att.title}</p>
-                          <a
-                            href={att.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[11px] text-hub-gold/65 hover:text-hub-gold truncate block transition"
-                          >
-                            {att.url}
-                          </a>
+                    {attachments.map(att => {
+                      const icon = att.type === 'gdoc' ? '📝' : att.type === 'file' ? '📎' : '🔗'
+                      const canDelete = att.author_id === currentUserId || isAdminUser
+                      return (
+                        <div key={att.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] group">
+                          <span className="text-sm shrink-0">{icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <button
+                              onClick={() => window.api.attachments.open(att.id)}
+                              className="titlebar-no-drag text-xs text-gray-700 dark:text-white/80 font-medium truncate block hover:text-hub-gold transition text-left w-full"
+                            >
+                              {att.name}
+                            </button>
+                            <p className="text-[10px] text-gray-400 dark:text-white/25">{att.author_name} · {new Date(att.created_at).toLocaleDateString()}</p>
+                          </div>
+                          {canDelete && (
+                            <button
+                              onClick={() => handleDeleteAttachment(att.id)}
+                              className="titlebar-no-drag shrink-0 p-1 rounded text-gray-300 dark:text-white/20 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
+                            >
+                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                                <path d="M1.5 2.5h7M3.5 2.5V1.5h3v1M4 4.5v3M6 4.5v3M2.5 2.5l.5 6h4l.5-6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          )}
                         </div>
-                        <button
-                          onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}
-                          className="titlebar-no-drag shrink-0 p-1 rounded text-gray-300 dark:text-white/20 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
-                        >
-                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                            <path d="M1.5 2.5h7M3.5 2.5V1.5h3v1M4 4.5v3M6 4.5v3M2.5 2.5l.5 6h4l.5-6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </button>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
 
-                {showAddAtt && (
+                {showAddAttUrl && (
                   <div className="p-3 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] space-y-2">
                     <input
                       type="text"
-                      value={newAtt.title}
-                      onChange={e => setNewAtt(p => ({ ...p, title: e.target.value }))}
-                      placeholder="Title (e.g. Draft Report v2)"
+                      value={newAttName}
+                      onChange={e => setNewAttName(e.target.value)}
+                      placeholder="Name (optional)"
                       className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                     />
                     <input
                       type="url"
-                      value={newAtt.url}
-                      onChange={e => setNewAtt(p => ({ ...p, url: e.target.value }))}
-                      placeholder="https://docs.google.com/…"
+                      value={newAttUrl}
+                      onChange={e => setNewAttUrl(e.target.value)}
+                      placeholder="https://docs.google.com/… or any URL"
                       className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                     />
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          if (!newAtt.title.trim() || !newAtt.url.trim()) return
-                          setAttachments(prev => [...prev, { id: crypto.randomUUID(), ...newAtt }])
-                          setNewAtt({ title: '', url: '' })
-                          setShowAddAtt(false)
-                        }}
-                        disabled={!newAtt.title.trim() || !newAtt.url.trim()}
-                        className="titlebar-no-drag flex-1 py-1.5 rounded-lg bg-hub-gold hover:bg-hub-gold-light disabled:opacity-40 text-white text-xs font-semibold transition"
-                      >
-                        Add
-                      </button>
-                      <button
-                        onClick={() => { setShowAddAtt(false); setNewAtt({ title: '', url: '' }) }}
-                        className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.05] hover:bg-gray-200 dark:hover:bg-white/[0.09] text-gray-500 dark:text-white/45 text-xs transition"
-                      >
-                        Cancel
-                      </button>
+                      <button onClick={handleAddAttUrl} disabled={!newAttUrl.trim()} className="titlebar-no-drag flex-1 py-1.5 rounded-lg bg-hub-gold hover:bg-hub-gold-light disabled:opacity-40 text-white text-xs font-semibold transition">Add</button>
+                      <button onClick={() => { setShowAddAttUrl(false); setNewAttName(''); setNewAttUrl('') }} className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.05] hover:bg-gray-200 dark:hover:bg-white/[0.09] text-gray-500 dark:text-white/45 text-xs transition">Cancel</button>
                     </div>
                   </div>
                 )}
@@ -812,28 +952,55 @@ export default function TaskDetailPanel() {
 
                 {comments.length > 0 && (
                   <div className="space-y-3 mb-3">
-                    {comments.map(c => (
-                      <div key={c.id} className="flex gap-2.5 group">
-                        <div className="w-6 h-6 rounded-full bg-hub-gold/20 border border-hub-gold/25 flex items-center justify-center shrink-0 mt-0.5">
-                          <span className="text-hub-gold text-[9px] font-bold">
-                            {initials(c.author_name)}
-                          </span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-baseline gap-2 mb-0.5 flex-wrap">
-                            <span className="text-xs font-semibold text-gray-700 dark:text-white/80">{c.author_name}</span>
-                            <span className="text-[10px] text-gray-400 dark:text-white/25">{fmtDate(c.created_at)}</span>
-                            <button
-                              onClick={() => handleDeleteComment(c.id)}
-                              className="titlebar-no-drag ml-auto text-[10px] text-gray-300 dark:text-white/20 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
-                            >
-                              Delete
-                            </button>
+                    {comments.map(c => {
+                      const canEdit   = c.author_id === currentUserId
+                      const canDelete = c.author_id === currentUserId || isAdminUser
+                      const isEditing = editingCommentId === c.id
+                      return (
+                        <div key={c.id} className="flex gap-2.5 group">
+                          <div className="w-6 h-6 rounded-full bg-hub-gold/20 border border-hub-gold/25 flex items-center justify-center shrink-0 mt-0.5">
+                            <span className="text-hub-gold text-[9px] font-bold">{initials(c.author_name)}</span>
                           </div>
-                          <p className="text-xs text-gray-500 dark:text-white/60 leading-relaxed whitespace-pre-wrap">{c.content}</p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-baseline gap-2 mb-0.5 flex-wrap">
+                              <span className="text-xs font-semibold text-gray-700 dark:text-white/80">{c.author_name}</span>
+                              <span className="text-[10px] text-gray-400 dark:text-white/25">{fmtDate(c.created_at)}</span>
+                              <div className="ml-auto flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
+                                {canEdit && !isEditing && (
+                                  <button
+                                    onClick={() => { setEditingCommentId(c.id); setEditingCommentContent(c.content) }}
+                                    className="titlebar-no-drag text-[10px] text-gray-400 dark:text-white/25 hover:text-hub-gold transition"
+                                  >Edit</button>
+                                )}
+                                {canDelete && (
+                                  <button
+                                    onClick={() => handleDeleteComment(c.id)}
+                                    className="titlebar-no-drag text-[10px] text-gray-300 dark:text-white/20 hover:text-red-400 transition"
+                                  >Delete</button>
+                                )}
+                              </div>
+                            </div>
+                            {isEditing ? (
+                              <div className="space-y-1.5">
+                                <textarea
+                                  value={editingCommentContent}
+                                  onChange={e => setEditingCommentContent(e.target.value)}
+                                  rows={3}
+                                  autoFocus
+                                  className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30 resize-none leading-relaxed"
+                                />
+                                <div className="flex gap-1.5">
+                                  <button onClick={() => handleSaveCommentEdit(c.id)} disabled={!editingCommentContent.trim()} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-hub-gold hover:bg-hub-gold-light disabled:opacity-40 text-white text-xs font-semibold transition">Save</button>
+                                  <button onClick={() => setEditingCommentId(null)} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/[0.05] hover:bg-gray-200 dark:hover:bg-white/[0.09] text-gray-500 dark:text-white/45 text-xs transition">Cancel</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-gray-500 dark:text-white/60 leading-relaxed whitespace-pre-wrap">{c.content}</p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
 
