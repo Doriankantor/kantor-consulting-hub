@@ -598,6 +598,79 @@ function registerCommentEditHandler() {
   })
 }
 
+// ── Workspace (local SQLite — columns + tasks) ────────────────────────────
+
+function registerWorkspaceHandlers() {
+  const db = () => getDatabase()
+
+  // ── Columns ──
+  ipcMain.handle('workspace:getColumns', () =>
+    db().prepare('SELECT * FROM workspace_columns ORDER BY position ASC').all()
+  )
+
+  ipcMain.handle('workspace:addColumn', (_e, col: { id: string; name: string; position: number; color: string }) => {
+    db().prepare('INSERT INTO workspace_columns (id,name,position,color) VALUES (?,?,?,?)').run(col.id, col.name, col.position, col.color)
+    return { ok: true }
+  })
+
+  ipcMain.handle('workspace:updateColumn', (_e, colId: string, partial: { name?: string; position?: number }) => {
+    const sets: string[] = []
+    const vals: unknown[] = []
+    if (partial.name     !== undefined) { sets.push('name=?');     vals.push(partial.name) }
+    if (partial.position !== undefined) { sets.push('position=?'); vals.push(partial.position) }
+    if (sets.length) db().prepare(`UPDATE workspace_columns SET ${sets.join(',')} WHERE id=?`).run(...vals, colId)
+    return { ok: true }
+  })
+
+  // ── Tasks ──
+  ipcMain.handle('workspace:getTasks', () => {
+    const rows = db().prepare('SELECT * FROM workspace_tasks ORDER BY position ASC').all() as Record<string, unknown>[]
+    return rows.map(r => ({ ...r, assignee_ids: JSON.parse((r.assignees_json as string) || '[]') }))
+  })
+
+  ipcMain.handle('workspace:createTask', (_e, t: {
+    id: string; column_id: string; title: string; content_type: string;
+    client: string | null; area_of_analysis: string | null; assignee_ids: string[];
+    due_date: string | null; start_date: string | null; priority: string;
+    description: string | null; notes: string | null; sources_json: string | null; position: number
+  }) => {
+    db().prepare(`INSERT INTO workspace_tasks
+      (id,column_id,title,content_type,client,area_of_analysis,assignees_json,
+       due_date,start_date,priority,description,notes,sources_json,position)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).run(t.id, t.column_id, t.title, t.content_type, t.client, t.area_of_analysis,
+      JSON.stringify(t.assignee_ids ?? []),
+      t.due_date, t.start_date, t.priority, t.description, t.notes, t.sources_json, t.position)
+    return { ok: true }
+  })
+
+  ipcMain.handle('workspace:updateTask', (_e, taskId: string, partial: Record<string, unknown>) => {
+    const sets: string[] = []
+    const vals: unknown[] = []
+    const fields: Record<string, string> = {
+      column_id: 'column_id', title: 'title', content_type: 'content_type',
+      client: 'client', area_of_analysis: 'area_of_analysis',
+      due_date: 'due_date', start_date: 'start_date', priority: 'priority',
+      description: 'description', notes: 'notes', sources_json: 'sources_json', position: 'position',
+    }
+    for (const [key, col] of Object.entries(fields)) {
+      if (key in partial) { sets.push(`${col}=?`); vals.push(partial[key]) }
+    }
+    if ('assignee_ids' in partial) {
+      sets.push('assignees_json=?')
+      vals.push(JSON.stringify(partial.assignee_ids))
+    }
+    sets.push("updated_at=datetime('now')")
+    if (sets.length > 1) db().prepare(`UPDATE workspace_tasks SET ${sets.join(',')} WHERE id=?`).run(...vals, taskId)
+    return { ok: true }
+  })
+
+  ipcMain.handle('workspace:deleteTask', (_e, taskId: string) => {
+    db().prepare('DELETE FROM workspace_tasks WHERE id=?').run(taskId)
+    return { ok: true }
+  })
+}
+
 // ── Dialog ─────────────────────────────────────────────────────────────────
 
 function registerDialogHandlers() {
@@ -628,4 +701,5 @@ export function registerIpcHandlers(): void {
   registerChatHandlers()
   registerCommentEditHandler()
   registerDialogHandlers()
+  registerWorkspaceHandlers()
 }

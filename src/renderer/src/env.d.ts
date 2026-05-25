@@ -208,5 +208,14 @@ interface Window {
     dialog: {
       openFile: () => Promise<{ canceled: boolean; filePaths: string[] }>
     }
+    workspace: {
+      getColumns:   ()                                        => Promise<import('./types').Column[]>
+      getTasks:     ()                                        => Promise<import('./types').Task[]>
+      createTask:   (t: Record<string, unknown>)              => Promise<{ ok?: boolean }>
+      updateTask:   (id: string, p: Record<string, unknown>)  => Promise<{ ok?: boolean }>
+      deleteTask:   (id: string)                              => Promise<{ ok?: boolean }>
+      addColumn:    (c: Record<string, unknown>)              => Promise<{ ok?: boolean }>
+      updateColumn: (id: string, p: Record<string, unknown>)  => Promise<{ ok?: boolean }>
+    }
   }
 }

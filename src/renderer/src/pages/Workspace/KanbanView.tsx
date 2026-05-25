@@ -260,7 +260,7 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
   }
 
   return (
-    <div className="flex flex-col w-64 shrink-0">
+    <div className="flex flex-col w-64 shrink-0 h-full">
       {/* Header */}
       <div className="flex items-center justify-between mb-2.5 px-1">
         <div className="flex items-center gap-2">
@@ -290,7 +290,7 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
       {/* Cards */}
       <div
         ref={setNodeRef}
-        className={`flex-1 min-h-[80px] rounded-xl p-2 space-y-2 transition-colors ${
+        className={`flex-1 min-h-0 overflow-y-auto rounded-xl p-2 space-y-2 transition-colors ${
           isOver ? 'bg-hub-gold/5 ring-1 ring-hub-gold/20' : 'bg-gray-100/50 dark:bg-black/[0.15]'
         }`}
       >
@@ -383,7 +383,7 @@ export default function KanbanView() {
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-4 p-5 h-full items-start min-w-max">
+          <div className="flex gap-4 p-5 h-full items-stretch min-w-max">
             {columns
               .sort((a, b) => a.position - b.position)
               .map(col => <KanbanColumn key={col.id} columnId={col.id} areas={areas} />)}

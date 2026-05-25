@@ -4,11 +4,8 @@ import React, {
   useEffect,
   useState,
   useCallback,
-  useRef,
 } from 'react'
 import { arrayMove } from '@dnd-kit/sortable'
-import { supabase } from '../supabase/client'
-import { SEED_TASKS, SEED_MEMBERS } from '../data/seed'
 import { DEFAULT_COLUMNS } from '../types'
 import type { Task, Column, TeamMember, ViewMode, Area } from '../types'
 
@@ -65,8 +62,8 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS)
-  const [tasks, setTasks] = useState<Task[]>(SEED_TASKS)
-  const [members, setMembers] = useState<TeamMember[]>(SEED_MEMBERS)
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [members, setMembers] = useState<TeamMember[]>([])
   const [areas, setAreas] = useState<Area[]>([])
   const [labels, setLabels] = useState<Label[]>([])
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
@@ -74,12 +71,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [taskLabelMap, setTaskLabelMap] = useState<Record<string, Label[]>>({})
   const [pendingSection, setPendingSection] = useState<string | null>(null)
   const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [viewMode, setViewModeState] = useState<ViewMode>(() => {
     return (localStorage.getItem('workspace-view') as ViewMode) ?? 'kanban'
   })
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
-  const supabaseReady = useRef(false)
 
   // ── Load areas ──────────────────────────────────────────────────────────
 
@@ -202,83 +198,41 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [tasks, loadTaskMeta])
 
-  // ── Load from Supabase (graceful fallback to seed) ───────────────────────
+  // ── Load from local SQLite ───────────────────────────────────────────────
 
   useEffect(() => {
     let mounted = true
     loadAreas()
     loadLabels()
+
     async function load() {
       try {
-        const [tasksRes, colsRes, membersRes] = await Promise.all([
-          supabase.from('tasks').select('*').order('position'),
-          supabase.from('columns').select('*').order('position'),
-          supabase.from('profiles').select('*'),
+        const [cols, taskList, teamList] = await Promise.all([
+          window.api.workspace.getColumns(),
+          window.api.workspace.getTasks(),
+          window.api.team.list(),
         ])
-
         if (!mounted) return
-
-        if (tasksRes.data && tasksRes.data.length > 0) {
-          setTasks(tasksRes.data as Task[])
-          loadTaskMeta(tasksRes.data as Task[])
-          checkDeadlines(tasksRes.data as Task[])
-        } else {
-          loadTaskMeta(SEED_TASKS)
-          checkDeadlines(SEED_TASKS)
-        }
-        if (colsRes.data && colsRes.data.length > 0) {
-          setColumns(colsRes.data as Column[])
-        }
-        if (membersRes.data && membersRes.data.length > 0) {
-          setMembers(membersRes.data as TeamMember[])
-        }
-        supabaseReady.current = true
-      } catch {
-        // Tables don't exist yet — seed data is already loaded; still load meta
-      loadTaskMeta(SEED_TASKS)
-      checkDeadlines(SEED_TASKS)
+        if (cols.length > 0) setColumns(cols)
+        setTasks(taskList)
+        setMembers(teamList.map(m => ({
+          id: m.id,
+          email: m.email,
+          full_name: m.full_name,
+          avatar_url: null,
+          role: (m.role as 'admin' | 'member') ?? 'member',
+        })))
+        loadTaskMeta(taskList)
+        checkDeadlines(taskList)
+      } catch (err) {
+        console.error('[WorkspaceContext] load error', err)
+      } finally {
+        if (mounted) setLoading(false)
       }
-      if (mounted) setLoading(false)
     }
     load()
     return () => { mounted = false }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // ── Realtime subscription ────────────────────────────────────────────────
-
-  useEffect(() => {
-    const channel = supabase
-      .channel('workspace-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tasks' },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setTasks(prev => [...prev, payload.new as Task])
-          } else if (payload.eventType === 'UPDATE') {
-            setTasks(prev => prev.map(t =>
-              t.id === (payload.new as Task).id ? (payload.new as Task) : t
-            ))
-          } else if (payload.eventType === 'DELETE') {
-            setTasks(prev => prev.filter(t => t.id !== (payload.old as Task).id))
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'columns' },
-        (payload) => {
-          if (payload.eventType === 'UPDATE') {
-            setColumns(prev => prev.map(c =>
-              c.id === (payload.new as Column).id ? (payload.new as Column) : c
-            ))
-          }
-        }
-      )
-      .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
   }, [])
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -301,21 +255,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => setHighlightTaskId(null), 2200)
   }, [tasks])
 
-  async function syncTask(taskId: string, data: Partial<Task>) {
-    if (!supabaseReady.current) return
-    await supabase.from('tasks').update({ ...data, updated_at: new Date().toISOString() }).eq('id', taskId)
-  }
-
   // ── Task actions ──────────────────────────────────────────────────────────
 
   const moveTask = useCallback((taskId: string, newColumnId: string, _overTaskId?: string) => {
-    setTasks(prev => {
-      const updated = prev.map(t =>
-        t.id === taskId ? { ...t, column_id: newColumnId, updated_at: new Date().toISOString() } : t
-      )
-      return updated
-    })
-    syncTask(taskId, { column_id: newColumnId })
+    setTasks(prev => prev.map(t =>
+      t.id === taskId ? { ...t, column_id: newColumnId, updated_at: new Date().toISOString() } : t
+    ))
+    window.api.workspace.updateTask(taskId, { column_id: newColumnId }).catch(() => {})
   }, [])
 
   const reorderWithinColumn = useCallback((columnId: string, activeId: string, overId: string) => {
@@ -332,14 +278,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         position: i,
         updated_at: new Date().toISOString(),
       }))
-
-      // Sync each reordered item
-      reordered.forEach(t => syncTask(t.id, { position: t.position }))
-
-      return [
-        ...prev.filter(t => t.column_id !== columnId),
-        ...reordered,
-      ]
+      reordered.forEach(t => window.api.workspace.updateTask(t.id, { position: t.position }).catch(() => {}))
+      return [...prev.filter(t => t.column_id !== columnId), ...reordered]
     })
   }, [])
 
@@ -358,40 +298,33 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       priority: partial.priority ?? 'medium',
       description: partial.description ?? null,
       notes: partial.notes ?? null,
+      sources_json: partial.sources_json ?? null,
       position: colTasks.length,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
     setTasks(prev => [...prev, newTask])
-
-    if (supabaseReady.current) {
-      await supabase.from('tasks').insert(newTask)
-    }
+    await window.api.workspace.createTask(newTask as unknown as Record<string, unknown>)
   }, [tasks])
 
   const updateTask = useCallback(async (taskId: string, partial: Partial<Task>) => {
     const updated = { ...partial, updated_at: new Date().toISOString() }
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updated } : t))
-    // Update selected task too if it's the same one
     setSelectedTask(prev => prev?.id === taskId ? { ...prev, ...updated } : prev)
-    await syncTask(taskId, partial)
+    await window.api.workspace.updateTask(taskId, partial as Record<string, unknown>)
   }, [])
 
   const deleteTask = useCallback(async (taskId: string) => {
     setTasks(prev => prev.filter(t => t.id !== taskId))
     setSelectedTask(prev => prev?.id === taskId ? null : prev)
-    if (supabaseReady.current) {
-      await supabase.from('tasks').delete().eq('id', taskId)
-    }
+    await window.api.workspace.deleteTask(taskId)
   }, [])
 
   // ── Column actions ─────────────────────────────────────────────────────────
 
   const renameColumn = useCallback(async (columnId: string, name: string) => {
     setColumns(prev => prev.map(c => c.id === columnId ? { ...c, name } : c))
-    if (supabaseReady.current) {
-      await supabase.from('columns').update({ name }).eq('id', columnId)
-    }
+    await window.api.workspace.updateColumn(columnId, { name })
   }, [])
 
   const addColumn = useCallback(async () => {
@@ -402,9 +335,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       color: 'bg-slate-500',
     }
     setColumns(prev => [...prev, newCol])
-    if (supabaseReady.current) {
-      await supabase.from('columns').insert(newCol)
-    }
+    await window.api.workspace.addColumn(newCol as unknown as Record<string, unknown>)
   }, [columns])
 
   return (

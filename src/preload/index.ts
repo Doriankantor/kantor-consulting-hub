@@ -115,6 +115,15 @@ const api = {
   dialog: {
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
   },
+  workspace: {
+    getColumns:   ()                                      => ipcRenderer.invoke('workspace:getColumns'),
+    getTasks:     ()                                      => ipcRenderer.invoke('workspace:getTasks'),
+    createTask:   (t: Record<string, unknown>)            => ipcRenderer.invoke('workspace:createTask', t),
+    updateTask:   (id: string, p: Record<string, unknown>) => ipcRenderer.invoke('workspace:updateTask', id, p),
+    deleteTask:   (id: string)                            => ipcRenderer.invoke('workspace:deleteTask', id),
+    addColumn:    (c: Record<string, unknown>)            => ipcRenderer.invoke('workspace:addColumn', c),
+    updateColumn: (id: string, p: Record<string, unknown>) => ipcRenderer.invoke('workspace:updateColumn', id, p),
+  },
 }
 
 if (process.contextIsolated) {

@@ -273,6 +273,43 @@ export function initDatabase(): void {
     );
   `)
 
+  // ── Workspace columns + tasks (local-only, full schema) ──────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS workspace_columns (
+      id       TEXT PRIMARY KEY,
+      name     TEXT NOT NULL,
+      position INTEGER DEFAULT 0,
+      color    TEXT DEFAULT 'bg-slate-500'
+    );
+
+    INSERT OR IGNORE INTO workspace_columns (id, name, position, color) VALUES
+      ('col-scoping',   'Scoping',        0, 'bg-slate-500'),
+      ('col-research',  'Research',       1, 'bg-blue-500'),
+      ('col-drafting',  'Drafting',       2, 'bg-yellow-500'),
+      ('col-review',    'Review',         3, 'bg-orange-500'),
+      ('col-delivery',  'Client Delivery',4, 'bg-purple-500'),
+      ('col-published', 'Published',      5, 'bg-green-500');
+
+    CREATE TABLE IF NOT EXISTS workspace_tasks (
+      id               TEXT PRIMARY KEY,
+      column_id        TEXT NOT NULL DEFAULT 'col-scoping',
+      title            TEXT NOT NULL,
+      content_type     TEXT NOT NULL DEFAULT 'policy-brief',
+      client           TEXT,
+      area_of_analysis TEXT,
+      assignees_json   TEXT DEFAULT '[]',
+      due_date         TEXT,
+      start_date       TEXT,
+      priority         TEXT NOT NULL DEFAULT 'medium',
+      description      TEXT,
+      notes            TEXT,
+      sources_json     TEXT,
+      position         INTEGER DEFAULT 0,
+      created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `)
+
   // Migrate task_comments: add updated_at and mentions_json columns
   try { db.exec('ALTER TABLE task_comments ADD COLUMN updated_at DATETIME;') } catch {}
   try { db.exec('ALTER TABLE task_comments ADD COLUMN mentions_json TEXT;') } catch {}
