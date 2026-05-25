@@ -53,23 +53,23 @@ export default function FirstLogin() {
         </div>
 
         <div className="text-center mb-6">
-          <p className="text-[10px] text-gray-400 dark:text-white/25 uppercase tracking-widest mb-1.5">{steps[step - 1]}</p>
+          <p className="text-[10px] text-gray-400 dark:text-white/50 uppercase tracking-widest mb-1.5">{steps[step - 1]}</p>
           {step === 1 && (
             <>
               <h1 className="text-xl font-bold text-gray-900 dark:text-white">Set your password</h1>
-              <p className="text-gray-500 dark:text-white/40 text-sm mt-1.5">Welcome, {localUser?.name}. Create a permanent password to continue.</p>
+              <p className="text-gray-500 dark:text-white/65 text-sm mt-1.5">Welcome, {localUser?.name}. Create a permanent password to continue.</p>
             </>
           )}
           {step === 2 && (
             <>
               <h1 className="text-xl font-bold text-gray-900 dark:text-white">Connect Claude</h1>
-              <p className="text-gray-500 dark:text-white/40 text-sm mt-1.5">Use AI to draft reports and analyze engagements — or skip for now.</p>
+              <p className="text-gray-500 dark:text-white/65 text-sm mt-1.5">Use AI to draft reports and analyze engagements — or skip for now.</p>
             </>
           )}
           {step === 3 && (
             <>
               <h1 className="text-xl font-bold text-gray-900 dark:text-white">Almost done</h1>
-              <p className="text-gray-500 dark:text-white/40 text-sm mt-1.5">Set your notification preferences.</p>
+              <p className="text-gray-500 dark:text-white/65 text-sm mt-1.5">Set your notification preferences.</p>
             </>
           )}
         </div>
@@ -81,23 +81,23 @@ export default function FirstLogin() {
                 <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">{pwError}</div>
               )}
               <div>
-                <label className="block text-[10px] font-semibold text-gray-400 dark:text-white/35 uppercase tracking-widest mb-1.5">Temporary password</label>
+                <label className="block text-[10px] font-semibold text-gray-400 dark:text-white/65 uppercase tracking-widest mb-1.5">Temporary password</label>
                 <input type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} autoFocus
                   placeholder="From your invite email"
-                  className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition" />
+                  className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition" />
               </div>
               <div>
-                <label className="block text-[10px] font-semibold text-gray-400 dark:text-white/35 uppercase tracking-widest mb-1.5">New password</label>
+                <label className="block text-[10px] font-semibold text-gray-400 dark:text-white/65 uppercase tracking-widest mb-1.5">New password</label>
                 <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)}
                   placeholder="At least 8 characters"
-                  className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition" />
+                  className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition" />
               </div>
               <div>
-                <label className="block text-[10px] font-semibold text-gray-400 dark:text-white/35 uppercase tracking-widest mb-1.5">Confirm password</label>
+                <label className="block text-[10px] font-semibold text-gray-400 dark:text-white/65 uppercase tracking-widest mb-1.5">Confirm password</label>
                 <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
                   placeholder="Repeat new password"
                   onKeyDown={e => { if (e.key === 'Enter') handleChangePassword() }}
-                  className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition" />
+                  className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition" />
               </div>
               <button onClick={handleChangePassword} disabled={pwLoading || !currentPw || !newPw || !confirmPw}
                 className="titlebar-no-drag w-full py-2.5 rounded-xl bg-hub-gold hover:bg-hub-gold-light disabled:opacity-50 text-white font-semibold text-sm transition mt-1">
@@ -119,7 +119,7 @@ export default function FirstLogin() {
               <div className="flex items-center justify-between py-1">
                 <div>
                   <p className="text-sm text-gray-700 dark:text-white/80 font-medium">Email notifications</p>
-                  <p className="text-xs text-gray-400 dark:text-white/35 mt-0.5">Receive updates when tasks are assigned to you</p>
+                  <p className="text-xs text-gray-400 dark:text-white/65 mt-0.5">Receive updates when tasks are assigned to you</p>
                 </div>
                 <button
                   onClick={() => setEmailNotif(v => !v)}
@@ -136,7 +136,7 @@ export default function FirstLogin() {
           )}
         </div>
 
-        <p className="text-center text-xs text-gray-300 dark:text-white/15 mt-4">
+        <p className="text-center text-xs text-gray-300 dark:text-white/50 mt-4">
           You can change these settings at any time in Settings.
         </p>
       </div>

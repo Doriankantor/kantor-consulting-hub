@@ -114,7 +114,7 @@ export default function ChatPanel() {
             </div>
             <button
               onClick={() => setOpen(false)}
-              className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.08] transition text-sm font-bold"
+              className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-400 dark:text-white/65 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.08] transition text-sm font-bold"
             >
               −
             </button>
@@ -123,7 +123,7 @@ export default function ChatPanel() {
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
             {messages.length === 0 && (
-              <p className="text-center text-xs text-gray-400 dark:text-white/25 mt-8">No messages yet. Say hello!</p>
+              <p className="text-center text-xs text-gray-400 dark:text-white/50 mt-8">No messages yet. Say hello!</p>
             )}
             {messages.map((msg, i) => {
               const isMine = msg.author_id === userId
@@ -140,7 +140,7 @@ export default function ChatPanel() {
                   )}
                   <div className={`max-w-[75%] ${isMine ? 'items-end' : 'items-start'} flex flex-col gap-0.5`}>
                     {showName && (
-                      <span className="text-[10px] text-gray-400 dark:text-white/30 ml-1">{msg.author_name}</span>
+                      <span className="text-[10px] text-gray-400 dark:text-white/50 ml-1">{msg.author_name}</span>
                     )}
                     <div className={`px-3 py-2 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap break-words ${
                       isMine
@@ -149,7 +149,7 @@ export default function ChatPanel() {
                     }`}>
                       {msg.content}
                     </div>
-                    <span className="text-[9px] text-gray-300 dark:text-white/20 px-1">{fmtTime(msg.created_at)}</span>
+                    <span className="text-[9px] text-gray-300 dark:text-white/50 px-1">{fmtTime(msg.created_at)}</span>
                   </div>
                 </div>
               )
@@ -166,7 +166,7 @@ export default function ChatPanel() {
               onKeyDown={handleKeyDown}
               rows={1}
               placeholder="Message team…"
-              className="flex-1 px-3 py-2 rounded-xl bg-gray-100 dark:bg-white/[0.07] border border-gray-200 dark:border-white/[0.08] text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-hub-blue/40 resize-none leading-relaxed"
+              className="flex-1 px-3 py-2 rounded-xl bg-gray-100 dark:bg-white/[0.07] border border-gray-200 dark:border-white/[0.08] text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-hub-blue/40 resize-none leading-relaxed"
               style={{ maxHeight: '80px', overflowY: 'auto' }}
             />
             <button
@@ -187,7 +187,7 @@ export default function ChatPanel() {
         onClick={() => setOpen(v => !v)}
         className={`relative w-13 h-13 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 ${
           open
-            ? 'bg-gray-200 dark:bg-white/[0.12] text-gray-600 dark:text-white/60'
+            ? 'bg-gray-200 dark:bg-white/[0.12] text-gray-600 dark:text-white/75'
             : 'bg-hub-blue hover:bg-hub-blue/90 text-white'
         }`}
         style={{ width: '52px', height: '52px' }}

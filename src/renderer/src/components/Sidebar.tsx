@@ -96,11 +96,11 @@ function WorkspaceViewSwitcher() {
           onClick={() => setViewMode(v.id)}
           className={`titlebar-no-drag w-full flex items-center gap-2 px-3 py-1.5 text-xs transition ${
             viewMode === v.id
-              ? 'bg-black/[0.08] dark:bg-white/[0.15] text-gray-900 dark:text-white font-semibold'
-              : 'text-gray-600 dark:text-white/40 hover:text-gray-900 dark:hover:text-white/70 hover:bg-black/[0.05] dark:hover:bg-white/[0.06]'
+              ? 'bg-[#EEF0FF] dark:bg-white/[0.15] text-[#4338CA] dark:text-white font-semibold'
+              : 'text-[#555] dark:text-white/65 hover:text-[#2d2d2d] dark:hover:text-white/70 hover:bg-black/[0.05] dark:hover:bg-white/[0.06]'
           }`}
         >
-          <span className={`w-1 h-1 rounded-full ${viewMode === v.id ? 'bg-gray-800 dark:bg-white' : 'bg-gray-400 dark:bg-white/25'}`} />
+          <span className={`w-1 h-1 rounded-full ${viewMode === v.id ? 'bg-[#4338CA] dark:bg-white' : 'bg-gray-400 dark:bg-white/25'}`} />
           {v.label}
         </button>
       ))}
@@ -160,12 +160,12 @@ export default function Sidebar() {
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `titlebar-no-drag relative flex items-center gap-2.5 py-2 rounded-xl text-sm transition-all ${
       isActive
-        ? 'bg-black/[0.08] dark:bg-white/[0.15] text-gray-900 dark:text-white font-semibold shadow-sm border-l-2 border-gray-800 dark:border-white pl-[10px] pr-3'
-        : 'text-gray-700 dark:text-white/55 hover:text-gray-900 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.08] px-3'
+        ? 'bg-[#EEF0FF] dark:bg-white/[0.15] text-[#4338CA] dark:text-white font-semibold border-l-[3px] border-[#4338CA] dark:border-white pl-[10px] pr-3'
+        : 'text-[#555] dark:text-white/75 hover:text-[#2d2d2d] dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.08] px-3'
     }`
 
   return (
-    <aside className="w-52 shrink-0 bg-white/[0.2] dark:bg-black/[0.3] backdrop-blur-xl border-r border-black/[0.08] dark:border-white/[0.08] flex flex-col py-3 overflow-hidden">
+    <aside className="w-52 shrink-0 bg-white/90 dark:bg-black/[0.3] backdrop-blur-xl border-r border-black/[0.08] dark:border-white/[0.08] flex flex-col py-3 overflow-hidden">
       <nav className="flex-1 px-2.5 space-y-0.5 overflow-y-auto">
         {navItems.map(item => (
           <div key={item.to}>
@@ -190,7 +190,7 @@ export default function Sidebar() {
       <div className="px-2.5 mb-1">
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('toggleChat'))}
-          className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all text-gray-700 dark:text-white/55 hover:text-gray-900 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
+          className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all text-[#555] dark:text-white/75 hover:text-[#2d2d2d] dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
         >
           <span className="shrink-0"><ChatIcon /></span>
           <span className="flex-1 text-left">Team Chat</span>
@@ -201,10 +201,10 @@ export default function Sidebar() {
       {isAdmin && (
         <div className="px-3 mx-2.5 py-2 rounded-xl bg-black/[0.06] dark:bg-white/[0.08] border border-black/[0.08] dark:border-white/[0.12]">
           <div className="flex items-center gap-2">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-gray-600 dark:text-white/60">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-gray-600 dark:text-white/75">
               <path d="M6 1l1.5 3 3.5.5-2.5 2.5.5 3.5L6 9l-3 1.5.5-3.5L1 4.5 4.5 4z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
             </svg>
-            <span className="text-[10px] font-semibold text-gray-600 dark:text-white/60">Admin</span>
+            <span className="text-[10px] font-semibold text-gray-600 dark:text-white/75">Admin</span>
           </div>
         </div>
       )}

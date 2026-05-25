@@ -37,7 +37,7 @@ export default function Login() {
             </svg>
           </div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Kantor Consulting Hub</h1>
-          <p className="text-gray-400 dark:text-white/35 text-sm mt-1.5">Project management center</p>
+          <p className="text-gray-400 dark:text-white/65 text-sm mt-1.5">Project management center</p>
         </div>
 
         {/* Card */}
@@ -67,7 +67,7 @@ export default function Login() {
                 required
                 autoComplete="email"
                 autoFocus
-                className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition-all"
+                className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition-all"
                 placeholder="name@kantor-consulting.com"
               />
             </div>
@@ -83,7 +83,7 @@ export default function Login() {
                 onChange={e => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
-                className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition-all"
+                className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition-all"
                 placeholder="••••••••"
               />
             </div>
@@ -104,7 +104,7 @@ export default function Login() {
             </button>
           </form>
 
-          <p className="mt-5 text-center text-xs text-gray-400 dark:text-white/25">
+          <p className="mt-5 text-center text-xs text-gray-400 dark:text-white/50">
             Access is managed by your administrator.
           </p>
         </div>

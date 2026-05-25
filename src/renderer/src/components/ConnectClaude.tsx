@@ -42,7 +42,7 @@ export default function ConnectClaude({ userId, onConnected, onSkip }: Props) {
             Open Anthropic Console
             <span className="text-hub-gold/70">↗</span>
           </button>
-          <p className="text-[11px] text-gray-400 dark:text-white/25 mt-1.5 leading-relaxed">
+          <p className="text-[11px] text-gray-400 dark:text-white/50 mt-1.5 leading-relaxed">
             Go to API Keys → Create key → copy it
           </p>
         </div>
@@ -62,7 +62,7 @@ export default function ConnectClaude({ userId, onConnected, onSkip }: Props) {
             value={apiKey}
             onChange={e => { setApiKey(e.target.value); setKeyError(null) }}
             placeholder="sk-ant-api03-…"
-            className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition"
+            className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition"
           />
           {keyError && (
             <p className="mt-1.5 text-xs text-red-400">{keyError}</p>
@@ -81,7 +81,7 @@ export default function ConnectClaude({ userId, onConnected, onSkip }: Props) {
         <div className="text-center pt-1">
           <button
             onClick={onSkip}
-            className="titlebar-no-drag text-xs text-gray-400 dark:text-white/25 hover:text-gray-500 dark:hover:text-white/45 transition"
+            className="titlebar-no-drag text-xs text-gray-400 dark:text-white/50 hover:text-gray-500 dark:hover:text-white/65 transition"
           >
             Skip for now
           </button>

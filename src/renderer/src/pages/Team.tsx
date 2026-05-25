@@ -63,7 +63,7 @@ export default function Team() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Team</h1>
-          <p className="text-gray-400 dark:text-white/35 text-sm mt-1">
+          <p className="text-gray-400 dark:text-white/65 text-sm mt-1">
             {members.length} member{members.length !== 1 ? 's' : ''} · Access managed by admin
           </p>
         </div>
@@ -72,7 +72,7 @@ export default function Team() {
         {isAdmin && (
           <div className="bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl p-5 mb-6">
             <h2 className="text-sm font-semibold text-gray-700 dark:text-white/80 mb-1">Invite a team member</h2>
-            <p className="text-xs text-gray-500 dark:text-white/40 mb-4">
+            <p className="text-xs text-gray-500 dark:text-white/65 mb-4">
               They'll receive an email to set their password and access the Hub.
             </p>
             <form onSubmit={handleInvite} className="flex gap-2">
@@ -81,7 +81,7 @@ export default function Team() {
                 value={inviteEmail}
                 onChange={e => setInviteEmail(e.target.value)}
                 placeholder="name@kantor-consulting.com"
-                className="titlebar-no-drag flex-1 px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition"
+                className="titlebar-no-drag flex-1 px-3.5 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition"
               />
               <button
                 type="submit"
@@ -102,7 +102,7 @@ export default function Team() {
         {/* Member list */}
         <div className="bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 dark:border-white/[0.06]">
-            <h2 className="text-[10px] font-semibold text-gray-400 dark:text-white/30 uppercase tracking-widest">Members</h2>
+            <h2 className="text-[10px] font-semibold text-gray-400 dark:text-white/50 uppercase tracking-widest">Members</h2>
           </div>
 
           {loading ? (
@@ -121,10 +121,10 @@ export default function Team() {
                           {member.full_name || 'No name set'}
                         </p>
                         {member.id === user?.id && (
-                          <span className="text-[10px] text-gray-400 dark:text-white/25 font-medium">(you)</span>
+                          <span className="text-[10px] text-gray-400 dark:text-white/50 font-medium">(you)</span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-400 dark:text-white/35 mt-0.5">{member.email}</p>
+                      <p className="text-xs text-gray-400 dark:text-white/65 mt-0.5">{member.email}</p>
                     </div>
                   </div>
 
@@ -132,7 +132,7 @@ export default function Team() {
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                       member.role === 'admin'
                         ? 'bg-hub-gold/10 border-hub-gold/30 text-hub-gold'
-                        : 'bg-gray-50 dark:bg-white/[0.05] border-gray-200 dark:border-white/[0.08] text-gray-400 dark:text-white/35'
+                        : 'bg-gray-50 dark:bg-white/[0.05] border-gray-200 dark:border-white/[0.08] text-gray-400 dark:text-white/65'
                     }`}>
                       {member.role === 'admin' ? 'Admin' : 'Member'}
                     </span>
@@ -157,7 +157,7 @@ export default function Team() {
 
         {/* Non-admin note */}
         {!isAdmin && (
-          <p className="mt-4 text-center text-xs text-gray-300 dark:text-white/20">
+          <p className="mt-4 text-center text-xs text-gray-300 dark:text-white/50">
             Contact Dorian Kantor to add or remove team members.
           </p>
         )}

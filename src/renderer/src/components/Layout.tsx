@@ -13,7 +13,7 @@ export default function Layout() {
           <div className="flex-1 overflow-hidden">
             <Outlet />
           </div>
-          <div className="shrink-0 border-t border-white/[0.08]">
+          <div className="shrink-0 border-t border-black/[0.06] dark:border-white/[0.08]">
             <SyncStatus />
           </div>
         </main>

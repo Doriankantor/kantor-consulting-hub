@@ -153,7 +153,7 @@ export default function Dashboard() {
             </span>
           )}
         </h1>
-        <p className="text-gray-400 dark:text-white/45 text-sm mt-1">{today}</p>
+        <p className="text-gray-400 dark:text-white/65 text-sm mt-1">{today}</p>
       </div>
 
       {/* Stat cards */}
@@ -166,7 +166,7 @@ export default function Dashboard() {
           >
             <div className="text-xl mb-2">{s.icon}</div>
             <p className={`text-2xl font-bold tabular-nums ${s.color}`}>{s.value}</p>
-            <p className="text-gray-400 dark:text-white/45 text-xs mt-1 font-medium">{s.label}</p>
+            <p className="text-gray-400 dark:text-white/65 text-xs mt-1 font-medium">{s.label}</p>
           </button>
         ))}
       </div>
@@ -185,7 +185,7 @@ export default function Dashboard() {
           {upcoming.length === 0 ? (
             <div className="flex flex-col items-center py-12 text-center">
               <span className="text-3xl mb-2 opacity-40">🎉</span>
-              <p className="text-gray-400 dark:text-white/40 text-sm">You're all caught up!</p>
+              <p className="text-gray-400 dark:text-white/65 text-sm">You're all caught up!</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-100 dark:divide-white/[0.04] overflow-y-auto">
@@ -206,16 +206,16 @@ export default function Dashboard() {
                           {CONTENT_TYPE_LABELS[task.content_type]}
                         </span>
                         {task.client && (
-                          <span className="text-[11px] text-gray-400 dark:text-white/35 truncate max-w-[100px]">{task.client}</span>
+                          <span className="text-[11px] text-gray-400 dark:text-white/65 truncate max-w-[100px]">{task.client}</span>
                         )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <div className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-white/45">
+                      <div className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-white/65">
                         <div className={`w-1 h-1 rounded-full ${col?.color ?? 'bg-slate-500'}`} />
                         <span className="hidden xl:inline">{col?.name}</span>
                       </div>
-                      <span className={`text-[11px] font-medium tabular-nums ${overdue ? 'text-red-400' : 'text-gray-400 dark:text-white/40'}`}>
+                      <span className={`text-[11px] font-medium tabular-nums ${overdue ? 'text-red-400' : 'text-gray-400 dark:text-white/65'}`}>
                         {overdue ? '⚠ ' : ''}{formatDate(task.due_date)}
                       </span>
                     </div>
@@ -230,15 +230,15 @@ export default function Dashboard() {
         <div className="lg:col-span-4 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl overflow-hidden flex flex-col">
           <div className="px-5 py-3.5 border-b border-gray-100 dark:border-white/[0.06] shrink-0 flex items-center justify-between">
             <h2 className="text-xs font-semibold text-gray-500 dark:text-white/50 uppercase tracking-widest">Latest Changes</h2>
-            <span className="text-[10px] text-gray-300 dark:text-white/25 font-medium">Live · 15s</span>
+            <span className="text-[10px] text-gray-300 dark:text-white/50 font-medium">Live · 15s</span>
           </div>
 
           <div className="flex-1 overflow-y-auto">
             {feed.length === 0 ? (
               <div className="flex flex-col items-center py-12 text-center px-4">
                 <span className="text-3xl mb-2 opacity-40">📭</span>
-                <p className="text-gray-400 dark:text-white/40 text-sm">No activity yet</p>
-                <p className="text-gray-300 dark:text-white/25 text-xs mt-1">Changes to cards will appear here</p>
+                <p className="text-gray-400 dark:text-white/65 text-sm">No activity yet</p>
+                <p className="text-gray-300 dark:text-white/50 text-xs mt-1">Changes to cards will appear here</p>
               </div>
             ) : (
               <div className="divide-y divide-gray-50 dark:divide-white/[0.03]">
@@ -264,20 +264,20 @@ export default function Dashboard() {
                         {' '}
                         <span className="text-[10px] mr-1">{feedIcon(entry.source, entry.action)}</span>
                         {entry.source === 'comment' ? (
-                          <>commented: <span className="italic text-gray-500 dark:text-white/55">"{entry.action}"</span></>
+                          <>commented: <span className="italic text-gray-500 dark:text-white/75">"{entry.action}"</span></>
                         ) : (
                           entry.action
                         )}
                       </p>
                       {entry.task_title && (
-                        <p className="text-[10px] text-gray-400 dark:text-white/40 mt-0.5 truncate">
-                          on <span className="font-medium text-gray-500 dark:text-white/55">{entry.task_title}</span>
+                        <p className="text-[10px] text-gray-400 dark:text-white/65 mt-0.5 truncate">
+                          on <span className="font-medium text-gray-500 dark:text-white/75">{entry.task_title}</span>
                         </p>
                       )}
                     </div>
 
                     {/* Time */}
-                    <span className="text-[10px] text-gray-300 dark:text-white/30 shrink-0 mt-0.5 tabular-nums">
+                    <span className="text-[10px] text-gray-300 dark:text-white/50 shrink-0 mt-0.5 tabular-nums">
                       {relTime(entry.created_at)}
                     </span>
                   </div>
@@ -309,7 +309,7 @@ export default function Dashboard() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-gray-700 dark:text-white/80 truncate">{m.full_name ?? m.email}</p>
-                    <p className="text-[10px] text-gray-400 dark:text-white/40 capitalize">{m.role}</p>
+                    <p className="text-[10px] text-gray-400 dark:text-white/65 capitalize">{m.role}</p>
                   </div>
                 </div>
               ))}
@@ -328,8 +328,8 @@ export default function Dashboard() {
                 return (
                   <div key={col.id}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-gray-500 dark:text-white/60">{col.name}</span>
-                      <span className="text-xs text-gray-400 dark:text-white/40 tabular-nums font-medium">{count}</span>
+                      <span className="text-xs text-gray-500 dark:text-white/75">{col.name}</span>
+                      <span className="text-xs text-gray-400 dark:text-white/65 tabular-nums font-medium">{count}</span>
                     </div>
                     <div className="h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.07] overflow-hidden">
                       <div

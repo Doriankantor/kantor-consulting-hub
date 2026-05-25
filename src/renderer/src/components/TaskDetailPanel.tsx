@@ -24,7 +24,7 @@ const PRIORITIES: Priority[] = ['low', 'medium', 'high', 'urgent']
 
 function SectionLabel({ title }: { title: string }) {
   return (
-    <p className="text-[10px] font-semibold text-gray-400 dark:text-white/55 uppercase tracking-widest mb-1.5">
+    <p className="text-[10px] font-semibold text-gray-400 dark:text-white/75 uppercase tracking-widest mb-1.5">
       {title}
     </p>
   )
@@ -470,7 +470,7 @@ export default function TaskDetailPanel() {
                 className={`titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
                   claudeOpen
                     ? 'bg-hub-gold/20 text-hub-gold border-hub-gold/40'
-                    : 'bg-gray-50 dark:bg-white/[0.05] text-gray-500 dark:text-white/55 border-gray-200 dark:border-white/[0.08] hover:bg-gray-100 dark:hover:bg-white/[0.09] hover:text-gray-700 dark:hover:text-white/85'
+                    : 'bg-gray-50 dark:bg-white/[0.05] text-gray-500 dark:text-white/75 border-gray-200 dark:border-white/[0.08] hover:bg-gray-100 dark:hover:bg-white/[0.09] hover:text-gray-700 dark:hover:text-white/85'
                 }`}
               >
                 <div className="w-4 h-4 rounded-full bg-hub-gold/20 border border-hub-gold/30 flex items-center justify-center shrink-0">
@@ -512,7 +512,7 @@ export default function TaskDetailPanel() {
                   value={field('title')}
                   onChange={e => set('title', e.target.value)}
                   onBlur={handleSave}
-                  className="titlebar-no-drag w-full bg-transparent text-xl font-bold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 border-b border-transparent hover:border-gray-200 dark:hover:border-white/10 focus:border-hub-gold/50 outline-none pb-1 transition"
+                  className="titlebar-no-drag w-full bg-transparent text-xl font-bold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 border-b border-transparent hover:border-gray-200 dark:hover:border-white/10 focus:border-hub-gold/50 outline-none pb-1 transition"
                   placeholder="Engagement title"
                 />
 
@@ -672,7 +672,7 @@ export default function TaskDetailPanel() {
                         </select>
                         {recurringType === 'custom' && (
                           <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-gray-400 dark:text-white/35 shrink-0">Every</span>
+                            <span className="text-xs text-gray-400 dark:text-white/65 shrink-0">Every</span>
                             <input
                               type="number"
                               min={1}
@@ -680,7 +680,7 @@ export default function TaskDetailPanel() {
                               onChange={e => setRecurringInterval(parseInt(e.target.value, 10) || 1)}
                               className="titlebar-no-drag w-16 px-2 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
                             />
-                            <span className="text-xs text-gray-400 dark:text-white/35 shrink-0">days</span>
+                            <span className="text-xs text-gray-400 dark:text-white/65 shrink-0">days</span>
                           </div>
                         )}
                       </div>
@@ -747,7 +747,7 @@ export default function TaskDetailPanel() {
                     <SectionLabel title={`Sources${sources.length ? ` (${sources.length})` : ''}`} />
                     <button
                       onClick={() => setShowAddSource(v => !v)}
-                      className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/55 hover:text-hub-gold transition -mt-0.5"
+                      className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/75 hover:text-hub-gold transition -mt-0.5"
                     >
                       <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                         <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -757,7 +757,7 @@ export default function TaskDetailPanel() {
                   </div>
 
                   {sources.length === 0 && !showAddSource && (
-                    <p className="text-xs text-gray-300 dark:text-white/40 italic">No sources added yet.</p>
+                    <p className="text-xs text-gray-300 dark:text-white/65 italic">No sources added yet.</p>
                   )}
 
                   {sources.length > 0 && (
@@ -780,12 +780,12 @@ export default function TaskDetailPanel() {
                               </a>
                             )}
                             {src.note && (
-                              <p className="text-[11px] text-gray-400 dark:text-white/55 mt-0.5">{src.note}</p>
+                              <p className="text-[11px] text-gray-400 dark:text-white/75 mt-0.5">{src.note}</p>
                             )}
                           </div>
                           <button
                             onClick={() => persistSources(sources.filter(s => s.id !== src.id))}
-                            className="titlebar-no-drag shrink-0 p-1 rounded text-gray-300 dark:text-white/40 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
+                            className="titlebar-no-drag shrink-0 p-1 rounded text-gray-300 dark:text-white/65 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
                           >
                             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                               <path d="M1.5 2.5h7M3.5 2.5V1.5h3v1M4 4.5v3M6 4.5v3M2.5 2.5l.5 6h4l.5-6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -813,7 +813,7 @@ export default function TaskDetailPanel() {
                           value={newSrc.title}
                           onChange={e => setNewSrc(p => ({ ...p, title: e.target.value }))}
                           placeholder="Source title *"
-                          className="titlebar-no-drag flex-1 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                          className="titlebar-no-drag flex-1 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                         />
                       </div>
                       {newSrc.type === 'url' && (
@@ -822,7 +822,7 @@ export default function TaskDetailPanel() {
                           value={newSrc.url}
                           onChange={e => setNewSrc(p => ({ ...p, url: e.target.value }))}
                           placeholder="https://…"
-                          className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                          className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                         />
                       )}
                       <input
@@ -830,7 +830,7 @@ export default function TaskDetailPanel() {
                         value={newSrc.note}
                         onChange={e => setNewSrc(p => ({ ...p, note: e.target.value }))}
                         placeholder="Note (optional)"
-                        className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                        className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                       />
                       <div className="flex gap-2">
                         <button
@@ -872,7 +872,7 @@ export default function TaskDetailPanel() {
                     <SectionLabel title="Labels" />
                     <button
                       onClick={() => setShowLabelPicker(v => !v)}
-                      className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/55 hover:text-hub-gold transition -mt-0.5"
+                      className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/75 hover:text-hub-gold transition -mt-0.5"
                     >
                       <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                         <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -882,7 +882,7 @@ export default function TaskDetailPanel() {
                   </div>
                   <div className="flex flex-wrap gap-1.5 mb-1">
                     {taskLabels.length === 0 && !showLabelPicker && (
-                      <p className="text-xs text-gray-300 dark:text-white/40 italic">No labels.</p>
+                      <p className="text-xs text-gray-300 dark:text-white/65 italic">No labels.</p>
                     )}
                     {taskLabels.map(lbl => (
                       <span
@@ -922,7 +922,7 @@ export default function TaskDetailPanel() {
                     <SectionLabel title="Checklist" />
                     <button
                       onClick={() => setShowAddChecklist(v => !v)}
-                      className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/55 hover:text-hub-gold transition -mt-0.5"
+                      className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/75 hover:text-hub-gold transition -mt-0.5"
                     >
                       <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                         <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -932,7 +932,7 @@ export default function TaskDetailPanel() {
                   </div>
 
                   {checklists.length === 0 && !showAddChecklist && (
-                    <p className="text-xs text-gray-300 dark:text-white/40 italic">No checklists yet.</p>
+                    <p className="text-xs text-gray-300 dark:text-white/65 italic">No checklists yet.</p>
                   )}
 
                   {checklists.map(cl => {
@@ -945,7 +945,7 @@ export default function TaskDetailPanel() {
                           <span className="text-xs font-semibold text-gray-700 dark:text-white/85">{cl.title}</span>
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] text-gray-400 dark:text-white/50 tabular-nums">{done}/{total}</span>
-                            <button onClick={() => handleDeleteChecklist(cl.id)} className="titlebar-no-drag text-[10px] text-gray-300 dark:text-white/40 hover:text-red-400 transition">✕</button>
+                            <button onClick={() => handleDeleteChecklist(cl.id)} className="titlebar-no-drag text-[10px] text-gray-300 dark:text-white/65 hover:text-red-400 transition">✕</button>
                           </div>
                         </div>
                         {total > 0 && (
@@ -962,10 +962,10 @@ export default function TaskDetailPanel() {
                                 onChange={() => handleToggleItem(item.id, !!item.checked)}
                                 className="titlebar-no-drag w-3.5 h-3.5 rounded accent-hub-gold shrink-0 cursor-pointer"
                               />
-                              <span className={`flex-1 text-xs leading-relaxed ${item.checked ? 'line-through text-gray-300 dark:text-white/45' : 'text-gray-700 dark:text-white/85'}`}>
+                              <span className={`flex-1 text-xs leading-relaxed ${item.checked ? 'line-through text-gray-300 dark:text-white/65' : 'text-gray-700 dark:text-white/85'}`}>
                                 {item.text}
                               </span>
-                              <button onClick={() => handleDeleteItem(item.id)} className="titlebar-no-drag shrink-0 text-[10px] text-gray-300 dark:text-white/30 hover:text-red-400 transition opacity-0 group-hover:opacity-100">✕</button>
+                              <button onClick={() => handleDeleteItem(item.id)} className="titlebar-no-drag shrink-0 text-[10px] text-gray-300 dark:text-white/50 hover:text-red-400 transition opacity-0 group-hover:opacity-100">✕</button>
                             </div>
                           ))}
                         </div>
@@ -976,7 +976,7 @@ export default function TaskDetailPanel() {
                             onChange={e => setNewItemText(prev => ({ ...prev, [cl.id]: e.target.value }))}
                             onKeyDown={e => { if (e.key === 'Enter') handleAddChecklistItem(cl.id) }}
                             placeholder="Add item…"
-                            className="titlebar-no-drag flex-1 px-2 py-1 rounded-lg bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07] text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                            className="titlebar-no-drag flex-1 px-2 py-1 rounded-lg bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07] text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                           />
                           <button
                             onClick={() => handleAddChecklistItem(cl.id)}
@@ -997,7 +997,7 @@ export default function TaskDetailPanel() {
                         onKeyDown={e => { if (e.key === 'Enter') handleCreateChecklist(); if (e.key === 'Escape') setShowAddChecklist(false) }}
                         autoFocus
                         placeholder="Checklist title…"
-                        className="titlebar-no-drag flex-1 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                        className="titlebar-no-drag flex-1 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                       />
                       <button onClick={handleCreateChecklist} disabled={!newChecklistTitle.trim()} className="titlebar-no-drag px-2.5 py-1.5 rounded-lg bg-hub-gold hover:bg-hub-gold-light disabled:opacity-40 text-white text-xs font-semibold transition">Create</button>
                       <button onClick={() => setShowAddChecklist(false)} className="titlebar-no-drag px-2 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.05] text-gray-500 dark:text-white/65 text-xs transition hover:bg-gray-200 dark:hover:bg-white/[0.09]">✕</button>
@@ -1013,7 +1013,7 @@ export default function TaskDetailPanel() {
                       <button
                         onClick={handleAddFile}
                         disabled={attLoading}
-                        className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/55 hover:text-hub-gold transition disabled:opacity-50"
+                        className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/75 hover:text-hub-gold transition disabled:opacity-50"
                       >
                         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                           <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -1022,7 +1022,7 @@ export default function TaskDetailPanel() {
                       </button>
                       <button
                         onClick={() => setShowAddAttUrl(v => !v)}
-                        className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/55 hover:text-hub-gold transition"
+                        className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/75 hover:text-hub-gold transition"
                       >
                         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                           <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -1033,7 +1033,7 @@ export default function TaskDetailPanel() {
                   </div>
 
                   {attachments.length === 0 && !showAddAttUrl && (
-                    <p className="text-xs text-gray-300 dark:text-white/40 italic">No attachments yet.</p>
+                    <p className="text-xs text-gray-300 dark:text-white/65 italic">No attachments yet.</p>
                   )}
 
                   {attachments.length > 0 && (
@@ -1051,12 +1051,12 @@ export default function TaskDetailPanel() {
                               >
                                 {att.name}
                               </button>
-                              <p className="text-[10px] text-gray-400 dark:text-white/45">{att.author_name} · {new Date(att.created_at).toLocaleDateString()}</p>
+                              <p className="text-[10px] text-gray-400 dark:text-white/65">{att.author_name} · {new Date(att.created_at).toLocaleDateString()}</p>
                             </div>
                             {canDelete && (
                               <button
                                 onClick={() => handleDeleteAttachment(att.id)}
-                                className="titlebar-no-drag shrink-0 p-1 rounded text-gray-300 dark:text-white/40 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
+                                className="titlebar-no-drag shrink-0 p-1 rounded text-gray-300 dark:text-white/65 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
                               >
                                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                                   <path d="M1.5 2.5h7M3.5 2.5V1.5h3v1M4 4.5v3M6 4.5v3M2.5 2.5l.5 6h4l.5-6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1076,14 +1076,14 @@ export default function TaskDetailPanel() {
                         value={newAttName}
                         onChange={e => setNewAttName(e.target.value)}
                         placeholder="Name (optional)"
-                        className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                        className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                       />
                       <input
                         type="url"
                         value={newAttUrl}
                         onChange={e => setNewAttUrl(e.target.value)}
                         placeholder="https://docs.google.com/… or any URL"
-                        className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                        className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                       />
                       <div className="flex gap-2">
                         <button onClick={handleAddAttUrl} disabled={!newAttUrl.trim()} className="titlebar-no-drag flex-1 py-1.5 rounded-lg bg-hub-gold hover:bg-hub-gold-light disabled:opacity-40 text-white text-xs font-semibold transition">Add</button>
@@ -1097,7 +1097,7 @@ export default function TaskDetailPanel() {
 
               {/* ── Footer ──────────────────────────────────────────────────── */}
               <div className="px-5 py-3 border-t border-gray-100 dark:border-white/[0.06] flex items-center justify-between shrink-0">
-                <p className="text-[11px] text-gray-300 dark:text-white/40">
+                <p className="text-[11px] text-gray-300 dark:text-white/65">
                   Created {new Date(selectedTask.created_at).toLocaleDateString()}
                 </p>
                 <button
@@ -1173,7 +1173,7 @@ export default function TaskDetailPanel() {
                         setNewComment('')
                       }
                     }}
-                    className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-white dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.09] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30 resize-none leading-relaxed transition-all"
+                    className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-white dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.09] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-hub-gold/30 resize-none leading-relaxed transition-all"
                   />
                   {/* @mention popover */}
                   {showMentions && mentionResults.length > 0 && (
@@ -1219,7 +1219,7 @@ export default function TaskDetailPanel() {
                   </div>
                 )}
                 {addingComment && (
-                  <p className="text-[10px] text-gray-300 dark:text-white/40 mt-1">⌘ + Enter to post · Esc to cancel</p>
+                  <p className="text-[10px] text-gray-300 dark:text-white/65 mt-1">⌘ + Enter to post · Esc to cancel</p>
                 )}
               </div>
 
@@ -1229,7 +1229,7 @@ export default function TaskDetailPanel() {
 
                   {/* ── Comments ─────────────────────────────────────────── */}
                   {comments.length === 0 && (
-                    <p className="text-xs text-gray-300 dark:text-white/40 italic text-center pt-2">No comments yet.</p>
+                    <p className="text-xs text-gray-300 dark:text-white/65 italic text-center pt-2">No comments yet.</p>
                   )}
 
                   {comments.length > 0 && (
@@ -1246,18 +1246,18 @@ export default function TaskDetailPanel() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-baseline gap-2 mb-0.5 flex-wrap">
                                 <span className="text-xs font-semibold text-gray-700 dark:text-white/90">{c.author_name}</span>
-                                <span className="text-[10px] text-gray-400 dark:text-white/45">{fmtDate(c.created_at)}</span>
+                                <span className="text-[10px] text-gray-400 dark:text-white/65">{fmtDate(c.created_at)}</span>
                                 <div className="ml-auto flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
                                   {canEdit && !isEditing && (
                                     <button
                                       onClick={() => { setEditingCommentId(c.id); setEditingCommentContent(c.content) }}
-                                      className="titlebar-no-drag text-[10px] text-gray-400 dark:text-white/45 hover:text-hub-gold transition"
+                                      className="titlebar-no-drag text-[10px] text-gray-400 dark:text-white/65 hover:text-hub-gold transition"
                                     >Edit</button>
                                   )}
                                   {canDelete && (
                                     <button
                                       onClick={() => handleDeleteComment(c.id)}
-                                      className="titlebar-no-drag text-[10px] text-gray-300 dark:text-white/40 hover:text-red-400 transition"
+                                      className="titlebar-no-drag text-[10px] text-gray-300 dark:text-white/65 hover:text-red-400 transition"
                                     >Delete</button>
                                   )}
                                 </div>
@@ -1269,7 +1269,7 @@ export default function TaskDetailPanel() {
                                     onChange={e => setEditingCommentContent(e.target.value)}
                                     rows={3}
                                     autoFocus
-                                    className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30 resize-none leading-relaxed"
+                                    className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-hub-gold/30 resize-none leading-relaxed"
                                   />
                                   <div className="flex gap-1.5">
                                     <button onClick={() => handleSaveCommentEdit(c.id)} disabled={!editingCommentContent.trim()} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-hub-gold hover:bg-hub-gold-light disabled:opacity-40 text-white text-xs font-semibold transition">Save</button>
@@ -1289,16 +1289,16 @@ export default function TaskDetailPanel() {
                   {/* ── Activity log ─────────────────────────────────────── */}
                   {activity.length > 0 && (
                     <div>
-                      <p className="text-[10px] font-semibold text-gray-400 dark:text-white/55 uppercase tracking-widest mb-2 pt-1 border-t border-gray-100 dark:border-white/[0.06] mt-1">Activity</p>
+                      <p className="text-[10px] font-semibold text-gray-400 dark:text-white/75 uppercase tracking-widest mb-2 pt-1 border-t border-gray-100 dark:border-white/[0.06] mt-1">Activity</p>
                       <div className="space-y-2">
                         {[...activity].reverse().map(entry => (
                           <div key={entry.id} className="flex items-start gap-2.5">
                             <div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-white/20 shrink-0 mt-1.5" />
-                            <p className="text-[11px] text-gray-400 dark:text-white/55 flex-1 leading-relaxed">
+                            <p className="text-[11px] text-gray-400 dark:text-white/75 flex-1 leading-relaxed">
                               <span className="text-gray-500 dark:text-white/70 font-medium">{entry.actor_name}</span>
                               {' '}{entry.action}
                             </p>
-                            <span className="text-[10px] text-gray-300 dark:text-white/40 shrink-0 mt-0.5">
+                            <span className="text-[10px] text-gray-300 dark:text-white/65 shrink-0 mt-0.5">
                               {fmtShort(entry.created_at)}
                             </span>
                           </div>

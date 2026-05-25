@@ -53,20 +53,20 @@ export default function Setup() {
           </div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">AI assistant setup</h1>
           {displayEmail && (
-            <p className="text-gray-500 dark:text-white/40 text-sm mt-1.5">
-              Signed in as <span className="text-gray-500 dark:text-white/60">{displayEmail}</span>
+            <p className="text-gray-500 dark:text-white/65 text-sm mt-1.5">
+              Signed in as <span className="text-gray-500 dark:text-white/75">{displayEmail}</span>
             </p>
           )}
         </div>
 
         <div className="bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl p-7 shadow-2xl shadow-gray-300/60 dark:shadow-black/40">
           <h2 className="text-[15px] font-semibold text-gray-900 dark:text-white/90 mb-1">Anthropic API Key</h2>
-          <p className="text-sm text-gray-500 dark:text-white/40 mb-1 leading-relaxed">
+          <p className="text-sm text-gray-500 dark:text-white/65 mb-1 leading-relaxed">
             Optional — only needed for the Claude AI assistant sidebar.
             All other features (Kanban, tasks, timeline, calendar) work without it.
           </p>
-          <p className="text-xs text-gray-400 dark:text-white/30 mb-5 leading-relaxed">
-            Your key is stored <strong className="text-gray-500 dark:text-white/45">only on this Mac</strong> and is never sent to our servers.
+          <p className="text-xs text-gray-400 dark:text-white/50 mb-5 leading-relaxed">
+            Your key is stored <strong className="text-gray-500 dark:text-white/65">only on this Mac</strong> and is never sent to our servers.
           </p>
 
           {error && (
@@ -90,20 +90,20 @@ export default function Setup() {
                 value={apiKey}
                 onChange={e => setApiKey(e.target.value)}
                 autoFocus
-                className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition-all"
+                className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition-all"
                 placeholder="sk-ant-api03-…"
               />
             </div>
 
             {/* Helper */}
             <div className="flex items-start gap-2.5 p-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06]">
-              <svg className="mt-0.5 shrink-0 text-gray-400 dark:text-white/30" width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <svg className="mt-0.5 shrink-0 text-gray-400 dark:text-white/50" width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.5"/>
                 <path d="M7 6v4M7 4.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               </svg>
-              <p className="text-xs text-gray-500 dark:text-white/40 leading-relaxed">
+              <p className="text-xs text-gray-500 dark:text-white/65 leading-relaxed">
                 Get a free-tier key at{' '}
-                <span className="text-gray-500 dark:text-white/60 font-medium">console.anthropic.com</span>
+                <span className="text-gray-500 dark:text-white/75 font-medium">console.anthropic.com</span>
                 {' '}→ API Keys. You can also add it later in Settings.
               </p>
             </div>
@@ -134,14 +134,14 @@ export default function Setup() {
             </button>
             <button
               onClick={signOut}
-              className="titlebar-no-drag text-xs text-gray-300 dark:text-white/20 hover:text-gray-500 dark:hover:text-white/45 transition"
+              className="titlebar-no-drag text-xs text-gray-300 dark:text-white/50 hover:text-gray-500 dark:hover:text-white/65 transition"
             >
               Sign out
             </button>
           </div>
         </div>
 
-        <p className="text-center text-xs text-gray-300 dark:text-white/20 mt-4">
+        <p className="text-center text-xs text-gray-300 dark:text-white/50 mt-4">
           You can add your API key at any time in Settings → AI Configuration.
         </p>
       </div>

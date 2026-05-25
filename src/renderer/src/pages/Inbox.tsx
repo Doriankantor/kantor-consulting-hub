@@ -134,7 +134,7 @@ export default function Inbox() {
         {unreadCount > 0 && (
           <button
             onClick={handleMarkAllRead}
-            className="text-xs text-gray-400 dark:text-white/40 hover:text-hub-gold dark:hover:text-hub-gold transition font-medium"
+            className="text-xs text-gray-400 dark:text-white/65 hover:text-hub-gold dark:hover:text-hub-gold transition font-medium"
           >
             Mark all as read
           </button>
@@ -150,7 +150,7 @@ export default function Inbox() {
             className={`px-3 py-1 rounded-full text-xs font-medium transition ${
               filter === f.id
                 ? 'bg-hub-gold/15 text-hub-gold border border-hub-gold/30'
-                : 'text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/60 hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
+                : 'text-gray-500 dark:text-white/65 hover:text-gray-700 dark:hover:text-white/60 hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
             }`}
           >
             {f.label}
@@ -161,12 +161,12 @@ export default function Inbox() {
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-32 text-gray-400 dark:text-white/30 text-sm">Loading…</div>
+          <div className="flex items-center justify-center h-32 text-gray-400 dark:text-white/50 text-sm">Loading…</div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 gap-3">
             <div className="text-3xl">✅</div>
-            <p className="text-sm font-medium text-gray-500 dark:text-white/40">You're all caught up!</p>
-            <p className="text-xs text-gray-400 dark:text-white/25">No notifications here.</p>
+            <p className="text-sm font-medium text-gray-500 dark:text-white/65">You're all caught up!</p>
+            <p className="text-xs text-gray-400 dark:text-white/50">No notifications here.</p>
           </div>
         ) : (
           <div className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
@@ -194,18 +194,18 @@ export default function Inbox() {
                     {n.title}
                   </p>
                   {n.body && (
-                    <p className="text-xs text-gray-500 dark:text-white/45 mt-0.5 line-clamp-2 leading-relaxed">{n.body}</p>
+                    <p className="text-xs text-gray-500 dark:text-white/65 mt-0.5 line-clamp-2 leading-relaxed">{n.body}</p>
                   )}
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                     {n.task_title && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.08] text-[10px] text-gray-500 dark:text-white/40 font-medium border border-gray-200 dark:border-white/[0.06]">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.08] text-[10px] text-gray-500 dark:text-white/65 font-medium border border-gray-200 dark:border-white/[0.06]">
                         {n.task_title}
                       </span>
                     )}
                     {n.actor_name && (
-                      <span className="text-[10px] text-gray-400 dark:text-white/30">{n.actor_name}</span>
+                      <span className="text-[10px] text-gray-400 dark:text-white/50">{n.actor_name}</span>
                     )}
-                    <span className="text-[10px] text-gray-300 dark:text-white/20 ml-auto">{relativeTime(n.created_at)}</span>
+                    <span className="text-[10px] text-gray-300 dark:text-white/50 ml-auto">{relativeTime(n.created_at)}</span>
                   </div>
                 </div>
 

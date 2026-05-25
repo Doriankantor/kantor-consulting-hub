@@ -49,7 +49,7 @@ function DayCell({
       {day && (
         <>
           <p className={`text-xs font-semibold mb-1.5 w-6 h-6 flex items-center justify-center rounded-full ${
-            isToday ? 'bg-hub-gold text-white' : isCurrentMonth ? 'text-gray-600 dark:text-white/60' : 'text-gray-300 dark:text-white/20'
+            isToday ? 'bg-hub-gold text-white' : isCurrentMonth ? 'text-gray-600 dark:text-white/75' : 'text-gray-300 dark:text-white/50'
           }`}>
             {day}
           </p>
@@ -68,7 +68,7 @@ function DayCell({
               </div>
             ))}
             {tasks.length > 3 && (
-              <p className="text-[10px] text-gray-400 dark:text-white/30 px-1">+{tasks.length - 3} more</p>
+              <p className="text-[10px] text-gray-400 dark:text-white/50 px-1">+{tasks.length - 3} more</p>
             )}
           </div>
         </>
@@ -166,7 +166,7 @@ export default function CalendarView() {
           {Object.entries(CONTENT_TYPE_LABELS).slice(0, 5).map(([type, label]) => (
             <div key={type} className="flex items-center gap-1">
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: CONTENT_TYPE_BAR_COLORS[type as keyof typeof CONTENT_TYPE_BAR_COLORS] }} />
-              <span className="text-[10px] text-gray-400 dark:text-white/30">{label}</span>
+              <span className="text-[10px] text-gray-400 dark:text-white/50">{label}</span>
             </div>
           ))}
         </div>
@@ -175,7 +175,7 @@ export default function CalendarView() {
       {/* Weekday headers */}
       <div className="grid grid-cols-7 gap-2 mb-2">
         {WEEKDAYS.map(w => (
-          <div key={w} className="text-center text-[11px] font-semibold text-gray-400 dark:text-white/30 uppercase tracking-wider py-1">
+          <div key={w} className="text-center text-[11px] font-semibold text-gray-400 dark:text-white/50 uppercase tracking-wider py-1">
             {w}
           </div>
         ))}

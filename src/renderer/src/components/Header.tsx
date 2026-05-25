@@ -69,7 +69,7 @@ export default function Header() {
         {/* Inbox bell */}
         <button
           onClick={() => navigate('/inbox')}
-          className="relative w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.12] transition"
+          className="relative w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 dark:text-white/75 hover:text-gray-900 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.12] transition"
           title="Inbox"
         >
           <BellIcon />
@@ -83,7 +83,7 @@ export default function Header() {
         {/* Theme toggle */}
         <button
           onClick={() => setTheme(isDark ? 'light' : 'dark')}
-          className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.12] transition"
+          className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 dark:text-white/75 hover:text-gray-900 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.12] transition"
           title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
         >
           {isDark ? <SunIcon /> : <MoonIcon />}

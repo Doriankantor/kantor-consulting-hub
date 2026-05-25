@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 
 export type Theme = 'dark' | 'light' | 'system'
+
+// ── Dark gradient themes (applied in dark mode) ───────────────────────────────
 export type GradientTheme = 'purple' | 'midnight' | 'forest' | 'teal' | 'burgundy' | 'charcoal'
 
 export const GRADIENT_PRESETS: { id: GradientTheme; label: string; from: string; via: string; to: string }[] = [
@@ -12,26 +14,47 @@ export const GRADIENT_PRESETS: { id: GradientTheme; label: string; from: string;
   { id: 'charcoal', label: 'Charcoal Dark',      from: '#111827', via: '#1f2937', to: '#374151' },
 ]
 
+// ── Light background themes (applied in light mode) ───────────────────────────
+export type LightTheme = 'classic-light' | 'soft-blue' | 'warm-sand' | 'sky' | 'mint' | 'blush'
+
+export const LIGHT_THEME_PRESETS: { id: LightTheme; label: string; start: string; end: string }[] = [
+  { id: 'classic-light', label: 'Classic Light', start: '#EEF0F5', end: '#E5E8F0' },
+  { id: 'soft-blue',     label: 'Soft Blue',     start: '#E3EDF9', end: '#D5E4F5' },
+  { id: 'warm-sand',     label: 'Warm Sand',     start: '#F2EDE6', end: '#EBE4DA' },
+  { id: 'sky',           label: 'Sky',           start: '#E8F1FA', end: '#DCE8F5' },
+  { id: 'mint',          label: 'Mint',          start: '#E6F5EE', end: '#D8EEE3' },
+  { id: 'blush',         label: 'Blush',         start: '#F9EEF0', end: '#F2E4E8' },
+]
+
 interface ThemeContextType {
   theme: Theme
   resolvedTheme: 'dark' | 'light'
   gradientTheme: GradientTheme
+  lightTheme: LightTheme
   setTheme: (t: Theme) => void
   setGradientTheme: (g: GradientTheme) => void
+  setLightTheme: (l: LightTheme) => void
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
-const THEME_KEY    = 'kc-theme'
-const GRADIENT_KEY = 'kc-gradient'
+const THEME_KEY        = 'kc-theme'
+const GRADIENT_KEY     = 'kc-gradient'
+const LIGHT_THEME_KEY  = 'kc-light-theme'
 
 function getSystemTheme(): 'dark' | 'light' {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-function applyGradient(g: GradientTheme) {
+function applyDarkGradient(g: GradientTheme) {
   const root = document.documentElement
   if (g === 'purple') root.removeAttribute('data-gradient')
   else root.setAttribute('data-gradient', g)
+}
+
+function applyLightTheme(l: LightTheme) {
+  const root = document.documentElement
+  if (l === 'classic-light') root.removeAttribute('data-light-theme')
+  else root.setAttribute('data-light-theme', l)
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -40,6 +63,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   )
   const [gradientTheme, setGradientState] = useState<GradientTheme>(() =>
     (localStorage.getItem(GRADIENT_KEY) as GradientTheme) ?? 'purple'
+  )
+  const [lightTheme, setLightState] = useState<LightTheme>(() =>
+    (localStorage.getItem(LIGHT_THEME_KEY) as LightTheme) ?? 'classic-light'
   )
 
   const resolve = useCallback((t: Theme): 'dark' | 'light' =>
@@ -54,9 +80,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     root.classList.add(resolvedTheme)
   }, [resolvedTheme])
 
-  useEffect(() => {
-    applyGradient(gradientTheme)
-  }, [gradientTheme])
+  useEffect(() => { applyDarkGradient(gradientTheme) }, [gradientTheme])
+  useEffect(() => { applyLightTheme(lightTheme) }, [lightTheme])
 
   useEffect(() => {
     if (theme !== 'system') return
@@ -78,11 +103,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   function setGradientTheme(g: GradientTheme) {
     setGradientState(g)
     localStorage.setItem(GRADIENT_KEY, g)
-    applyGradient(g)
+    applyDarkGradient(g)
+  }
+
+  function setLightTheme(l: LightTheme) {
+    setLightState(l)
+    localStorage.setItem(LIGHT_THEME_KEY, l)
+    applyLightTheme(l)
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, resolvedTheme, gradientTheme, setGradientTheme, setTheme }}>
+    <ThemeContext.Provider value={{ theme, resolvedTheme, gradientTheme, lightTheme, setGradientTheme, setLightTheme, setTheme }}>
       {children}
     </ThemeContext.Provider>
   )

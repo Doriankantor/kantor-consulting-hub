@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Gradient theme CSS variables ──────────────────────────────────────────── */
+/* ── Dark gradient theme CSS variables ──────────────────────────────────────── */
 :root {
   --g-from: #1e1b4b;
   --g-via:  #312e81;
@@ -13,6 +13,17 @@ html[data-gradient="forest"]   { --g-from:#052e16; --g-via:#14532d; --g-to:#1665
 html[data-gradient="teal"]     { --g-from:#042f2e; --g-via:#134e4a; --g-to:#0f766e; }
 html[data-gradient="burgundy"] { --g-from:#3b0a1e; --g-via:#881337; --g-to:#9f1239; }
 html[data-gradient="charcoal"] { --g-from:#111827; --g-via:#1f2937; --g-to:#374151; }
+
+/* ── Light background theme CSS variables ───────────────────────────────────── */
+:root {
+  --lbg-start: #EEF0F5;
+  --lbg-end:   #E5E8F0;
+}
+html[data-light-theme="soft-blue"]  { --lbg-start: #E3EDF9; --lbg-end: #D5E4F5; }
+html[data-light-theme="warm-sand"]  { --lbg-start: #F2EDE6; --lbg-end: #EBE4DA; }
+html[data-light-theme="sky"]        { --lbg-start: #E8F1FA; --lbg-end: #DCE8F5; }
+html[data-light-theme="mint"]       { --lbg-start: #E6F5EE; --lbg-end: #D8EEE3; }
+html[data-light-theme="blush"]      { --lbg-start: #F9EEF0; --lbg-end: #F2E4E8; }
 
 /* ── Base ───────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
@@ -31,10 +42,11 @@ body {
 }
 
 html.dark  body { background: linear-gradient(135deg, var(--g-from), var(--g-via), var(--g-to)); color: #fff; }
-html.light body { background: linear-gradient(135deg, var(--g-from), var(--g-via), var(--g-to)); color: #111827; }
-/* Light-mode overlay: makes content surfaces white while gradient shows in sidebar/header */
-html.light .content-surface { background: rgba(255,255,255,0.88); backdrop-filter: blur(16px); }
-html.dark  .content-surface { background: rgba(0,0,0,0.25);        backdrop-filter: blur(16px); }
+html.light body { background: linear-gradient(135deg, var(--lbg-start), var(--lbg-end)); color: #111827; }
+
+/* Light-mode glass surfaces */
+html.light .content-surface { background: rgba(255,255,255,0.82); backdrop-filter: blur(16px); }
+html.dark  .content-surface { background: rgba(0,0,0,0.25);       backdrop-filter: blur(16px); }
 
 /* ── macOS window dragging ──────────────────────────────────────────────── */
 .titlebar-drag    { -webkit-app-region: drag; }

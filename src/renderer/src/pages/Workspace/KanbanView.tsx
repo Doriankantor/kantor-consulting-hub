@@ -38,7 +38,7 @@ function isOverdue(iso: string | null, colId: string) {
 }
 
 function dueDateClass(iso: string | null, colId: string): string {
-  if (!iso || colId === 'col-published') return 'text-gray-400 dark:text-white/35'
+  if (!iso || colId === 'col-published') return 'text-gray-400 dark:text-white/65'
   const diff = (new Date(iso).getTime() - Date.now()) / 86400000
   if (diff < 0) return 'text-red-500 dark:text-red-400 font-semibold'
   if (diff <= 3) return 'text-amber-500 dark:text-amber-400 font-semibold'
@@ -133,7 +133,7 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
             </span>
           ))}
           {extraLabels > 0 && (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-100 dark:bg-white/10 text-gray-400 dark:text-white/30 border border-gray-200 dark:border-white/10">
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-100 dark:bg-white/10 text-gray-400 dark:text-white/50 border border-gray-200 dark:border-white/10">
               +{extraLabels}
             </span>
           )}
@@ -168,7 +168,7 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
 
       {/* Client */}
       {task.client && (
-        <p className="text-[11px] text-gray-400 dark:text-white/35 mb-2 truncate">{task.client}</p>
+        <p className="text-[11px] text-gray-400 dark:text-white/65 mb-2 truncate">{task.client}</p>
       )}
 
       {/* Due date */}
@@ -190,10 +190,10 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
       {clSummary && clSummary.total > 0 && (
         <div className="mb-2">
           <div className="flex items-center gap-1.5 mb-0.5">
-            <svg width="9" height="9" viewBox="0 0 9 9" fill="none" className="text-gray-400 dark:text-white/30 shrink-0">
+            <svg width="9" height="9" viewBox="0 0 9 9" fill="none" className="text-gray-400 dark:text-white/50 shrink-0">
               <path d="M1.5 4.5l2 2 4-4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            <span className={`text-[10px] tabular-nums ${clSummary.done === clSummary.total ? 'text-green-500 dark:text-green-400' : 'text-gray-400 dark:text-white/30'}`}>
+            <span className={`text-[10px] tabular-nums ${clSummary.done === clSummary.total ? 'text-green-500 dark:text-green-400' : 'text-gray-400 dark:text-white/50'}`}>
               {clSummary.done}/{clSummary.total}
             </span>
           </div>
@@ -222,7 +222,7 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
               </div>
             ))}
             {extraAssignees > 0 && (
-              <div className="w-6 h-6 rounded-full border-2 border-white dark:border-[#1e2235] bg-gray-300 dark:bg-white/20 flex items-center justify-center text-[9px] font-bold text-gray-600 dark:text-white/60">
+              <div className="w-6 h-6 rounded-full border-2 border-white dark:border-[#1e2235] bg-gray-300 dark:bg-white/20 flex items-center justify-center text-[9px] font-bold text-gray-600 dark:text-white/75">
                 +{extraAssignees}
               </div>
             )}
@@ -230,7 +230,7 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
 
           {/* Comment badge */}
           {commentCount > 0 && (
-            <div className="flex items-center gap-0.5 text-[10px] text-gray-400 dark:text-white/30">
+            <div className="flex items-center gap-0.5 text-[10px] text-gray-400 dark:text-white/50">
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                 <path d="M1 1.5h8v5.5H6L5 9 4 7H1V1.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
               </svg>
@@ -328,7 +328,7 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
   }
 
   return (
-    <div className="flex flex-col w-64 shrink-0 h-full rounded-2xl bg-black/[0.06] dark:bg-white/[0.08] backdrop-blur-md border border-black/[0.08] dark:border-white/[0.12] overflow-hidden">
+    <div className="flex flex-col w-64 shrink-0 h-full rounded-2xl bg-white/[0.75] dark:bg-white/[0.08] backdrop-blur-md border border-black/[0.08] dark:border-white/[0.12] shadow-sm dark:shadow-none overflow-hidden">
       {/* Header — inside the glass container */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-black/[0.05] dark:border-white/[0.06] shrink-0">
         <div className="flex items-center gap-2">
@@ -351,7 +351,7 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
               {col.name}
             </button>
           )}
-          <span className="text-xs text-gray-500 dark:text-white/40 tabular-nums">{colTasks.length}</span>
+          <span className="text-xs text-gray-500 dark:text-white/65 tabular-nums">{colTasks.length}</span>
         </div>
       </div>
 
@@ -378,7 +378,7 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
             />
             <div className="flex gap-1.5">
               <button onClick={handleAddTask} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-hub-gold text-white text-xs font-semibold hover:bg-hub-gold-light transition">Add</button>
-              <button onClick={() => { setAddingTask(false); setNewTitle('') }} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/60 text-xs hover:bg-gray-200 dark:hover:bg-white/20 transition">Cancel</button>
+              <button onClick={() => { setAddingTask(false); setNewTitle('') }} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/75 text-xs hover:bg-gray-200 dark:hover:bg-white/20 transition">Cancel</button>
             </div>
           </div>
         ) : (
@@ -449,7 +449,7 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
 
             <button
               onClick={handleOpenTemplatePicker}
-              className="titlebar-no-drag w-full flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/80 border border-dashed border-gray-300 dark:border-white/20 hover:border-gray-400 dark:hover:border-white/40 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition text-sm mt-1"
+              className="titlebar-no-drag w-full flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-gray-400 dark:text-white/65 hover:text-gray-700 dark:hover:text-white/80 border border-dashed border-gray-300 dark:border-white/20 hover:border-gray-400 dark:hover:border-white/40 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition text-sm mt-1"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -524,7 +524,7 @@ export default function KanbanView() {
 
             <button
               onClick={addColumn}
-              className="titlebar-no-drag flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-dashed border-gray-300 dark:border-white/20 text-gray-400 dark:text-white/35 hover:text-gray-700 dark:hover:text-white/70 hover:border-gray-400 dark:hover:border-white/40 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition text-sm mt-8 w-56 shrink-0"
+              className="titlebar-no-drag flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-dashed border-gray-300 dark:border-white/20 text-gray-400 dark:text-white/65 hover:text-gray-700 dark:hover:text-white/70 hover:border-gray-400 dark:hover:border-white/40 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition text-sm mt-8 w-56 shrink-0"
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>

@@ -194,12 +194,12 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
           </div>
           <div>
             <p className="text-xs font-semibold text-gray-900 dark:text-white">Claude AI</p>
-            <p className="text-[10px] text-gray-400 dark:text-white/30">Political analysis assistant</p>
+            <p className="text-[10px] text-gray-400 dark:text-white/50">Political analysis assistant</p>
           </div>
         </div>
         <button
           onClick={onClose}
-          className="titlebar-no-drag p-1.5 rounded-lg text-gray-400 dark:text-white/30 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition"
+          className="titlebar-no-drag p-1.5 rounded-lg text-gray-400 dark:text-white/50 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition"
         >
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
             <path d="M2 2l9 9M11 2L2 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -209,7 +209,7 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
 
       {/* Quick actions */}
       <div className="px-3 py-2.5 border-b border-gray-100 dark:border-white/[0.06]">
-        <p className="text-[10px] text-gray-400 dark:text-white/25 uppercase tracking-widest mb-2 px-1">Quick actions</p>
+        <p className="text-[10px] text-gray-400 dark:text-white/50 uppercase tracking-widest mb-2 px-1">Quick actions</p>
         <div className="grid grid-cols-1 gap-1">
           {QUICK_ACTIONS.map(action => (
             <button
@@ -224,7 +224,7 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
               className="titlebar-no-drag flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.04] hover:bg-gray-100 dark:hover:bg-white/[0.08] border border-gray-200 dark:border-white/[0.06] hover:border-gray-300 dark:hover:border-white/[0.1] disabled:opacity-40 text-left transition"
             >
               <span className="text-sm shrink-0">{action.icon}</span>
-              <span className="text-xs text-gray-500 dark:text-white/60 hover:text-gray-700 dark:hover:text-white/80 transition">{action.label}</span>
+              <span className="text-xs text-gray-500 dark:text-white/75 hover:text-gray-700 dark:hover:text-white/80 transition">{action.label}</span>
             </button>
           ))}
         </div>
@@ -243,9 +243,9 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
             </svg>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-gray-700 dark:text-white/70 font-medium">No Claude account connected</p>
-              <p className="text-[11px] text-gray-400 dark:text-white/35 mt-0.5 leading-relaxed">Go to Settings → Claude AI to connect your account.</p>
+              <p className="text-[11px] text-gray-400 dark:text-white/65 mt-0.5 leading-relaxed">Go to Settings → Claude AI to connect your account.</p>
             </div>
-            <button onClick={() => setNoKey(false)} className="titlebar-no-drag text-gray-300 dark:text-white/20 hover:text-gray-500 dark:hover:text-white/45 transition text-sm">×</button>
+            <button onClick={() => setNoKey(false)} className="titlebar-no-drag text-gray-300 dark:text-white/50 hover:text-gray-500 dark:hover:text-white/65 transition text-sm">×</button>
           </div>
         )}
         {error && (
@@ -267,7 +267,7 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
             disabled={streaming}
             rows={2}
             placeholder="Ask Claude… (Enter to send, Shift+Enter for newline)"
-            className="titlebar-no-drag flex-1 bg-transparent text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-white/25 resize-none outline-none leading-relaxed"
+            className="titlebar-no-drag flex-1 bg-transparent text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-white/40 resize-none outline-none leading-relaxed"
           />
           <button
             onClick={() => sendMessage(input)}
@@ -283,7 +283,7 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
             )}
           </button>
         </div>
-        <p className="text-center text-[10px] text-gray-300 dark:text-white/15 mt-1.5">
+        <p className="text-center text-[10px] text-gray-300 dark:text-white/50 mt-1.5">
           Uses your personal Anthropic API key · Responses not stored
         </p>
       </div>

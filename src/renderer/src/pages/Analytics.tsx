@@ -45,14 +45,14 @@ function HorizontalBar({ label, value, max, color, count }: { label: string; val
   const pct = max > 0 ? (value / max) * 100 : 0
   return (
     <div className="flex items-center gap-3 mb-2.5">
-      <div className="w-28 shrink-0 text-xs text-gray-500 dark:text-white/55 truncate text-right">{label}</div>
+      <div className="w-28 shrink-0 text-xs text-gray-500 dark:text-white/75 truncate text-right">{label}</div>
       <div className="flex-1 h-5 bg-gray-100 dark:bg-white/[0.06] rounded-md overflow-hidden">
         <div
           className="h-full rounded-md transition-all duration-500"
           style={{ width: `${pct}%`, backgroundColor: color }}
         />
       </div>
-      <div className="w-6 text-xs text-gray-400 dark:text-white/40 tabular-nums text-right shrink-0">{count}</div>
+      <div className="w-6 text-xs text-gray-400 dark:text-white/65 tabular-nums text-right shrink-0">{count}</div>
     </div>
   )
 }
@@ -72,7 +72,7 @@ function BarChart({ data }: { data: { date: string; value: number }[] }) {
         return (
           <g key={d.date}>
             <rect x={x} y={y} width={barW} height={barH} rx="3" fill="#c9a84c" opacity="0.8" />
-            <text x={x + barW / 2} y={height - 2} textAnchor="middle" fontSize="8" fill="currentColor" className="text-gray-400 dark:text-white/30">
+            <text x={x + barW / 2} y={height - 2} textAnchor="middle" fontSize="8" fill="currentColor" className="text-gray-400 dark:text-white/50">
               {new Date(d.date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })}
             </text>
             {d.value > 0 && (
@@ -129,12 +129,12 @@ export default function Analytics() {
   if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center">
-        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" className="mb-3 text-gray-300 dark:text-white/20">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" className="mb-3 text-gray-300 dark:text-white/50">
           <rect x="4" y="4" width="40" height="40" rx="8" stroke="currentColor" strokeWidth="2"/>
           <path d="M24 16v8M24 28v2" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
         </svg>
         <p className="text-lg font-semibold text-gray-600 dark:text-white/50">Access restricted</p>
-        <p className="text-sm text-gray-400 dark:text-white/30 mt-1">Analytics is only available to administrators.</p>
+        <p className="text-sm text-gray-400 dark:text-white/50 mt-1">Analytics is only available to administrators.</p>
       </div>
     )
   }
@@ -150,7 +150,7 @@ export default function Analytics() {
   if (!data) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-gray-400 dark:text-white/30">Failed to load analytics data.</p>
+        <p className="text-gray-400 dark:text-white/50">Failed to load analytics data.</p>
       </div>
     )
   }
@@ -227,7 +227,7 @@ export default function Analytics() {
         <div className="flex items-start justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Analytics</h1>
-            <p className="text-gray-400 dark:text-white/35 text-sm mt-1">
+            <p className="text-gray-400 dark:text-white/65 text-sm mt-1">
               Workspace insights as of {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
             </p>
           </div>
@@ -261,7 +261,7 @@ export default function Analytics() {
           ].map(stat => (
             <div key={stat.label} className="bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl p-4">
               <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{stat.value}</p>
-              <p className="text-xs text-gray-400 dark:text-white/40 mt-1">{stat.label}</p>
+              <p className="text-xs text-gray-400 dark:text-white/65 mt-1">{stat.label}</p>
             </div>
           ))}
         </div>
@@ -318,7 +318,7 @@ export default function Analytics() {
           {/* Workload per Member */}
           <ChartCard title="Workload per Member">
             {memberList.length === 0 ? (
-              <p className="text-sm text-gray-400 dark:text-white/30 italic">No assignments yet.</p>
+              <p className="text-sm text-gray-400 dark:text-white/50 italic">No assignments yet.</p>
             ) : (
               memberList.map((m, i) => (
                 <HorizontalBar

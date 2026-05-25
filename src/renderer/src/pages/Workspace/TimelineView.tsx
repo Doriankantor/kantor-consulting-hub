@@ -126,7 +126,7 @@ export default function TimelineView() {
   return (
     <div className="h-full flex flex-col select-none">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-white/[0.07]">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-black/[0.06] dark:border-white/[0.07] bg-white/60 dark:bg-transparent backdrop-blur-sm">
         <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-lg p-0.5">
           {(['week', 'month', 'quarter'] as Zoom[]).map(z => (
             <button
@@ -140,16 +140,16 @@ export default function TimelineView() {
             </button>
           ))}
         </div>
-        <p className="text-xs text-gray-400 dark:text-white/30">Drag bars to reschedule</p>
+        <p className="text-xs text-gray-400 dark:text-white/50">Drag bars to reschedule</p>
       </div>
 
       {/* Main area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: task name column */}
-        <div className="w-56 shrink-0 border-r border-gray-200 dark:border-white/[0.07] flex flex-col">
+        <div className="w-56 shrink-0 border-r border-black/[0.06] dark:border-white/[0.07] flex flex-col bg-white/60 dark:bg-transparent backdrop-blur-sm">
           {/* Header spacer */}
-          <div className="h-10 border-b border-gray-200 dark:border-white/[0.07] px-4 flex items-center">
-            <span className="text-[10px] font-semibold text-gray-400 dark:text-white/30 uppercase tracking-widest">Task</span>
+          <div className="h-10 border-b border-black/[0.06] dark:border-white/[0.07] px-4 flex items-center">
+            <span className="text-[10px] font-semibold text-gray-400 dark:text-white/50 uppercase tracking-widest">Task</span>
           </div>
           {/* Rows */}
           <div className="flex-1 overflow-y-auto">
@@ -168,7 +168,7 @@ export default function TimelineView() {
               )
             })}
             {scheduledTasks.length === 0 && (
-              <div className="flex items-center justify-center h-32 text-gray-400 dark:text-white/25 text-sm">
+              <div className="flex items-center justify-center h-32 text-gray-400 dark:text-white/50 text-sm">
                 No scheduled tasks
               </div>
             )}
@@ -188,7 +188,7 @@ export default function TimelineView() {
                     key={i}
                     style={{ width: cfg.colWidth, minWidth: cfg.colWidth }}
                     className={`shrink-0 flex flex-col items-center justify-center border-r border-gray-100 dark:border-white/[0.04] text-[10px]
-                      ${isToday ? 'bg-hub-gold/10 text-hub-gold font-bold' : 'text-gray-400 dark:text-white/25'}`}
+                      ${isToday ? 'bg-hub-gold/10 text-hub-gold font-bold' : 'text-gray-400 dark:text-white/50'}`}
                   >
                     {zoom !== 'week' && isFirst ? (
                       <span className="font-semibold text-gray-500 dark:text-white/50">{fmtMonth(d)}</span>
