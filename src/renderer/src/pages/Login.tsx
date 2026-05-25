@@ -18,7 +18,7 @@ export default function Login() {
   }
 
   return (
-    <div className="h-screen flex items-center justify-center bg-hub-navy p-4 overflow-hidden">
+    <div className="h-screen flex items-center justify-center bg-white dark:bg-hub-navy p-4 overflow-hidden">
       {/* Ambient glow */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-hub-gold/5 blur-3xl" />
@@ -36,13 +36,13 @@ export default function Login() {
               <rect x="16" y="16" width="10" height="10" rx="2" fill="#d97706" opacity="0.9"/>
             </svg>
           </div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Kantor Consulting Hub</h1>
-          <p className="text-white/35 text-sm mt-1.5">Project management center</p>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Kantor Consulting Hub</h1>
+          <p className="text-gray-400 dark:text-white/35 text-sm mt-1.5">Project management center</p>
         </div>
 
         {/* Card */}
-        <div className="bg-white/[0.04] border border-white/[0.08] rounded-2xl p-7 shadow-2xl shadow-black/40 backdrop-blur-sm">
-          <h2 className="text-[15px] font-semibold text-white/90 mb-5">Sign in to your account</h2>
+        <div className="bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl p-7 shadow-2xl shadow-gray-300/60 dark:shadow-black/40 backdrop-blur-sm">
+          <h2 className="text-[15px] font-semibold text-gray-900 dark:text-white/90 mb-5">Sign in to your account</h2>
 
           {error && (
             <div className="mb-4 flex items-start gap-2.5 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
@@ -56,7 +56,7 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-xs font-medium text-white/50 mb-1.5 uppercase tracking-wide">
+              <label htmlFor="email" className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1.5 uppercase tracking-wide">
                 Email address
               </label>
               <input
@@ -67,13 +67,13 @@ export default function Login() {
                 required
                 autoComplete="email"
                 autoFocus
-                className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white/[0.06] border border-white/[0.1] text-white placeholder-white/25 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition-all"
+                className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition-all"
                 placeholder="name@kantor-consulting.com"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-xs font-medium text-white/50 mb-1.5 uppercase tracking-wide">
+              <label htmlFor="password" className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1.5 uppercase tracking-wide">
                 Password
               </label>
               <input
@@ -83,7 +83,7 @@ export default function Login() {
                 onChange={e => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
-                className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white/[0.06] border border-white/[0.1] text-white placeholder-white/25 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition-all"
+                className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition-all"
                 placeholder="••••••••"
               />
             </div>
@@ -104,7 +104,7 @@ export default function Login() {
             </button>
           </form>
 
-          <p className="mt-5 text-center text-xs text-white/25">
+          <p className="mt-5 text-center text-xs text-gray-400 dark:text-white/25">
             Access is managed by your administrator.
           </p>
         </div>

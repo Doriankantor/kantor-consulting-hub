@@ -15,6 +15,15 @@ interface LocalAuthUser {
   role: 'admin' | 'member'
 }
 
+interface Area {
+  id: string
+  name: string
+  color: string
+  is_default: number
+  position: number
+  created_at: string
+}
+
 interface LocalTeamMember {
   id: string
   email: string
@@ -74,6 +83,12 @@ interface Window {
       isConnected:    () => Promise<boolean>
       reinit:         () => Promise<string>
       onStatusChange: (cb: (status: string) => void) => void
+    }
+    areas: {
+      list:   ()                                          => Promise<Area[]>
+      create: (name: string, color: string)              => Promise<{ ok?: boolean; id?: string; error?: string }>
+      update: (id: string, name: string, color: string)  => Promise<{ ok?: boolean; error?: string }>
+      delete: (id: string)                               => Promise<{ ok?: boolean; error?: string }>
     }
     app: {
       getVersion: () => Promise<string>

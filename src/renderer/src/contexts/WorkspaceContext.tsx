@@ -10,7 +10,7 @@ import { arrayMove } from '@dnd-kit/sortable'
 import { supabase } from '../supabase/client'
 import { SEED_TASKS, SEED_MEMBERS } from '../data/seed'
 import { DEFAULT_COLUMNS } from '../types'
-import type { Task, Column, TeamMember, ViewMode } from '../types'
+import type { Task, Column, TeamMember, ViewMode, Area } from '../types'
 
 // ── Context shape ──────────────────────────────────────────────────────────
 
@@ -19,6 +19,7 @@ interface WorkspaceContextType {
   columns: Column[]
   tasks: Task[]
   members: TeamMember[]
+  areas: Area[]
   loading: boolean
 
   // View state
@@ -39,6 +40,9 @@ interface WorkspaceContextType {
   // Column actions
   renameColumn: (columnId: string, name: string) => Promise<void>
   addColumn: () => Promise<void>
+
+  // Area actions
+  refreshAreas: () => Promise<void>
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined)
@@ -49,6 +53,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS)
   const [tasks, setTasks] = useState<Task[]>(SEED_TASKS)
   const [members, setMembers] = useState<TeamMember[]>(SEED_MEMBERS)
+  const [areas, setAreas] = useState<Area[]>([])
   const [loading, setLoading] = useState(false)
   const [viewMode, setViewModeState] = useState<ViewMode>(() => {
     return (localStorage.getItem('workspace-view') as ViewMode) ?? 'kanban'
@@ -56,10 +61,31 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const supabaseReady = useRef(false)
 
+  // ── Load areas ──────────────────────────────────────────────────────────
+
+  const loadAreas = useCallback(async () => {
+    try {
+      const data = await window.api.areas.list()
+      setAreas(data)
+    } catch {
+      // If IPC not available, set default areas
+      setAreas([
+        { id: 'latin-america',           name: 'Latin America',          color: '#22c55e', is_default: 1, position: 0, created_at: '' },
+        { id: 'us-foreign-policy',       name: 'US Foreign Policy',      color: '#3b82f6', is_default: 1, position: 1, created_at: '' },
+        { id: 'european-politics',       name: 'European Politics',      color: '#a855f7', is_default: 1, position: 2, created_at: '' },
+        { id: 'international-security',  name: 'International Security', color: '#ef4444', is_default: 1, position: 3, created_at: '' },
+        { id: 'security-technology',     name: 'Security Technology',    color: '#06b6d4', is_default: 1, position: 4, created_at: '' },
+      ])
+    }
+  }, [])
+
+  const refreshAreas = loadAreas
+
   // ── Load from Supabase (graceful fallback to seed) ───────────────────────
 
   useEffect(() => {
     let mounted = true
+    loadAreas()
     async function load() {
       try {
         const [tasksRes, colsRes, membersRes] = await Promise.all([
@@ -247,6 +273,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       columns,
       tasks,
       members,
+      areas,
       loading,
       viewMode,
       setViewMode,
@@ -259,6 +286,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       deleteTask,
       renameColumn,
       addColumn,
+      refreshAreas,
     }}>
       {children}
     </WorkspaceContext.Provider>

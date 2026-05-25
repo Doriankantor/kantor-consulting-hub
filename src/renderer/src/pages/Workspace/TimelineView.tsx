@@ -126,30 +126,30 @@ export default function TimelineView() {
   return (
     <div className="h-full flex flex-col select-none">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.07]">
-        <div className="flex items-center gap-1 bg-white/[0.04] border border-white/[0.08] rounded-lg p-0.5">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-white/[0.07]">
+        <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-lg p-0.5">
           {(['week', 'month', 'quarter'] as Zoom[]).map(z => (
             <button
               key={z}
               onClick={() => setZoom(z)}
               className={`titlebar-no-drag px-3 py-1.5 rounded-md text-xs font-medium transition ${
-                zoom === z ? 'bg-hub-gold text-white shadow' : 'text-white/50 hover:text-white/80'
+                zoom === z ? 'bg-hub-gold text-white shadow' : 'text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80'
               }`}
             >
               {ZOOM_CONFIG[z].label}
             </button>
           ))}
         </div>
-        <p className="text-xs text-white/30">Drag bars to reschedule</p>
+        <p className="text-xs text-gray-400 dark:text-white/30">Drag bars to reschedule</p>
       </div>
 
       {/* Main area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: task name column */}
-        <div className="w-56 shrink-0 border-r border-white/[0.07] flex flex-col">
+        <div className="w-56 shrink-0 border-r border-gray-200 dark:border-white/[0.07] flex flex-col">
           {/* Header spacer */}
-          <div className="h-10 border-b border-white/[0.07] px-4 flex items-center">
-            <span className="text-[10px] font-semibold text-white/30 uppercase tracking-widest">Task</span>
+          <div className="h-10 border-b border-gray-200 dark:border-white/[0.07] px-4 flex items-center">
+            <span className="text-[10px] font-semibold text-gray-400 dark:text-white/30 uppercase tracking-widest">Task</span>
           </div>
           {/* Rows */}
           <div className="flex-1 overflow-y-auto">
@@ -160,15 +160,15 @@ export default function TimelineView() {
                   key={task.id}
                   onClick={() => selectTask(task)}
                   style={{ height: TASK_ROW_H }}
-                  className="flex items-center px-4 gap-2 border-b border-white/[0.04] cursor-pointer hover:bg-white/[0.04] transition group"
+                  className="flex items-center px-4 gap-2 border-b border-gray-100 dark:border-white/[0.04] cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.04] transition group"
                 >
                   <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${col?.color ?? 'bg-slate-500'}`} />
-                  <p className="text-sm text-white/70 truncate group-hover:text-white/90 transition">{task.title}</p>
+                  <p className="text-sm text-gray-600 dark:text-white/70 truncate group-hover:text-gray-900 dark:group-hover:text-white/90 transition">{task.title}</p>
                 </div>
               )
             })}
             {scheduledTasks.length === 0 && (
-              <div className="flex items-center justify-center h-32 text-white/25 text-sm">
+              <div className="flex items-center justify-center h-32 text-gray-400 dark:text-white/25 text-sm">
                 No scheduled tasks
               </div>
             )}
@@ -179,7 +179,7 @@ export default function TimelineView() {
         <div ref={containerRef} className="flex-1 overflow-auto">
           <div style={{ width: totalWidth, minWidth: '100%' }} className="relative">
             {/* Date header */}
-            <div className="sticky top-0 z-10 bg-[#0f1624] border-b border-white/[0.07] flex" style={{ height: 40 }}>
+            <div className="sticky top-0 z-10 bg-slate-50 dark:bg-[#0f1624] border-b border-gray-200 dark:border-white/[0.07] flex" style={{ height: 40 }}>
               {days.map((d, i) => {
                 const isFirst = i === 0 || d.getDate() === 1
                 const isToday = d.toDateString() === new Date().toDateString()
@@ -187,11 +187,11 @@ export default function TimelineView() {
                   <div
                     key={i}
                     style={{ width: cfg.colWidth, minWidth: cfg.colWidth }}
-                    className={`shrink-0 flex flex-col items-center justify-center border-r border-white/[0.04] text-[10px]
-                      ${isToday ? 'bg-hub-gold/10 text-hub-gold font-bold' : 'text-white/25'}`}
+                    className={`shrink-0 flex flex-col items-center justify-center border-r border-gray-100 dark:border-white/[0.04] text-[10px]
+                      ${isToday ? 'bg-hub-gold/10 text-hub-gold font-bold' : 'text-gray-400 dark:text-white/25'}`}
                   >
                     {zoom !== 'week' && isFirst ? (
-                      <span className="font-semibold text-white/50">{fmtMonth(d)}</span>
+                      <span className="font-semibold text-gray-500 dark:text-white/50">{fmtMonth(d)}</span>
                     ) : null}
                     {zoom === 'week' || isFirst || d.getDate() % (zoom === 'month' ? 7 : 14) === 0 ? (
                       <span>{fmtDay(d)}</span>
@@ -219,8 +219,8 @@ export default function TimelineView() {
                     style={{ width: cfg.colWidth, minWidth: cfg.colWidth }}
                     className={`shrink-0 border-r ${
                       d.getDay() === 0 || d.getDay() === 6
-                        ? 'border-white/[0.04] bg-white/[0.01]'
-                        : 'border-white/[0.03]'
+                        ? 'border-gray-100 dark:border-white/[0.04] bg-gray-50/50 dark:bg-white/[0.01]'
+                        : 'border-gray-100/50 dark:border-white/[0.03]'
                     }`}
                   />
                 ))}
@@ -237,7 +237,7 @@ export default function TimelineView() {
                   <div
                     key={task.id}
                     style={{ height: TASK_ROW_H }}
-                    className="relative border-b border-white/[0.04] flex items-center"
+                    className="relative border-b border-gray-100 dark:border-white/[0.04] flex items-center"
                   >
                     {isVisible && (
                       <div

@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { autoUpdater } from 'electron-updater'
 import { initDatabase } from './db'
 import { registerIpcHandlers } from './ipc'
 
@@ -60,6 +61,11 @@ app.whenReady().then(() => {
   registerIpcHandlers()
 
   createWindow()
+
+  // Auto-updater (only in production)
+  if (!is.dev) {
+    autoUpdater.checkForUpdatesAndNotify()
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

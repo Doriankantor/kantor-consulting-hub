@@ -1,6 +1,7 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { WorkspaceProvider } from './contexts/WorkspaceContext'
+import { ThemeProvider } from './contexts/ThemeContext'
 import Login     from './pages/Login'
 import Setup     from './pages/Setup'
 import FirstLogin from './pages/FirstLogin'
@@ -61,10 +62,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <HashRouter>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
-    </HashRouter>
+    <ThemeProvider>
+      <HashRouter>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
+      </HashRouter>
+    </ThemeProvider>
   )
 }

@@ -33,7 +33,7 @@ export default function Setup() {
   }
 
   return (
-    <div className="h-screen flex items-center justify-center bg-hub-navy p-4 overflow-hidden">
+    <div className="h-screen flex items-center justify-center bg-white dark:bg-hub-navy p-4 overflow-hidden">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-60 left-1/2 -translate-x-1/2 w-[500px] h-[500px] rounded-full bg-hub-gold/4 blur-3xl" />
       </div>
@@ -51,22 +51,22 @@ export default function Setup() {
               <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </div>
-          <h1 className="text-xl font-bold text-white">AI assistant setup</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">AI assistant setup</h1>
           {displayEmail && (
-            <p className="text-white/40 text-sm mt-1.5">
-              Signed in as <span className="text-white/60">{displayEmail}</span>
+            <p className="text-gray-500 dark:text-white/40 text-sm mt-1.5">
+              Signed in as <span className="text-gray-500 dark:text-white/60">{displayEmail}</span>
             </p>
           )}
         </div>
 
-        <div className="bg-white/[0.04] border border-white/[0.08] rounded-2xl p-7 shadow-2xl shadow-black/40">
-          <h2 className="text-[15px] font-semibold text-white/90 mb-1">Anthropic API Key</h2>
-          <p className="text-sm text-white/40 mb-1 leading-relaxed">
+        <div className="bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl p-7 shadow-2xl shadow-gray-300/60 dark:shadow-black/40">
+          <h2 className="text-[15px] font-semibold text-gray-900 dark:text-white/90 mb-1">Anthropic API Key</h2>
+          <p className="text-sm text-gray-500 dark:text-white/40 mb-1 leading-relaxed">
             Optional — only needed for the Claude AI assistant sidebar.
             All other features (Kanban, tasks, timeline, calendar) work without it.
           </p>
-          <p className="text-xs text-white/30 mb-5 leading-relaxed">
-            Your key is stored <strong className="text-white/45">only on this Mac</strong> and is never sent to our servers.
+          <p className="text-xs text-gray-400 dark:text-white/30 mb-5 leading-relaxed">
+            Your key is stored <strong className="text-gray-500 dark:text-white/45">only on this Mac</strong> and is never sent to our servers.
           </p>
 
           {error && (
@@ -81,7 +81,7 @@ export default function Setup() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="apiKey" className="block text-xs font-medium text-white/50 mb-1.5 uppercase tracking-wide">
+              <label htmlFor="apiKey" className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1.5 uppercase tracking-wide">
                 API Key
               </label>
               <input
@@ -90,20 +90,20 @@ export default function Setup() {
                 value={apiKey}
                 onChange={e => setApiKey(e.target.value)}
                 autoFocus
-                className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white/[0.06] border border-white/[0.1] text-white placeholder-white/25 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition-all"
+                className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-hub-gold/40 focus:border-hub-gold/40 transition-all"
                 placeholder="sk-ant-api03-…"
               />
             </div>
 
             {/* Helper */}
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-              <svg className="mt-0.5 shrink-0 text-white/30" width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06]">
+              <svg className="mt-0.5 shrink-0 text-gray-400 dark:text-white/30" width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.5"/>
                 <path d="M7 6v4M7 4.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               </svg>
-              <p className="text-xs text-white/40 leading-relaxed">
+              <p className="text-xs text-gray-500 dark:text-white/40 leading-relaxed">
                 Get a free-tier key at{' '}
-                <span className="text-white/60 font-medium">console.anthropic.com</span>
+                <span className="text-gray-500 dark:text-white/60 font-medium">console.anthropic.com</span>
                 {' '}→ API Keys. You can also add it later in Settings.
               </p>
             </div>
@@ -125,23 +125,23 @@ export default function Setup() {
           </form>
 
           {/* Skip option */}
-          <div className="mt-4 pt-4 border-t border-white/[0.06] flex items-center justify-between">
+          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-white/[0.06] flex items-center justify-between">
             <button
               onClick={() => skipSetup()}
-              className="titlebar-no-drag text-sm text-white/50 hover:text-white/80 transition font-medium"
+              className="titlebar-no-drag text-sm text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/80 transition font-medium"
             >
               Skip for now →
             </button>
             <button
               onClick={signOut}
-              className="titlebar-no-drag text-xs text-white/20 hover:text-white/45 transition"
+              className="titlebar-no-drag text-xs text-gray-300 dark:text-white/20 hover:text-gray-500 dark:hover:text-white/45 transition"
             >
               Sign out
             </button>
           </div>
         </div>
 
-        <p className="text-center text-xs text-white/20 mt-4">
+        <p className="text-center text-xs text-gray-300 dark:text-white/20 mt-4">
           You can add your API key at any time in Settings → AI Configuration.
         </p>
       </div>

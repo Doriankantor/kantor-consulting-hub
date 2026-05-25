@@ -214,16 +214,55 @@ function registerDriveHandlers() {
   ipcMain.handle('drive:reinit',       ()                      => { driveSync.init(); return driveSync.status })
 }
 
+// ── Areas ─────────────────────────────────────────────────────────────────
+
+function registerAreaHandlers() {
+  ipcMain.handle('areas:list', () =>
+    getDatabase().prepare('SELECT * FROM areas ORDER BY is_default DESC, position ASC').all()
+  )
+
+  ipcMain.handle('areas:create', (_e, name: string, color: string) => {
+    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36)
+    const maxPos = (getDatabase().prepare('SELECT MAX(position) as m FROM areas').get() as { m: number | null }).m ?? 0
+    getDatabase().prepare('INSERT INTO areas (id, name, color, is_default, position) VALUES (?, ?, ?, 0, ?)')
+      .run(id, name.trim(), color, maxPos + 1)
+    return { ok: true, id }
+  })
+
+  ipcMain.handle('areas:update', (_e, id: string, name: string, color: string) => {
+    getDatabase().prepare('UPDATE areas SET name=?, color=? WHERE id=?').run(name.trim(), color, id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('areas:delete', (_e, id: string) => {
+    // Only delete non-default areas
+    const area = getDatabase().prepare('SELECT is_default FROM areas WHERE id=?').get(id) as { is_default: number } | undefined
+    if (!area) return { error: 'Area not found.' }
+    if (area.is_default) return { error: 'Default areas cannot be deleted.' }
+    getDatabase().prepare('DELETE FROM areas WHERE id=?').run(id)
+    return { ok: true }
+  })
+}
+
 // ── App ────────────────────────────────────────────────────────────────────
 
 function registerAppHandlers() {
   ipcMain.handle('app:getVersion', () => app.getVersion())
+  ipcMain.handle('app:checkForUpdates', async () => {
+    try {
+      const { autoUpdater } = await import('electron-updater')
+      await autoUpdater.checkForUpdatesAndNotify()
+      return { ok: true }
+    } catch (e: any) {
+      return { error: e.message }
+    }
+  })
 }
 
 // ── Claude ─────────────────────────────────────────────────────────────────
 
 function buildSystemPrompt(ctx: Record<string, string | null>): string {
-  return `You are an expert political analysis assistant working with Kantor Consulting — a boutique consultancy specialising in geopolitical risk, foreign policy analysis, and strategic advisory for government, financial, and private-sector clients.
+  return `You are an expert political analysis assistant working with Kantor Consulting — a boutique consultancy specializing in geopolitical risk, foreign policy analysis, and strategic advisory for government, financial, and private-sector clients.
 
 You are helping with the following engagement:
 
@@ -331,6 +370,7 @@ export function registerIpcHandlers(): void {
   registerAuthHandlers()
   registerTeamHandlers()
   registerDriveHandlers()
+  registerAreaHandlers()
   registerAppHandlers()
   registerClaudeHandlers()
 }

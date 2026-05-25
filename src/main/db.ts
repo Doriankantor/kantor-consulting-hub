@@ -41,6 +41,13 @@ export function initDatabase(): void {
     // Column already exists — safe to ignore
   }
 
+  // Migrate: add column_id column if it doesn't exist yet
+  try {
+    db.exec('ALTER TABLE tasks ADD COLUMN column_id TEXT;')
+  } catch {
+    // Column already exists — safe to ignore
+  }
+
   db.exec(`
     -- Local key-value settings (Anthropic key, preferences, etc.)
     CREATE TABLE IF NOT EXISTS settings (
@@ -114,6 +121,25 @@ export function initDatabase(): void {
       is_dirty     INTEGER DEFAULT 0,
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
     );
+  `)
+
+  // ── Areas table ───────────────────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS areas (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      color       TEXT NOT NULL DEFAULT '#6366f1',
+      is_default  INTEGER DEFAULT 0,
+      position    INTEGER DEFAULT 0,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    INSERT OR IGNORE INTO areas (id, name, color, is_default, position) VALUES
+      ('latin-america',          'Latin America',          '#22c55e', 1, 0),
+      ('us-foreign-policy',      'US Foreign Policy',      '#3b82f6', 1, 1),
+      ('european-politics',      'European Politics',      '#a855f7', 1, 2),
+      ('international-security', 'International Security', '#ef4444', 1, 3),
+      ('security-technology',    'Security Technology',    '#06b6d4', 1, 4);
   `)
 
   // ── Seed local admin account (runs once; safe to re-run) ──────────────────

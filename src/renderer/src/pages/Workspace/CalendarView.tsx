@@ -42,14 +42,14 @@ function DayCell({
           : dragOver
           ? 'border-hub-gold/30 bg-hub-gold/[0.04]'
           : isCurrentMonth
-          ? 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]'
-          : 'border-white/[0.03] bg-transparent'
+          ? 'border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] hover:bg-gray-50 dark:hover:bg-white/[0.04]'
+          : 'border-gray-100 dark:border-white/[0.03] bg-transparent'
       }`}
     >
       {day && (
         <>
           <p className={`text-xs font-semibold mb-1.5 w-6 h-6 flex items-center justify-center rounded-full ${
-            isToday ? 'bg-hub-gold text-white' : isCurrentMonth ? 'text-white/60' : 'text-white/20'
+            isToday ? 'bg-hub-gold text-white' : isCurrentMonth ? 'text-gray-600 dark:text-white/60' : 'text-gray-300 dark:text-white/20'
           }`}>
             {day}
           </p>
@@ -68,7 +68,7 @@ function DayCell({
               </div>
             ))}
             {tasks.length > 3 && (
-              <p className="text-[10px] text-white/30 px-1">+{tasks.length - 3} more</p>
+              <p className="text-[10px] text-gray-400 dark:text-white/30 px-1">+{tasks.length - 3} more</p>
             )}
           </div>
         </>
@@ -136,18 +136,18 @@ export default function CalendarView() {
         <div className="flex items-center gap-3">
           <button
             onClick={prevMonth}
-            className="titlebar-no-drag p-1.5 rounded-lg hover:bg-white/[0.07] text-white/50 hover:text-white transition"
+            className="titlebar-no-drag p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/[0.07] text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white transition"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
-          <h2 className="text-lg font-bold text-white min-w-[180px] text-center">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white min-w-[180px] text-center">
             {MONTHS[month]} {year}
           </h2>
           <button
             onClick={nextMonth}
-            className="titlebar-no-drag p-1.5 rounded-lg hover:bg-white/[0.07] text-white/50 hover:text-white transition"
+            className="titlebar-no-drag p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/[0.07] text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white transition"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -155,7 +155,7 @@ export default function CalendarView() {
           </button>
           <button
             onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()) }}
-            className="titlebar-no-drag ml-2 px-3 py-1 rounded-lg text-xs font-medium bg-white/[0.06] hover:bg-white/[0.1] text-white/50 hover:text-white transition"
+            className="titlebar-no-drag ml-2 px-3 py-1 rounded-lg text-xs font-medium bg-gray-100 dark:bg-white/[0.06] hover:bg-gray-200 dark:hover:bg-white/[0.1] text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white transition"
           >
             Today
           </button>
@@ -166,7 +166,7 @@ export default function CalendarView() {
           {Object.entries(CONTENT_TYPE_LABELS).slice(0, 5).map(([type, label]) => (
             <div key={type} className="flex items-center gap-1">
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: CONTENT_TYPE_BAR_COLORS[type as keyof typeof CONTENT_TYPE_BAR_COLORS] }} />
-              <span className="text-[10px] text-white/30">{label}</span>
+              <span className="text-[10px] text-gray-400 dark:text-white/30">{label}</span>
             </div>
           ))}
         </div>
@@ -175,7 +175,7 @@ export default function CalendarView() {
       {/* Weekday headers */}
       <div className="grid grid-cols-7 gap-2 mb-2">
         {WEEKDAYS.map(w => (
-          <div key={w} className="text-center text-[11px] font-semibold text-white/30 uppercase tracking-wider py-1">
+          <div key={w} className="text-center text-[11px] font-semibold text-gray-400 dark:text-white/30 uppercase tracking-wider py-1">
             {w}
           </div>
         ))}

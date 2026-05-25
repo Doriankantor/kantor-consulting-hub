@@ -6,8 +6,6 @@ import type {
 import {
   CONTENT_TYPE_LABELS,
   CONTENT_TYPE_COLORS,
-  AREA_LABELS,
-  AREA_COLORS,
 } from '../types'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import RichTextEditor from './RichTextEditor'
@@ -20,16 +18,12 @@ const CONTENT_TYPES: ContentType[] = [
   'briefing-note', 'consulting-engagement', 'client-advisory',
 ]
 const PRIORITIES: Priority[] = ['low', 'medium', 'high', 'urgent']
-const AREAS: AreaOfAnalysis[] = [
-  'latin-america', 'us-foreign-policy', 'european-politics',
-  'international-security', 'security-technology',
-]
 
 // ── Small helpers ──────────────────────────────────────────────────────────
 
 function SectionLabel({ title }: { title: string }) {
   return (
-    <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-1.5">
+    <p className="text-[10px] font-semibold text-gray-400 dark:text-white/30 uppercase tracking-widest mb-1.5">
       {title}
     </p>
   )
@@ -52,7 +46,7 @@ function fmtShort(iso: string) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function TaskDetailPanel() {
-  const { selectedTask, selectTask, updateTask, deleteTask, columns, members } = useWorkspace()
+  const { selectedTask, selectTask, updateTask, deleteTask, columns, members, areas } = useWorkspace()
 
   // Editing state — overrides selected task fields until saved
   const [editing, setEditing] = useState<Partial<Task>>({})
@@ -209,25 +203,31 @@ export default function TaskDetailPanel() {
       >
         {/* Claude sidebar — left half */}
         {claudeOpen && (
-          <div className="w-[440px] shrink-0 border-r border-white/[0.06]">
+          <div className="w-[440px] shrink-0 border-r border-gray-200 dark:border-white/[0.06]">
             <ClaudeAISidebar task={selectedTask} onClose={() => setClaudeOpen(false)} />
           </div>
         )}
 
         {/* Task detail — right half (always 500 px) */}
-        <div className="w-[500px] shrink-0 flex flex-col bg-[#111827] border-l border-white/[0.08] shadow-2xl overflow-hidden">
+        <div className="w-[500px] shrink-0 flex flex-col bg-white dark:bg-[#111827] border-l border-gray-200 dark:border-white/[0.08] shadow-2xl overflow-hidden">
 
           {/* ── Header ──────────────────────────────────────────────────── */}
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.08] shrink-0">
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 dark:border-white/[0.08] shrink-0">
             <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1 mr-2">
               <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border ${CONTENT_TYPE_COLORS[field('content_type')]}`}>
                 {CONTENT_TYPE_LABELS[field('content_type')]}
               </span>
-              {area && (
-                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold border ${AREA_COLORS[area]}`}>
-                  {AREA_LABELS[area]}
-                </span>
-              )}
+              {area && (() => {
+                const areaObj = areas.find(a => a.id === area)
+                return areaObj ? (
+                  <span
+                    style={{ color: areaObj.color, borderColor: areaObj.color + '40', backgroundColor: areaObj.color + '18' }}
+                    className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
+                  >
+                    {areaObj.name}
+                  </span>
+                ) : null
+              })()}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               {/* Ask Claude toggle */}
@@ -236,7 +236,7 @@ export default function TaskDetailPanel() {
                 className={`titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
                   claudeOpen
                     ? 'bg-hub-gold/20 text-hub-gold border-hub-gold/40'
-                    : 'bg-white/[0.05] text-white/55 border-white/[0.08] hover:bg-white/[0.09] hover:text-white/85'
+                    : 'bg-gray-50 dark:bg-white/[0.05] text-gray-500 dark:text-white/55 border-gray-200 dark:border-white/[0.08] hover:bg-gray-100 dark:hover:bg-white/[0.09] hover:text-gray-700 dark:hover:text-white/85'
                 }`}
               >
                 <div className="w-4 h-4 rounded-full bg-hub-gold/20 border border-hub-gold/30 flex items-center justify-center shrink-0">
@@ -256,7 +256,7 @@ export default function TaskDetailPanel() {
 
               <button
                 onClick={() => { if (isDirty) handleSave(); selectTask(null) }}
-                className="titlebar-no-drag p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.07] transition"
+                className="titlebar-no-drag p-1.5 rounded-lg text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition"
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                   <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
@@ -275,7 +275,7 @@ export default function TaskDetailPanel() {
                 value={field('title')}
                 onChange={e => set('title', e.target.value)}
                 onBlur={handleSave}
-                className="titlebar-no-drag w-full bg-transparent text-xl font-bold text-white placeholder-white/30 border-b border-transparent hover:border-white/10 focus:border-hub-gold/50 outline-none pb-1 transition"
+                className="titlebar-no-drag w-full bg-transparent text-xl font-bold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 border-b border-transparent hover:border-gray-200 dark:hover:border-white/10 focus:border-hub-gold/50 outline-none pb-1 transition"
                 placeholder="Engagement title"
               />
 
@@ -290,7 +290,7 @@ export default function TaskDetailPanel() {
                       set('column_id', e.target.value)
                       updateTask(selectedTask.id, { column_id: e.target.value })
                     }}
-                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
+                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
                   >
                     {columns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
@@ -305,7 +305,7 @@ export default function TaskDetailPanel() {
                       set('priority', e.target.value as Priority)
                       updateTask(selectedTask.id, { priority: e.target.value as Priority })
                     }}
-                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
+                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
                   >
                     {PRIORITIES.map(p => (
                       <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
@@ -322,7 +322,7 @@ export default function TaskDetailPanel() {
                       set('content_type', e.target.value as ContentType)
                       updateTask(selectedTask.id, { content_type: e.target.value as ContentType })
                     }}
-                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
+                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
                   >
                     {CONTENT_TYPES.map(t => (
                       <option key={t} value={t}>{CONTENT_TYPE_LABELS[t]}</option>
@@ -340,10 +340,12 @@ export default function TaskDetailPanel() {
                       set('area_of_analysis', v)
                       updateTask(selectedTask.id, { area_of_analysis: v })
                     }}
-                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
+                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
                   >
-                    <option value="">— None —</option>
-                    {AREAS.map(a => <option key={a} value={a}>{AREA_LABELS[a]}</option>)}
+                    <option value="">No area</option>
+                    {areas.map(a => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -356,7 +358,7 @@ export default function TaskDetailPanel() {
                     onChange={e => set('client', e.target.value || null)}
                     onBlur={handleSave}
                     placeholder="e.g. Confidential Government Client"
-                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
+                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
                   />
                 </div>
 
@@ -368,7 +370,7 @@ export default function TaskDetailPanel() {
                     value={field('start_date') ?? ''}
                     onChange={e => set('start_date', e.target.value || null)}
                     onBlur={handleSave}
-                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40 [color-scheme:dark]"
+                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40 [color-scheme:dark]"
                   />
                 </div>
 
@@ -380,7 +382,7 @@ export default function TaskDetailPanel() {
                     value={field('due_date') ?? ''}
                     onChange={e => set('due_date', e.target.value || null)}
                     onBlur={handleSave}
-                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40 [color-scheme:dark]"
+                    className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40 [color-scheme:dark]"
                   />
                 </div>
               </div>
@@ -410,11 +412,11 @@ export default function TaskDetailPanel() {
                           onClick={() => toggleAssignee(m.id)}
                           className={`titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition ${
                             assigned
-                              ? 'bg-hub-gold/15 border-hub-gold/30 text-white'
-                              : 'bg-white/[0.04] border-white/[0.07] text-white/45 hover:text-white/70 hover:bg-white/[0.07]'
+                              ? 'bg-hub-gold/15 border-hub-gold/30 text-gray-900 dark:text-white'
+                              : 'bg-gray-50 dark:bg-white/[0.04] border-gray-200 dark:border-white/[0.07] text-gray-500 dark:text-white/45 hover:text-gray-700 dark:hover:text-white/70 hover:bg-gray-100 dark:hover:bg-white/[0.07]'
                           }`}
                         >
-                          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 ${assigned ? 'bg-hub-gold/40 text-white' : 'bg-white/10 text-white/50'}`}>
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 ${assigned ? 'bg-hub-gold/40 text-white' : 'bg-gray-200 dark:bg-white/10 text-gray-500 dark:text-white/50'}`}>
                             {ini}
                           </div>
                           <span>{m.full_name ?? m.email}</span>
@@ -444,7 +446,7 @@ export default function TaskDetailPanel() {
                   <SectionLabel title={`Sources${sources.length ? ` (${sources.length})` : ''}`} />
                   <button
                     onClick={() => setShowAddSource(v => !v)}
-                    className="titlebar-no-drag flex items-center gap-1 text-[10px] text-white/35 hover:text-hub-gold transition -mt-0.5"
+                    className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/35 hover:text-hub-gold transition -mt-0.5"
                   >
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                       <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -454,18 +456,18 @@ export default function TaskDetailPanel() {
                 </div>
 
                 {sources.length === 0 && !showAddSource && (
-                  <p className="text-xs text-white/20 italic">No sources added yet.</p>
+                  <p className="text-xs text-gray-300 dark:text-white/20 italic">No sources added yet.</p>
                 )}
 
                 {sources.length > 0 && (
                   <div className="space-y-1.5 mb-2">
                     {sources.map(src => (
-                      <div key={src.id} className="flex items-start gap-2.5 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06] group">
+                      <div key={src.id} className="flex items-start gap-2.5 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] group">
                         <span className="text-sm shrink-0 mt-0.5">
                           {src.type === 'url' ? '🔗' : src.type === 'file' ? '📎' : '📚'}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs text-white/80 font-medium">{src.title}</p>
+                          <p className="text-xs text-gray-700 dark:text-white/80 font-medium">{src.title}</p>
                           {src.url && (
                             <a
                               href={src.url}
@@ -477,12 +479,12 @@ export default function TaskDetailPanel() {
                             </a>
                           )}
                           {src.note && (
-                            <p className="text-[11px] text-white/35 mt-0.5">{src.note}</p>
+                            <p className="text-[11px] text-gray-400 dark:text-white/35 mt-0.5">{src.note}</p>
                           )}
                         </div>
                         <button
                           onClick={() => persistSources(sources.filter(s => s.id !== src.id))}
-                          className="titlebar-no-drag shrink-0 p-1 rounded text-white/20 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
+                          className="titlebar-no-drag shrink-0 p-1 rounded text-gray-300 dark:text-white/20 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
                         >
                           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                             <path d="M1.5 2.5h7M3.5 2.5V1.5h3v1M4 4.5v3M6 4.5v3M2.5 2.5l.5 6h4l.5-6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -494,12 +496,12 @@ export default function TaskDetailPanel() {
                 )}
 
                 {showAddSource && (
-                  <div className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.08] space-y-2">
+                  <div className="p-3 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] space-y-2">
                     <div className="flex gap-2">
                       <select
                         value={newSrc.type}
                         onChange={e => setNewSrc(p => ({ ...p, type: e.target.value as Source['type'] }))}
-                        className="titlebar-no-drag px-2 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white text-xs focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                        className="titlebar-no-drag px-2 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                       >
                         <option value="url">URL</option>
                         <option value="reference">Reference</option>
@@ -510,7 +512,7 @@ export default function TaskDetailPanel() {
                         value={newSrc.title}
                         onChange={e => setNewSrc(p => ({ ...p, title: e.target.value }))}
                         placeholder="Source title *"
-                        className="titlebar-no-drag flex-1 px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                        className="titlebar-no-drag flex-1 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                       />
                     </div>
                     {newSrc.type === 'url' && (
@@ -519,7 +521,7 @@ export default function TaskDetailPanel() {
                         value={newSrc.url}
                         onChange={e => setNewSrc(p => ({ ...p, url: e.target.value }))}
                         placeholder="https://…"
-                        className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                        className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                       />
                     )}
                     <input
@@ -527,7 +529,7 @@ export default function TaskDetailPanel() {
                       value={newSrc.note}
                       onChange={e => setNewSrc(p => ({ ...p, note: e.target.value }))}
                       placeholder="Note (optional)"
-                      className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                      className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                     />
                     <div className="flex gap-2">
                       <button
@@ -542,7 +544,7 @@ export default function TaskDetailPanel() {
                           setShowAddSource(false)
                           setNewSrc({ type: 'url', title: '', url: '', note: '' })
                         }}
-                        className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.09] text-white/45 text-xs transition"
+                        className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.05] hover:bg-gray-200 dark:hover:bg-white/[0.09] text-gray-500 dark:text-white/45 text-xs transition"
                       >
                         Cancel
                       </button>
@@ -569,7 +571,7 @@ export default function TaskDetailPanel() {
                   <SectionLabel title="Attachments" />
                   <button
                     onClick={() => setShowAddAtt(v => !v)}
-                    className="titlebar-no-drag flex items-center gap-1 text-[10px] text-white/35 hover:text-hub-gold transition -mt-0.5"
+                    className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/35 hover:text-hub-gold transition -mt-0.5"
                   >
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                       <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -579,16 +581,16 @@ export default function TaskDetailPanel() {
                 </div>
 
                 {attachments.length === 0 && !showAddAtt && (
-                  <p className="text-xs text-white/20 italic">No attachments — add Google Docs or Drive links.</p>
+                  <p className="text-xs text-gray-300 dark:text-white/20 italic">No attachments — add Google Docs or Drive links.</p>
                 )}
 
                 {attachments.length > 0 && (
                   <div className="space-y-1.5 mb-2">
                     {attachments.map(att => (
-                      <div key={att.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06] group">
+                      <div key={att.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] group">
                         <span className="text-sm shrink-0">📄</span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs text-white/80 font-medium truncate">{att.title}</p>
+                          <p className="text-xs text-gray-700 dark:text-white/80 font-medium truncate">{att.title}</p>
                           <a
                             href={att.url}
                             target="_blank"
@@ -600,7 +602,7 @@ export default function TaskDetailPanel() {
                         </div>
                         <button
                           onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))}
-                          className="titlebar-no-drag shrink-0 p-1 rounded text-white/20 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
+                          className="titlebar-no-drag shrink-0 p-1 rounded text-gray-300 dark:text-white/20 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
                         >
                           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                             <path d="M1.5 2.5h7M3.5 2.5V1.5h3v1M4 4.5v3M6 4.5v3M2.5 2.5l.5 6h4l.5-6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -612,20 +614,20 @@ export default function TaskDetailPanel() {
                 )}
 
                 {showAddAtt && (
-                  <div className="p-3 rounded-xl bg-white/[0.04] border border-white/[0.08] space-y-2">
+                  <div className="p-3 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] space-y-2">
                     <input
                       type="text"
                       value={newAtt.title}
                       onChange={e => setNewAtt(p => ({ ...p, title: e.target.value }))}
                       placeholder="Title (e.g. Draft Report v2)"
-                      className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                      className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                     />
                     <input
                       type="url"
                       value={newAtt.url}
                       onChange={e => setNewAtt(p => ({ ...p, url: e.target.value }))}
                       placeholder="https://docs.google.com/…"
-                      className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/[0.08] text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
+                      className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
                     />
                     <div className="flex gap-2">
                       <button
@@ -642,7 +644,7 @@ export default function TaskDetailPanel() {
                       </button>
                       <button
                         onClick={() => { setShowAddAtt(false); setNewAtt({ title: '', url: '' }) }}
-                        className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.09] text-white/45 text-xs transition"
+                        className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.05] hover:bg-gray-200 dark:hover:bg-white/[0.09] text-gray-500 dark:text-white/45 text-xs transition"
                       >
                         Cancel
                       </button>
@@ -657,7 +659,7 @@ export default function TaskDetailPanel() {
                   <SectionLabel title={`Comments${comments.length ? ` (${comments.length})` : ''}`} />
                   <button
                     onClick={() => setAddingComment(v => !v)}
-                    className="titlebar-no-drag flex items-center gap-1 text-[10px] text-white/35 hover:text-hub-gold transition -mt-0.5"
+                    className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/35 hover:text-hub-gold transition -mt-0.5"
                   >
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                       <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -667,7 +669,7 @@ export default function TaskDetailPanel() {
                 </div>
 
                 {comments.length === 0 && !addingComment && (
-                  <p className="text-xs text-white/20 italic">No comments yet.</p>
+                  <p className="text-xs text-gray-300 dark:text-white/20 italic">No comments yet.</p>
                 )}
 
                 {comments.length > 0 && (
@@ -681,16 +683,16 @@ export default function TaskDetailPanel() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-baseline gap-2 mb-0.5 flex-wrap">
-                            <span className="text-xs font-semibold text-white/80">{c.author_name}</span>
-                            <span className="text-[10px] text-white/25">{fmtDate(c.created_at)}</span>
+                            <span className="text-xs font-semibold text-gray-700 dark:text-white/80">{c.author_name}</span>
+                            <span className="text-[10px] text-gray-400 dark:text-white/25">{fmtDate(c.created_at)}</span>
                             <button
                               onClick={() => handleDeleteComment(c.id)}
-                              className="titlebar-no-drag ml-auto text-[10px] text-white/20 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
+                              className="titlebar-no-drag ml-auto text-[10px] text-gray-300 dark:text-white/20 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
                             >
                               Delete
                             </button>
                           </div>
-                          <p className="text-xs text-white/60 leading-relaxed whitespace-pre-wrap">{c.content}</p>
+                          <p className="text-xs text-gray-500 dark:text-white/60 leading-relaxed whitespace-pre-wrap">{c.content}</p>
                         </div>
                       </div>
                     ))}
@@ -711,7 +713,7 @@ export default function TaskDetailPanel() {
                           handleAddComment()
                         }
                       }}
-                      className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] text-white text-xs placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30 resize-none leading-relaxed"
+                      className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30 resize-none leading-relaxed"
                     />
                     <div className="flex gap-2">
                       <button
@@ -723,12 +725,12 @@ export default function TaskDetailPanel() {
                       </button>
                       <button
                         onClick={() => { setAddingComment(false); setNewComment('') }}
-                        className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.09] text-white/45 text-xs transition"
+                        className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.05] hover:bg-gray-200 dark:hover:bg-white/[0.09] text-gray-500 dark:text-white/45 text-xs transition"
                       >
                         Cancel
                       </button>
                     </div>
-                    <p className="text-[10px] text-white/20">⌘ + Enter to post</p>
+                    <p className="text-[10px] text-gray-300 dark:text-white/20">⌘ + Enter to post</p>
                   </div>
                 )}
               </div>
@@ -740,12 +742,12 @@ export default function TaskDetailPanel() {
                   <div className="space-y-2">
                     {[...activity].reverse().map(entry => (
                       <div key={entry.id} className="flex items-start gap-2.5">
-                        <div className="w-1.5 h-1.5 rounded-full bg-white/20 shrink-0 mt-1.5" />
-                        <p className="text-[11px] text-white/35 flex-1 leading-relaxed">
-                          <span className="text-white/50 font-medium">{entry.actor_name}</span>
+                        <div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-white/20 shrink-0 mt-1.5" />
+                        <p className="text-[11px] text-gray-400 dark:text-white/35 flex-1 leading-relaxed">
+                          <span className="text-gray-500 dark:text-white/50 font-medium">{entry.actor_name}</span>
                           {' '}{entry.action}
                         </p>
-                        <span className="text-[10px] text-white/20 shrink-0 mt-0.5">
+                        <span className="text-[10px] text-gray-300 dark:text-white/20 shrink-0 mt-0.5">
                           {fmtShort(entry.created_at)}
                         </span>
                       </div>
@@ -758,8 +760,8 @@ export default function TaskDetailPanel() {
           </div>
 
           {/* ── Footer ──────────────────────────────────────────────────── */}
-          <div className="px-5 py-3 border-t border-white/[0.06] flex items-center justify-between shrink-0">
-            <p className="text-[11px] text-white/20">
+          <div className="px-5 py-3 border-t border-gray-100 dark:border-white/[0.06] flex items-center justify-between shrink-0">
+            <p className="text-[11px] text-gray-300 dark:text-white/20">
               Created {new Date(selectedTask.created_at).toLocaleDateString()}
             </p>
             <button

@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { Task, ChatMessage } from '../types'
-import { CONTENT_TYPE_LABELS, AREA_LABELS } from '../types'
+import { CONTENT_TYPE_LABELS } from '../types'
 import { useAuth } from '../contexts/AuthContext'
+import { useWorkspace } from '../contexts/WorkspaceContext'
 
 // ── Quick actions ──────────────────────────────────────────────────────────
 
@@ -35,8 +36,8 @@ const QUICK_ACTIONS = [
   {
     label: 'Research angles',
     icon: '🔍',
-    prompt: (task: Task) =>
-      `Suggest 5–7 analytical angles and key source types for the engagement: "${task.title}" in the area of ${task.area_of_analysis ? AREA_LABELS[task.area_of_analysis] : 'political analysis'}. For each angle, suggest a specific question it helps answer and what kind of source would address it.`,
+    prompt: (task: Task, _notes?: string, areaName?: string) =>
+      `Suggest 5–7 analytical angles and key source types for the engagement: "${task.title}" in the area of ${areaName ?? task.area_of_analysis ?? 'political analysis'}. For each angle, suggest a specific question it helps answer and what kind of source would address it.`,
   },
 ]
 
@@ -54,8 +55,8 @@ function MessageBubble({ msg }: { msg: ChatMessage & { streaming?: boolean } }) 
       <div
         className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
           isUser
-            ? 'bg-hub-gold/20 text-white border border-hub-gold/20 rounded-tr-sm'
-            : 'bg-white/[0.06] text-white/85 border border-white/[0.08] rounded-tl-sm'
+            ? 'bg-hub-gold/20 text-gray-900 dark:text-white border border-hub-gold/20 rounded-tr-sm'
+            : 'bg-white dark:bg-white/[0.06] text-gray-700 dark:text-white/85 border border-gray-200 dark:border-white/[0.08] rounded-tl-sm'
         }`}
       >
         <p className="whitespace-pre-wrap">{msg.content}</p>
@@ -76,6 +77,7 @@ interface Props {
 
 export default function ClaudeAISidebar({ task, onClose }: Props) {
   const { localUser } = useAuth()
+  const { areas } = useWorkspace()
   const [messages, setMessages] = useState<(ChatMessage & { streaming?: boolean })[]>([
     {
       role: 'assistant',
@@ -104,16 +106,20 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
           .join('\n')
       : null
 
+    const areaName = task.area_of_analysis
+      ? (areas.find(a => a.id === task.area_of_analysis)?.name ?? task.area_of_analysis)
+      : null
+
     return {
       title:            task.title,
       content_type:     CONTENT_TYPE_LABELS[task.content_type],
-      area_of_analysis: task.area_of_analysis ? AREA_LABELS[task.area_of_analysis] : null,
+      area_of_analysis: areaName,
       client:           task.client,
       description:      stripHtml(task.description),
       notes:            stripHtml(task.notes),
       sources,
     }
-  }, [task])
+  }, [task, areas])
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || streaming) return
@@ -179,21 +185,21 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
   }
 
   return (
-    <div className="flex flex-col h-full border-l border-white/[0.08] bg-[#0d1520]">
+    <div className="flex flex-col h-full border-l border-gray-200 dark:border-white/[0.08] bg-white dark:bg-[#0d1520]">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.08]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-white/[0.08]">
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 rounded-full bg-hub-gold/20 border border-hub-gold/30 flex items-center justify-center">
             <span className="text-hub-gold text-[10px] font-bold">K</span>
           </div>
           <div>
-            <p className="text-xs font-semibold text-white">Claude AI</p>
-            <p className="text-[10px] text-white/30">Political analysis assistant</p>
+            <p className="text-xs font-semibold text-gray-900 dark:text-white">Claude AI</p>
+            <p className="text-[10px] text-gray-400 dark:text-white/30">Political analysis assistant</p>
           </div>
         </div>
         <button
           onClick={onClose}
-          className="titlebar-no-drag p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/[0.07] transition"
+          className="titlebar-no-drag p-1.5 rounded-lg text-gray-400 dark:text-white/30 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.07] transition"
         >
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
             <path d="M2 2l9 9M11 2L2 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -202,18 +208,23 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
       </div>
 
       {/* Quick actions */}
-      <div className="px-3 py-2.5 border-b border-white/[0.06]">
-        <p className="text-[10px] text-white/25 uppercase tracking-widest mb-2 px-1">Quick actions</p>
+      <div className="px-3 py-2.5 border-b border-gray-100 dark:border-white/[0.06]">
+        <p className="text-[10px] text-gray-400 dark:text-white/25 uppercase tracking-widest mb-2 px-1">Quick actions</p>
         <div className="grid grid-cols-1 gap-1">
           {QUICK_ACTIONS.map(action => (
             <button
               key={action.label}
-              onClick={() => sendMessage(action.prompt(task, task.notes ?? undefined))}
+              onClick={() => {
+                const areaName = task.area_of_analysis
+                  ? (areas.find(a => a.id === task.area_of_analysis)?.name ?? task.area_of_analysis)
+                  : undefined
+                sendMessage(action.prompt(task, task.notes ?? undefined, areaName))
+              }}
               disabled={streaming}
-              className="titlebar-no-drag flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] hover:border-white/[0.1] disabled:opacity-40 text-left transition"
+              className="titlebar-no-drag flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.04] hover:bg-gray-100 dark:hover:bg-white/[0.08] border border-gray-200 dark:border-white/[0.06] hover:border-gray-300 dark:hover:border-white/[0.1] disabled:opacity-40 text-left transition"
             >
               <span className="text-sm shrink-0">{action.icon}</span>
-              <span className="text-xs text-white/60 hover:text-white/80 transition">{action.label}</span>
+              <span className="text-xs text-gray-500 dark:text-white/60 hover:text-gray-700 dark:hover:text-white/80 transition">{action.label}</span>
             </button>
           ))}
         </div>
@@ -231,10 +242,10 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
               <path d="M7 4v3.5M7 9.5v.5" stroke="#d97706" strokeWidth="1.2" strokeLinecap="round"/>
             </svg>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-white/70 font-medium">No Claude account connected</p>
-              <p className="text-[11px] text-white/35 mt-0.5 leading-relaxed">Go to Settings → Claude AI to connect your account.</p>
+              <p className="text-xs text-gray-700 dark:text-white/70 font-medium">No Claude account connected</p>
+              <p className="text-[11px] text-gray-400 dark:text-white/35 mt-0.5 leading-relaxed">Go to Settings → Claude AI to connect your account.</p>
             </div>
-            <button onClick={() => setNoKey(false)} className="titlebar-no-drag text-white/20 hover:text-white/45 transition text-sm">×</button>
+            <button onClick={() => setNoKey(false)} className="titlebar-no-drag text-gray-300 dark:text-white/20 hover:text-gray-500 dark:hover:text-white/45 transition text-sm">×</button>
           </div>
         )}
         {error && (
@@ -246,8 +257,8 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
       </div>
 
       {/* Input */}
-      <div className="px-3 py-3 border-t border-white/[0.06]">
-        <div className="flex items-end gap-2 bg-white/[0.05] border border-white/[0.09] rounded-xl px-3 py-2 focus-within:ring-1 focus-within:ring-hub-gold/30 focus-within:border-hub-gold/30 transition">
+      <div className="px-3 py-3 border-t border-gray-100 dark:border-white/[0.06]">
+        <div className="flex items-end gap-2 bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.09] rounded-xl px-3 py-2 focus-within:ring-1 focus-within:ring-hub-gold/30 focus-within:border-hub-gold/30 transition">
           <textarea
             ref={inputRef}
             value={input}
@@ -256,7 +267,7 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
             disabled={streaming}
             rows={2}
             placeholder="Ask Claude… (Enter to send, Shift+Enter for newline)"
-            className="titlebar-no-drag flex-1 bg-transparent text-white text-sm placeholder-white/25 resize-none outline-none leading-relaxed"
+            className="titlebar-no-drag flex-1 bg-transparent text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-white/25 resize-none outline-none leading-relaxed"
           />
           <button
             onClick={() => sendMessage(input)}
@@ -272,7 +283,7 @@ export default function ClaudeAISidebar({ task, onClose }: Props) {
             )}
           </button>
         </div>
-        <p className="text-center text-[10px] text-white/15 mt-1.5">
+        <p className="text-center text-[10px] text-gray-300 dark:text-white/15 mt-1.5">
           Uses your personal Anthropic API key · Responses not stored
         </p>
       </div>

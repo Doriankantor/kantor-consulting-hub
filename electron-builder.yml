@@ -20,6 +20,12 @@ asarUnpack:
   - resources/**
   - '**/*.{node,dll}'
 
+publish:
+  provider: github
+  owner: kantorconsulting
+  repo: kantor-consulting-hub
+  releaseType: release
+
 mac:
   target:
     - target: dmg
@@ -33,6 +39,8 @@ mac:
     NSDownloadsFolderUsageDescription: Application requests access to the Downloads folder.
   notarize: false
   darkModeSupport: true
+  hardenedRuntime: false
+  gatekeeperAssess: false
 
 dmg:
   artifactName: KantorConsultingHub-${version}.${ext}

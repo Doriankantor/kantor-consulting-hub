@@ -36,14 +36,14 @@ function FilterBar({ filters, setFilters }: { filters: Filters; setFilters: (f: 
   const set = (key: keyof Filters) => (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) =>
     setFilters({ ...filters, [key]: e.target.value })
 
-  const sel = "titlebar-no-drag px-2.5 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/70 text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40 cursor-pointer"
+  const sel = "titlebar-no-drag px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-700 dark:text-white/70 text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40 cursor-pointer"
   const isActive = filters.search || filters.column || filters.content_type || filters.priority || filters.area
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
       {/* Search */}
       <div className="relative">
-        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30" width="13" height="13" viewBox="0 0 13 13" fill="none">
+        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-white/30" width="13" height="13" viewBox="0 0 13 13" fill="none">
           <circle cx="5.5" cy="5.5" r="4" stroke="currentColor" strokeWidth="1.3"/>
           <path d="M8.5 8.5l2.5 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
         </svg>
@@ -52,7 +52,7 @@ function FilterBar({ filters, setFilters }: { filters: Filters; setFilters: (f: 
           value={filters.search}
           onChange={set('search')}
           placeholder="Search engagements…"
-          className="titlebar-no-drag pl-8 pr-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/40 w-52"
+          className="titlebar-no-drag pl-8 pr-3 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/40 w-52"
         />
       </div>
 
@@ -86,7 +86,7 @@ function FilterBar({ filters, setFilters }: { filters: Filters; setFilters: (f: 
       {isActive && (
         <button
           onClick={() => setFilters({ search: '', column: '', content_type: '', priority: '', area: '' })}
-          className="titlebar-no-drag text-xs text-white/30 hover:text-white/60 transition px-2 py-1.5"
+          className="titlebar-no-drag text-xs text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/60 transition px-2 py-1.5"
         >
           Clear
         </button>
@@ -104,7 +104,7 @@ function Th({ label, sortKey, current, dir, onClick }: {
   return (
     <th
       onClick={() => onClick(sortKey)}
-      className="px-4 py-3 text-left text-[11px] font-semibold text-white/40 uppercase tracking-wider cursor-pointer hover:text-white/70 transition select-none whitespace-nowrap"
+      className="px-4 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-white/40 uppercase tracking-wider cursor-pointer hover:text-gray-700 dark:hover:text-white/70 transition select-none whitespace-nowrap"
     >
       <span className="flex items-center gap-1">
         {label}
@@ -164,10 +164,10 @@ export default function ListView() {
         <FilterBar filters={filters} setFilters={setFilters} />
       </div>
 
-      <div className="flex-1 overflow-auto rounded-xl border border-white/[0.08]">
+      <div className="flex-1 overflow-auto rounded-xl border border-gray-200 dark:border-white/[0.08]">
         <table className="w-full border-collapse">
-          <thead className="sticky top-0 bg-[#0f1624] z-10">
-            <tr className="border-b border-white/[0.08]">
+          <thead className="sticky top-0 bg-slate-50 dark:bg-[#0f1624] z-10">
+            <tr className="border-b border-gray-200 dark:border-white/[0.08]">
               <Th label="Title"           sortKey="title"           current={sortKey} dir={sortDir} onClick={handleSort} />
               <Th label="Type"            sortKey="content_type"    current={sortKey} dir={sortDir} onClick={handleSort} />
               <Th label="Area"            sortKey="area_of_analysis"current={sortKey} dir={sortDir} onClick={handleSort} />
@@ -180,7 +180,7 @@ export default function ListView() {
           <tbody>
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-16 text-white/30 text-sm">
+                <td colSpan={7} className="text-center py-16 text-gray-400 dark:text-white/30 text-sm">
                   No engagements match your filters
                 </td>
               </tr>
@@ -191,11 +191,11 @@ export default function ListView() {
                 <tr
                   key={task.id}
                   onClick={() => selectTask(task)}
-                  className={`border-b border-white/[0.05] cursor-pointer transition-colors hover:bg-white/[0.04] ${i % 2 === 0 ? '' : 'bg-white/[0.015]'}`}
+                  className={`border-b border-gray-100 dark:border-white/[0.05] cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.04] ${i % 2 === 0 ? '' : 'bg-gray-50/50 dark:bg-white/[0.015]'}`}
                 >
                   {/* Title */}
                   <td className="px-4 py-3 max-w-[220px]">
-                    <p className="text-sm text-white/90 font-medium truncate">{task.title}</p>
+                    <p className="text-sm text-gray-800 dark:text-white/90 font-medium truncate">{task.title}</p>
                   </td>
                   {/* Type */}
                   <td className="px-4 py-3 whitespace-nowrap">
@@ -210,22 +210,22 @@ export default function ListView() {
                         {AREA_LABELS[task.area_of_analysis]}
                       </span>
                     ) : (
-                      <span className="text-white/20 text-sm">—</span>
+                      <span className="text-gray-300 dark:text-white/20 text-sm">—</span>
                     )}
                   </td>
                   {/* Client */}
                   <td className="px-4 py-3 max-w-[160px]">
-                    <span className="text-sm text-white/40 truncate block">{task.client ?? '—'}</span>
+                    <span className="text-sm text-gray-500 dark:text-white/40 truncate block">{task.client ?? '—'}</span>
                   </td>
                   {/* Stage */}
                   <td className="px-4 py-3 whitespace-nowrap">
                     <div className="flex items-center gap-1.5">
                       <div className={`w-1.5 h-1.5 rounded-full ${col?.color ?? 'bg-slate-500'}`} />
-                      <span className="text-sm text-white/60">{col?.name ?? '—'}</span>
+                      <span className="text-sm text-gray-500 dark:text-white/60">{col?.name ?? '—'}</span>
                     </div>
                   </td>
                   {/* Due date */}
-                  <td className={`px-4 py-3 whitespace-nowrap text-sm ${overdue ? 'text-red-400 font-medium' : 'text-white/40'}`}>
+                  <td className={`px-4 py-3 whitespace-nowrap text-sm ${overdue ? 'text-red-400 font-medium' : 'text-gray-500 dark:text-white/40'}`}>
                     {overdue && <span className="mr-1">⚠</span>}
                     {formatDate(task.due_date)}
                   </td>
@@ -243,7 +243,7 @@ export default function ListView() {
         </table>
       </div>
 
-      <p className="mt-2 text-xs text-white/25 text-right">
+      <p className="mt-2 text-xs text-gray-400 dark:text-white/25 text-right">
         {sorted.length} of {tasks.length} engagements
       </p>
     </div>

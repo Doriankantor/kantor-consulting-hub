@@ -61,18 +61,18 @@ function WorkspaceViewSwitcher() {
   if (!location.pathname.startsWith('/workspace')) return null
 
   return (
-    <div className="mx-2 mt-1 mb-1 rounded-xl overflow-hidden bg-black/20 border border-white/[0.05]">
+    <div className="mx-2 mt-1 mb-1 rounded-xl overflow-hidden bg-gray-100 dark:bg-black/20 border border-black/[0.05] dark:border-white/[0.05]">
       {VIEW_BUTTONS.map(v => (
         <button
           key={v.id}
           onClick={() => setViewMode(v.id)}
           className={`titlebar-no-drag w-full flex items-center gap-2 px-3 py-1.5 text-xs transition ${
             viewMode === v.id
-              ? 'bg-hub-gold/10 text-hub-gold font-semibold'
-              : 'text-white/35 hover:text-white/60 hover:bg-white/[0.04]'
+              ? 'bg-hub-gold/10 dark:bg-hub-gold/12 text-hub-gold font-semibold'
+              : 'text-gray-500 dark:text-white/35 hover:text-gray-600 dark:hover:text-white/60 hover:bg-black/[0.04] dark:hover:bg-white/[0.04]'
           }`}
         >
-          <span className={`w-1 h-1 rounded-full ${viewMode === v.id ? 'bg-hub-gold' : 'bg-white/20'}`} />
+          <span className={`w-1 h-1 rounded-full ${viewMode === v.id ? 'bg-hub-gold' : 'bg-gray-300 dark:bg-white/20'}`} />
           {v.label}
         </button>
       ))}
@@ -100,12 +100,12 @@ export default function Sidebar() {
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `titlebar-no-drag flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all ${
       isActive
-        ? 'bg-hub-gold/12 text-hub-gold font-semibold'
-        : 'text-white/40 hover:text-white/75 hover:bg-white/[0.05]'
+        ? 'bg-hub-gold/10 dark:bg-hub-gold/12 text-hub-gold font-semibold'
+        : 'text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/75 hover:bg-black/[0.04] dark:hover:bg-white/[0.05]'
     }`
 
   return (
-    <aside className="w-52 shrink-0 bg-black/10 border-r border-white/[0.06] flex flex-col py-3 overflow-hidden">
+    <aside className="w-52 shrink-0 bg-white dark:bg-black/10 border-r border-black/[0.07] dark:border-white/[0.06] flex flex-col py-3 overflow-hidden">
       <nav className="flex-1 px-2.5 space-y-0.5 overflow-y-auto">
         {navItems.map(item => (
           <div key={item.to}>
@@ -128,7 +128,7 @@ export default function Sidebar() {
 
       {/* Admin indicator */}
       {isAdmin && (
-        <div className="px-3 mx-2.5 py-2 rounded-xl bg-hub-gold/[0.06] border border-hub-gold/[0.12]">
+        <div className="px-3 mx-2.5 py-2 rounded-xl bg-hub-gold/[0.08] dark:bg-hub-gold/[0.06] border border-hub-gold/[0.12]">
           <div className="flex items-center gap-2">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-hub-gold">
               <path d="M6 1l1.5 3 3.5.5-2.5 2.5.5 3.5L6 9l-3 1.5.5-3.5L1 4.5 4.5 4z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>

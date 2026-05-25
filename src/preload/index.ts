@@ -48,6 +48,12 @@ const api = {
     reinit:         ()              => ipcRenderer.invoke('drive:reinit'),
     onStatusChange: (cb: (s: string) => void) => ipcRenderer.on('drive:status', (_e, s) => cb(s)),
   },
+  areas: {
+    list:   ()                                          => ipcRenderer.invoke('areas:list'),
+    create: (name: string, color: string)              => ipcRenderer.invoke('areas:create', name, color),
+    update: (id: string, name: string, color: string)  => ipcRenderer.invoke('areas:update', id, name, color),
+    delete: (id: string)                               => ipcRenderer.invoke('areas:delete', id),
+  },
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
   },

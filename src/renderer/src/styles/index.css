@@ -3,9 +3,7 @@
 @tailwind utilities;
 
 /* ── Base ───────────────────────────────────────────────────────────────── */
-*, *::before, *::after {
-  box-sizing: border-box;
-}
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body, #root {
   height: 100%;
@@ -18,33 +16,22 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
-  background-color: #0f1624;
-  color: #fff;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
+
+html.dark body  { background-color: #0f1624; color: #fff; }
+html.light body { background-color: #f1f5f9; color: #111827; }
 
 /* ── macOS window dragging ──────────────────────────────────────────────── */
-.titlebar-drag {
-  -webkit-app-region: drag;
-}
-.titlebar-no-drag {
-  -webkit-app-region: no-drag;
-}
+.titlebar-drag    { -webkit-app-region: drag; }
+.titlebar-no-drag { -webkit-app-region: no-drag; }
 
 /* ── Custom scrollbar ───────────────────────────────────────────────────── */
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.22);
-}
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+html.dark  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+html.light ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { opacity: 0.8; }
 
 /* ── Focus ring ─────────────────────────────────────────────────────────── */
 :focus-visible {
@@ -54,43 +41,41 @@ body {
 }
 
 /* ── TipTap rich text editor ────────────────────────────────────────────── */
-.tiptap {
-  outline: none;
-  min-height: 80px;
-  color: rgba(255,255,255,0.85);
-  font-size: 0.875rem;
-  line-height: 1.6;
-}
+.tiptap { outline: none; min-height: 80px; font-size: 0.875rem; line-height: 1.6; }
+html.dark  .tiptap { color: rgba(255,255,255,0.85); }
+html.light .tiptap { color: #374151; }
 .tiptap p { margin: 0 0 0.5em; }
 .tiptap p:last-child { margin-bottom: 0; }
-.tiptap h1 { font-size: 1.1rem; font-weight: 700; color: #fff; margin: 0.75em 0 0.25em; }
-.tiptap h2 { font-size: 1rem;   font-weight: 600; color: #fff; margin: 0.65em 0 0.2em; }
-.tiptap h3 { font-size: 0.9rem; font-weight: 600; color: rgba(255,255,255,0.9); margin: 0.5em 0 0.15em; }
+html.dark  .tiptap h1 { font-size: 1.1rem; font-weight: 700; color: #fff; margin: 0.75em 0 0.25em; }
+html.dark  .tiptap h2 { font-size: 1rem;   font-weight: 600; color: #fff; margin: 0.65em 0 0.2em; }
+html.dark  .tiptap h3 { font-size: 0.9rem; font-weight: 600; color: rgba(255,255,255,0.9); margin: 0.5em 0 0.15em; }
+html.light .tiptap h1 { font-size: 1.1rem; font-weight: 700; color: #111827; margin: 0.75em 0 0.25em; }
+html.light .tiptap h2 { font-size: 1rem;   font-weight: 600; color: #111827; margin: 0.65em 0 0.2em; }
+html.light .tiptap h3 { font-size: 0.9rem; font-weight: 600; color: #374151; margin: 0.5em 0 0.15em; }
 .tiptap ul, .tiptap ol { padding-left: 1.4em; margin: 0.25em 0; }
 .tiptap ul { list-style: disc; }
 .tiptap ol { list-style: decimal; }
 .tiptap li { margin: 0.15em 0; }
-.tiptap strong { color: #fff; font-weight: 600; }
+html.dark  .tiptap strong { color: #fff; font-weight: 600; }
+html.light .tiptap strong { color: #111827; font-weight: 600; }
 .tiptap em { font-style: italic; }
-.tiptap blockquote {
-  border-left: 2px solid rgba(217,119,6,0.5);
-  padding-left: 0.75em;
-  color: rgba(255,255,255,0.5);
-  margin: 0.5em 0;
-}
-.tiptap .is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  color: rgba(255,255,255,0.2);
-  pointer-events: none;
-  float: left;
-  height: 0;
-}
+html.dark  .tiptap blockquote { border-left: 2px solid rgba(217,119,6,0.5); padding-left: 0.75em; color: rgba(255,255,255,0.5); margin: 0.5em 0; }
+html.light .tiptap blockquote { border-left: 2px solid rgba(217,119,6,0.6); padding-left: 0.75em; color: #6b7280; margin: 0.5em 0; }
+html.dark  .tiptap .is-editor-empty:first-child::before { content: attr(data-placeholder); color: rgba(255,255,255,0.2); pointer-events: none; float: left; height: 0; }
+html.light .tiptap .is-editor-empty:first-child::before { content: attr(data-placeholder); color: #9ca3af; pointer-events: none; float: left; height: 0; }
 
-/* ── Input autofill dark mode fix ───────────────────────────────────────── */
-input:-webkit-autofill,
-input:-webkit-autofill:hover,
-input:-webkit-autofill:focus {
+/* ── Input autofill fix ─────────────────────────────────────────────────── */
+html.dark input:-webkit-autofill,
+html.dark input:-webkit-autofill:hover,
+html.dark input:-webkit-autofill:focus {
   -webkit-text-fill-color: #fff;
   -webkit-box-shadow: 0 0 0 1000px #1a2744 inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+html.light input:-webkit-autofill,
+html.light input:-webkit-autofill:hover,
+html.light input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #111827;
+  -webkit-box-shadow: 0 0 0 1000px #fff inset;
   transition: background-color 5000s ease-in-out 0s;
 }

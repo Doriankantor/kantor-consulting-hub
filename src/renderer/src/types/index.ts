@@ -20,6 +20,15 @@ export type AreaOfAnalysis =
 
 export type Priority = 'low' | 'medium' | 'high' | 'urgent'
 
+export interface Area {
+  id: string
+  name: string
+  color: string
+  is_default: number
+  position: number
+  created_at: string
+}
+
 // ── Column (pipeline stage) ────────────────────────────────────────────────
 export interface Column {
   id: string
@@ -35,7 +44,7 @@ export interface Task {
   title: string
   content_type: ContentType
   client: string | null            // client or target deliverable
-  area_of_analysis: AreaOfAnalysis | null
+  area_of_analysis: string | null  // stores area ID (default or custom)
   assignee_ids: string[]
   due_date: string | null          // ISO "YYYY-MM-DD"
   start_date: string | null        // ISO "YYYY-MM-DD"
@@ -92,7 +101,7 @@ export interface TeamMember {
   role: 'admin' | 'member'
 }
 
-// ── Label / colour maps ────────────────────────────────────────────────────
+// ── Label / color maps ────────────────────────────────────────────────────
 
 export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
   'policy-brief':          'Policy Brief',

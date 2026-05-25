@@ -19,10 +19,9 @@ import {
 } from '@dnd-kit/sortable'
 import { useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import type { Task } from '../../types'
+import type { Task, Area } from '../../types'
 import {
   CONTENT_TYPE_COLORS, CONTENT_TYPE_LABELS,
-  AREA_COLORS, AREA_LABELS,
   PRIORITY_DOT,
 } from '../../types'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
@@ -38,47 +37,65 @@ function isOverdue(iso: string | null, colId: string) {
   return new Date(iso) < new Date()
 }
 
+// ── Area color helper ──────────────────────────────────────────────────────
+
+function getAreaColor(areaId: string | null, areas: Area[]): string {
+  if (!areaId) return '#6b7280'
+  const area = areas.find(a => a.id === areaId)
+  return area?.color ?? '#6b7280'
+}
+
 // ── Task card (display) ────────────────────────────────────────────────────
 
-function TaskCardDisplay({ task, isDragging = false }: { task: Task; isDragging?: boolean }) {
+function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDragging?: boolean; areas: Area[] }) {
   const { selectTask } = useWorkspace()
   const overdue = isOverdue(task.due_date, task.column_id)
+  const areaColor = getAreaColor(task.area_of_analysis, areas)
 
   return (
     <div
       onClick={() => !isDragging && selectTask(task)}
-      className={`group bg-white/[0.05] border border-white/[0.09] rounded-xl p-3.5 cursor-pointer
-        hover:bg-white/[0.08] hover:border-white/[0.14] active:scale-[0.99] transition-all
-        ${isDragging ? 'opacity-50 shadow-2xl rotate-1 scale-105' : ''}`}
+      style={{ borderTopColor: areaColor }}
+      className={`group relative bg-white dark:bg-[#1a2233] border border-gray-200 dark:border-white/[0.08]
+        border-t-[3px] rounded-xl p-3.5 cursor-pointer shadow-sm dark:shadow-none
+        hover:shadow-md dark:hover:bg-white/[0.08] hover:-translate-y-px
+        active:scale-[0.99] transition-all duration-150
+        ${isDragging ? 'opacity-60 shadow-xl rotate-1 scale-105' : ''}`}
     >
       {/* Type badge + priority dot */}
-      <div className="flex items-center justify-between mb-2">
-        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${CONTENT_TYPE_COLORS[task.content_type]}`}>
+      <div className="flex items-center justify-between mb-2.5">
+        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold border ${CONTENT_TYPE_COLORS[task.content_type]}`}>
           {CONTENT_TYPE_LABELS[task.content_type]}
         </span>
         <div className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[task.priority]}`} title={task.priority} />
       </div>
 
       {/* Title */}
-      <p className="text-sm font-medium text-white leading-snug mb-2 line-clamp-2">{task.title}</p>
+      <p className="text-sm font-semibold text-gray-900 dark:text-white leading-snug mb-2.5 line-clamp-2">{task.title}</p>
 
       {/* Area tag */}
-      {task.area_of_analysis && (
-        <div className="mb-2">
-          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${AREA_COLORS[task.area_of_analysis]}`}>
-            {AREA_LABELS[task.area_of_analysis]}
-          </span>
-        </div>
-      )}
+      {task.area_of_analysis && (() => {
+        const area = areas.find(a => a.id === task.area_of_analysis)
+        return area ? (
+          <div className="mb-2">
+            <span
+              style={{ color: area.color, borderColor: area.color + '40', backgroundColor: area.color + '18' }}
+              className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border"
+            >
+              {area.name}
+            </span>
+          </div>
+        ) : null
+      })()}
 
       {/* Client */}
       {task.client && (
-        <p className="text-[11px] text-white/35 mb-2 truncate">{task.client}</p>
+        <p className="text-[11px] text-gray-400 dark:text-white/35 mb-2 truncate">{task.client}</p>
       )}
 
       {/* Due date */}
       {task.due_date && (
-        <div className={`flex items-center gap-1 text-[11px] ${overdue ? 'text-red-400' : 'text-white/35'}`}>
+        <div className={`flex items-center gap-1 text-[11px] ${overdue ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-white/35'}`}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <rect x="1" y="2" width="8" height="7.5" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
             <path d="M3 1v2M7 1v2M1 5h8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
@@ -92,22 +109,24 @@ function TaskCardDisplay({ task, isDragging = false }: { task: Task; isDragging?
 
 // ── Sortable card wrapper ──────────────────────────────────────────────────
 
-function SortableCard({ task }: { task: Task }) {
+function SortableCard({ task, areas }: { task: Task; areas: Area[] }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { type: 'task', task },
   })
 
+  const style = { transform: CSS.Transform.toString(transform), transition }
+
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} {...attributes} {...listeners}>
-      <TaskCardDisplay task={task} isDragging={isDragging} />
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <TaskCardDisplay task={task} isDragging={isDragging} areas={areas} />
     </div>
   )
 }
 
 // ── Column ─────────────────────────────────────────────────────────────────
 
-function KanbanColumn({ columnId }: { columnId: string }) {
+function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) {
   const { columns, tasks, renameColumn, createTask } = useWorkspace()
   const col = columns.find(c => c.id === columnId)!
   const colTasks = tasks
@@ -148,18 +167,18 @@ function KanbanColumn({ columnId }: { columnId: string }) {
               onChange={e => setNameValue(e.target.value)}
               onBlur={handleRename}
               onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditingName(false) }}
-              className="titlebar-no-drag bg-white/10 border border-white/20 rounded px-1.5 py-0.5 text-sm font-semibold text-white focus:outline-none w-36"
+              className="titlebar-no-drag bg-gray-100 dark:bg-white/10 border border-gray-300 dark:border-white/20 rounded px-1.5 py-0.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none w-36"
             />
           ) : (
             <button
               onDoubleClick={() => { setEditingName(true); setNameValue(col.name) }}
-              className="titlebar-no-drag text-sm font-semibold text-white/80 hover:text-white transition"
+              className="titlebar-no-drag text-sm font-semibold text-gray-700 dark:text-white/80 hover:text-gray-900 dark:hover:text-white transition"
               title="Double-click to rename"
             >
               {col.name}
             </button>
           )}
-          <span className="text-xs text-white/30 tabular-nums">{colTasks.length}</span>
+          <span className="text-xs text-gray-400 dark:text-white/30 tabular-nums">{colTasks.length}</span>
         </div>
       </div>
 
@@ -167,32 +186,32 @@ function KanbanColumn({ columnId }: { columnId: string }) {
       <div
         ref={setNodeRef}
         className={`flex-1 min-h-[80px] rounded-xl p-2 space-y-2 transition-colors ${
-          isOver ? 'bg-hub-gold/5 ring-1 ring-hub-gold/20' : 'bg-white/[0.02]'
+          isOver ? 'bg-hub-gold/5 ring-1 ring-hub-gold/20' : 'bg-gray-100/50 dark:bg-black/[0.15]'
         }`}
       >
         <SortableContext items={colTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-          {colTasks.map(task => <SortableCard key={task.id} task={task} />)}
+          {colTasks.map(task => <SortableCard key={task.id} task={task} areas={areas} />)}
         </SortableContext>
 
         {addingTask ? (
-          <div className="bg-white/[0.06] border border-white/[0.12] rounded-xl p-3">
+          <div className="bg-white dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.12] rounded-xl p-3">
             <input
               autoFocus
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAddTask(); if (e.key === 'Escape') { setAddingTask(false); setNewTitle('') } }}
               placeholder="Engagement title…"
-              className="titlebar-no-drag w-full bg-transparent text-sm text-white placeholder-white/30 outline-none mb-2"
+              className="titlebar-no-drag w-full bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 outline-none mb-2"
             />
             <div className="flex gap-1.5">
               <button onClick={handleAddTask} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-hub-gold text-white text-xs font-semibold hover:bg-hub-gold-light transition">Add</button>
-              <button onClick={() => { setAddingTask(false); setNewTitle('') }} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-white/10 text-white/60 text-xs hover:bg-white/15 transition">Cancel</button>
+              <button onClick={() => { setAddingTask(false); setNewTitle('') }} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-white/60 text-xs hover:bg-gray-200 dark:hover:bg-white/15 transition">Cancel</button>
             </div>
           </div>
         ) : (
           <button
             onClick={() => setAddingTask(true)}
-            className="titlebar-no-drag w-full flex items-center gap-1.5 px-3 py-2 rounded-lg text-white/25 hover:text-white/60 hover:bg-white/[0.04] transition text-sm"
+            className="titlebar-no-drag w-full flex items-center gap-1.5 px-3 py-2 rounded-lg text-gray-400 dark:text-white/25 hover:text-gray-600 dark:hover:text-white/60 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition text-sm"
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -208,7 +227,7 @@ function KanbanColumn({ columnId }: { columnId: string }) {
 // ── Board ──────────────────────────────────────────────────────────────────
 
 export default function KanbanView() {
-  const { columns, tasks, moveTask, reorderWithinColumn, addColumn } = useWorkspace()
+  const { columns, tasks, moveTask, reorderWithinColumn, addColumn, areas } = useWorkspace()
   const [activeTask, setActiveTask] = useState<Task | null>(null)
 
   const sensors = useSensors(
@@ -262,11 +281,11 @@ export default function KanbanView() {
           <div className="flex gap-4 p-5 h-full items-start min-w-max">
             {columns
               .sort((a, b) => a.position - b.position)
-              .map(col => <KanbanColumn key={col.id} columnId={col.id} />)}
+              .map(col => <KanbanColumn key={col.id} columnId={col.id} areas={areas} />)}
 
             <button
               onClick={addColumn}
-              className="titlebar-no-drag flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-white/[0.12] text-white/30 hover:text-white/60 hover:border-white/25 transition text-sm mt-8 w-56 shrink-0"
+              className="titlebar-no-drag flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-gray-300 dark:border-white/[0.12] text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/60 hover:border-gray-400 dark:hover:border-white/25 transition text-sm mt-8 w-56 shrink-0"
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -276,7 +295,7 @@ export default function KanbanView() {
           </div>
 
           <DragOverlay>
-            {activeTask && <TaskCardDisplay task={activeTask} isDragging={true} />}
+            {activeTask && <TaskCardDisplay task={activeTask} isDragging areas={areas} />}
           </DragOverlay>
         </DndContext>
       </div>
