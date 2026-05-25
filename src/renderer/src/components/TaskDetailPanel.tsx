@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type {
   Task, ContentType, Priority, AreaOfAnalysis,
   Source, TaskComment, ActivityEntry,
@@ -8,6 +8,7 @@ import {
   CONTENT_TYPE_COLORS,
 } from '../types'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { useAuth } from '../contexts/AuthContext'
 import RichTextEditor from './RichTextEditor'
 import ClaudeAISidebar from './ClaudeAISidebar'
 
@@ -46,7 +47,11 @@ function fmtShort(iso: string) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function TaskDetailPanel() {
-  const { selectedTask, selectTask, updateTask, deleteTask, columns, members, areas } = useWorkspace()
+  const { selectedTask, selectTask, updateTask, deleteTask, columns, members, areas, labels, refreshTaskMeta } = useWorkspace()
+  const { localUser } = useAuth()
+  const currentUserId   = localUser?.id   ?? 'local-admin'
+  const currentUserName = localUser?.name ?? 'Dorian Kantor'
+  const isAdminUser     = localUser?.role === 'admin'
 
   // Editing state — overrides selected task fields until saved
   const [editing, setEditing] = useState<Partial<Task>>({})
@@ -55,9 +60,11 @@ export default function TaskDetailPanel() {
   const [claudeOpen, setClaudeOpen] = useState(false)
 
   // Comments
-  const [comments, setComments]     = useState<TaskComment[]>([])
-  const [newComment, setNewComment]  = useState('')
+  const [comments, setComments]       = useState<TaskComment[]>([])
+  const [newComment, setNewComment]   = useState('')
   const [addingComment, setAddingComment] = useState(false)
+  const [editingCommentId, setEditingCommentId]       = useState<string | null>(null)
+  const [editingCommentContent, setEditingCommentContent] = useState('')
 
   // Activity
   const [activity, setActivity] = useState<ActivityEntry[]>([])
@@ -70,12 +77,36 @@ export default function TaskDetailPanel() {
     title: string; url: string; note: string
   }>({ type: 'url', title: '', url: '', note: '' })
 
-  // Attachments (Google Docs / Drive links — stored in local state for now)
-  const [attachments, setAttachments] = useState<{ id: string; title: string; url: string }[]>([])
-  const [showAddAtt, setShowAddAtt]     = useState(false)
-  const [newAtt, setNewAtt] = useState({ title: '', url: '' })
+  // Attachments — persisted to SQLite
+  const [attachments, setAttachments]   = useState<TaskAttachment[]>([])
+  const [showAddAttUrl, setShowAddAttUrl] = useState(false)
+  const [newAttName, setNewAttName]       = useState('')
+  const [newAttUrl, setNewAttUrl]         = useState('')
+  const [attLoading, setAttLoading]       = useState(false)
+
+  // Checklists
+  const [checklists, setChecklists]       = useState<Checklist[]>([])
+  const [showAddChecklist, setShowAddChecklist] = useState(false)
+  const [newChecklistTitle, setNewChecklistTitle] = useState('Checklist')
+  const [newItemText, setNewItemText]     = useState<Record<string, string>>({})
+
+  // Labels
+  const [taskLabels, setTaskLabels]       = useState<Label[]>([])
+  const [showLabelPicker, setShowLabelPicker] = useState(false)
 
   const titleRef = useRef<HTMLInputElement>(null)
+
+  const loadAttachments = useCallback(async (taskId: string) => {
+    try { setAttachments(await window.api.attachments.get(taskId)) } catch {}
+  }, [])
+
+  const loadChecklists = useCallback(async (taskId: string) => {
+    try { setChecklists(await window.api.checklists.get(taskId)) } catch {}
+  }, [])
+
+  const loadTaskLabels = useCallback(async (taskId: string) => {
+    try { setTaskLabels(await window.api.taskLabels.get(taskId)) } catch {}
+  }, [])
 
   // Reset all local state when the selected task changes
   useEffect(() => {
@@ -86,13 +117,23 @@ export default function TaskDetailPanel() {
     setActivity([])
     setNewComment('')
     setAddingComment(false)
+    setEditingCommentId(null)
     setSources(selectedTask.sources_json ? (JSON.parse(selectedTask.sources_json) as Source[]) : [])
     setAttachments([])
+    setShowAddAttUrl(false)
+    setNewAttName('')
+    setNewAttUrl('')
+    setChecklists([])
+    setShowAddChecklist(false)
+    setTaskLabels([])
+    setShowLabelPicker(false)
     setShowAddSource(false)
-    setShowAddAtt(false)
 
     window.api.comments.get(selectedTask.id).then(data => setComments(data))
     window.api.activity.get(selectedTask.id).then(data => setActivity(data))
+    loadAttachments(selectedTask.id)
+    loadChecklists(selectedTask.id)
+    loadTaskLabels(selectedTask.id)
   }, [selectedTask?.id])
 
   if (!selectedTask) return null
@@ -148,24 +189,121 @@ export default function TaskDetailPanel() {
     if (!newComment.trim()) return
     const comment = await window.api.comments.add({
       task_id: selectedTask.id,
-      author_id: 'admin',
-      author_name: 'Dorian Kantor',
+      author_id: currentUserId,
+      author_name: currentUserName,
       content: newComment.trim(),
     })
     setComments(prev => [...prev, comment])
     const entry = await window.api.activity.add({
       task_id: selectedTask.id,
-      actor_name: 'Dorian Kantor',
+      actor_name: currentUserName,
       action: 'added a comment',
     })
     setActivity(prev => [...prev, entry])
     setNewComment('')
     setAddingComment(false)
+    refreshTaskMeta(selectedTask.id)
   }
 
   async function handleDeleteComment(id: string) {
     await window.api.comments.delete(id)
     setComments(prev => prev.filter(c => c.id !== id))
+    refreshTaskMeta(selectedTask.id)
+  }
+
+  async function handleSaveCommentEdit(id: string) {
+    if (!editingCommentContent.trim()) return
+    await window.api.comments.update(id, editingCommentContent.trim())
+    setComments(prev => prev.map(c => c.id === id ? { ...c, content: editingCommentContent.trim() } : c))
+    setEditingCommentId(null)
+    setEditingCommentContent('')
+  }
+
+  // ── Attachments ───────────────────────────────────────────────────────────
+
+  async function handleAddFile() {
+    setAttLoading(true)
+    try {
+      const result = await window.api.attachments.addFile(selectedTask.id, currentUserId, currentUserName)
+      if (!result.canceled) {
+        await loadAttachments(selectedTask.id)
+        refreshTaskMeta(selectedTask.id)
+      }
+    } finally { setAttLoading(false) }
+  }
+
+  async function handleAddAttUrl() {
+    const url = newAttUrl.trim()
+    if (!url) return
+    const type = url.includes('docs.google.com') ? 'gdoc' : 'url'
+    await window.api.attachments.addUrl(selectedTask.id, newAttName || url, url, type, currentUserId, currentUserName)
+    await loadAttachments(selectedTask.id)
+    refreshTaskMeta(selectedTask.id)
+    setNewAttName('')
+    setNewAttUrl('')
+    setShowAddAttUrl(false)
+  }
+
+  async function handleDeleteAttachment(id: string) {
+    await window.api.attachments.delete(id)
+    setAttachments(prev => prev.filter(a => a.id !== id))
+    refreshTaskMeta(selectedTask.id)
+  }
+
+  // ── Checklists ────────────────────────────────────────────────────────────
+
+  async function handleCreateChecklist() {
+    if (!newChecklistTitle.trim()) return
+    await window.api.checklists.create(selectedTask.id, newChecklistTitle.trim())
+    await loadChecklists(selectedTask.id)
+    setNewChecklistTitle('Checklist')
+    setShowAddChecklist(false)
+    refreshTaskMeta(selectedTask.id)
+  }
+
+  async function handleDeleteChecklist(checklistId: string) {
+    await window.api.checklists.delete(checklistId)
+    setChecklists(prev => prev.filter(cl => cl.id !== checklistId))
+    refreshTaskMeta(selectedTask.id)
+  }
+
+  async function handleAddChecklistItem(checklistId: string) {
+    const text = newItemText[checklistId]?.trim()
+    if (!text) return
+    await window.api.checklistItems.add(checklistId, selectedTask.id, text)
+    await loadChecklists(selectedTask.id)
+    setNewItemText(prev => ({ ...prev, [checklistId]: '' }))
+    refreshTaskMeta(selectedTask.id)
+  }
+
+  async function handleToggleItem(itemId: string, checked: boolean) {
+    await window.api.checklistItems.toggle(itemId, !checked)
+    setChecklists(prev => prev.map(cl => ({
+      ...cl,
+      items: cl.items.map(i => i.id === itemId ? { ...i, checked: checked ? 0 : 1 } : i)
+    })))
+    refreshTaskMeta(selectedTask.id)
+  }
+
+  async function handleDeleteItem(itemId: string) {
+    await window.api.checklistItems.delete(itemId)
+    setChecklists(prev => prev.map(cl => ({
+      ...cl,
+      items: cl.items.filter(i => i.id !== itemId)
+    })))
+    refreshTaskMeta(selectedTask.id)
+  }
+
+  // ── Labels ────────────────────────────────────────────────────────────────
+
+  async function handleToggleLabel(labelId: string) {
+    const isSelected = taskLabels.some(l => l.id === labelId)
+    const newIds = isSelected
+      ? taskLabels.filter(l => l.id !== labelId).map(l => l.id)
+      : [...taskLabels.map(l => l.id), labelId]
+    await window.api.taskLabels.set(selectedTask.id, newIds)
+    await loadTaskLabels(selectedTask.id)
+    refreshTaskMeta(selectedTask.id)
   }
 
   // ── Assignees ────────────────────────────────────────────────────────────

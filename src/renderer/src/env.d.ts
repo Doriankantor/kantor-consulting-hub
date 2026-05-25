@@ -36,6 +36,68 @@ interface LocalTeamMember {
   last_active: string | null
 }
 
+interface Label {
+  id: string
+  name: string
+  color: string
+  position: number
+  created_at: string
+}
+
+interface Checklist {
+  id: string
+  task_id: string
+  title: string
+  position: number
+  created_at: string
+  items: ChecklistItem[]
+}
+
+interface ChecklistItem {
+  id: string
+  checklist_id: string
+  task_id: string
+  text: string
+  checked: number
+  position: number
+  created_at: string
+}
+
+interface TaskAttachment {
+  id: string
+  task_id: string
+  name: string
+  type: 'file' | 'gdoc' | 'url'
+  local_path: string | null
+  url: string | null
+  mime_type: string | null
+  size_bytes: number | null
+  author_id: string
+  author_name: string
+  created_at: string
+}
+
+interface AppNotification {
+  id: string
+  user_id: string
+  type: 'comment' | 'mention' | 'assignment' | 'deadline' | 'stage_change' | 'attachment'
+  title: string
+  body: string | null
+  task_id: string | null
+  task_title: string | null
+  actor_name: string | null
+  read: number
+  created_at: string
+}
+
+interface ChatMessage {
+  id: string
+  author_id: string
+  author_name: string
+  content: string
+  created_at: string
+}
+
 interface Window {
   api: {
     auth: {
@@ -59,6 +121,7 @@ interface Window {
       get:    (taskId: string) => Promise<import('./types').TaskComment[]>
       add:    (c: { task_id: string; author_id: string; author_name: string; content: string }) => Promise<import('./types').TaskComment>
       delete: (commentId: string) => Promise<boolean>
+      update: (id: string, content: string) => Promise<{ ok?: boolean }>
     }
     activity: {
       get: (taskId: string) => Promise<import('./types').ActivityEntry[]>
@@ -102,6 +165,48 @@ interface Window {
       saveUserKey:      (userId: string, apiKey: string) => Promise<{ ok?: boolean }>
       removeUserKey:    (userId: string)                 => Promise<{ ok?: boolean }>
       getUserKeyStatus: (userId: string)                 => Promise<{ hasKey: boolean }>
+    }
+    labels: {
+      list:   ()                                          => Promise<Label[]>
+      create: (name: string, color: string)              => Promise<{ ok?: boolean; id?: string }>
+      update: (id: string, name: string, color: string)  => Promise<{ ok?: boolean }>
+      delete: (id: string)                               => Promise<{ ok?: boolean }>
+    }
+    taskLabels: {
+      get: (taskId: string)                => Promise<Label[]>
+      set: (taskId: string, ids: string[]) => Promise<{ ok?: boolean }>
+    }
+    checklists: {
+      get:    (taskId: string)                    => Promise<Checklist[]>
+      create: (taskId: string, title: string)    => Promise<{ ok?: boolean; id?: string }>
+      delete: (checklistId: string)              => Promise<{ ok?: boolean }>
+    }
+    checklistItems: {
+      add:    (checklistId: string, taskId: string, text: string) => Promise<{ ok?: boolean; id?: string }>
+      toggle: (itemId: string, checked: boolean)                   => Promise<{ ok?: boolean }>
+      delete: (itemId: string)                                     => Promise<{ ok?: boolean }>
+      update: (itemId: string, text: string)                       => Promise<{ ok?: boolean }>
+    }
+    attachments: {
+      get:     (taskId: string)                                                                             => Promise<TaskAttachment[]>
+      addFile: (taskId: string, authorId: string, authorName: string)                                     => Promise<{ ok?: boolean; id?: string; name?: string; local_path?: string; canceled?: boolean }>
+      addUrl:  (taskId: string, name: string, url: string, type: string, authorId: string, authorName: string) => Promise<{ ok?: boolean; id?: string }>
+      delete:  (id: string)                                                                                 => Promise<{ ok?: boolean }>
+      open:    (attachmentId: string)                                                                       => Promise<{ ok?: boolean; error?: string }>
+    }
+    notifications: {
+      get:         (userId: string) => Promise<AppNotification[]>
+      unreadCount: (userId: string) => Promise<number>
+      markRead:    (id: string)     => Promise<{ ok?: boolean }>
+      markAllRead: (userId: string) => Promise<{ ok?: boolean }>
+      create:      (n: { user_id: string; type: string; title: string; body?: string; task_id?: string; task_title?: string; actor_name?: string }) => Promise<{ ok?: boolean; id?: string }>
+    }
+    chat: {
+      getMessages: (limit?: number) => Promise<ChatMessage[]>
+      send:        (msg: { author_id: string; author_name: string; content: string }) => Promise<ChatMessage>
+    }
+    dialog: {
+      openFile: () => Promise<{ canceled: boolean; filePaths: string[] }>
     }
   }
 }

@@ -23,6 +23,7 @@ const api = {
     get:    (taskId: string)    => ipcRenderer.invoke('comments:get', taskId),
     add:    (c: { task_id: string; author_id: string; author_name: string; content: string }) => ipcRenderer.invoke('comments:add', c),
     delete: (id: string)        => ipcRenderer.invoke('comments:delete', id),
+    update: (id: string, content: string) => ipcRenderer.invoke('comments:update', id, content),
   },
   activity: {
     get: (taskId: string) => ipcRenderer.invoke('activity:get', taskId),
@@ -71,6 +72,48 @@ const api = {
     saveUserKey:      (userId: string, apiKey: string) => ipcRenderer.invoke('claude:saveUserKey', userId, apiKey),
     removeUserKey:    (userId: string)                 => ipcRenderer.invoke('claude:removeUserKey', userId),
     getUserKeyStatus: (userId: string)                 => ipcRenderer.invoke('claude:getUserKeyStatus', userId),
+  },
+  labels: {
+    list:   ()                                          => ipcRenderer.invoke('labels:list'),
+    create: (name: string, color: string)              => ipcRenderer.invoke('labels:create', name, color),
+    update: (id: string, name: string, color: string)  => ipcRenderer.invoke('labels:update', id, name, color),
+    delete: (id: string)                               => ipcRenderer.invoke('labels:delete', id),
+  },
+  taskLabels: {
+    get: (taskId: string)                => ipcRenderer.invoke('taskLabels:get', taskId),
+    set: (taskId: string, ids: string[]) => ipcRenderer.invoke('taskLabels:set', taskId, ids),
+  },
+  checklists: {
+    get:    (taskId: string)                    => ipcRenderer.invoke('checklists:get', taskId),
+    create: (taskId: string, title: string)     => ipcRenderer.invoke('checklists:create', taskId, title),
+    delete: (checklistId: string)               => ipcRenderer.invoke('checklists:delete', checklistId),
+  },
+  checklistItems: {
+    add:    (checklistId: string, taskId: string, text: string) => ipcRenderer.invoke('checklistItems:add', checklistId, taskId, text),
+    toggle: (itemId: string, checked: boolean)                   => ipcRenderer.invoke('checklistItems:toggle', itemId, checked),
+    delete: (itemId: string)                                     => ipcRenderer.invoke('checklistItems:delete', itemId),
+    update: (itemId: string, text: string)                       => ipcRenderer.invoke('checklistItems:update', itemId, text),
+  },
+  attachments: {
+    get:     (taskId: string)                                                                                         => ipcRenderer.invoke('attachments:get', taskId),
+    addFile: (taskId: string, authorId: string, authorName: string)                                                  => ipcRenderer.invoke('attachments:addFile', taskId, authorId, authorName),
+    addUrl:  (taskId: string, name: string, url: string, type: string, authorId: string, authorName: string)        => ipcRenderer.invoke('attachments:addUrl', taskId, name, url, type, authorId, authorName),
+    delete:  (id: string)                                                                                             => ipcRenderer.invoke('attachments:delete', id),
+    open:    (attachmentId: string)                                                                                   => ipcRenderer.invoke('attachments:open', attachmentId),
+  },
+  notifications: {
+    get:         (userId: string)  => ipcRenderer.invoke('notifications:get', userId),
+    unreadCount: (userId: string)  => ipcRenderer.invoke('notifications:unreadCount', userId),
+    markRead:    (id: string)      => ipcRenderer.invoke('notifications:markRead', id),
+    markAllRead: (userId: string)  => ipcRenderer.invoke('notifications:markAllRead', userId),
+    create:      (n: { user_id: string; type: string; title: string; body?: string; task_id?: string; task_title?: string; actor_name?: string }) => ipcRenderer.invoke('notifications:create', n),
+  },
+  chat: {
+    getMessages: (limit?: number) => ipcRenderer.invoke('chat:getMessages', limit ?? 100),
+    send:        (msg: { author_id: string; author_name: string; content: string }) => ipcRenderer.invoke('chat:send', msg),
+  },
+  dialog: {
+    openFile: () => ipcRenderer.invoke('dialog:openFile'),
   },
 }
 

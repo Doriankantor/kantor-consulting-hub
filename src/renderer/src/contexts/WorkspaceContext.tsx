@@ -20,7 +20,13 @@ interface WorkspaceContextType {
   tasks: Task[]
   members: TeamMember[]
   areas: Area[]
+  labels: Label[]
   loading: boolean
+
+  // Card meta maps (for Kanban display)
+  commentCounts: Record<string, number>
+  checklistSummaries: Record<string, { total: number; done: number }>
+  taskLabelMap: Record<string, Label[]>
 
   // View state
   viewMode: ViewMode
@@ -41,8 +47,10 @@ interface WorkspaceContextType {
   renameColumn: (columnId: string, name: string) => Promise<void>
   addColumn: () => Promise<void>
 
-  // Area actions
+  // Refresh actions
   refreshAreas: () => Promise<void>
+  refreshLabels: () => Promise<void>
+  refreshTaskMeta: (taskId?: string) => Promise<void>
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined)
@@ -54,6 +62,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>(SEED_TASKS)
   const [members, setMembers] = useState<TeamMember[]>(SEED_MEMBERS)
   const [areas, setAreas] = useState<Area[]>([])
+  const [labels, setLabels] = useState<Label[]>([])
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
+  const [checklistSummaries, setChecklistSummaries] = useState<Record<string, { total: number; done: number }>>({})
+  const [taskLabelMap, setTaskLabelMap] = useState<Record<string, Label[]>>({})
   const [loading, setLoading] = useState(false)
   const [viewMode, setViewModeState] = useState<ViewMode>(() => {
     return (localStorage.getItem('workspace-view') as ViewMode) ?? 'kanban'
@@ -68,7 +80,6 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       const data = await window.api.areas.list()
       setAreas(data)
     } catch {
-      // If IPC not available, set default areas
       setAreas([
         { id: 'latin-america',           name: 'Latin America',          color: '#22c55e', is_default: 1, position: 0, created_at: '' },
         { id: 'us-foreign-policy',       name: 'US Foreign Policy',      color: '#3b82f6', is_default: 1, position: 1, created_at: '' },
@@ -81,11 +92,72 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const refreshAreas = loadAreas
 
+  // ── Load labels ──────────────────────────────────────────────────────────
+
+  const loadLabels = useCallback(async () => {
+    try {
+      const data = await window.api.labels.list()
+      setLabels(data)
+    } catch {}
+  }, [])
+
+  const refreshLabels = loadLabels
+
+  // ── Load card meta (comment counts, checklist summaries, task labels) ────
+
+  const loadTaskMeta = useCallback(async (taskList: Task[]) => {
+    if (!taskList.length) return
+    try {
+      const [commentResults, checklistResults, labelResults] = await Promise.all([
+        Promise.all(taskList.map(async t => {
+          try { const cs = await window.api.comments.get(t.id); return [t.id, cs.length] as [string, number] }
+          catch { return [t.id, 0] as [string, number] }
+        })),
+        Promise.all(taskList.map(async t => {
+          try {
+            const cls = await window.api.checklists.get(t.id)
+            const total = cls.reduce((s, cl) => s + cl.items.length, 0)
+            const done  = cls.reduce((s, cl) => s + cl.items.filter(i => i.checked).length, 0)
+            return [t.id, { total, done }] as [string, { total: number; done: number }]
+          } catch { return [t.id, { total: 0, done: 0 }] as [string, { total: number; done: number }] }
+        })),
+        Promise.all(taskList.map(async t => {
+          try { const lbls = await window.api.taskLabels.get(t.id); return [t.id, lbls] as [string, Label[]] }
+          catch { return [t.id, []] as [string, Label[]] }
+        })),
+      ])
+      setCommentCounts(Object.fromEntries(commentResults))
+      setChecklistSummaries(Object.fromEntries(checklistResults))
+      setTaskLabelMap(Object.fromEntries(labelResults))
+    } catch {}
+  }, [])
+
+  const refreshTaskMeta = useCallback(async (taskId?: string) => {
+    if (taskId) {
+      // Refresh single task
+      try {
+        const [cs, cls, lbls] = await Promise.all([
+          window.api.comments.get(taskId),
+          window.api.checklists.get(taskId),
+          window.api.taskLabels.get(taskId),
+        ])
+        setCommentCounts(prev => ({ ...prev, [taskId]: cs.length }))
+        const total = cls.reduce((s, cl) => s + cl.items.length, 0)
+        const done  = cls.reduce((s, cl) => s + cl.items.filter(i => i.checked).length, 0)
+        setChecklistSummaries(prev => ({ ...prev, [taskId]: { total, done } }))
+        setTaskLabelMap(prev => ({ ...prev, [taskId]: lbls }))
+      } catch {}
+    } else {
+      await loadTaskMeta(tasks)
+    }
+  }, [tasks, loadTaskMeta])
+
   // ── Load from Supabase (graceful fallback to seed) ───────────────────────
 
   useEffect(() => {
     let mounted = true
     loadAreas()
+    loadLabels()
     async function load() {
       try {
         const [tasksRes, colsRes, membersRes] = await Promise.all([
@@ -98,6 +170,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
         if (tasksRes.data && tasksRes.data.length > 0) {
           setTasks(tasksRes.data as Task[])
+          loadTaskMeta(tasksRes.data as Task[])
+        } else {
+          loadTaskMeta(SEED_TASKS)
         }
         if (colsRes.data && colsRes.data.length > 0) {
           setColumns(colsRes.data as Column[])
@@ -107,12 +182,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         }
         supabaseReady.current = true
       } catch {
-        // Tables don't exist yet — seed data is already loaded
+        // Tables don't exist yet — seed data is already loaded; still load meta
+      loadTaskMeta(SEED_TASKS)
       }
       if (mounted) setLoading(false)
     }
     load()
     return () => { mounted = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ── Realtime subscription ────────────────────────────────────────────────
@@ -274,6 +351,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       tasks,
       members,
       areas,
+      labels,
+      commentCounts,
+      checklistSummaries,
+      taskLabelMap,
       loading,
       viewMode,
       setViewMode,
@@ -287,6 +368,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       renameColumn,
       addColumn,
       refreshAreas,
+      refreshLabels,
+      refreshTaskMeta,
     }}>
       {children}
     </WorkspaceContext.Provider>

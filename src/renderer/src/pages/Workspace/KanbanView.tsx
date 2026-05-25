@@ -37,6 +37,17 @@ function isOverdue(iso: string | null, colId: string) {
   return new Date(iso) < new Date()
 }
 
+const AVATAR_PALETTE = ['#ef4444','#f59e0b','#22c55e','#3b82f6','#a855f7','#06b6d4','#ec4899','#8b5cf6']
+function memberColor(userId: string): string {
+  const hash = userId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length]
+}
+function memberInitials(name: string | null, email: string): string {
+  if (!name) return email.slice(0, 2).toUpperCase()
+  const parts = name.trim().split(' ')
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || email.slice(0, 2).toUpperCase()
+}
+
 // ── Area color helper ──────────────────────────────────────────────────────
 
 function getAreaColor(areaId: string | null, areas: Area[]): string {
@@ -48,9 +59,27 @@ function getAreaColor(areaId: string | null, areas: Area[]): string {
 // ── Task card (display) ────────────────────────────────────────────────────
 
 function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDragging?: boolean; areas: Area[] }) {
-  const { selectTask } = useWorkspace()
+  const { selectTask, commentCounts, checklistSummaries, taskLabelMap, members } = useWorkspace()
   const overdue = isOverdue(task.due_date, task.column_id)
   const areaColor = getAreaColor(task.area_of_analysis, areas)
+  const commentCount = commentCounts[task.id] ?? 0
+  const clSummary = checklistSummaries[task.id]
+  const taskLabels = taskLabelMap[task.id] ?? []
+
+  // Assignees: use assignee_ids array
+  const assigneeIds = task.assignee_ids ?? []
+  const assigneeMembers = assigneeIds
+    .map(id => members.find(m => m.id === id))
+    .filter(Boolean) as typeof members
+
+  const visibleAssignees = assigneeMembers.slice(0, 2)
+  const extraAssignees = assigneeMembers.length > 2 ? assigneeMembers.length - 2 : 0
+
+  // Labels: show up to 3
+  const visibleLabels = taskLabels.slice(0, 3)
+  const extraLabels = taskLabels.length > 3 ? taskLabels.length - 3 : 0
+
+  const hasFooter = commentCount > 0 || (clSummary && clSummary.total > 0) || assigneeMembers.length > 0
 
   return (
     <div
@@ -71,7 +100,28 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
       </div>
 
       {/* Title */}
-      <p className="text-sm font-semibold text-gray-900 dark:text-white leading-snug mb-2.5 line-clamp-2">{task.title}</p>
+      <p className="text-sm font-semibold text-gray-900 dark:text-white leading-snug mb-2 line-clamp-2">{task.title}</p>
+
+      {/* Labels */}
+      {visibleLabels.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-2">
+          {visibleLabels.map(lbl => (
+            <span
+              key={lbl.id}
+              style={{ backgroundColor: lbl.color + '25', borderColor: lbl.color + '60', color: lbl.color }}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold border"
+            >
+              <span style={{ backgroundColor: lbl.color }} className="w-1.5 h-1.5 rounded-full shrink-0" />
+              {lbl.name}
+            </span>
+          ))}
+          {extraLabels > 0 && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-gray-100 dark:bg-white/10 text-gray-400 dark:text-white/30 border border-gray-200 dark:border-white/10">
+              +{extraLabels}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Area tag */}
       {task.area_of_analysis && (() => {
@@ -95,12 +145,66 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
 
       {/* Due date */}
       {task.due_date && (
-        <div className={`flex items-center gap-1 text-[11px] ${overdue ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-white/35'}`}>
+        <div className={`flex items-center gap-1 text-[11px] mb-2 ${overdue ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-white/35'}`}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <rect x="1" y="2" width="8" height="7.5" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
             <path d="M3 1v2M7 1v2M1 5h8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
           </svg>
           {overdue ? 'Overdue · ' : ''}{formatDate(task.due_date)}
+        </div>
+      )}
+
+      {/* Checklist progress bar */}
+      {clSummary && clSummary.total > 0 && (
+        <div className="mb-2">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <svg width="9" height="9" viewBox="0 0 9 9" fill="none" className="text-gray-400 dark:text-white/30 shrink-0">
+              <path d="M1.5 4.5l2 2 4-4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span className={`text-[10px] tabular-nums ${clSummary.done === clSummary.total ? 'text-green-500 dark:text-green-400' : 'text-gray-400 dark:text-white/30'}`}>
+              {clSummary.done}/{clSummary.total}
+            </span>
+          </div>
+          <div className="h-0.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${clSummary.done === clSummary.total ? 'bg-green-500' : 'bg-hub-blue'}`}
+              style={{ width: `${Math.round((clSummary.done / clSummary.total) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Footer: assignees + comment badge */}
+      {hasFooter && (
+        <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-gray-100 dark:border-white/[0.05]">
+          {/* Assignee avatars */}
+          <div className="flex items-center -space-x-1">
+            {visibleAssignees.map(m => (
+              <div
+                key={m.id}
+                title={m.full_name ?? m.email}
+                style={{ backgroundColor: memberColor(m.id) }}
+                className="w-5 h-5 rounded-full border-2 border-white dark:border-[#1a2233] flex items-center justify-center text-[8px] font-bold text-white shrink-0"
+              >
+                {memberInitials(m.full_name, m.email)}
+              </div>
+            ))}
+            {extraAssignees > 0 && (
+              <div className="w-5 h-5 rounded-full border-2 border-white dark:border-[#1a2233] bg-gray-200 dark:bg-white/15 flex items-center justify-center text-[8px] font-bold text-gray-500 dark:text-white/50">
+                +{extraAssignees}
+              </div>
+            )}
+          </div>
+
+          {/* Comment badge */}
+          {commentCount > 0 && (
+            <div className="flex items-center gap-0.5 text-[10px] text-gray-400 dark:text-white/30">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M1 1.5h8v5.5H6L5 9 4 7H1V1.5z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+              </svg>
+              {commentCount}
+            </div>
+          )}
         </div>
       )}
     </div>

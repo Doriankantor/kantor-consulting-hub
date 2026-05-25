@@ -189,6 +189,98 @@ export function initDatabase(): void {
     );
   `)
 
+  // ── New tables: labels, checklists, attachments, notifications, chat ─────
+  db.exec(`
+    -- Labels (workspace-level, admin-creatable)
+    CREATE TABLE IF NOT EXISTS labels (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      color      TEXT NOT NULL DEFAULT '#6366f1',
+      position   INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    -- Seed default labels
+    INSERT OR IGNORE INTO labels (id, name, color, position) VALUES
+      ('label-urgent',    'Urgent',     '#ef4444', 0),
+      ('label-review',    'Review',     '#f59e0b', 1),
+      ('label-approved',  'Approved',   '#22c55e', 2),
+      ('label-draft',     'Draft',      '#6366f1', 3),
+      ('label-blocked',   'Blocked',    '#dc2626', 4);
+
+    -- Task ↔ Label many-to-many
+    CREATE TABLE IF NOT EXISTS task_labels (
+      task_id  TEXT NOT NULL,
+      label_id TEXT NOT NULL,
+      PRIMARY KEY (task_id, label_id)
+    );
+
+    -- Checklists (a task can have multiple checklists)
+    CREATE TABLE IF NOT EXISTS task_checklists (
+      id         TEXT PRIMARY KEY,
+      task_id    TEXT NOT NULL,
+      title      TEXT NOT NULL DEFAULT 'Checklist',
+      position   INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Checklist items
+    CREATE TABLE IF NOT EXISTS task_checklist_items (
+      id           TEXT PRIMARY KEY,
+      checklist_id TEXT NOT NULL,
+      task_id      TEXT NOT NULL,
+      text         TEXT NOT NULL,
+      checked      INTEGER DEFAULT 0,
+      position     INTEGER DEFAULT 0,
+      created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Attachments (persisted, replaces in-memory React state)
+    CREATE TABLE IF NOT EXISTS task_attachments (
+      id          TEXT PRIMARY KEY,
+      task_id     TEXT NOT NULL,
+      name        TEXT NOT NULL,
+      type        TEXT NOT NULL DEFAULT 'file',
+      local_path  TEXT,
+      url         TEXT,
+      mime_type   TEXT,
+      size_bytes  INTEGER,
+      author_id   TEXT NOT NULL,
+      author_name TEXT NOT NULL,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Notifications (per-user inbox)
+    CREATE TABLE IF NOT EXISTS notifications (
+      id          TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL,
+      type        TEXT NOT NULL,
+      title       TEXT NOT NULL,
+      body        TEXT,
+      task_id     TEXT,
+      task_title  TEXT,
+      actor_name  TEXT,
+      read        INTEGER DEFAULT 0,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Chat messages (team-wide)
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id          TEXT PRIMARY KEY,
+      author_id   TEXT NOT NULL,
+      author_name TEXT NOT NULL,
+      content     TEXT NOT NULL,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `)
+
+  // Migrate task_comments: add updated_at and mentions_json columns
+  try { db.exec('ALTER TABLE task_comments ADD COLUMN updated_at DATETIME;') } catch {}
+  try { db.exec('ALTER TABLE task_comments ADD COLUMN mentions_json TEXT;') } catch {}
+
+  // Migrate tasks: add start_date, assignees_json columns
+  try { db.exec('ALTER TABLE tasks ADD COLUMN start_date TEXT;') } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN assignees_json TEXT;') } catch {}
+
   // Migrate admin from settings → local_users (idempotent)
   {
     const _gs = (k: string) =>

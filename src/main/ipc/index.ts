@@ -1,5 +1,7 @@
-import { ipcMain, app } from 'electron'
+import { ipcMain, app, dialog, shell } from 'electron'
 import Anthropic from '@anthropic-ai/sdk'
+import { copyFileSync, mkdirSync, existsSync } from 'fs'
+import { join, basename, extname } from 'path'
 import { randomBytes } from 'crypto'
 import { getDatabase, hashPassword } from '../db'
 import { driveSync } from '../google/drive'
@@ -359,6 +361,204 @@ function registerClaudeHandlers() {
   })
 }
 
+// ── Labels ─────────────────────────────────────────────────────────────────
+
+function registerLabelHandlers() {
+  ipcMain.handle('labels:list', () =>
+    getDatabase().prepare('SELECT * FROM labels ORDER BY position ASC').all()
+  )
+  ipcMain.handle('labels:create', (_e, name: string, color: string) => {
+    const id = 'label-' + Date.now().toString(36)
+    const maxPos = (getDatabase().prepare('SELECT MAX(position) as m FROM labels').get() as { m: number | null }).m ?? 0
+    getDatabase().prepare('INSERT INTO labels (id,name,color,position) VALUES (?,?,?,?)').run(id, name.trim(), color, maxPos + 1)
+    return { ok: true, id }
+  })
+  ipcMain.handle('labels:update', (_e, id: string, name: string, color: string) => {
+    getDatabase().prepare('UPDATE labels SET name=?,color=? WHERE id=?').run(name.trim(), color, id)
+    return { ok: true }
+  })
+  ipcMain.handle('labels:delete', (_e, id: string) => {
+    getDatabase().prepare('DELETE FROM task_labels WHERE label_id=?').run(id)
+    getDatabase().prepare('DELETE FROM labels WHERE id=?').run(id)
+    return { ok: true }
+  })
+  ipcMain.handle('taskLabels:get', (_e, taskId: string) => {
+    return getDatabase().prepare(`
+      SELECT l.* FROM labels l
+      JOIN task_labels tl ON tl.label_id = l.id
+      WHERE tl.task_id = ?
+      ORDER BY l.position ASC
+    `).all(taskId)
+  })
+  ipcMain.handle('taskLabels:set', (_e, taskId: string, labelIds: string[]) => {
+    const db = getDatabase()
+    db.prepare('DELETE FROM task_labels WHERE task_id=?').run(taskId)
+    const insert = db.prepare('INSERT OR IGNORE INTO task_labels (task_id,label_id) VALUES (?,?)')
+    for (const lid of labelIds) insert.run(taskId, lid)
+    return { ok: true }
+  })
+}
+
+// ── Checklists ─────────────────────────────────────────────────────────────
+
+function registerChecklistHandlers() {
+  ipcMain.handle('checklists:get', (_e, taskId: string) => {
+    const db = getDatabase()
+    const lists = db.prepare('SELECT * FROM task_checklists WHERE task_id=? ORDER BY position ASC').all(taskId) as any[]
+    for (const list of lists) {
+      list.items = db.prepare('SELECT * FROM task_checklist_items WHERE checklist_id=? ORDER BY position ASC').all(list.id)
+    }
+    return lists
+  })
+  ipcMain.handle('checklists:create', (_e, taskId: string, title: string) => {
+    const id = uuid()
+    const maxPos = (getDatabase().prepare('SELECT MAX(position) as m FROM task_checklists WHERE task_id=?').get(taskId) as { m: number | null }).m ?? 0
+    getDatabase().prepare('INSERT INTO task_checklists (id,task_id,title,position) VALUES (?,?,?,?)').run(id, taskId, title.trim(), maxPos + 1)
+    return { ok: true, id }
+  })
+  ipcMain.handle('checklists:delete', (_e, checklistId: string) => {
+    const db = getDatabase()
+    db.prepare('DELETE FROM task_checklist_items WHERE checklist_id=?').run(checklistId)
+    db.prepare('DELETE FROM task_checklists WHERE id=?').run(checklistId)
+    return { ok: true }
+  })
+  ipcMain.handle('checklistItems:add', (_e, checklistId: string, taskId: string, text: string) => {
+    const id = uuid()
+    const maxPos = (getDatabase().prepare('SELECT MAX(position) as m FROM task_checklist_items WHERE checklist_id=?').get(checklistId) as { m: number | null }).m ?? 0
+    getDatabase().prepare('INSERT INTO task_checklist_items (id,checklist_id,task_id,text,checked,position) VALUES (?,?,?,?,0,?)').run(id, checklistId, taskId, text.trim(), maxPos + 1)
+    return { ok: true, id }
+  })
+  ipcMain.handle('checklistItems:toggle', (_e, itemId: string, checked: boolean) => {
+    getDatabase().prepare('UPDATE task_checklist_items SET checked=? WHERE id=?').run(checked ? 1 : 0, itemId)
+    return { ok: true }
+  })
+  ipcMain.handle('checklistItems:delete', (_e, itemId: string) => {
+    getDatabase().prepare('DELETE FROM task_checklist_items WHERE id=?').run(itemId)
+    return { ok: true }
+  })
+  ipcMain.handle('checklistItems:update', (_e, itemId: string, text: string) => {
+    getDatabase().prepare('UPDATE task_checklist_items SET text=? WHERE id=?').run(text.trim(), itemId)
+    return { ok: true }
+  })
+}
+
+// ── Attachments ────────────────────────────────────────────────────────────
+
+function registerAttachmentHandlers() {
+  const userDataPath = app.getPath('userData')
+  const attachmentsDir = join(userDataPath, 'attachments')
+
+  ipcMain.handle('attachments:get', (_e, taskId: string) =>
+    getDatabase().prepare('SELECT * FROM task_attachments WHERE task_id=? ORDER BY created_at ASC').all(taskId)
+  )
+
+  ipcMain.handle('attachments:addFile', async (_e, taskId: string, authorId: string, authorName: string) => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openFile'], title: 'Select File to Attach' })
+    if (canceled || !filePaths[0]) return { canceled: true }
+
+    if (!existsSync(attachmentsDir)) mkdirSync(attachmentsDir, { recursive: true })
+
+    const srcPath = filePaths[0]
+    const ext = extname(srcPath)
+    const id = uuid()
+    const destPath = join(attachmentsDir, id + ext)
+    copyFileSync(srcPath, destPath)
+
+    const name = basename(srcPath)
+    getDatabase().prepare(`INSERT INTO task_attachments (id,task_id,name,type,local_path,mime_type,author_id,author_name) VALUES (?,?,?,?,?,?,?,?)`)
+      .run(id, taskId, name, 'file', destPath, '', authorId, authorName)
+    return { ok: true, id, name, local_path: destPath }
+  })
+
+  ipcMain.handle('attachments:addUrl', (_e, taskId: string, name: string, url: string, type: string, authorId: string, authorName: string) => {
+    const id = uuid()
+    getDatabase().prepare(`INSERT INTO task_attachments (id,task_id,name,type,url,author_id,author_name) VALUES (?,?,?,?,?,?,?)`)
+      .run(id, taskId, name.trim() || url, type || 'url', url.trim(), authorId, authorName)
+    return { ok: true, id }
+  })
+
+  ipcMain.handle('attachments:delete', (_e, id: string) => {
+    getDatabase().prepare('DELETE FROM task_attachments WHERE id=?').run(id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('attachments:open', async (_e, attachmentId: string) => {
+    const row = getDatabase().prepare('SELECT * FROM task_attachments WHERE id=?').get(attachmentId) as any
+    if (!row) return { error: 'Not found' }
+    if (row.local_path && existsSync(row.local_path)) {
+      await shell.openPath(row.local_path)
+      return { ok: true }
+    }
+    if (row.url) {
+      await shell.openExternal(row.url)
+      return { ok: true }
+    }
+    return { error: 'No file or URL' }
+  })
+}
+
+// ── Notifications ──────────────────────────────────────────────────────────
+
+function registerNotificationHandlers() {
+  ipcMain.handle('notifications:get', (_e, userId: string) =>
+    getDatabase().prepare('SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100').all(userId)
+  )
+  ipcMain.handle('notifications:unreadCount', (_e, userId: string) => {
+    const row = getDatabase().prepare('SELECT COUNT(*) as c FROM notifications WHERE user_id=? AND read=0').get(userId) as { c: number }
+    return row.c
+  })
+  ipcMain.handle('notifications:markRead', (_e, id: string) => {
+    getDatabase().prepare('UPDATE notifications SET read=1 WHERE id=?').run(id)
+    return { ok: true }
+  })
+  ipcMain.handle('notifications:markAllRead', (_e, userId: string) => {
+    getDatabase().prepare('UPDATE notifications SET read=1 WHERE user_id=?').run(userId)
+    return { ok: true }
+  })
+  ipcMain.handle('notifications:create', (_e, n: {
+    user_id: string; type: string; title: string; body?: string;
+    task_id?: string; task_title?: string; actor_name?: string
+  }) => {
+    const id = uuid()
+    getDatabase().prepare(`INSERT INTO notifications (id,user_id,type,title,body,task_id,task_title,actor_name)
+      VALUES (?,?,?,?,?,?,?,?)`)
+      .run(id, n.user_id, n.type, n.title, n.body ?? null, n.task_id ?? null, n.task_title ?? null, n.actor_name ?? null)
+    return { ok: true, id }
+  })
+}
+
+// ── Chat ───────────────────────────────────────────────────────────────────
+
+function registerChatHandlers() {
+  ipcMain.handle('chat:getMessages', (_e, limit: number = 100) =>
+    getDatabase().prepare('SELECT * FROM chat_messages ORDER BY created_at DESC LIMIT ?').all(limit).reverse()
+  )
+  ipcMain.handle('chat:send', (_e, msg: { author_id: string; author_name: string; content: string }) => {
+    const id = uuid()
+    const entry = { id, created_at: now(), ...msg }
+    getDatabase().prepare(`INSERT INTO chat_messages (id,author_id,author_name,content,created_at) VALUES (@id,@author_id,@author_name,@content,@created_at)`).run(entry)
+    return entry
+  })
+}
+
+// ── Comment edit ───────────────────────────────────────────────────────────
+
+function registerCommentEditHandler() {
+  ipcMain.handle('comments:update', (_e, id: string, content: string) => {
+    getDatabase().prepare('UPDATE task_comments SET content=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(content, id)
+    return { ok: true }
+  })
+}
+
+// ── Dialog ─────────────────────────────────────────────────────────────────
+
+function registerDialogHandlers() {
+  ipcMain.handle('dialog:openFile', async () => {
+    const result = await dialog.showOpenDialog({ properties: ['openFile'] })
+    return result
+  })
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 
 export function registerIpcHandlers(): void {
@@ -373,4 +573,11 @@ export function registerIpcHandlers(): void {
   registerAreaHandlers()
   registerAppHandlers()
   registerClaudeHandlers()
+  registerLabelHandlers()
+  registerChecklistHandlers()
+  registerAttachmentHandlers()
+  registerNotificationHandlers()
+  registerChatHandlers()
+  registerCommentEditHandler()
+  registerDialogHandlers()
 }
