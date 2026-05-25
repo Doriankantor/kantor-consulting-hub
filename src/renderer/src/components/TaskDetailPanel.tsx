@@ -47,7 +47,7 @@ function fmtShort(iso: string) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function TaskDetailPanel() {
-  const { selectedTask, selectTask, updateTask, deleteTask, columns, members, areas, labels, refreshTaskMeta } = useWorkspace()
+  const { selectedTask, selectTask, updateTask, deleteTask, columns, members, areas, labels, refreshTaskMeta, pendingSection, setPendingSection } = useWorkspace()
   const { localUser } = useAuth()
   const currentUserId   = localUser?.id   ?? 'local-admin'
   const currentUserName = localUser?.name ?? 'Dorian Kantor'
@@ -104,7 +104,15 @@ export default function TaskDetailPanel() {
     (m.full_name ?? m.email).toLowerCase().includes(mentionQuery.toLowerCase())
   ).slice(0, 5)
 
-  const titleRef = useRef<HTMLInputElement>(null)
+  const titleRef        = useRef<HTMLInputElement>(null)
+  const panelBodyRef    = useRef<HTMLDivElement>(null)
+  const sectionRefs: Record<string, React.RefObject<HTMLDivElement>> = {
+    stage:       useRef<HTMLDivElement>(null),
+    dates:       useRef<HTMLDivElement>(null),
+    members:     useRef<HTMLDivElement>(null),
+    comments:    useRef<HTMLDivElement>(null),
+    attachments: useRef<HTMLDivElement>(null),
+  }
 
   const loadAttachments = useCallback(async (taskId: string) => {
     try { setAttachments(await window.api.attachments.get(taskId)) } catch {}
@@ -145,6 +153,20 @@ export default function TaskDetailPanel() {
     loadChecklists(selectedTask.id)
     loadTaskLabels(selectedTask.id)
   }, [selectedTask?.id])
+
+  // Scroll to pending section when panel opens from inbox navigation
+  useEffect(() => {
+    if (!pendingSection || !selectedTask) return
+    const ref = sectionRefs[pendingSection]
+    if (!ref?.current) return
+    // Small delay to let layout settle
+    const t = setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setPendingSection(null)
+    }, 150)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSection, selectedTask?.id])
 
   if (!selectedTask) return null
 
@@ -426,7 +448,7 @@ export default function TaskDetailPanel() {
           </div>
 
           {/* ── Body ────────────────────────────────────────────────────── */}
-          <div className="flex-1 overflow-y-auto">
+          <div ref={panelBodyRef} className="flex-1 overflow-y-auto">
             <div className="p-5 space-y-6">
 
               {/* Title */}
@@ -440,7 +462,7 @@ export default function TaskDetailPanel() {
               />
 
               {/* Meta grid */}
-              <div className="grid grid-cols-2 gap-3">
+              <div ref={sectionRefs.stage} className="grid grid-cols-2 gap-3">
                 {/* Stage */}
                 <div>
                   <SectionLabel title="Stage" />
@@ -536,7 +558,7 @@ export default function TaskDetailPanel() {
                 </div>
 
                 {/* Start date */}
-                <div>
+                <div ref={sectionRefs.dates}>
                   <SectionLabel title="Start Date" />
                   <input
                     type="date"
@@ -573,7 +595,7 @@ export default function TaskDetailPanel() {
 
               {/* Assignees */}
               {members.length > 0 && (
-                <div>
+                <div ref={sectionRefs.members}>
                   <SectionLabel title="Assignees" />
                   <div className="flex flex-wrap gap-2">
                     {members.map(m => {
@@ -879,7 +901,7 @@ export default function TaskDetailPanel() {
               </div>
 
               {/* ── Attachments ──────────────────────────────────────────── */}
-              <div>
+              <div ref={sectionRefs.attachments}>
                 <div className="flex items-center justify-between mb-1.5">
                   <SectionLabel title={`Attachments${attachments.length ? ` (${attachments.length})` : ''}`} />
                   <div className="flex items-center gap-2 -mt-0.5">
@@ -967,7 +989,7 @@ export default function TaskDetailPanel() {
               </div>
 
               {/* ── Comments ─────────────────────────────────────────────── */}
-              <div>
+              <div ref={sectionRefs.comments}>
                 <div className="flex items-center justify-between mb-1.5">
                   <SectionLabel title={`Comments${comments.length ? ` (${comments.length})` : ''}`} />
                   <button

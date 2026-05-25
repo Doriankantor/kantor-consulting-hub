@@ -59,7 +59,7 @@ function getAreaColor(areaId: string | null, areas: Area[]): string {
 // ── Task card (display) ────────────────────────────────────────────────────
 
 function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDragging?: boolean; areas: Area[] }) {
-  const { selectTask, commentCounts, checklistSummaries, taskLabelMap, members } = useWorkspace()
+  const { selectTask, commentCounts, checklistSummaries, taskLabelMap, members, highlightTaskId } = useWorkspace()
   const overdue = isOverdue(task.due_date, task.column_id)
   const areaColor = getAreaColor(task.area_of_analysis, areas)
   const commentCount = commentCounts[task.id] ?? 0
@@ -89,7 +89,8 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
         border-t-[3px] rounded-xl p-3.5 cursor-pointer shadow-sm dark:shadow-none
         hover:shadow-md dark:hover:bg-white/[0.08] hover:-translate-y-px
         active:scale-[0.99] transition-all duration-150
-        ${isDragging ? 'opacity-60 shadow-xl rotate-1 scale-105' : ''}`}
+        ${isDragging ? 'opacity-60 shadow-xl rotate-1 scale-105' : ''}
+        ${highlightTaskId === task.id ? 'ring-2 ring-hub-gold ring-offset-2 dark:ring-offset-[#0d1524] animate-card-flash' : ''}`}
     >
       {/* Type badge + priority dot */}
       <div className="flex items-center justify-between mb-2.5">

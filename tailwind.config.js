@@ -15,6 +15,16 @@ module.exports = {
         sans: ['-apple-system', 'BlinkMacSystemFont', '"Inter"', '"Segoe UI"', 'sans-serif'],
         mono: ['"JetBrains Mono"', '"Fira Code"', '"Cascadia Code"', 'monospace'],
       },
+      keyframes: {
+        'card-flash': {
+          '0%':   { boxShadow: '0 0 0 4px rgba(217,119,6,0.6)' },
+          '40%':  { boxShadow: '0 0 0 8px rgba(217,119,6,0.3)' },
+          '100%': { boxShadow: '0 0 0 0px rgba(217,119,6,0)' },
+        },
+      },
+      animation: {
+        'card-flash': 'card-flash 2s ease-out forwards',
+      },
     },
   },
   plugins: [],

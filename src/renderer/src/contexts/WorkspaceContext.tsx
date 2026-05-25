@@ -28,6 +28,12 @@ interface WorkspaceContextType {
   checklistSummaries: Record<string, { total: number; done: number }>
   taskLabelMap: Record<string, Label[]>
 
+  // Inbox navigation
+  pendingSection: string | null
+  setPendingSection: (s: string | null) => void
+  highlightTaskId: string | null
+  openTask: (taskId: string, section?: string) => void
+
   // View state
   viewMode: ViewMode
   setViewMode: (v: ViewMode) => void
@@ -66,6 +72,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
   const [checklistSummaries, setChecklistSummaries] = useState<Record<string, { total: number; done: number }>>({})
   const [taskLabelMap, setTaskLabelMap] = useState<Record<string, Label[]>>({})
+  const [pendingSection, setPendingSection] = useState<string | null>(null)
+  const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [viewMode, setViewModeState] = useState<ViewMode>(() => {
     return (localStorage.getItem('workspace-view') as ViewMode) ?? 'kanban'
@@ -284,6 +292,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setSelectedTask(task)
   }, [])
 
+  const openTask = useCallback((taskId: string, section?: string) => {
+    const task = tasks.find(t => t.id === taskId)
+    if (!task) return
+    setSelectedTask(task)
+    if (section) setPendingSection(section)
+    setHighlightTaskId(taskId)
+    setTimeout(() => setHighlightTaskId(null), 2200)
+  }, [tasks])
+
   async function syncTask(taskId: string, data: Partial<Task>) {
     if (!supabaseReady.current) return
     await supabase.from('tasks').update({ ...data, updated_at: new Date().toISOString() }).eq('id', taskId)
@@ -415,6 +432,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       refreshAreas,
       refreshLabels,
       refreshTaskMeta,
+      pendingSection,
+      setPendingSection,
+      highlightTaskId,
+      openTask,
     }}>
       {children}
     </WorkspaceContext.Provider>

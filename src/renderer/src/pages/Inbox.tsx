@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useWorkspace } from '../contexts/WorkspaceContext'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -17,6 +19,16 @@ function relativeTime(iso: string): string {
 
 type NotifType = AppNotification['type']
 type Filter = 'all' | 'unread' | 'mention' | 'deadline'
+
+// Which panel section each notification type maps to
+const SECTION_FOR_TYPE: Record<NotifType, string> = {
+  comment:      'comments',
+  mention:      'comments',
+  assignment:   'members',
+  deadline:     'dates',
+  stage_change: 'stage',
+  attachment:   'attachments',
+}
 
 const TYPE_ICON: Record<NotifType, string> = {
   comment:      '💬',
@@ -40,6 +52,8 @@ const TYPE_COLOR: Record<NotifType, string> = {
 
 export default function Inbox() {
   const { localUser } = useAuth()
+  const { openTask } = useWorkspace()
+  const navigate = useNavigate()
   const userId = localUser?.id ?? 'local-admin'
 
   const [notifications, setNotifications] = useState<AppNotification[]>([])
@@ -62,6 +76,22 @@ export default function Inbox() {
     const interval = setInterval(load, 30000)
     return () => clearInterval(interval)
   }, [load])
+
+  // Navigate to the task card, scroll to the relevant section, mark as read
+  function handleGoToCard(n: AppNotification, e?: React.MouseEvent) {
+    e?.stopPropagation()
+    if (!n.task_id) return
+
+    // Mark read immediately
+    if (!n.read) {
+      window.api.notifications.markRead(n.id).catch(() => {})
+      setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: 1 } : x))
+    }
+
+    // Open the task in the workspace panel, scrolled to the right section
+    openTask(n.task_id, SECTION_FOR_TYPE[n.type])
+    navigate('/workspace')
+  }
 
   async function handleMarkRead(id: string) {
     await window.api.notifications.markRead(id)
@@ -141,17 +171,19 @@ export default function Inbox() {
         ) : (
           <div className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
             {filtered.map(n => (
-              <button
+              <div
                 key={n.id}
-                onClick={() => !n.read && handleMarkRead(n.id)}
-                className={`w-full flex items-start gap-3 px-6 py-3.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition ${
+                onClick={() => handleGoToCard(n)}
+                className={`group flex items-start gap-3 px-6 py-3.5 cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition ${
                   !n.read ? 'bg-blue-50/50 dark:bg-hub-blue/[0.04]' : ''
                 }`}
               >
                 {/* Unread dot */}
-                <div className={`w-1.5 h-1.5 rounded-full mt-2 shrink-0 ${!n.read ? 'bg-hub-blue' : 'bg-transparent'}`} />
+                <div className={`w-1.5 h-1.5 rounded-full mt-2 shrink-0 transition ${
+                  !n.read ? 'bg-hub-blue' : 'bg-transparent'
+                }`} />
 
-                {/* Icon */}
+                {/* Type icon */}
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm ${TYPE_COLOR[n.type]}`}>
                   {TYPE_ICON[n.type]}
                 </div>
@@ -164,7 +196,7 @@ export default function Inbox() {
                   {n.body && (
                     <p className="text-xs text-gray-500 dark:text-white/45 mt-0.5 line-clamp-2 leading-relaxed">{n.body}</p>
                   )}
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                     {n.task_title && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.08] text-[10px] text-gray-500 dark:text-white/40 font-medium border border-gray-200 dark:border-white/[0.06]">
                         {n.task_title}
@@ -176,7 +208,20 @@ export default function Inbox() {
                     <span className="text-[10px] text-gray-300 dark:text-white/20 ml-auto">{relativeTime(n.created_at)}</span>
                   </div>
                 </div>
-              </button>
+
+                {/* "Go to card" button — always visible on hover */}
+                {n.task_id && (
+                  <button
+                    onClick={e => handleGoToCard(n, e)}
+                    className="shrink-0 self-center opacity-0 group-hover:opacity-100 transition flex items-center gap-1 px-2.5 py-1 rounded-lg bg-hub-gold/10 hover:bg-hub-gold/20 text-hub-gold text-[11px] font-semibold border border-hub-gold/20 hover:border-hub-gold/40 whitespace-nowrap"
+                  >
+                    Go to card
+                    <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                      <path d="M2 7L7 2M7 2H3.5M7 2V5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         )}
