@@ -55,12 +55,12 @@ export default function Header() {
   const isDark = resolvedTheme === 'dark'
 
   return (
-    <header className="titlebar-drag h-[52px] shrink-0 bg-black/20 backdrop-blur-xl border-b border-white/[0.1] flex items-center px-4 z-10">
+    <header className="titlebar-drag h-[52px] shrink-0 bg-white/[0.15] dark:bg-black/20 backdrop-blur-xl border-b border-black/[0.08] dark:border-white/[0.1] flex items-center px-4 z-10">
       {/* macOS traffic light spacer */}
       <div className="w-[110px] shrink-0" />
 
       <div className="flex-1 flex items-center justify-center">
-        <span className="text-[13px] font-bold text-white/90 tracking-tight select-none">
+        <span className="text-[13px] font-bold text-gray-900 dark:text-white/90 tracking-tight select-none">
           Kantor Consulting Hub
         </span>
       </div>
@@ -69,7 +69,7 @@ export default function Header() {
         {/* Inbox bell */}
         <button
           onClick={() => navigate('/inbox')}
-          className="relative w-8 h-8 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.12] transition"
+          className="relative w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.12] transition"
           title="Inbox"
         >
           <BellIcon />
@@ -83,23 +83,23 @@ export default function Header() {
         {/* Theme toggle */}
         <button
           onClick={() => setTheme(isDark ? 'light' : 'dark')}
-          className="w-8 h-8 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.12] transition"
+          className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-600 dark:text-white/60 hover:text-gray-900 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.12] transition"
           title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
         >
           {isDark ? <SunIcon /> : <MoonIcon />}
         </button>
 
         {isAdmin && (
-          <span className="hidden sm:inline px-2 py-0.5 rounded-full bg-white/10 border border-white/20 text-white/70 text-[10px] font-bold tracking-wide">
+          <span className="hidden sm:inline px-2 py-0.5 rounded-full bg-black/[0.06] dark:bg-white/10 border border-black/[0.08] dark:border-white/20 text-gray-600 dark:text-white/70 text-[10px] font-bold tracking-wide">
             ADMIN
           </span>
         )}
         <button
           onClick={() => navigate('/settings')}
-          className="w-8 h-8 rounded-full bg-white/15 border border-white/25 flex items-center justify-center hover:bg-white/25 transition"
+          className="w-8 h-8 rounded-full bg-black/[0.08] dark:bg-white/15 border border-black/[0.12] dark:border-white/25 flex items-center justify-center hover:bg-black/[0.14] dark:hover:bg-white/25 transition"
           title={displayName}
         >
-          <span className="text-white text-xs font-bold leading-none">{initials}</span>
+          <span className="text-gray-800 dark:text-white text-xs font-bold leading-none">{initials}</span>
         </button>
       </div>
     </header>

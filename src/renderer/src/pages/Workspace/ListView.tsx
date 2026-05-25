@@ -166,7 +166,7 @@ export default function ListView() {
 
       <div className="flex-1 overflow-auto rounded-xl border border-gray-200 dark:border-white/[0.08]">
         <table className="w-full border-collapse">
-          <thead className="sticky top-0 bg-slate-50 dark:bg-[#0f1624] z-10">
+          <thead className="sticky top-0 bg-white/90 dark:bg-black/60 backdrop-blur-md z-10">
             <tr className="border-b border-gray-200 dark:border-white/[0.08]">
               <Th label="Title"           sortKey="title"           current={sortKey} dir={sortDir} onClick={handleSort} />
               <Th label="Type"            sortKey="content_type"    current={sortKey} dir={sortDir} onClick={handleSort} />

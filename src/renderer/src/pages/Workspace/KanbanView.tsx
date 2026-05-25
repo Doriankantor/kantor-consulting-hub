@@ -38,11 +38,11 @@ function isOverdue(iso: string | null, colId: string) {
 }
 
 function dueDateClass(iso: string | null, colId: string): string {
-  if (!iso || colId === 'col-published') return 'text-white/40 dark:text-white/35'
+  if (!iso || colId === 'col-published') return 'text-gray-400 dark:text-white/35'
   const diff = (new Date(iso).getTime() - Date.now()) / 86400000
-  if (diff < 0) return 'text-red-400 font-semibold'
-  if (diff <= 3) return 'text-amber-400 font-semibold'
-  return 'text-emerald-400'
+  if (diff < 0) return 'text-red-500 dark:text-red-400 font-semibold'
+  if (diff <= 3) return 'text-amber-500 dark:text-amber-400 font-semibold'
+  return 'text-emerald-600 dark:text-emerald-400'
 }
 
 const CARD_TYPE_COLORS: Record<string, string> = {
@@ -328,9 +328,9 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
   }
 
   return (
-    <div className="flex flex-col w-64 shrink-0 h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2.5 px-1">
+    <div className="flex flex-col w-64 shrink-0 h-full rounded-2xl bg-black/[0.06] dark:bg-white/[0.08] backdrop-blur-md border border-black/[0.08] dark:border-white/[0.12] overflow-hidden">
+      {/* Header — inside the glass container */}
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-black/[0.05] dark:border-white/[0.06] shrink-0">
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${col.color}`} />
           {editingName ? (
@@ -345,21 +345,21 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
           ) : (
             <button
               onDoubleClick={() => { setEditingName(true); setNameValue(col.name) }}
-              className="titlebar-no-drag text-sm font-bold text-white/90 hover:text-white transition"
+              className="titlebar-no-drag text-sm font-bold text-gray-900 dark:text-white/90 hover:text-gray-700 dark:hover:text-white transition"
               title="Double-click to rename"
             >
               {col.name}
             </button>
           )}
-          <span className="text-xs text-white/40 tabular-nums">{colTasks.length}</span>
+          <span className="text-xs text-gray-500 dark:text-white/40 tabular-nums">{colTasks.length}</span>
         </div>
       </div>
 
       {/* Cards */}
       <div
         ref={setNodeRef}
-        className={`flex-1 min-h-0 overflow-y-auto rounded-2xl p-2 space-y-2 transition-colors ${
-          isOver ? 'bg-white/[0.14] ring-1 ring-white/30' : 'bg-black/[0.18]'
+        className={`flex-1 min-h-0 overflow-y-auto p-2 space-y-2 transition-colors ${
+          isOver ? 'bg-black/[0.04] dark:bg-white/[0.06] ring-inset ring-1 ring-black/[0.06] dark:ring-white/25' : ''
         }`}
       >
         <SortableContext items={colTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
@@ -367,18 +367,18 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
         </SortableContext>
 
         {addingTask ? (
-          <div className="bg-white/10 border border-white/20 rounded-2xl p-3 backdrop-blur-sm">
+          <div className="bg-white dark:bg-white/10 border border-gray-200 dark:border-white/20 rounded-2xl p-3">
             <input
               autoFocus
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAddTask(); if (e.key === 'Escape') { setAddingTask(false); setNewTitle('') } }}
               placeholder="Engagement title…"
-              className="titlebar-no-drag w-full bg-transparent text-sm text-white placeholder-white/40 outline-none mb-2"
+              className="titlebar-no-drag w-full bg-transparent text-sm text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-white/40 outline-none mb-2"
             />
             <div className="flex gap-1.5">
               <button onClick={handleAddTask} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-hub-gold text-white text-xs font-semibold hover:bg-hub-gold-light transition">Add</button>
-              <button onClick={() => { setAddingTask(false); setNewTitle('') }} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-white/10 text-white/60 text-xs hover:bg-white/20 transition">Cancel</button>
+              <button onClick={() => { setAddingTask(false); setNewTitle('') }} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/60 text-xs hover:bg-gray-200 dark:hover:bg-white/20 transition">Cancel</button>
             </div>
           </div>
         ) : (
@@ -449,7 +449,7 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
 
             <button
               onClick={handleOpenTemplatePicker}
-              className="titlebar-no-drag w-full flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-white/40 hover:text-white/80 border border-dashed border-white/20 hover:border-white/40 hover:bg-white/[0.06] transition text-sm mt-1"
+              className="titlebar-no-drag w-full flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/80 border border-dashed border-gray-300 dark:border-white/20 hover:border-gray-400 dark:hover:border-white/40 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition text-sm mt-1"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -524,7 +524,7 @@ export default function KanbanView() {
 
             <button
               onClick={addColumn}
-              className="titlebar-no-drag flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-dashed border-white/20 text-white/35 hover:text-white/70 hover:border-white/40 hover:bg-white/[0.06] transition text-sm mt-8 w-56 shrink-0"
+              className="titlebar-no-drag flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-dashed border-gray-300 dark:border-white/20 text-gray-400 dark:text-white/35 hover:text-gray-700 dark:hover:text-white/70 hover:border-gray-400 dark:hover:border-white/40 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition text-sm mt-8 w-56 shrink-0"
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>

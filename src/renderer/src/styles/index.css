@@ -30,8 +30,11 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
 }
 
-html.dark body  { background: linear-gradient(135deg, var(--g-from), var(--g-via), var(--g-to)); color: #fff; }
+html.dark  body { background: linear-gradient(135deg, var(--g-from), var(--g-via), var(--g-to)); color: #fff; }
 html.light body { background: linear-gradient(135deg, var(--g-from), var(--g-via), var(--g-to)); color: #111827; }
+/* Light-mode overlay: makes content surfaces white while gradient shows in sidebar/header */
+html.light .content-surface { background: rgba(255,255,255,0.88); backdrop-filter: blur(16px); }
+html.dark  .content-surface { background: rgba(0,0,0,0.25);        backdrop-filter: blur(16px); }
 
 /* ── macOS window dragging ──────────────────────────────────────────────── */
 .titlebar-drag    { -webkit-app-region: drag; }

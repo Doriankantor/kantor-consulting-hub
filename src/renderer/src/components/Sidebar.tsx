@@ -89,18 +89,18 @@ function WorkspaceViewSwitcher() {
   if (!location.pathname.startsWith('/workspace')) return null
 
   return (
-    <div className="mx-2 mt-1 mb-1 rounded-xl overflow-hidden bg-white/[0.06] border border-white/[0.06]">
+    <div className="mx-2 mt-1 mb-1 rounded-xl overflow-hidden bg-black/[0.06] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.06]">
       {VIEW_BUTTONS.map(v => (
         <button
           key={v.id}
           onClick={() => setViewMode(v.id)}
           className={`titlebar-no-drag w-full flex items-center gap-2 px-3 py-1.5 text-xs transition ${
             viewMode === v.id
-              ? 'bg-white/[0.15] text-white font-semibold'
-              : 'text-white/40 hover:text-white/70 hover:bg-white/[0.06]'
+              ? 'bg-black/[0.08] dark:bg-white/[0.15] text-gray-900 dark:text-white font-semibold'
+              : 'text-gray-600 dark:text-white/40 hover:text-gray-900 dark:hover:text-white/70 hover:bg-black/[0.05] dark:hover:bg-white/[0.06]'
           }`}
         >
-          <span className={`w-1 h-1 rounded-full ${viewMode === v.id ? 'bg-white' : 'bg-white/25'}`} />
+          <span className={`w-1 h-1 rounded-full ${viewMode === v.id ? 'bg-gray-800 dark:bg-white' : 'bg-gray-400 dark:bg-white/25'}`} />
           {v.label}
         </button>
       ))}
@@ -160,12 +160,12 @@ export default function Sidebar() {
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `titlebar-no-drag relative flex items-center gap-2.5 py-2 rounded-xl text-sm transition-all ${
       isActive
-        ? 'bg-white/[0.15] text-white font-semibold shadow-sm border-l-2 border-white pl-[10px] pr-3'
-        : 'text-white/55 hover:text-white hover:bg-white/[0.08] px-3'
+        ? 'bg-black/[0.08] dark:bg-white/[0.15] text-gray-900 dark:text-white font-semibold shadow-sm border-l-2 border-gray-800 dark:border-white pl-[10px] pr-3'
+        : 'text-gray-700 dark:text-white/55 hover:text-gray-900 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.08] px-3'
     }`
 
   return (
-    <aside className="w-52 shrink-0 bg-black/[0.3] backdrop-blur-xl border-r border-white/[0.08] flex flex-col py-3 overflow-hidden">
+    <aside className="w-52 shrink-0 bg-white/[0.2] dark:bg-black/[0.3] backdrop-blur-xl border-r border-black/[0.08] dark:border-white/[0.08] flex flex-col py-3 overflow-hidden">
       <nav className="flex-1 px-2.5 space-y-0.5 overflow-y-auto">
         {navItems.map(item => (
           <div key={item.to}>
@@ -190,7 +190,7 @@ export default function Sidebar() {
       <div className="px-2.5 mb-1">
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('toggleChat'))}
-          className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all text-white/55 hover:text-white hover:bg-white/[0.08]"
+          className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all text-gray-700 dark:text-white/55 hover:text-gray-900 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.08]"
         >
           <span className="shrink-0"><ChatIcon /></span>
           <span className="flex-1 text-left">Team Chat</span>
@@ -199,12 +199,12 @@ export default function Sidebar() {
 
       {/* Admin indicator */}
       {isAdmin && (
-        <div className="px-3 mx-2.5 py-2 rounded-xl bg-white/[0.08] border border-white/[0.12]">
+        <div className="px-3 mx-2.5 py-2 rounded-xl bg-black/[0.06] dark:bg-white/[0.08] border border-black/[0.08] dark:border-white/[0.12]">
           <div className="flex items-center gap-2">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-white/60">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-gray-600 dark:text-white/60">
               <path d="M6 1l1.5 3 3.5.5-2.5 2.5.5 3.5L6 9l-3 1.5.5-3.5L1 4.5 4.5 4z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
             </svg>
-            <span className="text-[10px] font-semibold text-white/60">Admin</span>
+            <span className="text-[10px] font-semibold text-gray-600 dark:text-white/60">Admin</span>
           </div>
         </div>
       )}

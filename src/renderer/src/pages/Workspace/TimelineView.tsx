@@ -179,7 +179,7 @@ export default function TimelineView() {
         <div ref={containerRef} className="flex-1 overflow-auto">
           <div style={{ width: totalWidth, minWidth: '100%' }} className="relative">
             {/* Date header */}
-            <div className="sticky top-0 z-10 bg-slate-50 dark:bg-[#0f1624] border-b border-gray-200 dark:border-white/[0.07] flex" style={{ height: 40 }}>
+            <div className="sticky top-0 z-10 bg-white/90 dark:bg-black/60 backdrop-blur-md border-b border-gray-200 dark:border-white/[0.07] flex" style={{ height: 40 }}>
               {days.map((d, i) => {
                 const isFirst = i === 0 || d.getDate() === 1
                 const isToday = d.toDateString() === new Date().toDateString()
