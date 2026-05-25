@@ -54,11 +54,11 @@ const InboxIcon = () => (
   </svg>
 )
 
-const ClientsIcon = () => (
+const ContactsIcon = () => (
   <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-    <rect x="2" y="4" width="11" height="10" rx="1" stroke="currentColor" strokeWidth="1.3"/>
-    <path d="M5 14V9h5v5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
-    <path d="M4 1.5h7l1 2.5H3L4 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+    <circle cx="6" cy="5.5" r="2.8" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M1 13c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    <path d="M11.5 4c1.38 0 2.5.9 2.5 2S12.88 8 11.5 8M14 13c0-1.66-1.12-3-2.5-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
   </svg>
 )
 
@@ -151,7 +151,7 @@ export default function Sidebar() {
     { to: '/inbox',     label: 'Inbox',     icon: <InboxIcon />,     badge: inboxUnread || undefined },
     { to: '/dashboard', label: 'Dashboard', icon: <DashboardIcon />, badge: urgentCount || undefined },
     { to: '/workspace', label: 'Workspace',  icon: <WorkspaceIcon /> },
-    { to: '/clients',   label: 'Clients',   icon: <ClientsIcon /> },
+    { to: '/contacts',  label: 'Contacts',  icon: <ContactsIcon /> },
     ...(isAdmin ? [{ to: '/analytics', label: 'Analytics', icon: <AnalyticsIcon /> }] : []),
     { to: '/team',      label: 'Team',       icon: <TeamIcon /> },
     { to: '/settings',  label: 'Settings',   icon: <SettingsIcon /> },

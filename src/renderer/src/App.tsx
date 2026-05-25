@@ -10,7 +10,7 @@ import Settings   from './pages/Settings'
 import Team       from './pages/Team'
 import Workspace  from './pages/Workspace'
 import Inbox      from './pages/Inbox'
-import Clients    from './pages/Clients'
+import Contacts   from './pages/Contacts'
 import Analytics  from './pages/Analytics'
 import Layout     from './components/Layout'
 import ChatPanel  from './components/ChatPanel'
@@ -56,7 +56,7 @@ function AppRoutes() {
           <Route path="/inbox"     element={<Inbox />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/workspace"  element={<Workspace />} />
-          <Route path="/clients"   element={<Clients />} />
+          <Route path="/contacts"  element={<Contacts />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/team"      element={<Team />} />
           <Route path="/settings"  element={<Settings />} />

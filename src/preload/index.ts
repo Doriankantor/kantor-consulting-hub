@@ -140,9 +140,30 @@ const api = {
     update: (id: string, data: Record<string, unknown>)    => ipcRenderer.invoke('templates:update', id, data),
     delete: (id: string)                                    => ipcRenderer.invoke('templates:delete', id),
   },
+  contacts: {
+    list:              ()                                              => ipcRenderer.invoke('contacts:list'),
+    get:               (id: string)                                   => ipcRenderer.invoke('contacts:get', id),
+    create:            (data: Record<string, unknown>)                => ipcRenderer.invoke('contacts:create', data),
+    update:            (id: string, data: Record<string, unknown>)    => ipcRenderer.invoke('contacts:update', id, data),
+    delete:            (id: string)                                   => ipcRenderer.invoke('contacts:delete', id),
+    addInteraction:    (data: Record<string, unknown>)                => ipcRenderer.invoke('contacts:addInteraction', data),
+    updateInteraction: (id: string, data: Record<string, unknown>)    => ipcRenderer.invoke('contacts:updateInteraction', id, data),
+    deleteInteraction: (id: string)                                   => ipcRenderer.invoke('contacts:deleteInteraction', id),
+    linkTask:          (contactId: string, taskId: string)            => ipcRenderer.invoke('contacts:linkTask', contactId, taskId),
+    unlinkTask:        (contactId: string, taskId: string)            => ipcRenderer.invoke('contacts:unlinkTask', contactId, taskId),
+  },
   analytics: {
     getData:   ()  => ipcRenderer.invoke('analytics:getData'),
     exportPDF: ()  => ipcRenderer.invoke('analytics:exportPDF'),
+  },
+  updater: {
+    onAvailable: (cb: (info: { version: string }) => void) =>
+      ipcRenderer.on('updater:available', (_e, info) => cb(info)),
+    onProgress:  (cb: (p: { percent: number }) => void) =>
+      ipcRenderer.on('updater:progress', (_e, p) => cb(p)),
+    onReady:     (cb: (info: { version: string }) => void) =>
+      ipcRenderer.on('updater:ready', (_e, info) => cb(info)),
+    install: () => ipcRenderer.invoke('updater:install'),
   },
 }
 

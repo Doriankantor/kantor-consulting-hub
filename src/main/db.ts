@@ -425,5 +425,65 @@ export function initDatabase(): void {
     }
   }
 
+  // ── Contacts, interactions, and task links ────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS contacts (
+      id                    TEXT PRIMARY KEY,
+      full_name             TEXT NOT NULL,
+      job_title             TEXT,
+      organization          TEXT,
+      contact_types_json    TEXT DEFAULT '[]',
+      email_primary         TEXT,
+      email_secondary       TEXT,
+      phone_primary         TEXT,
+      phone_mobile          TEXT,
+      phone_secondary       TEXT,
+      linkedin_url          TEXT,
+      twitter_handle        TEXT,
+      telegram_username     TEXT,
+      website_url           TEXT,
+      country               TEXT,
+      city                  TEXT,
+      languages_json        TEXT DEFAULT '[]',
+      org_type              TEXT,
+      expertise_areas_json  TEXT DEFAULT '[]',
+      security_sensitivity  TEXT DEFAULT 'none',
+      how_we_met            TEXT,
+      how_we_met_note       TEXT,
+      assigned_to           TEXT,
+      last_contacted_date   TEXT,
+      confidential          INTEGER DEFAULT 0,
+      do_not_contact        INTEGER DEFAULT 0,
+      internal_notes        TEXT,
+      notes_updated_by      TEXT,
+      notes_updated_at      DATETIME,
+      created_by            TEXT,
+      created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at            DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS contact_interactions (
+      id              TEXT PRIMARY KEY,
+      contact_id      TEXT NOT NULL,
+      date            TEXT NOT NULL,
+      type            TEXT NOT NULL DEFAULT 'Meeting',
+      summary         TEXT NOT NULL,
+      logged_by_id    TEXT,
+      logged_by_name  TEXT,
+      follow_up       INTEGER DEFAULT 0,
+      follow_up_date  TEXT,
+      created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS contact_task_links (
+      contact_id  TEXT NOT NULL,
+      task_id     TEXT NOT NULL,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (contact_id, task_id)
+    );
+  `)
+
   console.log(`[DB] Initialized at ${dbPath}`)
 }

@@ -1,11 +1,21 @@
 import { ipcMain, app, dialog, shell } from 'electron'
 import Anthropic from '@anthropic-ai/sdk'
+import { createClient } from '@supabase/supabase-js'
 import { copyFileSync, mkdirSync, existsSync } from 'fs'
 import { join, basename, extname } from 'path'
 import { randomBytes } from 'crypto'
 import { getDatabase, hashPassword } from '../db'
 import { driveSync } from '../google/drive'
 import { sendEmail, inviteEmailHtml } from '../google/gmail'
+
+// ── Supabase admin client (service role) ──────────────────────────────────
+// process.env.SUPABASE_URL and process.env.SUPABASE_SERVICE_ROLE_KEY are
+// injected at build time by electron.vite.config.ts → define.
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL ?? '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+  { auth: { autoRefreshToken: false, persistSession: false } }
+)
 
 function uuid(): string { return crypto.randomUUID() }
 function now():  string { return new Date().toISOString() }
@@ -219,25 +229,62 @@ function registerTeamHandlers() {
   )
 
   ipcMain.handle('team:invite', async (_e, params: { email: string; full_name: string; role?: string }) => {
-    if (!params.email.endsWith('@kantor-consulting.com')) {
-      return { error: 'Email must use the @kantor-consulting.com domain.' }
+    const email = (params.email ?? '').trim().toLowerCase()
+
+    // Domain validation — allow @kantor-consulting.com + doriankantor@gmail.com
+    if (email !== 'doriankantor@gmail.com' && !email.endsWith('@kantor-consulting.com')) {
+      return { error: 'Only @kantor-consulting.com emails are allowed.' }
     }
+
     const db = getDatabase()
-    const existing = db.prepare('SELECT id FROM local_users WHERE LOWER(email)=?').get(params.email.toLowerCase())
-    if (existing) return { error: 'A user with this email already exists.' }
-    const tempPassword = 'KC-' + Math.random().toString(36).slice(2, 8).toUpperCase()
-    const salt = randomBytes(16).toString('hex')
-    const hash = hashPassword(tempPassword, salt)
-    const id   = uuid()
-    db.prepare(`INSERT INTO local_users (id,email,full_name,role,status,password_hash,password_salt,must_change_password,invited_by)
-      VALUES (?,?,?,?,'invited',?,?,1,'local-admin')`)
-      .run(id, params.email, params.full_name, params.role ?? 'member', hash, salt)
-    const emailResult = await sendEmail(
-      params.email,
-      "You've been invited to Kantor Consulting Hub",
-      inviteEmailHtml({ name: params.full_name, email: params.email, tempPassword, appVersion: app.getVersion() })
-    )
-    return { ok: true, id, tempPassword, emailSent: emailResult.ok, emailError: emailResult.error }
+
+    // Already-a-member check
+    const existing = db.prepare('SELECT id, status FROM local_users WHERE LOWER(email)=?').get(email) as
+      { id: string; status: string } | undefined
+    if (existing) {
+      return { error: 'This email is already a team member.' }
+    }
+
+    // ── Supabase admin invite ───────────────────────────────────────────────
+    console.log('[Invite] SUPABASE_URL:              ', process.env.SUPABASE_URL              ? '✓ set' : '✗ MISSING')
+    console.log('[Invite] SUPABASE_SERVICE_ROLE_KEY: ', process.env.SUPABASE_SERVICE_ROLE_KEY ? '✓ set' : '✗ MISSING')
+    console.log('[Invite] Inviting:', email)
+
+    try {
+      const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+        data: { full_name: params.full_name ?? '' },
+      })
+
+      console.log('[Invite] Supabase response data: ', JSON.stringify(data))
+      console.log('[Invite] Supabase response error:', JSON.stringify(inviteError))
+
+      if (inviteError) {
+        console.error('[Invite] Supabase error full object:', inviteError)
+        if (inviteError.message?.toLowerCase().includes('already registered')) {
+          return { error: 'This email is already a team member.' }
+        }
+        return { error: `Invite failed: ${inviteError.message}` }
+      }
+
+      // ── Create local SQLite record so the member appears in the list ──────
+      const id           = uuid()
+      const salt         = randomBytes(16).toString('hex')
+      const tempPassword = 'KC-' + Math.random().toString(36).slice(2, 8).toUpperCase()
+      const hash         = hashPassword(tempPassword, salt)
+
+      db.prepare(`INSERT INTO local_users
+          (id,email,full_name,role,status,password_hash,password_salt,must_change_password,invited_by)
+          VALUES (?,?,?,?,'invited',?,?,1,'local-admin')`)
+        .run(id, email, params.full_name ?? '', params.role ?? 'member', hash, salt)
+
+      console.log('[Invite] Local record created, id:', id)
+      return { ok: true, id }
+
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[Invite] Unexpected exception:', err)
+      return { error: `Invite failed: ${message}` }
+    }
   })
 
   ipcMain.handle('team:remove', (_e, id: string) => {
@@ -784,6 +831,140 @@ function registerClientsHandlers() {
   })
 }
 
+// ── Contacts ──────────────────────────────────────────────────────────────
+
+function registerContactsHandlers() {
+  const db = () => getDatabase()
+
+  ipcMain.handle('contacts:list', () =>
+    db().prepare('SELECT * FROM contacts ORDER BY full_name ASC').all()
+  )
+
+  ipcMain.handle('contacts:get', (_e, id: string) => {
+    const contact = db().prepare('SELECT * FROM contacts WHERE id=?').get(id)
+    const interactions = db().prepare(
+      'SELECT * FROM contact_interactions WHERE contact_id=? ORDER BY date DESC, created_at DESC'
+    ).all(id)
+    const linkedIds = (db().prepare('SELECT task_id FROM contact_task_links WHERE contact_id=?').all(id) as { task_id: string }[])
+      .map(r => r.task_id)
+    const tasks = linkedIds.length > 0
+      ? db().prepare(
+          `SELECT id,title,column_id,due_date,priority,content_type FROM workspace_tasks
+           WHERE id IN (${linkedIds.map(() => '?').join(',')})
+           ORDER BY due_date ASC NULLS LAST`
+        ).all(...linkedIds)
+      : []
+    return { contact, interactions, tasks }
+  })
+
+  ipcMain.handle('contacts:create', (_e, data: Record<string, unknown>) => {
+    const id = uuid()
+    db().prepare(`INSERT INTO contacts
+      (id,full_name,job_title,organization,contact_types_json,
+       email_primary,email_secondary,phone_primary,phone_mobile,phone_secondary,
+       linkedin_url,twitter_handle,telegram_username,website_url,
+       country,city,languages_json,org_type,expertise_areas_json,
+       security_sensitivity,how_we_met,how_we_met_note,assigned_to,
+       last_contacted_date,confidential,do_not_contact,internal_notes,created_by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(
+        id, data.full_name, data.job_title ?? null, data.organization ?? null,
+        JSON.stringify(data.contact_types ?? []),
+        data.email_primary ?? null, data.email_secondary ?? null,
+        data.phone_primary ?? null, data.phone_mobile ?? null, data.phone_secondary ?? null,
+        data.linkedin_url ?? null, data.twitter_handle ?? null,
+        data.telegram_username ?? null, data.website_url ?? null,
+        data.country ?? null, data.city ?? null,
+        JSON.stringify(data.languages ?? []),
+        data.org_type ?? null, JSON.stringify(data.expertise_areas ?? []),
+        data.security_sensitivity ?? 'none',
+        data.how_we_met ?? null, data.how_we_met_note ?? null,
+        data.assigned_to ?? null, data.last_contacted_date ?? null,
+        data.confidential ?? 0, data.do_not_contact ?? 0,
+        data.internal_notes ?? null, data.created_by ?? null
+      )
+    return { ok: true, id }
+  })
+
+  ipcMain.handle('contacts:update', (_e, id: string, data: Record<string, unknown>) => {
+    const sets: string[] = []
+    const vals: unknown[] = []
+    const fields: Record<string, string> = {
+      full_name: 'full_name', job_title: 'job_title', organization: 'organization',
+      email_primary: 'email_primary', email_secondary: 'email_secondary',
+      phone_primary: 'phone_primary', phone_mobile: 'phone_mobile', phone_secondary: 'phone_secondary',
+      linkedin_url: 'linkedin_url', twitter_handle: 'twitter_handle',
+      telegram_username: 'telegram_username', website_url: 'website_url',
+      country: 'country', city: 'city',
+      org_type: 'org_type', security_sensitivity: 'security_sensitivity',
+      how_we_met: 'how_we_met', how_we_met_note: 'how_we_met_note',
+      assigned_to: 'assigned_to', last_contacted_date: 'last_contacted_date',
+      confidential: 'confidential', do_not_contact: 'do_not_contact',
+      internal_notes: 'internal_notes',
+      notes_updated_by: 'notes_updated_by', notes_updated_at: 'notes_updated_at',
+    }
+    for (const [k, col] of Object.entries(fields)) {
+      if (k in data) { sets.push(`${col}=?`); vals.push(data[k]) }
+    }
+    if ('contact_types' in data) { sets.push('contact_types_json=?'); vals.push(JSON.stringify(data.contact_types)) }
+    if ('languages' in data)     { sets.push('languages_json=?');     vals.push(JSON.stringify(data.languages)) }
+    if ('expertise_areas' in data){ sets.push('expertise_areas_json=?'); vals.push(JSON.stringify(data.expertise_areas)) }
+    sets.push("updated_at=datetime('now')")
+    if (sets.length > 1) db().prepare(`UPDATE contacts SET ${sets.join(',')} WHERE id=?`).run(...vals, id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('contacts:delete', (_e, id: string) => {
+    db().prepare('DELETE FROM contact_task_links WHERE contact_id=?').run(id)
+    db().prepare('DELETE FROM contact_interactions WHERE contact_id=?').run(id)
+    db().prepare('DELETE FROM contacts WHERE id=?').run(id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('contacts:addInteraction', (_e, data: Record<string, unknown>) => {
+    const id = uuid()
+    db().prepare(`INSERT INTO contact_interactions
+      (id,contact_id,date,type,summary,logged_by_id,logged_by_name,follow_up,follow_up_date)
+      VALUES (?,?,?,?,?,?,?,?,?)`)
+      .run(id, data.contact_id, data.date, data.type, data.summary,
+           data.logged_by_id ?? null, data.logged_by_name ?? null,
+           data.follow_up ?? 0, data.follow_up_date ?? null)
+    // Update last_contacted_date if this is more recent
+    db().prepare(`UPDATE contacts SET last_contacted_date=?,updated_at=datetime('now')
+      WHERE id=? AND (last_contacted_date IS NULL OR last_contacted_date < ?)`)
+      .run(data.date, data.contact_id, data.date)
+    return { ok: true, id }
+  })
+
+  ipcMain.handle('contacts:updateInteraction', (_e, id: string, data: Record<string, unknown>) => {
+    const sets: string[] = []
+    const vals: unknown[] = []
+    if ('date' in data)           { sets.push('date=?');           vals.push(data.date) }
+    if ('type' in data)           { sets.push('type=?');           vals.push(data.type) }
+    if ('summary' in data)        { sets.push('summary=?');        vals.push(data.summary) }
+    if ('follow_up' in data)      { sets.push('follow_up=?');      vals.push(data.follow_up) }
+    if ('follow_up_date' in data) { sets.push('follow_up_date=?'); vals.push(data.follow_up_date) }
+    sets.push("updated_at=datetime('now')")
+    if (sets.length > 1) db().prepare(`UPDATE contact_interactions SET ${sets.join(',')} WHERE id=?`).run(...vals, id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('contacts:deleteInteraction', (_e, id: string) => {
+    db().prepare('DELETE FROM contact_interactions WHERE id=?').run(id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('contacts:linkTask', (_e, contactId: string, taskId: string) => {
+    db().prepare('INSERT OR IGNORE INTO contact_task_links (contact_id,task_id) VALUES (?,?)').run(contactId, taskId)
+    return { ok: true }
+  })
+
+  ipcMain.handle('contacts:unlinkTask', (_e, contactId: string, taskId: string) => {
+    db().prepare('DELETE FROM contact_task_links WHERE contact_id=? AND task_id=?').run(contactId, taskId)
+    return { ok: true }
+  })
+}
+
 // ── Templates ──────────────────────────────────────────────────────────────
 
 function registerTemplatesHandlers() {
@@ -896,6 +1077,7 @@ export function registerIpcHandlers(): void {
   registerDialogHandlers()
   registerWorkspaceHandlers()
   registerClientsHandlers()
+  registerContactsHandlers()
   registerTemplatesHandlers()
   registerAnalyticsHandlers()
 }

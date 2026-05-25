@@ -133,6 +133,55 @@ interface WorkspaceTaskSummary {
   content_type: string
 }
 
+interface Contact {
+  id: string
+  full_name: string
+  job_title: string | null
+  organization: string | null
+  contact_types_json: string
+  email_primary: string | null
+  email_secondary: string | null
+  phone_primary: string | null
+  phone_mobile: string | null
+  phone_secondary: string | null
+  linkedin_url: string | null
+  twitter_handle: string | null
+  telegram_username: string | null
+  website_url: string | null
+  country: string | null
+  city: string | null
+  languages_json: string
+  org_type: string | null
+  expertise_areas_json: string
+  security_sensitivity: string
+  how_we_met: string | null
+  how_we_met_note: string | null
+  assigned_to: string | null
+  last_contacted_date: string | null
+  confidential: number
+  do_not_contact: number
+  internal_notes: string | null
+  notes_updated_by: string | null
+  notes_updated_at: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+interface ContactInteraction {
+  id: string
+  contact_id: string
+  date: string
+  type: string
+  summary: string
+  logged_by_id: string | null
+  logged_by_name: string | null
+  follow_up: number
+  follow_up_date: string | null
+  created_at: string
+  updated_at: string
+}
+
 interface TaskTemplate {
   id: string
   name: string
@@ -282,6 +331,24 @@ interface Window {
     analytics: {
       getData:   () => Promise<{ tasks: Record<string,unknown>[]; activity: Record<string,unknown>[]; comments: Record<string,unknown>[]; stageActivity: Record<string,unknown>[] }>
       exportPDF: () => Promise<{ ok: boolean; filePath?: string; error?: string }>
+    }
+    updater: {
+      onAvailable: (cb: (info: { version: string }) => void) => void
+      onProgress:  (cb: (p: { percent: number }) => void)    => void
+      onReady:     (cb: (info: { version: string }) => void) => void
+      install:     () => Promise<void>
+    }
+    contacts: {
+      list:              ()                                              => Promise<Contact[]>
+      get:               (id: string)                                   => Promise<{ contact: Contact; interactions: ContactInteraction[]; tasks: WorkspaceTaskSummary[] }>
+      create:            (data: Record<string, unknown>)                => Promise<{ ok?: boolean; id?: string }>
+      update:            (id: string, data: Record<string, unknown>)    => Promise<{ ok?: boolean }>
+      delete:            (id: string)                                   => Promise<{ ok?: boolean }>
+      addInteraction:    (data: Record<string, unknown>)                => Promise<{ ok?: boolean; id?: string }>
+      updateInteraction: (id: string, data: Record<string, unknown>)    => Promise<{ ok?: boolean }>
+      deleteInteraction: (id: string)                                   => Promise<{ ok?: boolean }>
+      linkTask:          (contactId: string, taskId: string)            => Promise<{ ok?: boolean }>
+      unlinkTask:        (contactId: string, taskId: string)            => Promise<{ ok?: boolean }>
     }
   }
 }

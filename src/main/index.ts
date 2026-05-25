@@ -1,12 +1,15 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { initDatabase } from './db'
 import { registerIpcHandlers } from './ipc'
 
+// Module-level reference so the updater can push events to the window
+let mainWindow: BrowserWindow | null = null
+
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 960,
@@ -29,7 +32,7 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+    mainWindow!.show()
   })
 
   // Open external links in the system browser
@@ -62,10 +65,33 @@ app.whenReady().then(() => {
 
   createWindow()
 
-  // Auto-updater (only in production)
+  // ── Auto-updater (production only) ──────────────────────────────────────
   if (!is.dev) {
-    autoUpdater.checkForUpdatesAndNotify()
+    autoUpdater.autoDownload        = true
+    autoUpdater.autoInstallOnAppQuit = true
+
+    autoUpdater.on('update-available', (info) => {
+      mainWindow?.webContents.send('updater:available', { version: info.version })
+    })
+    autoUpdater.on('download-progress', (progress) => {
+      mainWindow?.webContents.send('updater:progress', { percent: Math.round(progress.percent) })
+    })
+    autoUpdater.on('update-downloaded', (info) => {
+      mainWindow?.webContents.send('updater:ready', { version: info.version })
+    })
+    autoUpdater.on('error', (err) => {
+      console.error('[Updater]', err.message)
+    })
+
+    // First check 8 s after launch, then every 4 hours
+    setTimeout(() => autoUpdater.checkForUpdates(), 8000)
+    setInterval(() => autoUpdater.checkForUpdates(), 4 * 60 * 60 * 1000)
   }
+
+  // Renderer can request an immediate install (quit + install downloaded update)
+  ipcMain.handle('updater:install', () => {
+    autoUpdater.quitAndInstall()
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

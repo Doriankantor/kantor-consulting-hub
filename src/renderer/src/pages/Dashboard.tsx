@@ -200,7 +200,7 @@ export default function Dashboard() {
                   >
                     <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${PRIORITY_DOT[task.priority]}`} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-700 dark:text-white/82 truncate group-hover:text-gray-900 dark:group-hover:text-white transition">{task.title}</p>
+                      <p className="text-sm text-gray-700 dark:text-white/80 truncate group-hover:text-gray-900 dark:group-hover:text-white transition">{task.title}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-semibold border ${CONTENT_TYPE_COLORS[task.content_type]}`}>
                           {CONTENT_TYPE_LABELS[task.content_type]}

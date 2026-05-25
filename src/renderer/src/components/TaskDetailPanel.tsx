@@ -1277,7 +1277,7 @@ export default function TaskDetailPanel() {
                                   </div>
                                 </div>
                               ) : (
-                                <p className="text-xs text-gray-500 dark:text-white/82 leading-relaxed whitespace-pre-wrap">{c.content}</p>
+                                <p className="text-xs text-gray-500 dark:text-white/80 leading-relaxed whitespace-pre-wrap">{c.content}</p>
                               )}
                             </div>
                           </div>
