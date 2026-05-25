@@ -5,10 +5,10 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'hub-navy': '#0f1624',
+        'hub-navy':       '#0f1624',
         'hub-navy-light': '#1a2744',
-        'hub-blue': '#2563eb',
-        'hub-gold': '#d97706',
+        'hub-blue':       '#2563eb',
+        'hub-gold':       '#d97706',
         'hub-gold-light': '#f59e0b',
       },
       fontFamily: {
@@ -21,9 +21,17 @@ module.exports = {
           '40%':  { boxShadow: '0 0 0 8px rgba(217,119,6,0.3)' },
           '100%': { boxShadow: '0 0 0 0px rgba(217,119,6,0)' },
         },
+        'slide-in-right': {
+          '0%':   { transform: 'translateX(100%)', opacity: '0' },
+          '100%': { transform: 'translateX(0)',    opacity: '1' },
+        },
       },
       animation: {
-        'card-flash': 'card-flash 2s ease-out forwards',
+        'card-flash':     'card-flash 2s ease-out forwards',
+        'slide-in-right': 'slide-in-right 0.3s cubic-bezier(0.16,1,0.3,1) forwards',
+      },
+      backdropBlur: {
+        xs: '2px',
       },
     },
   },

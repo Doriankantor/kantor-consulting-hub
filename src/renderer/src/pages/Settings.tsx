@@ -1,6 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { useTheme } from '../contexts/ThemeContext'
+import { useTheme, GRADIENT_PRESETS } from '../contexts/ThemeContext'
 import ConnectClaude from '../components/ConnectClaude'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import type { Area } from '../types'
@@ -46,7 +46,7 @@ function fmtActive(ts: string | null): string {
 
 export default function Settings() {
   const { user, localUser, isAdmin, signOut } = useAuth()
-  const { theme, setTheme } = useTheme()
+  const { theme, setTheme, gradientTheme, setGradientTheme } = useTheme()
   const { refreshAreas } = useWorkspace()
 
   // ── API key ────────────────────────────────────────────────────────────────
@@ -343,6 +343,27 @@ export default function Settings() {
                 >
                   {t}
                 </button>
+              ))}
+            </div>
+          </Row>
+          <Row>
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">Gradient Theme</p>
+              <p className="text-xs text-gray-400 dark:text-white/35 mt-0.5">Sidebar and background colour scheme</p>
+            </div>
+            <div className="flex flex-wrap gap-2 justify-end">
+              {GRADIENT_PRESETS.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setGradientTheme(p.id)}
+                  title={p.label}
+                  style={{ background: `linear-gradient(135deg, ${p.from}, ${p.to})` }}
+                  className={`titlebar-no-drag w-7 h-7 rounded-lg transition-all ${
+                    gradientTheme === p.id
+                      ? 'ring-2 ring-hub-gold ring-offset-2 ring-offset-white dark:ring-offset-gray-900 scale-110'
+                      : 'opacity-60 hover:opacity-100 hover:scale-105'
+                  }`}
+                />
               ))}
             </div>
           </Row>

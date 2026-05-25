@@ -432,7 +432,7 @@ export default function TaskDetailPanel() {
 
       {/* Panel wrapper — expands left when Claude is open */}
       <div
-        className="fixed inset-y-0 right-0 z-50 flex"
+        className="fixed inset-y-0 right-0 z-50 flex animate-slide-in-right"
         style={{ width: claudeOpen ? 1200 : 760, transition: 'width 0.25s ease' }}
       >
         {/* Claude sidebar — left portion */}
@@ -443,7 +443,7 @@ export default function TaskDetailPanel() {
         )}
 
         {/* Task detail — two-column layout (always 760 px) */}
-        <div className="w-[760px] shrink-0 flex flex-col bg-white dark:bg-[#111827] border-l border-gray-200 dark:border-white/[0.08] shadow-2xl overflow-hidden">
+        <div className="w-[760px] shrink-0 flex flex-col bg-white dark:bg-[#1a1f35] border-l border-gray-200 dark:border-white/[0.08] shadow-[0_0_60px_rgba(0,0,0,0.5)] overflow-hidden rounded-tl-3xl rounded-bl-3xl">
 
           {/* ── Header ──────────────────────────────────────────────────── */}
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 dark:border-white/[0.08] shrink-0">

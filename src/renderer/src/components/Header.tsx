@@ -50,16 +50,17 @@ export default function Header() {
     return () => clearInterval(interval)
   }, [refreshUnread])
 
-  const displayName = profile?.full_name || localUser?.name || user?.email?.split('@')[0] || 'User'
+  const displayName = (profile as { full_name?: string } | null | undefined)?.full_name || localUser?.name || user?.email?.split('@')[0] || 'User'
   const initials = displayName[0].toUpperCase()
   const isDark = resolvedTheme === 'dark'
 
   return (
-    <header className="titlebar-drag h-[52px] shrink-0 bg-white/70 dark:bg-hub-navy/70 backdrop-blur-md border-b border-black/[0.07] dark:border-white/[0.07] flex items-center px-4 z-10">
+    <header className="titlebar-drag h-[52px] shrink-0 bg-black/20 backdrop-blur-xl border-b border-white/[0.1] flex items-center px-4 z-10">
+      {/* macOS traffic light spacer */}
       <div className="w-[110px] shrink-0" />
 
       <div className="flex-1 flex items-center justify-center">
-        <span className="text-[13px] font-semibold text-gray-500 dark:text-white/50 tracking-tight select-none">
+        <span className="text-[13px] font-bold text-white/90 tracking-tight select-none">
           Kantor Consulting Hub
         </span>
       </div>
@@ -68,12 +69,12 @@ export default function Header() {
         {/* Inbox bell */}
         <button
           onClick={() => navigate('/inbox')}
-          className="relative w-7 h-7 rounded-full flex items-center justify-center text-gray-400 dark:text-white/35 hover:text-gray-600 dark:hover:text-white/60 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition"
+          className="relative w-8 h-8 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.12] transition"
           title="Inbox"
         >
           <BellIcon />
           {inboxUnread > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center px-0.5 leading-none">
+            <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center px-0.5 leading-none">
               {inboxUnread > 9 ? '9+' : inboxUnread}
             </span>
           )}
@@ -82,23 +83,23 @@ export default function Header() {
         {/* Theme toggle */}
         <button
           onClick={() => setTheme(isDark ? 'light' : 'dark')}
-          className="w-7 h-7 rounded-full flex items-center justify-center text-gray-400 dark:text-white/35 hover:text-gray-600 dark:hover:text-white/60 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition"
+          className="w-8 h-8 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.12] transition"
           title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
         >
           {isDark ? <SunIcon /> : <MoonIcon />}
         </button>
 
         {isAdmin && (
-          <span className="hidden sm:inline px-2 py-0.5 rounded-full bg-hub-gold/15 border border-hub-gold/25 text-hub-gold text-[10px] font-bold tracking-wide">
+          <span className="hidden sm:inline px-2 py-0.5 rounded-full bg-white/10 border border-white/20 text-white/70 text-[10px] font-bold tracking-wide">
             ADMIN
           </span>
         )}
         <button
           onClick={() => navigate('/settings')}
-          className="w-7 h-7 rounded-full bg-hub-gold/15 border border-hub-gold/25 flex items-center justify-center hover:bg-hub-gold/25 transition"
+          className="w-8 h-8 rounded-full bg-white/15 border border-white/25 flex items-center justify-center hover:bg-white/25 transition"
           title={displayName}
         >
-          <span className="text-hub-gold text-xs font-bold leading-none">{initials}</span>
+          <span className="text-white text-xs font-bold leading-none">{initials}</span>
         </button>
       </div>
     </header>

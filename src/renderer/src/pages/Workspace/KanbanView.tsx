@@ -37,6 +37,23 @@ function isOverdue(iso: string | null, colId: string) {
   return new Date(iso) < new Date()
 }
 
+function dueDateClass(iso: string | null, colId: string): string {
+  if (!iso || colId === 'col-published') return 'text-white/40 dark:text-white/35'
+  const diff = (new Date(iso).getTime() - Date.now()) / 86400000
+  if (diff < 0) return 'text-red-400 font-semibold'
+  if (diff <= 3) return 'text-amber-400 font-semibold'
+  return 'text-emerald-400'
+}
+
+const CARD_TYPE_COLORS: Record<string, string> = {
+  'policy-brief':          'bg-blue-500 text-white border-transparent',
+  'research-report':       'bg-violet-500 text-white border-transparent',
+  'op-ed':                 'bg-amber-500 text-white border-transparent',
+  'briefing-note':         'bg-cyan-500 text-white border-transparent',
+  'consulting-engagement': 'bg-orange-500 text-white border-transparent',
+  'client-advisory':       'bg-emerald-500 text-white border-transparent',
+}
+
 const AVATAR_PALETTE = ['#ef4444','#f59e0b','#22c55e','#3b82f6','#a855f7','#06b6d4','#ec4899','#8b5cf6']
 function memberColor(userId: string): string {
   const hash = userId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0)
@@ -85,16 +102,16 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
     <div
       onClick={() => !isDragging && selectTask(task)}
       style={{ borderTopColor: areaColor }}
-      className={`group relative bg-white dark:bg-[#1a2233] border border-gray-200 dark:border-white/[0.08]
-        border-t-[3px] rounded-xl p-3.5 cursor-pointer shadow-sm dark:shadow-none
-        hover:shadow-md dark:hover:bg-white/[0.08] hover:-translate-y-px
-        active:scale-[0.99] transition-all duration-150
-        ${isDragging ? 'opacity-60 shadow-xl rotate-1 scale-105' : ''}
-        ${highlightTaskId === task.id ? 'ring-2 ring-hub-gold ring-offset-2 dark:ring-offset-[#0d1524] animate-card-flash' : ''}`}
+      className={`group relative bg-white dark:bg-[#1e2235] border border-transparent dark:border-white/[0.06]
+        border-t-[3px] rounded-2xl p-3.5 cursor-pointer
+        shadow-[0_4px_16px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.45)]
+        card-lift active:scale-[0.99]
+        ${isDragging ? 'opacity-60 shadow-2xl rotate-1 scale-105' : ''}
+        ${highlightTaskId === task.id ? 'ring-2 ring-hub-gold ring-offset-2 dark:ring-offset-[#1a2233] animate-card-flash' : ''}`}
     >
       {/* Type badge + priority dot */}
       <div className="flex items-center justify-between mb-2.5">
-        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold border ${CONTENT_TYPE_COLORS[task.content_type]}`}>
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${CARD_TYPE_COLORS[task.content_type] ?? 'bg-gray-500 text-white'}`}>
           {CONTENT_TYPE_LABELS[task.content_type]}
         </span>
         <div className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[task.priority]}`} title={task.priority} />
@@ -156,12 +173,16 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
 
       {/* Due date */}
       {task.due_date && (
-        <div className={`flex items-center gap-1 text-[11px] mb-2 ${overdue ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-white/35'}`}>
+        <div className={`flex items-center gap-1 text-[11px] mb-2 ${dueDateClass(task.due_date, task.column_id)}`}>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <rect x="1" y="2" width="8" height="7.5" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
             <path d="M3 1v2M7 1v2M1 5h8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
           </svg>
-          {overdue ? 'Overdue · ' : ''}{formatDate(task.due_date)}
+          {(() => {
+            const diff = (new Date(task.due_date).getTime() - Date.now()) / 86400000
+            if (task.column_id !== 'col-published' && diff < 0) return `Overdue · ${formatDate(task.due_date)}`
+            return formatDate(task.due_date)
+          })()}
         </div>
       )}
 
@@ -195,13 +216,13 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
                 key={m.id}
                 title={m.full_name ?? m.email}
                 style={{ backgroundColor: memberColor(m.id) }}
-                className="w-5 h-5 rounded-full border-2 border-white dark:border-[#1a2233] flex items-center justify-center text-[8px] font-bold text-white shrink-0"
+                className="w-6 h-6 rounded-full border-2 border-white dark:border-[#1e2235] flex items-center justify-center text-[9px] font-bold text-white shrink-0 shadow-sm"
               >
                 {memberInitials(m.full_name, m.email)}
               </div>
             ))}
             {extraAssignees > 0 && (
-              <div className="w-5 h-5 rounded-full border-2 border-white dark:border-[#1a2233] bg-gray-200 dark:bg-white/15 flex items-center justify-center text-[8px] font-bold text-gray-500 dark:text-white/50">
+              <div className="w-6 h-6 rounded-full border-2 border-white dark:border-[#1e2235] bg-gray-300 dark:bg-white/20 flex items-center justify-center text-[9px] font-bold text-gray-600 dark:text-white/60">
                 +{extraAssignees}
               </div>
             )}
@@ -324,21 +345,21 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
           ) : (
             <button
               onDoubleClick={() => { setEditingName(true); setNameValue(col.name) }}
-              className="titlebar-no-drag text-sm font-semibold text-gray-700 dark:text-white/80 hover:text-gray-900 dark:hover:text-white transition"
+              className="titlebar-no-drag text-sm font-bold text-white/90 hover:text-white transition"
               title="Double-click to rename"
             >
               {col.name}
             </button>
           )}
-          <span className="text-xs text-gray-400 dark:text-white/30 tabular-nums">{colTasks.length}</span>
+          <span className="text-xs text-white/40 tabular-nums">{colTasks.length}</span>
         </div>
       </div>
 
       {/* Cards */}
       <div
         ref={setNodeRef}
-        className={`flex-1 min-h-0 overflow-y-auto rounded-xl p-2 space-y-2 transition-colors ${
-          isOver ? 'bg-hub-gold/5 ring-1 ring-hub-gold/20' : 'bg-gray-100/50 dark:bg-black/[0.15]'
+        className={`flex-1 min-h-0 overflow-y-auto rounded-2xl p-2 space-y-2 transition-colors ${
+          isOver ? 'bg-white/[0.14] ring-1 ring-white/30' : 'bg-black/[0.18]'
         }`}
       >
         <SortableContext items={colTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
@@ -346,18 +367,18 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
         </SortableContext>
 
         {addingTask ? (
-          <div className="bg-white dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.12] rounded-xl p-3">
+          <div className="bg-white/10 border border-white/20 rounded-2xl p-3 backdrop-blur-sm">
             <input
               autoFocus
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAddTask(); if (e.key === 'Escape') { setAddingTask(false); setNewTitle('') } }}
               placeholder="Engagement title…"
-              className="titlebar-no-drag w-full bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 outline-none mb-2"
+              className="titlebar-no-drag w-full bg-transparent text-sm text-white placeholder-white/40 outline-none mb-2"
             />
             <div className="flex gap-1.5">
               <button onClick={handleAddTask} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-hub-gold text-white text-xs font-semibold hover:bg-hub-gold-light transition">Add</button>
-              <button onClick={() => { setAddingTask(false); setNewTitle('') }} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-white/60 text-xs hover:bg-gray-200 dark:hover:bg-white/15 transition">Cancel</button>
+              <button onClick={() => { setAddingTask(false); setNewTitle('') }} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-white/10 text-white/60 text-xs hover:bg-white/20 transition">Cancel</button>
             </div>
           </div>
         ) : (
@@ -367,50 +388,50 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
               <>
                 {/* Backdrop */}
                 <div className="fixed inset-0 z-10" onClick={() => setShowTemplatePicker(false)} />
-                <div className="absolute bottom-full left-0 right-0 mb-1 z-20 bg-white dark:bg-[#1a2233] border border-gray-200 dark:border-white/[0.1] rounded-xl shadow-xl overflow-hidden">
-                  <div className="px-3 py-2 border-b border-gray-100 dark:border-white/[0.06]">
-                    <p className="text-[10px] font-semibold text-gray-400 dark:text-white/40 uppercase tracking-widest">Start from</p>
+                <div className="absolute bottom-full left-0 right-0 mb-1 z-20 bg-[#1e1b4b]/95 backdrop-blur-xl border border-white/[0.12] rounded-2xl shadow-2xl overflow-hidden">
+                  <div className="px-3 py-2 border-b border-white/[0.08]">
+                    <p className="text-[10px] font-semibold text-white/40 uppercase tracking-widest">Start from</p>
                   </div>
 
                   {/* Blank option */}
                   <button
                     onClick={() => { setShowTemplatePicker(false); setAddingTask(true) }}
-                    className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-white/[0.05] transition text-left"
+                    className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/[0.08] transition text-left"
                   >
-                    <div className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-white/[0.08] flex items-center justify-center shrink-0">
+                    <div className="w-7 h-7 rounded-lg bg-white/[0.1] flex items-center justify-center shrink-0 text-white/60">
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                         <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                       </svg>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-gray-800 dark:text-white/85">Start blank</p>
-                      <p className="text-[10px] text-gray-400 dark:text-white/35">Empty engagement</p>
+                      <p className="text-xs font-semibold text-white/85">Start blank</p>
+                      <p className="text-[10px] text-white/40">Empty engagement</p>
                     </div>
                   </button>
 
                   {templates.length > 0 && (
-                    <div className="border-t border-gray-100 dark:border-white/[0.06]">
-                      <p className="px-3 pt-2 pb-1 text-[10px] font-semibold text-gray-400 dark:text-white/40 uppercase tracking-widest">Templates</p>
+                    <div className="border-t border-white/[0.08]">
+                      <p className="px-3 pt-2 pb-1 text-[10px] font-semibold text-white/40 uppercase tracking-widest">Templates</p>
                       {templates.map(tpl => (
                         <button
                           key={tpl.id}
                           onClick={() => handlePickTemplate(tpl)}
-                          className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-white/[0.05] transition text-left"
+                          className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/[0.08] transition text-left"
                         >
-                          <div className="w-7 h-7 rounded-lg bg-hub-gold/10 border border-hub-gold/20 flex items-center justify-center shrink-0">
+                          <div className="w-7 h-7 rounded-lg bg-hub-gold/20 border border-hub-gold/30 flex items-center justify-center shrink-0">
                             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="text-hub-gold">
                               <rect x="1" y="1" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
                               <path d="M3 4h4M3 6.5h2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
                             </svg>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-gray-800 dark:text-white/85 truncate">{tpl.name}</p>
-                            <p className="text-[10px] text-gray-400 dark:text-white/35 truncate">
+                            <p className="text-xs font-semibold text-white/85 truncate">{tpl.name}</p>
+                            <p className="text-[10px] text-white/40 truncate">
                               {CONTENT_TYPE_LABELS_SHORT[tpl.content_type] ?? tpl.content_type} · {tpl.duration_days}d
                             </p>
                           </div>
                           {!!tpl.is_builtin && (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/30 shrink-0">Built-in</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/[0.08] text-white/40 shrink-0">Built-in</span>
                           )}
                         </button>
                       ))}
@@ -428,7 +449,7 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
 
             <button
               onClick={handleOpenTemplatePicker}
-              className="titlebar-no-drag w-full flex items-center gap-1.5 px-3 py-2 rounded-lg text-gray-400 dark:text-white/25 hover:text-gray-600 dark:hover:text-white/60 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition text-sm"
+              className="titlebar-no-drag w-full flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-white/40 hover:text-white/80 border border-dashed border-white/20 hover:border-white/40 hover:bg-white/[0.06] transition text-sm mt-1"
             >
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                 <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -503,7 +524,7 @@ export default function KanbanView() {
 
             <button
               onClick={addColumn}
-              className="titlebar-no-drag flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-gray-300 dark:border-white/[0.12] text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/60 hover:border-gray-400 dark:hover:border-white/25 transition text-sm mt-8 w-56 shrink-0"
+              className="titlebar-no-drag flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-dashed border-white/20 text-white/35 hover:text-white/70 hover:border-white/40 hover:bg-white/[0.06] transition text-sm mt-8 w-56 shrink-0"
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
