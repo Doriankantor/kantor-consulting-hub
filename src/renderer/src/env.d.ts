@@ -124,8 +124,9 @@ interface Window {
       update: (id: string, content: string) => Promise<{ ok?: boolean }>
     }
     activity: {
-      get: (taskId: string) => Promise<import('./types').ActivityEntry[]>
-      add: (e: { task_id: string; actor_name: string; action: string }) => Promise<import('./types').ActivityEntry>
+      get:     (taskId: string) => Promise<import('./types').ActivityEntry[]>
+      add:     (e: { task_id: string; actor_name: string; action: string }) => Promise<import('./types').ActivityEntry>
+      getFeed: () => Promise<Array<{ id: string; task_id: string; actor_name: string; action: string; created_at: string; source: 'activity' | 'comment'; task_title: string | null }>>
     }
     team: {
       list:            ()                                                                    => Promise<LocalTeamMember[]>

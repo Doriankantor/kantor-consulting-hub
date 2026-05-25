@@ -137,6 +137,25 @@ function registerActivityHandlers() {
       VALUES (@id,@task_id,@actor_name,@action,@created_at)`).run(row)
     return row
   })
+
+  // Global feed: last 60 events across all tasks (activity + comments merged)
+  ipcMain.handle('activity:getFeed', () => {
+    const db = getDatabase()
+    const rows = db.prepare(`
+      SELECT id, task_id, actor_name, action, created_at, 'activity' as source,
+             (SELECT title FROM workspace_tasks WHERE id = task_id) as task_title
+      FROM task_activity
+      UNION ALL
+      SELECT id, task_id, author_name as actor_name,
+             CASE WHEN LENGTH(content) > 80 THEN SUBSTR(content,1,80)||'…' ELSE content END as action,
+             created_at, 'comment' as source,
+             (SELECT title FROM workspace_tasks WHERE id = task_id) as task_title
+      FROM task_comments
+      ORDER BY created_at DESC
+      LIMIT 60
+    `).all()
+    return rows
+  })
 }
 
 // ── Auth ───────────────────────────────────────────────────────────────────

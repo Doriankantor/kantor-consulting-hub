@@ -26,8 +26,9 @@ const api = {
     update: (id: string, content: string) => ipcRenderer.invoke('comments:update', id, content),
   },
   activity: {
-    get: (taskId: string) => ipcRenderer.invoke('activity:get', taskId),
-    add: (e: { task_id: string; actor_name: string; action: string }) => ipcRenderer.invoke('activity:add', e),
+    get:     (taskId: string) => ipcRenderer.invoke('activity:get', taskId),
+    add:     (e: { task_id: string; actor_name: string; action: string }) => ipcRenderer.invoke('activity:add', e),
+    getFeed: ()               => ipcRenderer.invoke('activity:getFeed'),
   },
   team: {
     list:            ()                                                                    => ipcRenderer.invoke('team:list'),
