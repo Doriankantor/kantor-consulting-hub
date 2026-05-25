@@ -109,10 +109,9 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
           {visibleLabels.map(lbl => (
             <span
               key={lbl.id}
-              style={{ backgroundColor: lbl.color + '25', borderColor: lbl.color + '60', color: lbl.color }}
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold border"
+              style={{ backgroundColor: lbl.color }}
+              className="inline-flex items-center px-2 py-px rounded-full text-[9px] font-bold text-white"
             >
-              <span style={{ backgroundColor: lbl.color }} className="w-1.5 h-1.5 rounded-full shrink-0" />
               {lbl.name}
             </span>
           ))}

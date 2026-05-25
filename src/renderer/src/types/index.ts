@@ -113,12 +113,12 @@ export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
 }
 
 export const CONTENT_TYPE_COLORS: Record<ContentType, string> = {
-  'policy-brief':          'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  'research-report':       'bg-violet-500/20 text-violet-300 border-violet-500/30',
-  'op-ed':                 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
-  'briefing-note':         'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-  'consulting-engagement': 'bg-orange-500/20 text-orange-300 border-orange-500/30',
-  'client-advisory':       'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+  'policy-brief':          'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30',
+  'research-report':       'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/30',
+  'op-ed':                 'bg-yellow-50 text-yellow-800 border-yellow-200 dark:bg-yellow-500/20 dark:text-yellow-300 dark:border-yellow-500/30',
+  'briefing-note':         'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/20 dark:text-cyan-300 dark:border-cyan-500/30',
+  'consulting-engagement': 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/30',
+  'client-advisory':       'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30',
 }
 
 export const CONTENT_TYPE_BAR_COLORS: Record<ContentType, string> = {
