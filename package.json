@@ -25,13 +25,15 @@
     "@tiptap/pm": "^3.23.6",
     "@tiptap/react": "^3.23.6",
     "@tiptap/starter-kit": "^3.23.6",
+    "@types/ws": "^8.18.1",
     "better-sqlite3": "^11.10.0",
     "electron-updater": "^6.8.3",
     "googleapis": "^172.0.0",
     "nodemailer": "^8.0.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.24.1"
+    "react-router-dom": "^6.24.1",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.6.0",

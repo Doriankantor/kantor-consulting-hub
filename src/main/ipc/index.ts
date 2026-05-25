@@ -1,6 +1,7 @@
 import { ipcMain, app, dialog, shell } from 'electron'
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
+import ws from 'ws'
 import { copyFileSync, mkdirSync, existsSync } from 'fs'
 import { join, basename, extname } from 'path'
 import { randomBytes } from 'crypto'
@@ -11,10 +12,14 @@ import { sendEmail, inviteEmailHtml } from '../google/gmail'
 // ── Supabase admin client (service role) ──────────────────────────────────
 // process.env.SUPABASE_URL and process.env.SUPABASE_SERVICE_ROLE_KEY are
 // injected at build time by electron.vite.config.ts → define.
+// ws is required as transport because Node.js 20 has no native WebSocket.
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL ?? '',
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-  { auth: { autoRefreshToken: false, persistSession: false } }
+  {
+    auth: { autoRefreshToken: false, persistSession: false },
+    realtime: { transport: ws as unknown as typeof WebSocket },
+  }
 )
 
 function uuid(): string { return crypto.randomUUID() }
