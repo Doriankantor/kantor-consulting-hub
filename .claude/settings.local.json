@@ -37,7 +37,15 @@
       "Bash(git -C /Users/doriankantor/newsroom-pm diff)",
       "Bash(git -C /Users/doriankantor/newsroom-pm add .claude/settings.local.json)",
       "Bash(git -C /Users/doriankantor/newsroom-pm add -A)",
-      "Bash(git -C /Users/doriankantor/newsroom-pm log --oneline -5)"
+      "Bash(git -C /Users/doriankantor/newsroom-pm log --oneline -5)",
+      "Bash(xattr -cr /Users/doriankantor/newsroom-pm/dist/KantorConsultingHub-1.0.0.dmg)",
+      "Bash(hdiutil attach *)",
+      "Read(//Volumes/**)",
+      "Bash(xattr -cr \"/Volumes/Kantor Consulting Hub/Kantor Consulting Hub.app\")",
+      "Bash(hdiutil detach *)",
+      "Bash(cp -R \"/Volumes/Kantor Consulting Hub/Kantor Consulting Hub.app\" /Applications/)",
+      "Bash(xattr -cr \"/Applications/Kantor Consulting Hub.app\")",
+      "Bash(git -C /Users/doriankantor/newsroom-pm diff --stat)"
     ]
   }
 }
