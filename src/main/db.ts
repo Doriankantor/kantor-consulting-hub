@@ -342,6 +342,9 @@ export function initDatabase(): void {
     }
   }
 
+  // Remove legacy 'inactive' (soft-deleted) users — team:remove now hard-deletes
+  db.exec("DELETE FROM local_users WHERE status = 'inactive'")
+
   // Migrate task_comments: add updated_at and mentions_json columns
   try { db.exec('ALTER TABLE task_comments ADD COLUMN updated_at DATETIME;') } catch {}
   try { db.exec('ALTER TABLE task_comments ADD COLUMN mentions_json TEXT;') } catch {}

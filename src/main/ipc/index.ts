@@ -192,7 +192,10 @@ function registerAuthHandlers() {
 function registerTeamHandlers() {
   ipcMain.handle('team:list', () =>
     getDatabase()
-      .prepare('SELECT id,email,full_name,role,status,must_change_password,anthropic_key_set,created_at,last_active FROM local_users ORDER BY created_at')
+      .prepare(`SELECT id,email,full_name,role,status,must_change_password,anthropic_key_set,created_at,last_active
+                FROM local_users
+                WHERE status != 'inactive'
+                ORDER BY created_at`)
       .all()
   )
 
@@ -219,7 +222,8 @@ function registerTeamHandlers() {
   })
 
   ipcMain.handle('team:remove', (_e, id: string) => {
-    getDatabase().prepare("UPDATE local_users SET status='inactive' WHERE id=?").run(id)
+    // Hard-delete so the user is fully gone; they can only return via a fresh invite
+    getDatabase().prepare('DELETE FROM local_users WHERE id=?').run(id)
     return { ok: true }
   })
 
