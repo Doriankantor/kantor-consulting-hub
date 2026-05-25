@@ -310,6 +310,38 @@ export function initDatabase(): void {
     );
   `)
 
+  // ── Seed workspace_tasks on first run (only if table is empty) ───────────
+  {
+    const empty = (db.prepare('SELECT COUNT(*) as c FROM workspace_tasks').get() as {c: number}).c === 0
+    if (empty) {
+      function daysFromNow(offset: number): string {
+        const dt = new Date()
+        dt.setDate(dt.getDate() + offset)
+        return dt.toISOString().slice(0, 10)
+      }
+      const seedTasks = [
+        { id:'task-1',  col:'col-scoping',   title:'Colombia 2026 Electoral Risk Brief',         type:'policy-brief',          client:'Private Equity Client',         area:'latin-america',          due: daysFromNow(28), start: daysFromNow(3),   pri:'high',   pos:0 },
+        { id:'task-2',  col:'col-scoping',   title:'Trump Immigration Policy Client Advisory',   type:'client-advisory',       client:'Financial Services Firm',        area:'us-foreign-policy',      due: daysFromNow(14), start: daysFromNow(1),   pri:'urgent', pos:1 },
+        { id:'task-3',  col:'col-scoping',   title:'Dual-Use Technology Policy Brief',           type:'policy-brief',          client:'Defense Tech Startup',           area:'security-technology',    due: daysFromNow(35), start: daysFromNow(7),   pri:'medium', pos:2 },
+        { id:'task-4',  col:'col-research',  title:'Drone Proliferation Report for FIU',         type:'research-report',       client:'Florida International University',area:'security-technology',   due: daysFromNow(18), start: daysFromNow(-4),  pri:'high',   pos:0 },
+        { id:'task-5',  col:'col-research',  title:'Europe Security Autonomy Research Report',   type:'research-report',       client:'European Policy Institute',      area:'european-politics',      due: daysFromNow(22), start: daysFromNow(-6),  pri:'high',   pos:1 },
+        { id:'task-6',  col:'col-research',  title:'Mexico Cartel Dynamics Briefing Note',       type:'briefing-note',         client:'Financial Intelligence Unit',    area:'latin-america',          due: daysFromNow(10), start: daysFromNow(-2),  pri:'high',   pos:2 },
+        { id:'task-7',  col:'col-drafting',  title:'NATO Deterrence Strategy Report',            type:'research-report',       client:'European Security Think Tank',  area:'international-security', due: daysFromNow(16), start: daysFromNow(-8),  pri:'medium', pos:0 },
+        { id:'task-8',  col:'col-drafting',  title:'LATAM Political Risk Advisory Op-Ed',        type:'op-ed',                 client:'Internal Publication',          area:'latin-america',          due: daysFromNow(7),  start: daysFromNow(-3),  pri:'low',    pos:1 },
+        { id:'task-9',  col:'col-review',    title:'Venezuela Intervention Policy Brief',        type:'policy-brief',          client:'Confidential Government Client', area:'latin-america',          due: daysFromNow(4),  start: daysFromNow(-12), pri:'urgent', pos:0 },
+        { id:'task-10', col:'col-review',    title:'Sanctions Enforcement Research Report',      type:'research-report',       client:'Compliance Advisory Firm',       area:'international-security', due: daysFromNow(9),  start: daysFromNow(-10), pri:'high',   pos:1 },
+        { id:'task-11', col:'col-delivery',  title:'US–LATAM Strategy Note for Private Client',  type:'briefing-note',         client:'Confidential Private Client',    area:'us-foreign-policy',      due: daysFromNow(2),  start: daysFromNow(-14), pri:'high',   pos:0 },
+        { id:'task-12', col:'col-published', title:'Hungary Post-Election Client Advisory',      type:'client-advisory',       client:'European Family Office',         area:'european-politics',      due: daysFromNow(-8), start: daysFromNow(-25), pri:'medium', pos:0 },
+      ]
+      const ins = db.prepare(`INSERT OR IGNORE INTO workspace_tasks
+        (id,column_id,title,content_type,client,area_of_analysis,assignees_json,due_date,start_date,priority,position)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+      for (const t of seedTasks) {
+        ins.run(t.id, t.col, t.title, t.type, t.client, t.area, '[]', t.due, t.start, t.pri, t.pos)
+      }
+    }
+  }
+
   // Migrate task_comments: add updated_at and mentions_json columns
   try { db.exec('ALTER TABLE task_comments ADD COLUMN updated_at DATETIME;') } catch {}
   try { db.exec('ALTER TABLE task_comments ADD COLUMN mentions_json TEXT;') } catch {}
