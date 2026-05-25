@@ -21,7 +21,7 @@ const api = {
   },
   comments: {
     get:    (taskId: string)    => ipcRenderer.invoke('comments:get', taskId),
-    add:    (c: { task_id: string; author_id: string; author_name: string; content: string }) => ipcRenderer.invoke('comments:add', c),
+    add:    (c: { task_id: string; author_id: string; author_name: string; content: string; task_title?: string; assignee_ids?: string[] }) => ipcRenderer.invoke('comments:add', c),
     delete: (id: string)        => ipcRenderer.invoke('comments:delete', id),
     update: (id: string, content: string) => ipcRenderer.invoke('comments:update', id, content),
   },

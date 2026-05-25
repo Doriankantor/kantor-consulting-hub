@@ -103,6 +103,48 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const refreshLabels = loadLabels
 
+  // ── Deadline warnings ─────────────────────────────────────────────────────
+
+  const checkDeadlines = useCallback(async (taskList: Task[]) => {
+    try {
+      const localUserRaw = localStorage.getItem('kantor-local-user')
+      if (!localUserRaw) return
+      const localUser = JSON.parse(localUserRaw) as { id: string; name: string }
+      const userId = localUser.id
+      const now = Date.now()
+      const oneDayMs  = 86400000
+      const threeDayMs = 3 * oneDayMs
+
+      for (const t of taskList) {
+        if (!t.due_date || t.column_id === 'col-published') continue
+        const due = new Date(t.due_date).getTime()
+        const diff = due - now
+        let type: 'overdue' | '1d' | '3d' | null = null
+        if (diff < 0)          type = 'overdue'
+        else if (diff < oneDayMs)  type = '1d'
+        else if (diff < threeDayMs) type = '3d'
+        if (!type) continue
+
+        // Only notify assignees (or everyone if unassigned)
+        const assignees = t.assignee_ids ?? []
+        const targets = assignees.length > 0 ? assignees : [userId]
+        if (!targets.includes(userId)) continue
+
+        const dedupKey = `deadline-notified-${t.id}-${type}`
+        if (localStorage.getItem(dedupKey)) continue
+        localStorage.setItem(dedupKey, '1')
+
+        const label = type === 'overdue' ? 'is overdue' : type === '1d' ? 'is due tomorrow' : 'is due in 3 days'
+        await window.api.notifications.create({
+          user_id: userId, type: 'deadline',
+          title: `"${t.title}" ${label}`,
+          body: t.client ? `Client: ${t.client}` : undefined,
+          task_id: t.id, task_title: t.title,
+        })
+      }
+    } catch {}
+  }, [])
+
   // ── Load card meta (comment counts, checklist summaries, task labels) ────
 
   const loadTaskMeta = useCallback(async (taskList: Task[]) => {
@@ -171,8 +213,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         if (tasksRes.data && tasksRes.data.length > 0) {
           setTasks(tasksRes.data as Task[])
           loadTaskMeta(tasksRes.data as Task[])
+          checkDeadlines(tasksRes.data as Task[])
         } else {
           loadTaskMeta(SEED_TASKS)
+          checkDeadlines(SEED_TASKS)
         }
         if (colsRes.data && colsRes.data.length > 0) {
           setColumns(colsRes.data as Column[])
@@ -184,6 +228,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // Tables don't exist yet — seed data is already loaded; still load meta
       loadTaskMeta(SEED_TASKS)
+      checkDeadlines(SEED_TASKS)
       }
       if (mounted) setLoading(false)
     }

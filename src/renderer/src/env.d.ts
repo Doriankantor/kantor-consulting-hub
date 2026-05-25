@@ -119,7 +119,7 @@ interface Window {
     }
     comments: {
       get:    (taskId: string) => Promise<import('./types').TaskComment[]>
-      add:    (c: { task_id: string; author_id: string; author_name: string; content: string }) => Promise<import('./types').TaskComment>
+      add:    (c: { task_id: string; author_id: string; author_name: string; content: string; task_title?: string; assignee_ids?: string[] }) => Promise<import('./types').TaskComment>
       delete: (commentId: string) => Promise<boolean>
       update: (id: string, content: string) => Promise<{ ok?: boolean }>
     }

@@ -61,14 +61,62 @@ function registerTaskHandlers() {
 
 // ── Comments ───────────────────────────────────────────────────────────────
 
+function createNotification(n: {
+  user_id: string; type: string; title: string; body?: string;
+  task_id?: string; task_title?: string; actor_name?: string
+}) {
+  try {
+    getDatabase().prepare(`INSERT INTO notifications (id,user_id,type,title,body,task_id,task_title,actor_name)
+      VALUES (?,?,?,?,?,?,?,?)`)
+      .run(uuid(), n.user_id, n.type, n.title, n.body ?? null, n.task_id ?? null, n.task_title ?? null, n.actor_name ?? null)
+  } catch {}
+}
+
 function registerCommentHandlers() {
   ipcMain.handle('comments:get', (_e, taskId: string) =>
     getDatabase().prepare('SELECT * FROM task_comments WHERE task_id=? ORDER BY created_at ASC').all(taskId)
   )
-  ipcMain.handle('comments:add', (_e, c: { task_id: string; author_id: string; author_name: string; content: string }) => {
-    const entry = { id: uuid(), created_at: now(), ...c }
+  ipcMain.handle('comments:add', (_e, c: {
+    task_id: string; author_id: string; author_name: string; content: string;
+    task_title?: string; assignee_ids?: string[]
+  }) => {
+    const { task_title, assignee_ids, ...fields } = c
+    const entry = { id: uuid(), created_at: now(), ...fields }
     getDatabase().prepare(`INSERT INTO task_comments (id,task_id,author_id,author_name,content,created_at)
       VALUES (@id,@task_id,@author_id,@author_name,@content,@created_at)`).run(entry)
+
+    // Notify assignees (except the commenter)
+    const targets = (assignee_ids ?? []).filter(id => id !== c.author_id)
+    for (const userId of targets) {
+      createNotification({
+        user_id: userId, type: 'comment',
+        title: `${c.author_name} commented on "${task_title ?? 'a task'}"`,
+        body: c.content.slice(0, 120),
+        task_id: c.task_id, task_title, actor_name: c.author_name,
+      })
+    }
+
+    // Notify @mentioned users
+    const mentionRe = /@([\w .'-]+)/g
+    let m: RegExpExecArray | null
+    const mentionedNames = new Set<string>()
+    while ((m = mentionRe.exec(c.content)) !== null) mentionedNames.add(m[1].toLowerCase().trim())
+    if (mentionedNames.size > 0) {
+      const users = getDatabase().prepare('SELECT id,full_name FROM local_users WHERE status != ?').all('inactive') as { id: string; full_name: string | null }[]
+      for (const u of users) {
+        if (u.id === c.author_id) continue
+        const name = (u.full_name ?? '').toLowerCase().trim()
+        if (name && mentionedNames.has(name)) {
+          createNotification({
+            user_id: u.id, type: 'mention',
+            title: `${c.author_name} mentioned you in "${task_title ?? 'a task'}"`,
+            body: c.content.slice(0, 120),
+            task_id: c.task_id, task_title, actor_name: c.author_name,
+          })
+        }
+      }
+    }
+
     return entry
   })
   ipcMain.handle('comments:delete', (_e, id: string) => {

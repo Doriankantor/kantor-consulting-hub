@@ -94,6 +94,16 @@ export default function TaskDetailPanel() {
   const [taskLabels, setTaskLabels]       = useState<Label[]>([])
   const [showLabelPicker, setShowLabelPicker] = useState(false)
 
+  // @mention state
+  const [mentionQuery, setMentionQuery]   = useState('')
+  const [showMentions, setShowMentions]   = useState(false)
+  const [mentionIndex, setMentionIndex]   = useState(0)
+  const commentInputRef = useRef<HTMLTextAreaElement>(null)
+
+  const mentionResults = members.filter(m =>
+    (m.full_name ?? m.email).toLowerCase().includes(mentionQuery.toLowerCase())
+  ).slice(0, 5)
+
   const titleRef = useRef<HTMLInputElement>(null)
 
   const loadAttachments = useCallback(async (taskId: string) => {
@@ -192,6 +202,8 @@ export default function TaskDetailPanel() {
       author_id: currentUserId,
       author_name: currentUserName,
       content: newComment.trim(),
+      task_title: selectedTask.title,
+      assignee_ids: selectedTask.assignee_ids ?? [],
     })
     setComments(prev => [...prev, comment])
     const entry = await window.api.activity.add({
@@ -311,11 +323,21 @@ export default function TaskDetailPanel() {
   const assigneeIds: string[] = (field('assignee_ids') as string[] | null) ?? []
 
   function toggleAssignee(memberId: string) {
-    const updated = assigneeIds.includes(memberId)
-      ? assigneeIds.filter(id => id !== memberId)
-      : [...assigneeIds, memberId]
+    const isAdding = !assigneeIds.includes(memberId)
+    const updated = isAdding
+      ? [...assigneeIds, memberId]
+      : assigneeIds.filter(id => id !== memberId)
     set('assignee_ids', updated)
     updateTask(selectedTask.id, { assignee_ids: updated })
+    // Notify newly assigned member
+    if (isAdding && memberId !== currentUserId) {
+      window.api.notifications.create({
+        user_id: memberId, type: 'assignment',
+        title: `${currentUserName} assigned you to "${selectedTask.title}"`,
+        task_id: selectedTask.id, task_title: selectedTask.title,
+        actor_name: currentUserName,
+      }).catch(() => {})
+    }
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -425,8 +447,21 @@ export default function TaskDetailPanel() {
                   <select
                     value={field('column_id')}
                     onChange={e => {
-                      set('column_id', e.target.value)
-                      updateTask(selectedTask.id, { column_id: e.target.value })
+                      const newColId = e.target.value
+                      set('column_id', newColId)
+                      updateTask(selectedTask.id, { column_id: newColId })
+                      // Notify assignees of stage change
+                      const newColName = columns.find(c => c.id === newColId)?.name ?? newColId
+                      const assignees = (field('assignee_ids') as string[] | null) ?? []
+                      for (const uid of assignees) {
+                        if (uid === currentUserId) continue
+                        window.api.notifications.create({
+                          user_id: uid, type: 'stage_change',
+                          title: `"${selectedTask.title}" moved to ${newColName}`,
+                          task_id: selectedTask.id, task_title: selectedTask.title,
+                          actor_name: currentUserName,
+                        }).catch(() => {})
+                      }
                     }}
                     className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
                   >
@@ -1006,20 +1041,75 @@ export default function TaskDetailPanel() {
 
                 {addingComment && (
                   <div className="space-y-2">
-                    <textarea
-                      value={newComment}
-                      onChange={e => setNewComment(e.target.value)}
-                      rows={3}
-                      placeholder="Write a comment…"
-                      autoFocus
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                          e.preventDefault()
-                          handleAddComment()
-                        }
-                      }}
-                      className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30 resize-none leading-relaxed"
-                    />
+                    <div className="relative">
+                      <textarea
+                        ref={commentInputRef}
+                        value={newComment}
+                        onChange={e => {
+                          const val = e.target.value
+                          setNewComment(val)
+                          // Detect @mention trigger
+                          const cursor = e.target.selectionStart ?? val.length
+                          const before = val.slice(0, cursor)
+                          const atMatch = before.match(/@([\w ]*)$/)
+                          if (atMatch) {
+                            setMentionQuery(atMatch[1])
+                            setShowMentions(true)
+                            setMentionIndex(0)
+                          } else {
+                            setShowMentions(false)
+                          }
+                        }}
+                        rows={3}
+                        placeholder="Write a comment… type @ to mention someone"
+                        autoFocus
+                        onKeyDown={e => {
+                          if (showMentions && mentionResults.length > 0) {
+                            if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIndex(i => (i + 1) % mentionResults.length); return }
+                            if (e.key === 'ArrowUp')   { e.preventDefault(); setMentionIndex(i => (i - 1 + mentionResults.length) % mentionResults.length); return }
+                            if (e.key === 'Enter' || e.key === 'Tab') {
+                              e.preventDefault()
+                              const m = mentionResults[mentionIndex]
+                              const name = m.full_name ?? m.email
+                              setNewComment(prev => prev.replace(/@[\w ]*$/, `@${name} `))
+                              setShowMentions(false)
+                              return
+                            }
+                            if (e.key === 'Escape') { setShowMentions(false); return }
+                          }
+                          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                            e.preventDefault()
+                            handleAddComment()
+                          }
+                        }}
+                        className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/30 resize-none leading-relaxed"
+                      />
+                      {/* @mention popover */}
+                      {showMentions && mentionResults.length > 0 && (
+                        <div className="absolute bottom-full left-0 mb-1 w-48 bg-white dark:bg-[#1a2233] border border-gray-200 dark:border-white/[0.1] rounded-xl shadow-lg overflow-hidden z-10">
+                          {mentionResults.map((m, i) => (
+                            <button
+                              key={m.id}
+                              onMouseDown={e => {
+                                e.preventDefault()
+                                const name = m.full_name ?? m.email
+                                setNewComment(prev => prev.replace(/@[\w ]*$/, `@${name} `))
+                                setShowMentions(false)
+                                commentInputRef.current?.focus()
+                              }}
+                              className={`titlebar-no-drag w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition ${
+                                i === mentionIndex ? 'bg-hub-gold/10 text-hub-gold' : 'text-gray-700 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/[0.05]'
+                              }`}
+                            >
+                              <div className="w-5 h-5 rounded-full bg-hub-gold/20 flex items-center justify-center text-[9px] font-bold text-hub-gold shrink-0">
+                                {(m.full_name ?? m.email).slice(0, 2).toUpperCase()}
+                              </div>
+                              {m.full_name ?? m.email}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <div className="flex gap-2">
                       <button
                         onClick={handleAddComment}
