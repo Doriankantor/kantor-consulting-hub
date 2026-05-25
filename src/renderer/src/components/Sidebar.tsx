@@ -54,6 +54,20 @@ const InboxIcon = () => (
   </svg>
 )
 
+const ClientsIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+    <rect x="2" y="4" width="11" height="10" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M5 14V9h5v5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+    <path d="M4 1.5h7l1 2.5H3L4 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+  </svg>
+)
+
+const AnalyticsIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+    <path d="M2 13V8M6 13V4M10 13V7M14 13V2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>
+)
+
 const ChatIcon = () => (
   <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
     <path d="M2 2.5h11v8H8.5l-2 2v-2H2v-8z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
@@ -137,6 +151,8 @@ export default function Sidebar() {
     { to: '/inbox',     label: 'Inbox',     icon: <InboxIcon />,     badge: inboxUnread || undefined },
     { to: '/dashboard', label: 'Dashboard', icon: <DashboardIcon />, badge: urgentCount || undefined },
     { to: '/workspace', label: 'Workspace',  icon: <WorkspaceIcon /> },
+    { to: '/clients',   label: 'Clients',   icon: <ClientsIcon /> },
+    ...(isAdmin ? [{ to: '/analytics', label: 'Analytics', icon: <AnalyticsIcon /> }] : []),
     { to: '/team',      label: 'Team',       icon: <TeamIcon /> },
     { to: '/settings',  label: 'Settings',   icon: <SettingsIcon /> },
   ]

@@ -56,6 +56,18 @@ export default function TaskDetailPanel() {
   // Editing state — overrides selected task fields until saved
   const [editing, setEditing] = useState<Partial<Task>>({})
 
+  // Client list for dropdown
+  const [clientList, setClientList] = useState<ClientRecord[]>([])
+  useEffect(() => {
+    window.api.clients.list().then(setClientList).catch(() => {})
+  }, [])
+
+  // Recurring state
+  const [recurringEnabled, setRecurringEnabled] = useState(false)
+  const [recurringType, setRecurringType] = useState<'weekly' | 'monthly' | 'quarterly' | 'custom'>('monthly')
+  const [recurringInterval, setRecurringInterval] = useState(30)
+  const [recurringInit, setRecurringInit] = useState(false)
+
   // Claude sidebar
   const [claudeOpen, setClaudeOpen] = useState(false)
 
@@ -148,12 +160,42 @@ export default function TaskDetailPanel() {
     setShowLabelPicker(false)
     setShowAddSource(false)
 
+    // Initialize recurring state from task
+    setRecurringInit(false)
+    if (selectedTask.recurrence_json) {
+      try {
+        const rec = JSON.parse(selectedTask.recurrence_json)
+        setRecurringEnabled(true)
+        setRecurringType(rec.type ?? 'monthly')
+        setRecurringInterval(rec.interval ?? 30)
+      } catch {
+        setRecurringEnabled(false)
+        setRecurringType('monthly')
+        setRecurringInterval(30)
+      }
+    } else {
+      setRecurringEnabled(false)
+      setRecurringType('monthly')
+      setRecurringInterval(30)
+    }
+    setTimeout(() => setRecurringInit(true), 0)
+
     window.api.comments.get(selectedTask.id).then(data => setComments(data))
     window.api.activity.get(selectedTask.id).then(data => setActivity(data))
     loadAttachments(selectedTask.id)
     loadChecklists(selectedTask.id)
     loadTaskLabels(selectedTask.id)
   }, [selectedTask?.id])
+
+  // Sync recurring toggles to editing state (after init to avoid dirty on load)
+  useEffect(() => {
+    if (!recurringInit) return
+    const json = recurringEnabled
+      ? JSON.stringify({ type: recurringType, ...(recurringType === 'custom' ? { interval: recurringInterval } : {}) })
+      : null
+    setEditing(prev => ({ ...prev, recurrence_json: json }))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recurringEnabled, recurringType, recurringInterval, recurringInit])
 
   // Scroll to pending section when panel opens from inbox navigation
   useEffect(() => {
@@ -560,14 +602,21 @@ export default function TaskDetailPanel() {
                   {/* Client */}
                   <div>
                     <SectionLabel title="Client" />
-                    <input
-                      type="text"
-                      value={field('client') ?? ''}
-                      onChange={e => set('client', e.target.value || null)}
-                      onBlur={handleSave}
-                      placeholder="e.g. Confidential Government Client"
-                      className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
-                    />
+                    <select
+                      value={field('client_id') ?? ''}
+                      onChange={e => {
+                        const id = e.target.value || null
+                        const name = id ? (clientList.find(c => c.id === id)?.name ?? null) : null
+                        setEditing(prev => ({ ...prev, client_id: id, client: name }))
+                        updateTask(selectedTask.id, { client_id: id, client: name })
+                      }}
+                      className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
+                    >
+                      <option value="">None</option>
+                      {clientList.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
                   </div>
 
                   {/* Start date */}
@@ -592,6 +641,50 @@ export default function TaskDetailPanel() {
                       onBlur={handleSave}
                       className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40 [color-scheme:dark]"
                     />
+                  </div>
+
+                  {/* Recurrence — full width */}
+                  <div className="col-span-2">
+                    <SectionLabel title="Recurrence" />
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        id="recurring-toggle"
+                        checked={recurringEnabled}
+                        onChange={e => setRecurringEnabled(e.target.checked)}
+                        className="titlebar-no-drag w-3.5 h-3.5 rounded accent-hub-gold cursor-pointer"
+                      />
+                      <label htmlFor="recurring-toggle" className="text-sm text-gray-700 dark:text-white/80 cursor-pointer select-none">
+                        Recurring task
+                      </label>
+                    </div>
+                    {recurringEnabled && (
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={recurringType}
+                          onChange={e => setRecurringType(e.target.value as typeof recurringType)}
+                          className="titlebar-no-drag flex-1 px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
+                        >
+                          <option value="weekly">Weekly</option>
+                          <option value="monthly">Monthly</option>
+                          <option value="quarterly">Quarterly</option>
+                          <option value="custom">Custom</option>
+                        </select>
+                        {recurringType === 'custom' && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-gray-400 dark:text-white/35 shrink-0">Every</span>
+                            <input
+                              type="number"
+                              min={1}
+                              value={recurringInterval}
+                              onChange={e => setRecurringInterval(parseInt(e.target.value, 10) || 1)}
+                              className="titlebar-no-drag w-16 px-2 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
+                            />
+                            <span className="text-xs text-gray-400 dark:text-white/35 shrink-0">days</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 

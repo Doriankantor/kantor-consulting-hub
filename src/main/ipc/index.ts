@@ -672,9 +672,10 @@ function registerWorkspaceHandlers() {
     const vals: unknown[] = []
     const fields: Record<string, string> = {
       column_id: 'column_id', title: 'title', content_type: 'content_type',
-      client: 'client', area_of_analysis: 'area_of_analysis',
+      client: 'client', client_id: 'client_id', area_of_analysis: 'area_of_analysis',
       due_date: 'due_date', start_date: 'start_date', priority: 'priority',
-      description: 'description', notes: 'notes', sources_json: 'sources_json', position: 'position',
+      description: 'description', notes: 'notes', sources_json: 'sources_json',
+      position: 'position', recurrence_json: 'recurrence_json',
     }
     for (const [key, col] of Object.entries(fields)) {
       if (key in partial) { sets.push(`${col}=?`); vals.push(partial[key]) }
@@ -685,12 +686,181 @@ function registerWorkspaceHandlers() {
     }
     sets.push("updated_at=datetime('now')")
     if (sets.length > 1) db().prepare(`UPDATE workspace_tasks SET ${sets.join(',')} WHERE id=?`).run(...vals, taskId)
+
+    // Recurring task auto-copy logic
+    if ('column_id' in partial) {
+      const newCol = partial.column_id as string
+      if (newCol === 'col-delivery' || newCol === 'col-published') {
+        const task = db().prepare('SELECT * FROM workspace_tasks WHERE id=?').get(taskId) as Record<string,unknown> | undefined
+        if (task?.recurrence_json) {
+          try {
+            const rec = JSON.parse(task.recurrence_json as string) as { type: string; value: string | number }
+            const now2 = new Date()
+            let nextDue: Date | null = null
+            if (task.due_date) {
+              const base = new Date(task.due_date as string)
+              if (rec.type === 'weekly')    { nextDue = new Date(base); nextDue.setDate(nextDue.getDate() + 7) }
+              if (rec.type === 'monthly')   { nextDue = new Date(base); nextDue.setMonth(nextDue.getMonth() + 1) }
+              if (rec.type === 'quarterly') { nextDue = new Date(base); nextDue.setMonth(nextDue.getMonth() + 3) }
+              if (rec.type === 'custom')    { nextDue = new Date(base); nextDue.setDate(nextDue.getDate() + Number(rec.value)) }
+            }
+            const newId = uuid()
+            const colCount = (db().prepare('SELECT COUNT(*) as c FROM workspace_tasks WHERE column_id=?').get('col-scoping') as {c:number}).c
+            db().prepare(`INSERT INTO workspace_tasks
+              (id,column_id,title,content_type,client,client_id,area_of_analysis,assignees_json,due_date,start_date,priority,recurrence_json,position)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+              .run(newId, 'col-scoping', task.title, task.content_type, task.client??null, task.client_id??null,
+                   task.area_of_analysis??null, task.assignees_json??'[]',
+                   nextDue ? nextDue.toISOString().slice(0,10) : null,
+                   now2.toISOString().slice(0,10),
+                   task.priority, task.recurrence_json, colCount)
+          } catch {}
+        }
+      }
+    }
+
     return { ok: true }
   })
 
   ipcMain.handle('workspace:deleteTask', (_e, taskId: string) => {
     db().prepare('DELETE FROM workspace_tasks WHERE id=?').run(taskId)
     return { ok: true }
+  })
+}
+
+// ── Clients ───────────────────────────────────────────────────────────────
+
+function registerClientsHandlers() {
+  const db = () => getDatabase()
+
+  ipcMain.handle('clients:list', () =>
+    db().prepare('SELECT * FROM clients ORDER BY name ASC').all()
+  )
+  ipcMain.handle('clients:get', (_e, id: string) => {
+    const client = db().prepare('SELECT * FROM clients WHERE id=?').get(id)
+    const contacts = db().prepare('SELECT * FROM client_contacts WHERE client_id=? ORDER BY created_at ASC').all(id)
+    const tasks = db().prepare(`SELECT id,title,column_id,due_date,priority,content_type FROM workspace_tasks WHERE client_id=? ORDER BY due_date ASC NULLS LAST`).all(id)
+    return { client, contacts, tasks }
+  })
+  ipcMain.handle('clients:create', (_e, data: Record<string, unknown>) => {
+    const id = uuid()
+    db().prepare(`INSERT INTO clients (id,name,type,country,region,status,primary_contact_name,primary_contact_email,primary_contact_phone,notes,area_tags_json)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id, data.name, data.type??'Private', data.country??null, data.region??null, data.status??'Active',
+           data.primary_contact_name??null, data.primary_contact_email??null, data.primary_contact_phone??null,
+           data.notes??null, JSON.stringify(data.area_tags??[]))
+    return { ok: true, id }
+  })
+  ipcMain.handle('clients:update', (_e, id: string, data: Record<string, unknown>) => {
+    const sets: string[] = []
+    const vals: unknown[] = []
+    const fields: Record<string,string> = {
+      name:'name', type:'type', country:'country', region:'region', status:'status',
+      primary_contact_name:'primary_contact_name', primary_contact_email:'primary_contact_email',
+      primary_contact_phone:'primary_contact_phone', notes:'notes'
+    }
+    for (const [k,col] of Object.entries(fields)) {
+      if (k in data) { sets.push(`${col}=?`); vals.push(data[k]) }
+    }
+    if ('area_tags' in data) { sets.push('area_tags_json=?'); vals.push(JSON.stringify(data.area_tags)) }
+    sets.push("updated_at=datetime('now')")
+    if (sets.length > 1) db().prepare(`UPDATE clients SET ${sets.join(',')} WHERE id=?`).run(...vals, id)
+    return { ok: true }
+  })
+  ipcMain.handle('clients:delete', (_e, id: string) => {
+    db().prepare('DELETE FROM clients WHERE id=?').run(id)
+    return { ok: true }
+  })
+  // Contacts
+  ipcMain.handle('clients:addContact', (_e, clientId: string, contact: Record<string, unknown>) => {
+    const id = uuid()
+    db().prepare('INSERT INTO client_contacts (id,client_id,name,role,email,phone) VALUES (?,?,?,?,?,?)')
+      .run(id, clientId, contact.name, contact.role??null, contact.email??null, contact.phone??null)
+    return { ok: true, id }
+  })
+  ipcMain.handle('clients:deleteContact', (_e, contactId: string) => {
+    db().prepare('DELETE FROM client_contacts WHERE id=?').run(contactId)
+    return { ok: true }
+  })
+}
+
+// ── Templates ──────────────────────────────────────────────────────────────
+
+function registerTemplatesHandlers() {
+  const db = () => getDatabase()
+  ipcMain.handle('templates:list', () =>
+    db().prepare('SELECT * FROM task_templates ORDER BY is_builtin DESC, name ASC').all()
+  )
+  ipcMain.handle('templates:create', (_e, data: Record<string, unknown>) => {
+    const id = uuid()
+    db().prepare(`INSERT INTO task_templates (id,name,content_type,duration_days,checklist_json,is_builtin) VALUES (?,?,?,?,?,0)`)
+      .run(id, data.name, data.content_type??'policy-brief', data.duration_days??7, JSON.stringify(data.checklist??[]))
+    return { ok: true, id }
+  })
+  ipcMain.handle('templates:update', (_e, id: string, data: Record<string, unknown>) => {
+    const sets: string[] = []
+    const vals: unknown[] = []
+    if ('name' in data) { sets.push('name=?'); vals.push(data.name) }
+    if ('content_type' in data) { sets.push('content_type=?'); vals.push(data.content_type) }
+    if ('duration_days' in data) { sets.push('duration_days=?'); vals.push(data.duration_days) }
+    if ('checklist' in data) { sets.push('checklist_json=?'); vals.push(JSON.stringify(data.checklist)) }
+    sets.push("updated_at=datetime('now')")
+    if (sets.length > 1) db().prepare(`UPDATE task_templates SET ${sets.join(',')} WHERE id=? AND is_builtin=0`).run(...vals, id)
+    return { ok: true }
+  })
+  ipcMain.handle('templates:delete', (_e, id: string) => {
+    db().prepare('DELETE FROM task_templates WHERE id=? AND is_builtin=0').run(id)
+    return { ok: true }
+  })
+}
+
+// ── Analytics ──────────────────────────────────────────────────────────────
+
+function registerAnalyticsHandlers() {
+  ipcMain.handle('analytics:getData', () => {
+    const db = getDatabase()
+    const tasks = db.prepare('SELECT * FROM workspace_tasks').all() as Record<string,unknown>[]
+    const activity = db.prepare(`
+      SELECT * FROM task_activity
+      WHERE created_at >= datetime('now', '-7 days')
+      ORDER BY created_at DESC
+    `).all()
+    const comments = db.prepare(`
+      SELECT * FROM task_comments
+      WHERE created_at >= datetime('now', '-7 days')
+      ORDER BY created_at DESC
+    `).all()
+    // Time in stage: compute average days between stage change events per column
+    const stageActivity = db.prepare(`
+      SELECT task_id, action, created_at FROM task_activity
+      WHERE action LIKE 'moved to%'
+      ORDER BY created_at ASC
+    `).all() as { task_id: string; action: string; created_at: string }[]
+    return { tasks, activity, comments, stageActivity }
+  })
+
+  ipcMain.handle('analytics:exportPDF', async (_e) => {
+    try {
+      const { BrowserWindow } = await import('electron')
+      const win = BrowserWindow.getFocusedWindow()
+      if (!win) return { ok: false, error: 'No window' }
+      const data = await win.webContents.printToPDF({
+        pageSize: 'A4',
+        printBackground: true,
+        landscape: false,
+        margins: { marginType: 'custom', top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 },
+      })
+      const { app: electronApp } = await import('electron')
+      const { join: joinPath } = await import('path')
+      const { writeFileSync } = await import('fs')
+      const filePath = joinPath(electronApp.getPath('downloads'), `KCHub-Analytics-${new Date().toISOString().slice(0,10)}.pdf`)
+      writeFileSync(filePath, data)
+      const { shell } = await import('electron')
+      shell.showItemInFolder(filePath)
+      return { ok: true, filePath }
+    } catch (err: unknown) {
+      return { ok: false, error: String(err) }
+    }
   })
 }
 
@@ -725,4 +895,7 @@ export function registerIpcHandlers(): void {
   registerCommentEditHandler()
   registerDialogHandlers()
   registerWorkspaceHandlers()
+  registerClientsHandlers()
+  registerTemplatesHandlers()
+  registerAnalyticsHandlers()
 }

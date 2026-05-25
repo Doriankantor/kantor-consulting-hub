@@ -345,6 +345,61 @@ export function initDatabase(): void {
   // Remove legacy 'inactive' (soft-deleted) users — team:remove now hard-deletes
   db.exec("DELETE FROM local_users WHERE status = 'inactive'")
 
+  // ── Clients + task_templates tables ─────────────────────────────────────
+  db.exec(`
+    -- Clients database
+    CREATE TABLE IF NOT EXISTS clients (
+      id                      TEXT PRIMARY KEY,
+      name                    TEXT NOT NULL,
+      type                    TEXT DEFAULT 'Private',
+      country                 TEXT,
+      region                  TEXT,
+      status                  TEXT DEFAULT 'Active',
+      primary_contact_name    TEXT,
+      primary_contact_email   TEXT,
+      primary_contact_phone   TEXT,
+      notes                   TEXT,
+      area_tags_json          TEXT DEFAULT '[]',
+      created_at              DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at              DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS client_contacts (
+      id         TEXT PRIMARY KEY,
+      client_id  TEXT NOT NULL,
+      name       TEXT NOT NULL,
+      role       TEXT,
+      email      TEXT,
+      phone      TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+    );
+
+    -- Task templates
+    CREATE TABLE IF NOT EXISTS task_templates (
+      id             TEXT PRIMARY KEY,
+      name           TEXT NOT NULL,
+      content_type   TEXT NOT NULL DEFAULT 'policy-brief',
+      duration_days  INTEGER DEFAULT 7,
+      checklist_json TEXT DEFAULT '[]',
+      is_builtin     INTEGER DEFAULT 0,
+      created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    INSERT OR IGNORE INTO task_templates (id, name, content_type, duration_days, checklist_json, is_builtin) VALUES
+      ('tpl-policy-brief',        'Policy Brief',          'policy-brief',          14, '["Define scope and key questions","Literature review","Map policy landscape","Draft analysis","Write recommendations","Executive summary","Final review"]',          1),
+      ('tpl-research-report',     'Research Report',       'research-report',       28, '["Research question & hypothesis","Methodology design","Data collection","Analysis","Key findings","Conclusions","Formatting & citations"]',                         1),
+      ('tpl-op-ed',               'Op-Ed',                 'op-ed',                  7, '["Select angle & argument","Outline","First draft","Fact-check","Edit & refine","Submission-ready version"]',                                                        1),
+      ('tpl-briefing-note',       'Briefing Note',         'briefing-note',          3, '["Context & background","Key facts","Implications","Recommendations","Final review"]',                                                                               1),
+      ('tpl-consulting-engagement','Consulting Engagement','consulting-engagement',  42, '["Kickoff call","Scope document","Research phase","Draft delivery","Client feedback","Revisions","Final delivery"]',                                                 1),
+      ('tpl-client-advisory',     'Client Advisory',       'client-advisory',        7, '["Situation assessment","Risk analysis","Strategic options","Recommendations","Client review"]',                                                                     1);
+  `)
+
+  // Migrate workspace_tasks: add client_id and recurrence_json columns
+  try { db.exec('ALTER TABLE workspace_tasks ADD COLUMN client_id TEXT;') } catch {}
+  try { db.exec('ALTER TABLE workspace_tasks ADD COLUMN recurrence_json TEXT;') } catch {}
+
   // Migrate task_comments: add updated_at and mentions_json columns
   try { db.exec('ALTER TABLE task_comments ADD COLUMN updated_at DATETIME;') } catch {}
   try { db.exec('ALTER TABLE task_comments ADD COLUMN mentions_json TEXT;') } catch {}

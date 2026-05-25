@@ -90,6 +90,15 @@ export default function Settings() {
   const [editName,    setEditName]    = useState('')
   const [editRole,    setEditRole]    = useState('')
 
+  // ── Templates ─────────────────────────────────────────────────────────────
+  const [templates,      setTemplates]      = useState<TaskTemplate[]>([])
+  const [templateLoading,setTemplateLoading]= useState(false)
+  const [showNewTemplate,setShowNewTemplate]= useState(false)
+  const [newTplName,     setNewTplName]     = useState('')
+  const [newTplType,     setNewTplType]     = useState<string>('consulting-engagement')
+  const [newTplDuration, setNewTplDuration] = useState(14)
+  const [templateMsg,    setTemplateMsg]    = useState<{type:'ok'|'err';text:string}|null>(null)
+
   // ── Areas ─────────────────────────────────────────────────────────────────
   const [areas,        setAreas]        = useState<Area[]>([])
   const [areaLoading,  setAreaLoading]  = useState(false)
@@ -115,7 +124,7 @@ export default function Settings() {
     window.api.drive.isConnected().then(setDriveConnected)
     window.api.app.getVersion().then(setAppVersion)
     window.api.settings.get('gmail_app_password').then(p => setGmailSaved(!!p))
-    if (isAdmin) { loadAreas(); loadTeam() }
+    if (isAdmin) { loadAreas(); loadTeam(); loadTemplates() }
   }, [isAdmin, localUser])
 
   async function loadTeam() {
@@ -123,6 +132,41 @@ export default function Settings() {
     const data = await window.api.team.list()
     setMembers(data)
     setLoadingTeam(false)
+  }
+
+  async function loadTemplates() {
+    setTemplateLoading(true)
+    try {
+      const data = await window.api.templates.list()
+      setTemplates(data)
+    } catch {}
+    setTemplateLoading(false)
+  }
+
+  async function handleCreateTemplate() {
+    if (!newTplName.trim()) return
+    const result = await window.api.templates.create({
+      name: newTplName.trim(),
+      content_type: newTplType,
+      duration_days: newTplDuration,
+      checklist_json: '[]',
+    })
+    if (result.id) {
+      setTemplateMsg({ type: 'ok', text: `"${newTplName}" created.` })
+      setNewTplName(''); setShowNewTemplate(false)
+      await loadTemplates()
+    } else {
+      setTemplateMsg({ type: 'err', text: 'Failed to create template.' })
+    }
+    setTimeout(() => setTemplateMsg(null), 3000)
+  }
+
+  async function handleDeleteTemplate(id: string, name: string) {
+    if (!confirm(`Delete template "${name}"?`)) return
+    await window.api.templates.delete(id)
+    await loadTemplates()
+    setTemplateMsg({ type: 'ok', text: `"${name}" deleted.` })
+    setTimeout(() => setTemplateMsg(null), 3000)
   }
 
   async function loadAreas() {
@@ -574,6 +618,89 @@ export default function Settings() {
                             )}
                           </div>
                         </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Section>
+        )}
+
+        {/* Task Templates (admin only) */}
+        {isAdmin && (
+          <Section title="Task Templates">
+            <div className="px-5 py-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs text-gray-400 dark:text-white/35">{templates.length} template{templates.length !== 1 ? 's' : ''}</p>
+                <button onClick={() => setShowNewTemplate(v => !v)}
+                  className="titlebar-no-drag flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-hub-gold/15 hover:bg-hub-gold/25 border border-hub-gold/30 text-hub-gold text-xs font-semibold transition">
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                  New template
+                </button>
+              </div>
+
+              {showNewTemplate && (
+                <div className="mb-4 p-4 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.08] space-y-2.5">
+                  <input value={newTplName} onChange={e => setNewTplName(e.target.value)} placeholder="Template name *" autoFocus
+                    onKeyDown={e => { if (e.key === 'Enter') handleCreateTemplate() }}
+                    className="titlebar-no-drag w-full px-3 py-2 rounded-lg bg-white dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-1 focus:ring-hub-gold/40" />
+                  <select value={newTplType} onChange={e => setNewTplType(e.target.value)}
+                    className="titlebar-no-drag w-full px-3 py-2 rounded-lg bg-white dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40">
+                    <option value="policy-brief">Policy Brief</option>
+                    <option value="research-report">Research Report</option>
+                    <option value="op-ed">Op-Ed</option>
+                    <option value="briefing-note">Briefing Note</option>
+                    <option value="consulting-engagement">Consulting Engagement</option>
+                    <option value="client-advisory">Client Advisory</option>
+                  </select>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-500 dark:text-white/40 shrink-0">Duration (days):</label>
+                    <input type="number" min={1} value={newTplDuration} onChange={e => setNewTplDuration(parseInt(e.target.value, 10) || 1)}
+                      className="titlebar-no-drag w-20 px-2.5 py-2 rounded-lg bg-white dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40" />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={handleCreateTemplate} disabled={!newTplName.trim()}
+                      className="titlebar-no-drag flex-1 py-2 rounded-lg bg-hub-gold hover:bg-hub-gold-light disabled:opacity-50 text-white text-xs font-semibold transition">
+                      Create template
+                    </button>
+                    <button onClick={() => { setShowNewTemplate(false); setNewTplName('') }}
+                      className="titlebar-no-drag px-4 py-2 rounded-lg bg-gray-100 dark:bg-white/[0.06] hover:bg-gray-200 dark:hover:bg-white/[0.1] text-gray-500 dark:text-white/45 text-xs transition">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {templateMsg && (
+                <div className={`mb-3 p-2.5 rounded-xl text-xs ${templateMsg.type === 'ok' ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
+                  {templateMsg.text}
+                </div>
+              )}
+
+              {templateLoading ? (
+                <p className="text-sm text-gray-400 dark:text-white/30 py-3 text-center">Loading…</p>
+              ) : templates.length === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-white/25 py-3 text-center">No templates yet.</p>
+              ) : (
+                <div className="space-y-1">
+                  {templates.map(tpl => (
+                    <div key={tpl.id} className="flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.04] group transition">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm text-gray-700 dark:text-white/80 font-medium truncate">{tpl.name}</p>
+                          {!!tpl.is_builtin && (
+                            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-gray-100 dark:bg-white/[0.08] text-gray-400 dark:text-white/30 border border-gray-200 dark:border-white/[0.06]">Built-in</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 dark:text-white/30 mt-0.5">{tpl.content_type} · {tpl.duration_days} days</p>
+                      </div>
+                      {!tpl.is_builtin && (
+                        <button
+                          onClick={() => handleDeleteTemplate(tpl.id, tpl.name)}
+                          className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1.5 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-500/10 transition text-xs">
+                          Delete
+                        </button>
                       )}
                     </div>
                   ))}

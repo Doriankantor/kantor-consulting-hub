@@ -98,6 +98,52 @@ interface ChatMessage {
   created_at: string
 }
 
+interface ClientRecord {
+  id: string
+  name: string
+  type: string
+  country: string | null
+  region: string | null
+  status: string
+  primary_contact_name: string | null
+  primary_contact_email: string | null
+  primary_contact_phone: string | null
+  notes: string | null
+  area_tags_json: string
+  created_at: string
+  updated_at: string
+}
+
+interface ClientContact {
+  id: string
+  client_id: string
+  name: string
+  role: string | null
+  email: string | null
+  phone: string | null
+  created_at: string
+}
+
+interface WorkspaceTaskSummary {
+  id: string
+  title: string
+  column_id: string
+  due_date: string | null
+  priority: string
+  content_type: string
+}
+
+interface TaskTemplate {
+  id: string
+  name: string
+  content_type: string
+  duration_days: number
+  checklist_json: string
+  is_builtin: number
+  created_at: string
+  updated_at: string
+}
+
 interface Window {
   api: {
     auth: {
@@ -217,6 +263,25 @@ interface Window {
       deleteTask:   (id: string)                              => Promise<{ ok?: boolean }>
       addColumn:    (c: Record<string, unknown>)              => Promise<{ ok?: boolean }>
       updateColumn: (id: string, p: Record<string, unknown>)  => Promise<{ ok?: boolean }>
+    }
+    clients: {
+      list:          ()                                          => Promise<ClientRecord[]>
+      get:           (id: string)                               => Promise<{ client: ClientRecord; contacts: ClientContact[]; tasks: WorkspaceTaskSummary[] }>
+      create:        (data: Record<string, unknown>)            => Promise<{ ok?: boolean; id?: string }>
+      update:        (id: string, data: Record<string, unknown>) => Promise<{ ok?: boolean }>
+      delete:        (id: string)                               => Promise<{ ok?: boolean }>
+      addContact:    (clientId: string, c: Record<string, unknown>) => Promise<{ ok?: boolean; id?: string }>
+      deleteContact: (contactId: string)                         => Promise<{ ok?: boolean }>
+    }
+    templates: {
+      list:   ()                                              => Promise<TaskTemplate[]>
+      create: (data: Record<string, unknown>)                => Promise<{ ok?: boolean; id?: string }>
+      update: (id: string, data: Record<string, unknown>)   => Promise<{ ok?: boolean }>
+      delete: (id: string)                                   => Promise<{ ok?: boolean }>
+    }
+    analytics: {
+      getData:   () => Promise<{ tasks: Record<string,unknown>[]; activity: Record<string,unknown>[]; comments: Record<string,unknown>[]; stageActivity: Record<string,unknown>[] }>
+      exportPDF: () => Promise<{ ok: boolean; filePath?: string; error?: string }>
     }
   }
 }

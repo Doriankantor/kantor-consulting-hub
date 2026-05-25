@@ -125,6 +125,25 @@ const api = {
     addColumn:    (c: Record<string, unknown>)            => ipcRenderer.invoke('workspace:addColumn', c),
     updateColumn: (id: string, p: Record<string, unknown>) => ipcRenderer.invoke('workspace:updateColumn', id, p),
   },
+  clients: {
+    list:          ()                                         => ipcRenderer.invoke('clients:list'),
+    get:           (id: string)                              => ipcRenderer.invoke('clients:get', id),
+    create:        (data: Record<string, unknown>)           => ipcRenderer.invoke('clients:create', data),
+    update:        (id: string, data: Record<string, unknown>) => ipcRenderer.invoke('clients:update', id, data),
+    delete:        (id: string)                              => ipcRenderer.invoke('clients:delete', id),
+    addContact:    (clientId: string, c: Record<string, unknown>) => ipcRenderer.invoke('clients:addContact', clientId, c),
+    deleteContact: (contactId: string)                       => ipcRenderer.invoke('clients:deleteContact', contactId),
+  },
+  templates: {
+    list:   ()                                              => ipcRenderer.invoke('templates:list'),
+    create: (data: Record<string, unknown>)                 => ipcRenderer.invoke('templates:create', data),
+    update: (id: string, data: Record<string, unknown>)    => ipcRenderer.invoke('templates:update', id, data),
+    delete: (id: string)                                    => ipcRenderer.invoke('templates:delete', id),
+  },
+  analytics: {
+    getData:   ()  => ipcRenderer.invoke('analytics:getData'),
+    exportPDF: ()  => ipcRenderer.invoke('analytics:exportPDF'),
+  },
 }
 
 if (process.contextIsolated) {

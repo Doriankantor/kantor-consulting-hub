@@ -44,6 +44,8 @@ export interface Task {
   title: string
   content_type: ContentType
   client: string | null            // client or target deliverable
+  client_id: string | null         // FK to clients table
+  recurrence_json: string | null   // JSON: { type: 'weekly'|'monthly'|'quarterly'|'custom', interval?: number }
   area_of_analysis: string | null  // stores area ID (default or custom)
   assignee_ids: string[]
   due_date: string | null          // ISO "YYYY-MM-DD"

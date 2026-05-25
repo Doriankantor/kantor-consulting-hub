@@ -138,6 +138,17 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
         ) : null
       })()}
 
+      {/* Recurring badge */}
+      {task.recurrence_json && (
+        <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-indigo-400 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-200 dark:border-indigo-500/30 rounded-full px-1.5 py-0.5 mb-1">
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+            <path d="M1 4a3 3 0 1 0 3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            <path d="M4 1L2.5 2.5 4 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Recurring
+        </span>
+      )}
+
       {/* Client */}
       {task.client && (
         <p className="text-[11px] text-gray-400 dark:text-white/35 mb-2 truncate">{task.client}</p>
@@ -230,6 +241,15 @@ function SortableCard({ task, areas }: { task: Task; areas: Area[] }) {
 
 // ── Column ─────────────────────────────────────────────────────────────────
 
+const CONTENT_TYPE_LABELS_SHORT: Record<string, string> = {
+  'policy-brief':          'Policy Brief',
+  'research-report':       'Research Report',
+  'op-ed':                 'Op-Ed',
+  'briefing-note':         'Briefing Note',
+  'consulting-engagement': 'Consulting',
+  'client-advisory':       'Client Advisory',
+}
+
 function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) {
   const { columns, tasks, renameColumn, createTask } = useWorkspace()
   const col = columns.find(c => c.id === columnId)!
@@ -247,6 +267,11 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
   const [addingTask, setAddingTask] = useState(false)
   const [newTitle, setNewTitle] = useState('')
 
+  // Template picker state
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false)
+  const [templates, setTemplates] = useState<TaskTemplate[]>([])
+  const [templatesLoaded, setTemplatesLoaded] = useState(false)
+
   async function handleRename() {
     setEditingName(false)
     if (nameValue.trim() && nameValue !== col.name) await renameColumn(columnId, nameValue.trim())
@@ -256,6 +281,29 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
     await createTask(columnId, { title: newTitle.trim() })
     setNewTitle('')
     setAddingTask(false)
+  }
+
+  async function handleOpenTemplatePicker() {
+    setShowTemplatePicker(v => !v)
+    if (!templatesLoaded) {
+      try {
+        const data = await window.api.templates.list()
+        setTemplates(data)
+        setTemplatesLoaded(true)
+      } catch {}
+    }
+  }
+
+  async function handlePickTemplate(tpl: TaskTemplate) {
+    setShowTemplatePicker(false)
+    const today = new Date()
+    today.setDate(today.getDate() + tpl.duration_days)
+    const dueDate = today.toISOString().slice(0, 10)
+    await createTask(columnId, {
+      title: tpl.name,
+      content_type: tpl.content_type,
+      due_date: dueDate,
+    })
   }
 
   return (
@@ -313,15 +361,81 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
             </div>
           </div>
         ) : (
-          <button
-            onClick={() => setAddingTask(true)}
-            className="titlebar-no-drag w-full flex items-center gap-1.5 px-3 py-2 rounded-lg text-gray-400 dark:text-white/25 hover:text-gray-600 dark:hover:text-white/60 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition text-sm"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-            Add engagement
-          </button>
+          <div className="relative">
+            {/* Template picker popup */}
+            {showTemplatePicker && (
+              <>
+                {/* Backdrop */}
+                <div className="fixed inset-0 z-10" onClick={() => setShowTemplatePicker(false)} />
+                <div className="absolute bottom-full left-0 right-0 mb-1 z-20 bg-white dark:bg-[#1a2233] border border-gray-200 dark:border-white/[0.1] rounded-xl shadow-xl overflow-hidden">
+                  <div className="px-3 py-2 border-b border-gray-100 dark:border-white/[0.06]">
+                    <p className="text-[10px] font-semibold text-gray-400 dark:text-white/40 uppercase tracking-widest">Start from</p>
+                  </div>
+
+                  {/* Blank option */}
+                  <button
+                    onClick={() => { setShowTemplatePicker(false); setAddingTask(true) }}
+                    className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-white/[0.05] transition text-left"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-white/[0.08] flex items-center justify-center shrink-0">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-800 dark:text-white/85">Start blank</p>
+                      <p className="text-[10px] text-gray-400 dark:text-white/35">Empty engagement</p>
+                    </div>
+                  </button>
+
+                  {templates.length > 0 && (
+                    <div className="border-t border-gray-100 dark:border-white/[0.06]">
+                      <p className="px-3 pt-2 pb-1 text-[10px] font-semibold text-gray-400 dark:text-white/40 uppercase tracking-widest">Templates</p>
+                      {templates.map(tpl => (
+                        <button
+                          key={tpl.id}
+                          onClick={() => handlePickTemplate(tpl)}
+                          className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-white/[0.05] transition text-left"
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-hub-gold/10 border border-hub-gold/20 flex items-center justify-center shrink-0">
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="text-hub-gold">
+                              <rect x="1" y="1" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+                              <path d="M3 4h4M3 6.5h2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-gray-800 dark:text-white/85 truncate">{tpl.name}</p>
+                            <p className="text-[10px] text-gray-400 dark:text-white/35 truncate">
+                              {CONTENT_TYPE_LABELS_SHORT[tpl.content_type] ?? tpl.content_type} · {tpl.duration_days}d
+                            </p>
+                          </div>
+                          {!!tpl.is_builtin && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/30 shrink-0">Built-in</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {!templatesLoaded && (
+                    <div className="flex items-center justify-center py-4">
+                      <div className="w-4 h-4 border-2 border-hub-gold/20 border-t-hub-gold rounded-full animate-spin" />
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            <button
+              onClick={handleOpenTemplatePicker}
+              className="titlebar-no-drag w-full flex items-center gap-1.5 px-3 py-2 rounded-lg text-gray-400 dark:text-white/25 hover:text-gray-600 dark:hover:text-white/60 hover:bg-black/[0.04] dark:hover:bg-white/[0.04] transition text-sm"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+              Add engagement
+            </button>
+          </div>
         )}
       </div>
     </div>
