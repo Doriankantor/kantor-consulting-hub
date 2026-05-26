@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { useUpdate } from '../contexts/UpdateContext'
 import type { ViewMode } from '../types'
 
 // ── Nav item type ──────────────────────────────────────────────────────────
@@ -11,6 +12,7 @@ interface NavItem {
   label: string
   icon: React.ReactNode
   badge?: number
+  updateDot?: boolean
 }
 
 // ── Icons ──────────────────────────────────────────────────────────────────
@@ -133,6 +135,8 @@ function WorkspaceViewSwitcher() {
 export default function Sidebar() {
   const { isAdmin, localUser } = useAuth()
   const { tasks, boards, archivedBoards, activeBoard, setActiveBoardId, createBoard } = useWorkspace()
+  const { state: updateState } = useUpdate()
+  const updateAvailable = updateState === 'available' || updateState === 'downloading' || updateState === 'ready'
   const navigate = useNavigate()
   const location = useLocation()
   const [inboxUnread,  setInboxUnread]  = useState(0)
@@ -196,7 +200,7 @@ export default function Sidebar() {
     { to: '/calendar',  label: 'Calendar',  icon: <CalendarIcon /> },
     ...(isAdmin ? [{ to: '/analytics', label: 'Analytics', icon: <AnalyticsIcon /> }] : []),
     { to: '/team',      label: 'Team',       icon: <TeamIcon /> },
-    { to: '/settings',  label: 'Settings',   icon: <SettingsIcon /> },
+    { to: '/settings',  label: 'Settings',   icon: <SettingsIcon />, updateDot: updateAvailable },
     {
       to: '/trash',
       label: 'Trash',
@@ -285,7 +289,10 @@ export default function Sidebar() {
             <NavLink to={item.to} className={linkClass}>
               <span className="shrink-0">{item.icon}</span>
               <span className="flex-1">{item.label}</span>
-              {item.badge ? (
+              {item.updateDot && (
+                <span className="ml-auto w-2 h-2 rounded-full bg-amber-400 shrink-0" title="Update available" />
+              )}
+              {!item.updateDot && item.badge ? (
                 <span className="ml-auto px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold min-w-[18px] text-center">
                   {item.badge}
                 </span>

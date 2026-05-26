@@ -2,6 +2,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { WorkspaceProvider } from './contexts/WorkspaceContext'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { UpdateProvider } from './contexts/UpdateContext'
 import Login     from './pages/Login'
 import Setup     from './pages/Setup'
 import FirstLogin from './pages/FirstLogin'
@@ -52,6 +53,7 @@ function AppRoutes() {
   )
 
   return (
+    <UpdateProvider>
     <WorkspaceProvider>
       <Routes>
         <Route element={<Layout />}>
@@ -71,6 +73,7 @@ function AppRoutes() {
       </Routes>
       <ChatPanel />
     </WorkspaceProvider>
+    </UpdateProvider>
   )
 }
 

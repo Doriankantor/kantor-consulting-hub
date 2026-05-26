@@ -402,10 +402,18 @@ interface Window {
       exportPDF: () => Promise<{ ok: boolean; filePath?: string; error?: string }>
     }
     updater: {
-      onAvailable: (cb: (info: { version: string }) => void) => void
-      onProgress:  (cb: (p: { percent: number }) => void)    => void
-      onReady:     (cb: (info: { version: string }) => void) => void
-      install:     () => Promise<void>
+      onAvailable:    (cb: (info: { version: string; releaseNotes?: string | null }) => void) => void
+      onProgress:     (cb: (p: { percent: number }) => void) => void
+      onReady:        (cb: (info: { version: string }) => void) => void
+      onNotAvailable: (cb: () => void) => void
+      onChecking:     (cb: () => void) => void
+      onError:        (cb: (err: string) => void) => void
+      install:        () => Promise<void>
+      checkNow:       () => Promise<{ ok: boolean; error?: string }>
+      downloadNow:    () => Promise<{ ok: boolean; error?: string }>
+      getLastChecked: () => Promise<number | null>
+      setAutoInstall: (val: boolean) => Promise<boolean>
+      getAutoInstall: () => Promise<boolean>
     }
     contacts: {
       list:              ()                                              => Promise<Contact[]>

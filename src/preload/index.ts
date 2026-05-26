@@ -196,13 +196,24 @@ const api = {
     disconnect:   (userId: string)                 => ipcRenderer.invoke('userGoogle:disconnect', userId),
   },
   updater: {
-    onAvailable: (cb: (info: { version: string }) => void) =>
+    onAvailable:    (cb: (info: { version: string; releaseNotes?: string | null }) => void) =>
       ipcRenderer.on('updater:available', (_e, info) => cb(info)),
-    onProgress:  (cb: (p: { percent: number }) => void) =>
+    onProgress:     (cb: (p: { percent: number }) => void) =>
       ipcRenderer.on('updater:progress', (_e, p) => cb(p)),
-    onReady:     (cb: (info: { version: string }) => void) =>
+    onReady:        (cb: (info: { version: string }) => void) =>
       ipcRenderer.on('updater:ready', (_e, info) => cb(info)),
-    install: () => ipcRenderer.invoke('updater:install'),
+    onNotAvailable: (cb: () => void) =>
+      ipcRenderer.on('updater:notAvailable', () => cb()),
+    onChecking:     (cb: () => void) =>
+      ipcRenderer.on('updater:checking', () => cb()),
+    onError:        (cb: (err: string) => void) =>
+      ipcRenderer.on('updater:error', (_e, err) => cb(err)),
+    install:        () => ipcRenderer.invoke('updater:install'),
+    checkNow:       () => ipcRenderer.invoke('updater:checkNow'),
+    downloadNow:    () => ipcRenderer.invoke('updater:downloadNow'),
+    getLastChecked: () => ipcRenderer.invoke('updater:getLastChecked'),
+    setAutoInstall: (val: boolean) => ipcRenderer.invoke('updater:setAutoInstall', val),
+    getAutoInstall: () => ipcRenderer.invoke('updater:getAutoInstall'),
   },
 }
 

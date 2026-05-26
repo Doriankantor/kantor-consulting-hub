@@ -3,7 +3,18 @@ import { useAuth } from '../contexts/AuthContext'
 import { useTheme, GRADIENT_PRESETS, LIGHT_THEME_PRESETS } from '../contexts/ThemeContext'
 import ConnectClaude from '../components/ConnectClaude'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { useUpdate } from '../contexts/UpdateContext'
 import type { Area } from '../types'
+
+function formatLastChecked(ts: number): string {
+  const diffMs = Date.now() - ts
+  const diffM  = Math.floor(diffMs / 60000)
+  const diffH  = Math.floor(diffMs / 3600000)
+  if (diffM < 1)  return 'Just now'
+  if (diffM < 60) return `${diffM}m ago`
+  if (diffH < 24) return `${diffH}h ago`
+  return new Date(ts).toLocaleDateString()
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -48,6 +59,7 @@ export default function Settings() {
   const { user, localUser, isAdmin, signOut } = useAuth()
   const { theme, setTheme, gradientTheme, setGradientTheme, lightTheme, setLightTheme } = useTheme()
   const { refreshAreas } = useWorkspace()
+  const { state: updateState, version: updateVersion, lastChecked, autoInstall, releaseNotes, checkNow, downloadNow, setAutoInstall } = useUpdate()
 
   // ── API key ────────────────────────────────────────────────────────────────
   const [maskedKey,  setMaskedKey]  = useState<string | null>(null)
@@ -1071,21 +1083,112 @@ export default function Settings() {
           </div>
         </Section>
 
-        {/* App */}
-        <Section title="App">
-          <Row>
-            <div>
-              <p className="text-sm font-medium text-gray-900 dark:text-white">Version</p>
-              <p className="text-xs text-gray-400 dark:text-white/65 mt-0.5 font-mono">v{appVersion || '…'}</p>
+        {/* Updates */}
+        <Section title="Updates">
+          <div className="px-5 py-4 space-y-4">
+            {/* Version + status row */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">Version</p>
+                  <span className="font-mono text-xs text-gray-500 dark:text-white/60">v{appVersion || '…'}</span>
+                </div>
+                {/* Status */}
+                {updateState === 'uptodate' && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                    <span className="text-xs text-green-600 dark:text-green-400">Up to date</span>
+                  </div>
+                )}
+                {(updateState === 'available' || updateState === 'downloading' || updateState === 'ready') && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                      {updateState === 'ready' ? `Ready to install v${updateVersion}` : `Update available: v${updateVersion}`}
+                    </span>
+                    {releaseNotes && (
+                      <a
+                        href={`https://github.com/Doriankantor/kantor-consulting-hub/releases/tag/v${updateVersion}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="titlebar-no-drag text-xs text-indigo-500 hover:text-indigo-600 underline"
+                      >
+                        Release notes
+                      </a>
+                    )}
+                  </div>
+                )}
+                {(updateState === 'idle' || updateState === 'checking') && lastChecked && (
+                  <p className="text-xs text-gray-400 dark:text-white/40">
+                    Last checked: {formatLastChecked(lastChecked)}
+                  </p>
+                )}
+                {lastChecked && updateState === 'uptodate' && (
+                  <p className="text-xs text-gray-400 dark:text-white/40">
+                    Last checked: {formatLastChecked(lastChecked)}
+                  </p>
+                )}
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                {/* Update now / Restart — all users */}
+                {updateState === 'available' && (
+                  <button
+                    onClick={downloadNow}
+                    className="titlebar-no-drag px-3 py-1.5 rounded-lg text-xs bg-indigo-500 hover:bg-indigo-600 text-white font-medium transition"
+                  >
+                    Update now
+                  </button>
+                )}
+                {updateState === 'downloading' && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-3.5 h-3.5 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
+                    <span className="text-xs text-gray-400 dark:text-white/40">Downloading…</span>
+                  </div>
+                )}
+                {updateState === 'ready' && (
+                  <button
+                    onClick={() => window.api.updater.install()}
+                    className="titlebar-no-drag px-3 py-1.5 rounded-lg text-xs bg-hub-gold hover:bg-hub-gold-light text-white font-medium transition"
+                  >
+                    Restart &amp; install
+                  </button>
+                )}
+
+                {/* Check for updates — admin only */}
+                {isAdmin && updateState !== 'available' && updateState !== 'downloading' && updateState !== 'ready' && (
+                  <button
+                    onClick={checkNow}
+                    disabled={updateState === 'checking'}
+                    className="titlebar-no-drag flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-gray-100 dark:bg-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.13] text-gray-600 dark:text-white/70 hover:text-gray-900 dark:hover:text-white transition disabled:opacity-60"
+                  >
+                    {updateState === 'checking' ? (
+                      <>
+                        <div className="w-3 h-3 border-[1.5px] border-gray-400/30 border-t-gray-500 dark:border-t-white/60 rounded-full animate-spin" />
+                        Checking…
+                      </>
+                    ) : 'Check for updates'}
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Auto-update toggle — admin only */}
             {isAdmin && (
-              <button
-                onClick={() => window.open('https://github.com/kantorconsulting/kantor-consulting-hub/releases', '_blank')}
-                className="titlebar-no-drag px-3 py-1.5 rounded-lg text-xs bg-gray-100 dark:bg-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.13] text-gray-500 dark:text-white/75 hover:text-gray-900 dark:hover:text-white transition">
-                Check for updates
-              </button>
+              <label className="flex items-center justify-between gap-4 cursor-pointer">
+                <div>
+                  <p className="text-sm text-gray-700 dark:text-white/80">Automatically install updates</p>
+                  <p className="text-xs text-gray-400 dark:text-white/40 mt-0.5">Downloads and installs on next restart without asking</p>
+                </div>
+                <div
+                  onClick={() => setAutoInstall(!autoInstall)}
+                  className={`w-9 h-5 rounded-full transition-colors relative shrink-0 ${autoInstall ? 'bg-indigo-500' : 'bg-gray-200 dark:bg-white/[0.12]'}`}
+                >
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${autoInstall ? 'left-4' : 'left-0.5'}`} />
+                </div>
+              </label>
             )}
-          </Row>
+          </div>
         </Section>
 
         {/* Account */}

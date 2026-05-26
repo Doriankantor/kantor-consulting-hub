@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
-import { initDatabase } from './db'
+import { initDatabase, getDatabase } from './db'
 import { registerIpcHandlers } from './ipc'
 
 // Module-level reference so the updater can push events to the window
@@ -66,12 +66,27 @@ app.whenReady().then(() => {
   createWindow()
 
   // ── Auto-updater (production only) ──────────────────────────────────────
-  if (!is.dev) {
-    autoUpdater.autoDownload        = true
-    autoUpdater.autoInstallOnAppQuit = true
+  function saveLastChecked() {
+    try { getDatabase().prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('updater_last_checked',?,CURRENT_TIMESTAMP)").run(String(Date.now())) } catch {}
+  }
+  function getAutoInstallPref(): boolean {
+    try { const r = getDatabase().prepare("SELECT value FROM settings WHERE key='updater_auto_install'").get() as { value: string } | undefined; return r?.value !== '0' } catch { return true }
+  }
 
+  if (!is.dev) {
+    autoUpdater.autoDownload        = false   // user chooses "Update now"
+    autoUpdater.autoInstallOnAppQuit = getAutoInstallPref()
+
+    autoUpdater.on('checking-for-update', () => {
+      mainWindow?.webContents.send('updater:checking')
+    })
     autoUpdater.on('update-available', (info) => {
-      mainWindow?.webContents.send('updater:available', { version: info.version })
+      saveLastChecked()
+      mainWindow?.webContents.send('updater:available', { version: info.version, releaseNotes: info.releaseNotes ?? null })
+    })
+    autoUpdater.on('update-not-available', () => {
+      saveLastChecked()
+      mainWindow?.webContents.send('updater:notAvailable')
     })
     autoUpdater.on('download-progress', (progress) => {
       mainWindow?.webContents.send('updater:progress', { percent: Math.round(progress.percent) })
@@ -81,17 +96,36 @@ app.whenReady().then(() => {
     })
     autoUpdater.on('error', (err) => {
       console.error('[Updater]', err.message)
+      mainWindow?.webContents.send('updater:error', err.message)
     })
 
-    // First check 8 s after launch, then every 4 hours
-    setTimeout(() => autoUpdater.checkForUpdates(), 8000)
-    setInterval(() => autoUpdater.checkForUpdates(), 4 * 60 * 60 * 1000)
+    // Background recheck every 8 hours (renderer triggers first check after login)
+    setInterval(() => autoUpdater.checkForUpdates(), 8 * 60 * 60 * 1000)
   }
 
-  // Renderer can request an immediate install (quit + install downloaded update)
+  // ── Updater IPC ─────────────────────────────────────────────────────────
   ipcMain.handle('updater:install', () => {
     autoUpdater.quitAndInstall()
   })
+  ipcMain.handle('updater:checkNow', async () => {
+    if (is.dev) { mainWindow?.webContents.send('updater:notAvailable'); return { ok: true } }
+    try { await autoUpdater.checkForUpdates(); return { ok: true } }
+    catch (e: any) { console.error('[Updater] checkNow:', e.message); return { ok: false, error: e.message } }
+  })
+  ipcMain.handle('updater:downloadNow', async () => {
+    if (is.dev) return { ok: true }
+    try { await autoUpdater.downloadUpdate(); return { ok: true } }
+    catch (e: any) { return { ok: false, error: e.message } }
+  })
+  ipcMain.handle('updater:getLastChecked', () => {
+    try { const r = getDatabase().prepare("SELECT value FROM settings WHERE key='updater_last_checked'").get() as { value: string } | undefined; return r?.value ? parseInt(r.value) : null } catch { return null }
+  })
+  ipcMain.handle('updater:setAutoInstall', (_e, val: boolean) => {
+    autoUpdater.autoInstallOnAppQuit = val
+    try { getDatabase().prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('updater_auto_install',?,CURRENT_TIMESTAMP)").run(val ? '1' : '0') } catch {}
+    return true
+  })
+  ipcMain.handle('updater:getAutoInstall', () => getAutoInstallPref())
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
