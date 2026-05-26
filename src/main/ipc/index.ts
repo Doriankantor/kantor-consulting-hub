@@ -134,8 +134,18 @@ function registerCommentHandlers() {
 
     return entry
   })
-  ipcMain.handle('comments:delete', (_e, id: string) => {
-    getDatabase().prepare('DELETE FROM task_comments WHERE id=?').run(id)
+  ipcMain.handle('comments:delete', (_e, id: string, deletedById?: string, deletedByName?: string) => {
+    const db = getDatabase()
+    const comment = db.prepare('SELECT * FROM task_comments WHERE id=?').get(id) as Record<string, unknown> | undefined
+    if (comment) {
+      db.prepare(`INSERT INTO trash (id,item_type,item_id,item_name,item_data_json,deleted_by_id,deleted_by_name,expires_at)
+        VALUES (?,?,?,?,?,?,?,datetime('now','+30 days'))`)
+        .run(uuid(), 'comment', id,
+          String(comment.content ?? '').slice(0, 80),
+          JSON.stringify(comment),
+          deletedById ?? null, deletedByName ?? null)
+    }
+    db.prepare('DELETE FROM task_comments WHERE id=?').run(id)
     return true
   })
 }
@@ -673,6 +683,73 @@ function registerCommentEditHandler() {
   })
 }
 
+// ── Boards ────────────────────────────────────────────────────────────────
+
+function registerBoardHandlers() {
+  const db = () => getDatabase()
+
+  ipcMain.handle('boards:list', (_e, includeArchived: boolean = false) => {
+    const rows = includeArchived
+      ? db().prepare('SELECT * FROM workspace_boards ORDER BY position ASC, created_at ASC').all()
+      : db().prepare('SELECT * FROM workspace_boards WHERE archived=0 ORDER BY position ASC, created_at ASC').all()
+    return rows
+  })
+
+  ipcMain.handle('boards:listArchived', () =>
+    db().prepare('SELECT * FROM workspace_boards WHERE archived=1 ORDER BY archived_at DESC').all()
+  )
+
+  ipcMain.handle('boards:create', (_e, name: string) => {
+    const id = uuid()
+    const maxPos = (db().prepare('SELECT MAX(position) as mp FROM workspace_boards WHERE archived=0').get() as { mp: number | null })?.mp ?? -1
+    db().prepare('INSERT INTO workspace_boards (id,name,position) VALUES (?,?,?)').run(id, name, maxPos + 1)
+    return { ok: true, id }
+  })
+
+  ipcMain.handle('boards:rename', (_e, id: string, name: string) => {
+    db().prepare("UPDATE workspace_boards SET name=?,updated_at=datetime('now') WHERE id=?").run(name, id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('boards:archive', (_e, id: string, archivedBy: string) => {
+    db().prepare("UPDATE workspace_boards SET archived=1,archived_at=datetime('now'),archived_by=?,updated_at=datetime('now') WHERE id=?").run(archivedBy, id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('boards:restore', (_e, id: string) => {
+    const maxPos = (db().prepare('SELECT MAX(position) as mp FROM workspace_boards WHERE archived=0').get() as { mp: number | null })?.mp ?? -1
+    db().prepare("UPDATE workspace_boards SET archived=0,archived_at=NULL,archived_by=NULL,position=?,updated_at=datetime('now') WHERE id=?").run(maxPos + 1, id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('boards:delete', (_e, id: string, deletedById?: string, deletedByName?: string) => {
+    const board = db().prepare('SELECT * FROM workspace_boards WHERE id=?').get(id) as Record<string, unknown> | undefined
+    if (board) {
+      db().prepare(`INSERT INTO trash (id,item_type,item_id,item_name,item_data_json,deleted_by_id,deleted_by_name,expires_at)
+        VALUES (?,?,?,?,?,?,?,datetime('now','+30 days'))`)
+        .run(uuid(), 'board', id, String(board.name ?? id), JSON.stringify(board), deletedById ?? null, deletedByName ?? null)
+    }
+    // Delete all tasks in this board first, then the board itself
+    db().prepare('DELETE FROM task_activity WHERE task_id IN (SELECT id FROM workspace_tasks WHERE board_id=?)').run(id)
+    db().prepare('DELETE FROM task_comments WHERE task_id IN (SELECT id FROM workspace_tasks WHERE board_id=?)').run(id)
+    db().prepare('DELETE FROM workspace_tasks WHERE board_id=?').run(id)
+    db().prepare('DELETE FROM workspace_boards WHERE id=?').run(id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('boards:duplicate', (_e, id: string, newName: string) => {
+    const newId = uuid()
+    const maxPos = (db().prepare('SELECT MAX(position) as mp FROM workspace_boards WHERE archived=0').get() as { mp: number | null })?.mp ?? -1
+    db().prepare('INSERT INTO workspace_boards (id,name,position) VALUES (?,?,?)').run(newId, newName, maxPos + 1)
+    return { ok: true, id: newId }
+  })
+
+  ipcMain.handle('boards:taskCount', (_e, id: string) => {
+    const row = db().prepare('SELECT COUNT(*) as c FROM workspace_tasks WHERE board_id=?').get(id) as { c: number }
+    return row.c
+  })
+}
+
 // ── Workspace (local SQLite — columns + tasks) ────────────────────────────
 
 function registerWorkspaceHandlers() {
@@ -699,21 +776,47 @@ function registerWorkspaceHandlers() {
 
   // ── Tasks ──
   ipcMain.handle('workspace:getTasks', () => {
-    const rows = db().prepare('SELECT * FROM workspace_tasks ORDER BY position ASC').all() as Record<string, unknown>[]
+    const rows = db().prepare(`
+      SELECT t.* FROM workspace_tasks t
+      LEFT JOIN workspace_boards b ON t.board_id = b.id
+      WHERE (t.archived IS NULL OR t.archived = 0)
+        AND (b.id IS NULL OR b.archived = 0)
+      ORDER BY t.position ASC
+    `).all() as Record<string, unknown>[]
     return rows.map(r => ({ ...r, assignee_ids: JSON.parse((r.assignees_json as string) || '[]') }))
   })
 
+  ipcMain.handle('workspace:archiveTask', (_e, taskId: string) => {
+    db().prepare("UPDATE workspace_tasks SET archived=1, updated_at=datetime('now') WHERE id=?").run(taskId)
+    return { ok: true }
+  })
+
+  ipcMain.handle('workspace:getArchivedTasks', () => {
+    const rows = db().prepare(`
+      SELECT t.* FROM workspace_tasks t
+      WHERE t.archived = 1
+      ORDER BY t.updated_at DESC
+    `).all() as Record<string, unknown>[]
+    return rows.map(r => ({ ...r, assignee_ids: JSON.parse((r.assignees_json as string) || '[]') }))
+  })
+
+  ipcMain.handle('workspace:restoreTask', (_e, taskId: string) => {
+    db().prepare("UPDATE workspace_tasks SET archived=0, updated_at=datetime('now') WHERE id=?").run(taskId)
+    return { ok: true }
+  })
+
   ipcMain.handle('workspace:createTask', (_e, t: {
-    id: string; column_id: string; title: string; content_type: string;
+    id: string; board_id?: string; column_id: string; title: string; content_type: string;
     client: string | null; area_of_analysis: string | null; assignee_ids: string[];
     due_date: string | null; start_date: string | null; priority: string;
     description: string | null; notes: string | null; sources_json: string | null; position: number
   }) => {
     db().prepare(`INSERT INTO workspace_tasks
-      (id,column_id,title,content_type,client,area_of_analysis,assignees_json,
+      (id,board_id,column_id,title,content_type,client,area_of_analysis,assignees_json,
        due_date,start_date,priority,description,notes,sources_json,position)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    `).run(t.id, t.column_id, t.title, t.content_type, t.client, t.area_of_analysis,
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).run(t.id, t.board_id ?? 'board-main', t.column_id, t.title, t.content_type,
+      t.client, t.area_of_analysis,
       JSON.stringify(t.assignee_ids ?? []),
       t.due_date, t.start_date, t.priority, t.description, t.notes, t.sources_json, t.position)
     return { ok: true }
@@ -774,7 +877,13 @@ function registerWorkspaceHandlers() {
     return { ok: true }
   })
 
-  ipcMain.handle('workspace:deleteTask', (_e, taskId: string) => {
+  ipcMain.handle('workspace:deleteTask', (_e, taskId: string, deletedById?: string, deletedByName?: string) => {
+    const task = db().prepare('SELECT * FROM workspace_tasks WHERE id=?').get(taskId) as Record<string, unknown> | undefined
+    if (task) {
+      db().prepare(`INSERT INTO trash (id,item_type,item_id,item_name,item_data_json,deleted_by_id,deleted_by_name,expires_at)
+        VALUES (?,?,?,?,?,?,?,datetime('now','+30 days'))`)
+        .run(uuid(), 'task', taskId, String(task.title ?? taskId), JSON.stringify(task), deletedById ?? null, deletedByName ?? null)
+    }
     db().prepare('DELETE FROM workspace_tasks WHERE id=?').run(taskId)
     return { ok: true }
   })
@@ -919,7 +1028,13 @@ function registerContactsHandlers() {
     return { ok: true }
   })
 
-  ipcMain.handle('contacts:delete', (_e, id: string) => {
+  ipcMain.handle('contacts:delete', (_e, id: string, deletedById?: string, deletedByName?: string) => {
+    const contact = db().prepare('SELECT * FROM contacts WHERE id=?').get(id) as Record<string, unknown> | undefined
+    if (contact) {
+      db().prepare(`INSERT INTO trash (id,item_type,item_id,item_name,item_data_json,deleted_by_id,deleted_by_name,expires_at)
+        VALUES (?,?,?,?,?,?,?,datetime('now','+30 days'))`)
+        .run(uuid(), 'contact', id, String(contact.full_name ?? id), JSON.stringify(contact), deletedById ?? null, deletedByName ?? null)
+    }
     db().prepare('DELETE FROM contact_task_links WHERE contact_id=?').run(id)
     db().prepare('DELETE FROM contact_interactions WHERE contact_id=?').run(id)
     db().prepare('DELETE FROM contacts WHERE id=?').run(id)
@@ -1059,6 +1174,179 @@ function registerDialogHandlers() {
   })
 }
 
+// ── Trash ──────────────────────────────────────────────────────────────────
+
+function registerTrashHandlers() {
+  const db = () => getDatabase()
+
+  ipcMain.handle('trash:list', () =>
+    db().prepare('SELECT * FROM trash ORDER BY deleted_at DESC').all()
+  )
+
+  ipcMain.handle('trash:count', () => {
+    const row = db().prepare('SELECT COUNT(*) as c FROM trash').get() as { c: number }
+    return row.c
+  })
+
+  ipcMain.handle('trash:restore', (_e, id: string) => {
+    const item = db().prepare('SELECT * FROM trash WHERE id=?').get(id) as Record<string, unknown> | undefined
+    if (!item) return { error: 'Item not found in trash' }
+    try {
+      if (item.item_type === 'task') {
+        db().prepare("UPDATE workspace_tasks SET archived=0, updated_at=datetime('now') WHERE id=?").run(item.item_id)
+      } else if (item.item_type === 'board') {
+        const maxPos = (db().prepare('SELECT MAX(position) as mp FROM workspace_boards WHERE archived=0').get() as { mp: number | null })?.mp ?? -1
+        db().prepare("UPDATE workspace_boards SET archived=0, archived_at=NULL, archived_by=NULL, position=?, updated_at=datetime('now') WHERE id=?").run(maxPos + 1, item.item_id)
+      } else if (item.item_type === 'comment') {
+        try {
+          const data = JSON.parse(item.item_data_json as string) as Record<string, unknown>
+          db().prepare(`INSERT OR IGNORE INTO task_comments (id,task_id,author_id,author_name,content,created_at)
+            VALUES (?,?,?,?,?,?)`)
+            .run(data.id, data.task_id, data.author_id, data.author_name, data.content, data.created_at)
+        } catch {}
+      }
+      db().prepare('DELETE FROM trash WHERE id=?').run(id)
+      return { ok: true }
+    } catch (err: unknown) {
+      return { error: String(err) }
+    }
+  })
+
+  ipcMain.handle('trash:deletePermanently', (_e, id: string) => {
+    const item = db().prepare('SELECT * FROM trash WHERE id=?').get(id) as Record<string, unknown> | undefined
+    if (!item) return { error: 'Item not found in trash' }
+    // Hard-delete already happened when the item was first deleted; just remove from trash
+    db().prepare('DELETE FROM trash WHERE id=?').run(id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('trash:emptyTrash', () => {
+    db().prepare('DELETE FROM trash').run()
+    return { ok: true }
+  })
+
+  ipcMain.handle('trash:restoreAll', () => {
+    const items = db().prepare('SELECT * FROM trash').all() as Record<string, unknown>[]
+    for (const item of items) {
+      try {
+        if (item.item_type === 'task') {
+          db().prepare("UPDATE workspace_tasks SET archived=0, updated_at=datetime('now') WHERE id=?").run(item.item_id)
+        } else if (item.item_type === 'board') {
+          const maxPos = (db().prepare('SELECT MAX(position) as mp FROM workspace_boards WHERE archived=0').get() as { mp: number | null })?.mp ?? -1
+          db().prepare("UPDATE workspace_boards SET archived=0, archived_at=NULL, archived_by=NULL, position=?, updated_at=datetime('now') WHERE id=?").run(maxPos + 1, item.item_id)
+        } else if (item.item_type === 'comment') {
+          try {
+            const data = JSON.parse(item.item_data_json as string) as Record<string, unknown>
+            db().prepare(`INSERT OR IGNORE INTO task_comments (id,task_id,author_id,author_name,content,created_at)
+              VALUES (?,?,?,?,?,?)`)
+              .run(data.id, data.task_id, data.author_id, data.author_name, data.content, data.created_at)
+          } catch {}
+        }
+      } catch {}
+    }
+    db().prepare('DELETE FROM trash').run()
+    return { ok: true }
+  })
+}
+
+// ── Trash auto-delete (called once on startup) ─────────────────────────────
+
+function startTrashAutoDelete() {
+  const doCleanup = () => {
+    try {
+      const database = getDatabase()
+      const expired = database.prepare("SELECT * FROM trash WHERE expires_at <= datetime('now')").all()
+      if (expired.length > 0) {
+        database.prepare("DELETE FROM trash WHERE expires_at <= datetime('now')").run()
+        console.log(`[Trash] Auto-deleted ${expired.length} expired items`)
+      }
+    } catch {}
+  }
+  doCleanup()
+  setInterval(doCleanup, 24 * 60 * 60 * 1000)
+}
+
+// ── Calendar ───────────────────────────────────────────────────────────────
+
+function registerCalendarHandlers() {
+  const db = () => getDatabase()
+
+  ipcMain.handle('calendar:list', (_e, startDate: string, endDate: string) =>
+    db().prepare(`SELECT * FROM calendar_events
+      WHERE start_date <= ? AND end_date >= ?
+      ORDER BY start_date ASC`).all(endDate, startDate)
+  )
+
+  ipcMain.handle('calendar:get', (_e, id: string) =>
+    db().prepare('SELECT * FROM calendar_events WHERE id=?').get(id)
+  )
+
+  ipcMain.handle('calendar:create', (_e, data: Record<string, unknown>) => {
+    const id = uuid()
+    db().prepare(`INSERT INTO calendar_events
+      (id,title,description,location,start_date,end_date,all_day,color,visibility,created_by_id,created_by_name,attendees_json,linked_task_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(
+        id,
+        data.title,
+        data.description ?? null,
+        data.location ?? null,
+        data.start_date,
+        data.end_date,
+        data.all_day ? 1 : 0,
+        data.color ?? '#6366f1',
+        data.visibility ?? 'team',
+        data.created_by_id ?? null,
+        data.created_by_name ?? null,
+        JSON.stringify(data.attendees ?? []),
+        data.linked_task_id ?? null
+      )
+    return { ok: true, id }
+  })
+
+  ipcMain.handle('calendar:update', (_e, id: string, data: Record<string, unknown>) => {
+    const sets: string[] = []
+    const vals: unknown[] = []
+    const fields: Record<string, string> = {
+      title: 'title', description: 'description', location: 'location',
+      start_date: 'start_date', end_date: 'end_date', all_day: 'all_day',
+      color: 'color', visibility: 'visibility', linked_task_id: 'linked_task_id',
+    }
+    for (const [k, col] of Object.entries(fields)) {
+      if (k in data) { sets.push(`${col}=?`); vals.push(data[k]) }
+    }
+    if ('attendees' in data) { sets.push('attendees_json=?'); vals.push(JSON.stringify(data.attendees)) }
+    sets.push("updated_at=datetime('now')")
+    if (sets.length > 1) db().prepare(`UPDATE calendar_events SET ${sets.join(',')} WHERE id=?`).run(...vals, id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('calendar:delete', (_e, id: string) => {
+    db().prepare('DELETE FROM calendar_events WHERE id=?').run(id)
+    return { ok: true }
+  })
+}
+
+// ── Files ──────────────────────────────────────────────────────────────────
+
+function registerFilesHandlers() {
+  ipcMain.handle('files:listAll', () => {
+    return getDatabase().prepare(`
+      SELECT
+        a.*,
+        t.title as task_title,
+        t.board_id,
+        b.name as board_name,
+        t.column_id
+      FROM task_attachments a
+      LEFT JOIN workspace_tasks t ON a.task_id = t.id
+      LEFT JOIN workspace_boards b ON t.board_id = b.id
+      WHERE (t.archived IS NULL OR t.archived = 0)
+      ORDER BY a.created_at DESC
+    `).all()
+  })
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 
 export function registerIpcHandlers(): void {
@@ -1080,9 +1368,14 @@ export function registerIpcHandlers(): void {
   registerChatHandlers()
   registerCommentEditHandler()
   registerDialogHandlers()
+  registerBoardHandlers()
   registerWorkspaceHandlers()
   registerClientsHandlers()
   registerContactsHandlers()
   registerTemplatesHandlers()
   registerAnalyticsHandlers()
+  registerTrashHandlers()
+  registerCalendarHandlers()
+  registerFilesHandlers()
+  startTrashAutoDelete()
 }

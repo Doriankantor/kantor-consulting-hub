@@ -7,7 +7,8 @@ import React, {
 } from 'react'
 import { arrayMove } from '@dnd-kit/sortable'
 import { DEFAULT_COLUMNS } from '../types'
-import type { Task, Column, TeamMember, ViewMode, Area } from '../types'
+import type { Task, Column, TeamMember, ViewMode, Area, Board } from '../types'
+import { useAuth } from './AuthContext'
 
 // ── Context shape ──────────────────────────────────────────────────────────
 
@@ -45,6 +46,8 @@ interface WorkspaceContextType {
   createTask: (columnId: string, partial: Partial<Task>) => Promise<void>
   updateTask: (taskId: string, partial: Partial<Task>) => Promise<void>
   deleteTask: (taskId: string) => Promise<void>
+  archiveTask: (taskId: string) => Promise<void>
+  restoreTask: (taskId: string) => Promise<void>
 
   // Column actions
   renameColumn: (columnId: string, name: string) => Promise<void>
@@ -54,6 +57,19 @@ interface WorkspaceContextType {
   refreshAreas: () => Promise<void>
   refreshLabels: () => Promise<void>
   refreshTaskMeta: (taskId?: string) => Promise<void>
+
+  // Boards
+  boards: Board[]
+  archivedBoards: Board[]
+  activeBoard: Board | null
+  setActiveBoardId: (id: string) => void
+  createBoard:    (name: string) => Promise<string>   // returns new board id
+  renameBoard:    (id: string, name: string) => Promise<void>
+  archiveBoard:   (id: string, archivedBy: string) => Promise<void>
+  restoreBoard:   (id: string) => Promise<void>
+  deleteBoard:    (id: string) => Promise<void>
+  duplicateBoard: (id: string, newName: string) => Promise<string> // returns new id
+  refreshBoards:  () => Promise<void>
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined)
@@ -61,6 +77,7 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 // ── Provider ───────────────────────────────────────────────────────────────
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
+  const { localUser } = useAuth()
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS)
   const [tasks, setTasks] = useState<Task[]>([])
   const [members, setMembers] = useState<TeamMember[]>([])
@@ -76,6 +93,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     return (localStorage.getItem('workspace-view') as ViewMode) ?? 'kanban'
   })
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [boards, setBoards]               = useState<Board[]>([])
+  const [archivedBoards, setArchivedBoards] = useState<Board[]>([])
+  const [activeBoardId, setActiveBoardIdState] = useState<string>(() =>
+    localStorage.getItem('activeBoard') ?? 'board-main'
+  )
+
+  const activeBoard = boards.find(b => b.id === activeBoardId) ?? boards[0] ?? null
 
   // ── Load areas ──────────────────────────────────────────────────────────
 
@@ -106,6 +130,30 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const refreshLabels = loadLabels
+
+  // ── Load boards ──────────────────────────────────────────────────────────
+
+  const loadBoards = useCallback(async () => {
+    try {
+      const [active, archived] = await Promise.all([
+        window.api.boards.list(false),
+        window.api.boards.listArchived(),
+      ])
+      setBoards(active)
+      setArchivedBoards(archived)
+      // If saved activeBoard no longer exists (was deleted/archived), reset to first board
+      setActiveBoardIdState(prev => {
+        const stillActive = active.find(b => b.id === prev)
+        if (!stillActive && active.length > 0) {
+          localStorage.setItem('activeBoard', active[0].id)
+          return active[0].id
+        }
+        return prev
+      })
+    } catch {}
+  }, [])
+
+  const refreshBoards = loadBoards
 
   // ── Deadline warnings ─────────────────────────────────────────────────────
 
@@ -204,6 +252,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     let mounted = true
     loadAreas()
     loadLabels()
+    loadBoards()
 
     async function load() {
       try {
@@ -255,6 +304,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => setHighlightTaskId(null), 2200)
   }, [tasks])
 
+  // ── setActiveBoardId helper ────────────────────────────────────────────────
+
+  const setActiveBoardId = useCallback((id: string) => {
+    setActiveBoardIdState(id)
+    localStorage.setItem('activeBoard', id)
+  }, [])
+
   // ── Task actions ──────────────────────────────────────────────────────────
 
   const moveTask = useCallback((taskId: string, newColumnId: string, _overTaskId?: string) => {
@@ -287,6 +343,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const colTasks = tasks.filter(t => t.column_id === columnId)
     const newTask: Task = {
       id: crypto.randomUUID(),
+      board_id: activeBoardId,
       column_id: columnId,
       title: partial.title ?? 'Untitled',
       content_type: partial.content_type ?? 'policy-brief',
@@ -305,7 +362,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
     setTasks(prev => [...prev, newTask])
     await window.api.workspace.createTask(newTask as unknown as Record<string, unknown>)
-  }, [tasks])
+  }, [tasks, activeBoardId])
 
   const updateTask = useCallback(async (taskId: string, partial: Partial<Task>) => {
     const updated = { ...partial, updated_at: new Date().toISOString() }
@@ -317,8 +374,77 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const deleteTask = useCallback(async (taskId: string) => {
     setTasks(prev => prev.filter(t => t.id !== taskId))
     setSelectedTask(prev => prev?.id === taskId ? null : prev)
-    await window.api.workspace.deleteTask(taskId)
+    await window.api.workspace.deleteTask(taskId, localUser?.id, localUser?.name)
+  }, [localUser])
+
+  const archiveTask = useCallback(async (taskId: string) => {
+    setTasks(prev => prev.filter(t => t.id !== taskId))
+    setSelectedTask(prev => prev?.id === taskId ? null : prev)
+    await window.api.workspace.archiveTask(taskId)
   }, [])
+
+  const restoreTask = useCallback(async (taskId: string) => {
+    await window.api.workspace.restoreTask(taskId)
+    // Re-fetch all tasks to bring the restored task back into the board
+    const rows = await window.api.workspace.getTasks() as Task[]
+    const taskList = rows.map((r: Record<string, unknown>) => ({
+      ...(r as unknown as Task),
+      assignee_ids: Array.isArray(r.assignee_ids) ? r.assignee_ids : [],
+    }))
+    setTasks(taskList)
+  }, [])
+
+  // ── Board CRUD operations ──────────────────────────────────────────────────
+
+  const createBoard = useCallback(async (name: string): Promise<string> => {
+    const result = await window.api.boards.create(name)
+    await loadBoards()
+    return result.id
+  }, [loadBoards])
+
+  const renameBoard = useCallback(async (id: string, name: string) => {
+    setBoards(prev => prev.map(b => b.id === id ? { ...b, name } : b))
+    await window.api.boards.rename(id, name)
+  }, [])
+
+  const archiveBoard = useCallback(async (id: string, archivedBy: string) => {
+    await window.api.boards.archive(id, archivedBy)
+    await loadBoards()
+    // If archiving the active board, switch to first remaining active board
+    setActiveBoardIdState(prev => {
+      if (prev === id) {
+        // will be corrected by loadBoards side effect
+        localStorage.removeItem('activeBoard')
+        return 'board-main'
+      }
+      return prev
+    })
+  }, [loadBoards])
+
+  const restoreBoard = useCallback(async (id: string) => {
+    await window.api.boards.restore(id)
+    await loadBoards()
+  }, [loadBoards])
+
+  const deleteBoard = useCallback(async (id: string) => {
+    await window.api.boards.delete(id)
+    // Remove tasks from local state
+    setTasks(prev => prev.filter(t => t.board_id !== id))
+    await loadBoards()
+    setActiveBoardIdState(prev => {
+      if (prev === id) {
+        localStorage.removeItem('activeBoard')
+        return 'board-main'
+      }
+      return prev
+    })
+  }, [loadBoards])
+
+  const duplicateBoard = useCallback(async (id: string, newName: string): Promise<string> => {
+    const result = await window.api.boards.duplicate(id, newName)
+    await loadBoards()
+    return result.id
+  }, [loadBoards])
 
   // ── Column actions ─────────────────────────────────────────────────────────
 
@@ -358,6 +484,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       createTask,
       updateTask,
       deleteTask,
+      archiveTask,
+      restoreTask,
       renameColumn,
       addColumn,
       refreshAreas,
@@ -367,6 +495,17 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setPendingSection,
       highlightTaskId,
       openTask,
+      boards,
+      archivedBoards,
+      activeBoard,
+      setActiveBoardId,
+      createBoard,
+      renameBoard,
+      archiveBoard,
+      restoreBoard,
+      deleteBoard,
+      duplicateBoard,
+      refreshBoards,
     }}>
       {children}
     </WorkspaceContext.Provider>

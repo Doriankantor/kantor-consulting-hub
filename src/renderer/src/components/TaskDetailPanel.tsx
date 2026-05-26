@@ -11,6 +11,7 @@ import { useWorkspace } from '../contexts/WorkspaceContext'
 import { useAuth } from '../contexts/AuthContext'
 import RichTextEditor from './RichTextEditor'
 import ClaudeAISidebar from './ClaudeAISidebar'
+import DriveBrowserPanel from './DriveBrowserPanel'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -95,6 +96,7 @@ export default function TaskDetailPanel() {
   const [newAttName, setNewAttName]       = useState('')
   const [newAttUrl, setNewAttUrl]         = useState('')
   const [attLoading, setAttLoading]       = useState(false)
+  const [showDrivePanel, setShowDrivePanel] = useState(false)
 
   // Checklists
   const [checklists, setChecklists]       = useState<Checklist[]>([])
@@ -443,7 +445,7 @@ export default function TaskDetailPanel() {
         )}
 
         {/* Task detail — two-column layout (always 760 px) */}
-        <div className="w-[760px] shrink-0 flex flex-col bg-white dark:bg-[#1a1f35] border-l border-gray-200 dark:border-white/[0.08] shadow-[0_0_60px_rgba(0,0,0,0.5)] overflow-hidden rounded-tl-3xl rounded-bl-3xl">
+        <div className="w-[760px] shrink-0 flex flex-col bg-white dark:bg-[#1a1f35] border-l border-gray-200 dark:border-white/[0.08] shadow-[0_0_60px_rgba(0,0,0,0.5)] overflow-hidden rounded-tl-3xl rounded-bl-3xl relative">
 
           {/* ── Header ──────────────────────────────────────────────────── */}
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 dark:border-white/[0.08] shrink-0">
@@ -1009,30 +1011,18 @@ export default function TaskDetailPanel() {
                 <div ref={sectionRefs.attachments}>
                   <div className="flex items-center justify-between mb-1.5">
                     <SectionLabel title={`Attachments${attachments.length ? ` (${attachments.length})` : ''}`} />
-                    <div className="flex items-center gap-2 -mt-0.5">
-                      <button
-                        onClick={handleAddFile}
-                        disabled={attLoading}
-                        className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/75 hover:text-hub-gold transition disabled:opacity-50"
-                      >
-                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                          <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                        </svg>
-                        {attLoading ? 'Adding…' : 'File'}
-                      </button>
-                      <button
-                        onClick={() => setShowAddAttUrl(v => !v)}
-                        className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/75 hover:text-hub-gold transition"
-                      >
-                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                          <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                        </svg>
-                        URL / GDoc
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => setShowDrivePanel(true)}
+                      className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/75 hover:text-hub-gold transition"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                        <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      </svg>
+                      Add attachment
+                    </button>
                   </div>
 
-                  {attachments.length === 0 && !showAddAttUrl && (
+                  {attachments.length === 0 && (
                     <p className="text-xs text-gray-300 dark:text-white/65 italic">No attachments yet.</p>
                   )}
 
@@ -1066,29 +1056,6 @@ export default function TaskDetailPanel() {
                           </div>
                         )
                       })}
-                    </div>
-                  )}
-
-                  {showAddAttUrl && (
-                    <div className="p-3 rounded-xl bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] space-y-2">
-                      <input
-                        type="text"
-                        value={newAttName}
-                        onChange={e => setNewAttName(e.target.value)}
-                        placeholder="Name (optional)"
-                        className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
-                      />
-                      <input
-                        type="url"
-                        value={newAttUrl}
-                        onChange={e => setNewAttUrl(e.target.value)}
-                        placeholder="https://docs.google.com/… or any URL"
-                        className="titlebar-no-drag w-full px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.06] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-hub-gold/30"
-                      />
-                      <div className="flex gap-2">
-                        <button onClick={handleAddAttUrl} disabled={!newAttUrl.trim()} className="titlebar-no-drag flex-1 py-1.5 rounded-lg bg-hub-gold hover:bg-hub-gold-light disabled:opacity-40 text-white text-xs font-semibold transition">Add</button>
-                        <button onClick={() => { setShowAddAttUrl(false); setNewAttName(''); setNewAttUrl('') }} className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.05] hover:bg-gray-200 dark:hover:bg-white/[0.09] text-gray-500 dark:text-white/70 text-xs transition">Cancel</button>
-                      </div>
                     </div>
                   )}
                 </div>
@@ -1312,6 +1279,20 @@ export default function TaskDetailPanel() {
             </div>{/* /right column */}
 
           </div>{/* /two-column body */}
+
+          {/* Drive browser panel overlay */}
+          {showDrivePanel && (
+            <DriveBrowserPanel
+              taskId={selectedTask.id}
+              authorId={currentUserId}
+              authorName={currentUserName}
+              onClose={() => setShowDrivePanel(false)}
+              onAttachmentAdded={async () => {
+                await loadAttachments(selectedTask.id)
+                refreshTaskMeta(selectedTask.id)
+              }}
+            />
+          )}
 
         </div>{/* /task detail */}
       </div>{/* /panel wrapper */}

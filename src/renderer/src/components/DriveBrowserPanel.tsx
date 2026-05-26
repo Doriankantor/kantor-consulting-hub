@@ -1,0 +1,237 @@
+import { useState, useEffect } from 'react'
+
+interface Props {
+  taskId: string
+  authorId: string
+  authorName: string
+  onClose: () => void
+  onAttachmentAdded: () => void
+}
+
+type PanelTab = 'upload' | 'link' | 'drive'
+
+export default function DriveBrowserPanel({ taskId, authorId, authorName, onClose, onAttachmentAdded }: Props) {
+  const [tab,          setTab]          = useState<PanelTab>('upload')
+  const [driveConnected, setDriveConnected] = useState(false)
+  const [uploading,    setUploading]    = useState(false)
+  const [linkUrl,      setLinkUrl]      = useState('')
+  const [linkName,     setLinkName]     = useState('')
+  const [linkType,     setLinkType]     = useState<'url' | 'gdoc'>('url')
+  const [addingLink,   setAddingLink]   = useState(false)
+
+  useEffect(() => {
+    window.api.drive.isConnected().then(setDriveConnected).catch(() => setDriveConnected(false))
+  }, [])
+
+  async function handleUploadFile() {
+    setUploading(true)
+    try {
+      const result = await window.api.attachments.addFile(taskId, authorId, authorName)
+      if (result.ok) {
+        onAttachmentAdded()
+        onClose()
+      }
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleAddLink() {
+    if (!linkUrl.trim()) return
+    setAddingLink(true)
+    try {
+      await window.api.attachments.addUrl(
+        taskId,
+        linkName.trim() || linkUrl.trim(),
+        linkUrl.trim(),
+        linkType,
+        authorId,
+        authorName
+      )
+      onAttachmentAdded()
+      onClose()
+    } finally {
+      setAddingLink(false)
+    }
+  }
+
+  const tabs: { id: PanelTab; label: string }[] = [
+    { id: 'upload', label: 'Upload File' },
+    { id: 'link',   label: 'Add Link' },
+    { id: 'drive',  label: 'Kantor Hub Drive' },
+  ]
+
+  return (
+    <div className="absolute inset-0 flex items-stretch">
+      {/* Backdrop */}
+      <div className="flex-1 bg-black/20" onClick={onClose} />
+      {/* Panel */}
+      <div className="w-80 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-white/[0.1] flex flex-col shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-white/[0.08]">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Add Attachment</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-white/75 transition"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-100 dark:border-white/[0.08]">
+          {tabs.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex-1 py-2.5 text-xs font-medium transition ${
+                tab === t.id
+                  ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-500'
+                  : 'text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/75'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 p-4 overflow-y-auto">
+
+          {/* Upload tab */}
+          {tab === 'upload' && (
+            <div className="space-y-4">
+              <div
+                onClick={handleUploadFile}
+                className="border-2 border-dashed border-gray-200 dark:border-white/[0.12] rounded-xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500/60 hover:bg-indigo-50/50 dark:hover:bg-indigo-500/5 transition"
+              >
+                {uploading ? (
+                  <div className="w-8 h-8 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" className="text-gray-300 dark:text-white/25">
+                      <path d="M16 22V10M10 16l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M6 26h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                    <div className="text-center">
+                      <p className="text-sm font-medium text-gray-600 dark:text-white/70">Click to select a file</p>
+                      <p className="text-xs text-gray-400 dark:text-white/35 mt-0.5">Any file type</p>
+                    </div>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={handleUploadFile}
+                disabled={uploading}
+                className="w-full py-2 rounded-xl text-sm font-medium bg-indigo-500 hover:bg-indigo-600 text-white transition disabled:opacity-50"
+              >
+                {uploading ? 'Opening picker…' : 'Choose File'}
+              </button>
+            </div>
+          )}
+
+          {/* Link tab */}
+          {tab === 'link' && (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1.5">Link type</label>
+                <div className="flex gap-2">
+                  {(['url', 'gdoc'] as const).map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setLinkType(t)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                        linkType === t
+                          ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400'
+                          : 'border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-white/60 hover:border-gray-300 dark:hover:border-white/20'
+                      }`}
+                    >
+                      {t === 'url' ? 'URL' : 'Google Doc'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1.5">URL</label>
+                <input
+                  type="url"
+                  value={linkUrl}
+                  onChange={e => setLinkUrl(e.target.value)}
+                  placeholder="https://…"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1.5">Name (optional)</label>
+                <input
+                  type="text"
+                  value={linkName}
+                  onChange={e => setLinkName(e.target.value)}
+                  placeholder="Link name…"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                />
+              </div>
+              <button
+                onClick={handleAddLink}
+                disabled={!linkUrl.trim() || addingLink}
+                className="w-full py-2 rounded-xl text-sm font-medium bg-indigo-500 hover:bg-indigo-600 text-white transition disabled:opacity-50"
+              >
+                {addingLink ? 'Adding…' : 'Add Link'}
+              </button>
+            </div>
+          )}
+
+          {/* Drive tab */}
+          {tab === 'drive' && (
+            <div className="space-y-4">
+              {/* Status */}
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 rounded-full ${driveConnected ? 'bg-green-500' : 'bg-gray-300 dark:bg-white/25'}`} />
+                <span className="text-xs text-gray-500 dark:text-white/50">
+                  {driveConnected ? 'Drive connected' : 'Drive not connected'}
+                </span>
+              </div>
+
+              {driveConnected ? (
+                <>
+                  <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-xl p-3">
+                    <div className="flex items-start gap-2">
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-blue-500 mt-0.5 shrink-0">
+                        <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.3"/>
+                        <path d="M8 7v5M8 5v1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                      </svg>
+                      <p className="text-xs text-blue-700 dark:text-blue-300">
+                        File browser for Drive requires additional setup. You can open Kantor Hub Drive directly in your browser.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => window.open('https://drive.google.com', '_blank')}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium bg-white dark:bg-white/[0.08] border border-gray-200 dark:border-white/[0.12] text-gray-700 dark:text-white/75 hover:bg-gray-50 dark:hover:bg-white/[0.12] transition"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path d="M8 2L4.5 8H2l2.5 4h7L14 8h-2.5L8 2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+                      <path d="M4.5 8l3.5 4 3.5-4" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+                    </svg>
+                    Open Kantor Hub Drive in Browser
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-500 dark:text-white/50">
+                    Connect Google Drive in Settings to access your team's shared files.
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-white/35">
+                    Go to Settings → Drive Integration to connect your account.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -40,6 +40,7 @@ export interface Column {
 // ── Task / Deliverable ─────────────────────────────────────────────────────
 export interface Task {
   id: string
+  board_id: string          // which board this task belongs to
   column_id: string
   title: string
   content_type: ContentType
@@ -54,6 +55,7 @@ export interface Task {
   description: string | null
   notes: string | null
   sources_json: string | null  // JSON-serialised Source[]
+  archived: number
   position: number
   created_at: string
   updated_at: string
@@ -101,6 +103,18 @@ export interface TeamMember {
   full_name: string | null
   avatar_url: string | null
   role: 'admin' | 'member'
+}
+
+// ── Board (workspace project) ──────────────────────────────────────────────
+export interface Board {
+  id: string
+  name: string
+  position: number
+  archived: number      // 0 = active, 1 = archived
+  archived_at: string | null
+  archived_by: string | null
+  created_at: string
+  updated_at: string
 }
 
 // ── Label / color maps ────────────────────────────────────────────────────

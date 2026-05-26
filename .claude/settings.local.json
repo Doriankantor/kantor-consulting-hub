@@ -72,7 +72,19 @@
       "Bash(screencapture -x /tmp/light-mode-kanban.png)",
       "Bash(screencapture -sc /tmp/light-mode-1.png)",
       "Bash(screencapture /tmp/light-mode-1.png)",
-      "Bash(ls /System/Library/Fonts/*.ttc /System/Library/Fonts/*.ttf /Library/Fonts/*.ttf /Library/Fonts/*.otf 2>/dev/null | head -30)"
+      "Bash(ls /System/Library/Fonts/*.ttc /System/Library/Fonts/*.ttf /Library/Fonts/*.ttf /Library/Fonts/*.otf 2>/dev/null | head -30)",
+      "Bash(open \"/Volumes/Kantor Consulting Hub/Kantor Consulting Hub.app\")",
+      "Bash(pkill -f \"newsroom-pm\")",
+      "Bash(pkill -f \"Electron\")",
+      "Bash(/Users/doriankantor/.local/lib/node_modules/npm/bin/npm run *)",
+      "Bash(git -C /Users/doriankantor/newsroom-pm add src/main/ipc/index.ts package.json package-lock.json)",
+      "Bash(/usr/local/bin/node_modules/.bin/tsc --noEmit)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\")",
+      "Bash(git -C /Users/doriankantor/newsroom-pm/.claude/worktrees/agent-afb46d08c52437b43 status --short)",
+      "Bash(git -C /Users/doriankantor/newsroom-pm/.claude/worktrees/agent-afb46d08c52437b43 diff HEAD --stat)",
+      "Bash(git -C /Users/doriankantor/newsroom-pm/.claude/worktrees/agent-afb46d08c52437b43 log --oneline -3)",
+      "Bash(git -C /Users/doriankantor/newsroom-pm/.claude/worktrees/agent-afb46d08c52437b43 status)"
     ]
   }
 }

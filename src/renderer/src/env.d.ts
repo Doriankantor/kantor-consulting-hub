@@ -193,6 +193,55 @@ interface TaskTemplate {
   updated_at: string
 }
 
+interface TrashItem {
+  id: string
+  item_type: 'task' | 'board' | 'contact' | 'comment'
+  item_id: string
+  item_name: string
+  item_data_json: string
+  deleted_by_id: string | null
+  deleted_by_name: string | null
+  deleted_at: string
+  expires_at: string
+}
+
+interface CalendarEvent {
+  id: string
+  title: string
+  description: string | null
+  location: string | null
+  start_date: string
+  end_date: string
+  all_day: number
+  color: string
+  visibility: string
+  created_by_id: string | null
+  created_by_name: string | null
+  attendees_json: string
+  linked_task_id: string | null
+  google_event_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+interface FileRecord {
+  id: string
+  task_id: string
+  name: string
+  type: string
+  local_path: string | null
+  url: string | null
+  mime_type: string | null
+  size_bytes: number | null
+  author_id: string
+  author_name: string
+  created_at: string
+  task_title: string | null
+  board_id: string | null
+  board_name: string | null
+  column_id: string | null
+}
+
 interface Window {
   api: {
     auth: {
@@ -215,7 +264,7 @@ interface Window {
     comments: {
       get:    (taskId: string) => Promise<import('./types').TaskComment[]>
       add:    (c: { task_id: string; author_id: string; author_name: string; content: string; task_title?: string; assignee_ids?: string[] }) => Promise<import('./types').TaskComment>
-      delete: (commentId: string) => Promise<boolean>
+      delete: (commentId: string, deletedById?: string, deletedByName?: string) => Promise<boolean>
       update: (id: string, content: string) => Promise<{ ok?: boolean }>
     }
     activity: {
@@ -309,7 +358,10 @@ interface Window {
       getTasks:     ()                                        => Promise<import('./types').Task[]>
       createTask:   (t: Record<string, unknown>)              => Promise<{ ok?: boolean }>
       updateTask:   (id: string, p: Record<string, unknown>)  => Promise<{ ok?: boolean }>
-      deleteTask:   (id: string)                              => Promise<{ ok?: boolean }>
+      deleteTask:   (id: string, deletedById?: string, deletedByName?: string) => Promise<{ ok?: boolean }>
+      archiveTask:      (id: string) => Promise<{ ok?: boolean }>
+      getArchivedTasks: ()           => Promise<unknown[]>
+      restoreTask:      (id: string) => Promise<{ ok?: boolean }>
       addColumn:    (c: Record<string, unknown>)              => Promise<{ ok?: boolean }>
       updateColumn: (id: string, p: Record<string, unknown>)  => Promise<{ ok?: boolean }>
     }
@@ -328,6 +380,17 @@ interface Window {
       update: (id: string, data: Record<string, unknown>)   => Promise<{ ok?: boolean }>
       delete: (id: string)                                   => Promise<{ ok?: boolean }>
     }
+    boards: {
+      list:         (includeArchived?: boolean)         => Promise<import('./types').Board[]>
+      listArchived: ()                                   => Promise<import('./types').Board[]>
+      create:       (name: string)                       => Promise<{ ok: boolean; id: string }>
+      rename:       (id: string, name: string)           => Promise<{ ok: boolean }>
+      archive:      (id: string, archivedBy: string)     => Promise<{ ok: boolean }>
+      restore:      (id: string)                         => Promise<{ ok: boolean }>
+      delete:       (id: string, deletedById?: string, deletedByName?: string) => Promise<{ ok: boolean }>
+      duplicate:    (id: string, newName: string)        => Promise<{ ok: boolean; id: string }>
+      taskCount:    (id: string)                         => Promise<number>
+    }
     analytics: {
       getData:   () => Promise<{ tasks: Record<string,unknown>[]; activity: Record<string,unknown>[]; comments: Record<string,unknown>[]; stageActivity: Record<string,unknown>[] }>
       exportPDF: () => Promise<{ ok: boolean; filePath?: string; error?: string }>
@@ -343,12 +406,30 @@ interface Window {
       get:               (id: string)                                   => Promise<{ contact: Contact; interactions: ContactInteraction[]; tasks: WorkspaceTaskSummary[] }>
       create:            (data: Record<string, unknown>)                => Promise<{ ok?: boolean; id?: string }>
       update:            (id: string, data: Record<string, unknown>)    => Promise<{ ok?: boolean }>
-      delete:            (id: string)                                   => Promise<{ ok?: boolean }>
+      delete:            (id: string, deletedById?: string, deletedByName?: string) => Promise<{ ok?: boolean }>
       addInteraction:    (data: Record<string, unknown>)                => Promise<{ ok?: boolean; id?: string }>
       updateInteraction: (id: string, data: Record<string, unknown>)    => Promise<{ ok?: boolean }>
       deleteInteraction: (id: string)                                   => Promise<{ ok?: boolean }>
       linkTask:          (contactId: string, taskId: string)            => Promise<{ ok?: boolean }>
       unlinkTask:        (contactId: string, taskId: string)            => Promise<{ ok?: boolean }>
+    }
+    trash: {
+      list:              ()           => Promise<TrashItem[]>
+      count:             ()           => Promise<number>
+      restore:           (id: string) => Promise<{ ok?: boolean; error?: string }>
+      deletePermanently: (id: string) => Promise<{ ok?: boolean; error?: string }>
+      emptyTrash:        ()           => Promise<{ ok?: boolean }>
+      restoreAll:        ()           => Promise<{ ok?: boolean }>
+    }
+    calendar: {
+      list:   (startDate: string, endDate: string) => Promise<CalendarEvent[]>
+      get:    (id: string)                         => Promise<CalendarEvent | null>
+      create: (data: Record<string, unknown>)      => Promise<{ ok?: boolean; id?: string }>
+      update: (id: string, data: Record<string, unknown>) => Promise<{ ok?: boolean }>
+      delete: (id: string)                         => Promise<{ ok?: boolean }>
+    }
+    files: {
+      listAll: () => Promise<FileRecord[]>
     }
   }
 }

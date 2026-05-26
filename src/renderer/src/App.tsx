@@ -5,15 +5,18 @@ import { ThemeProvider } from './contexts/ThemeContext'
 import Login     from './pages/Login'
 import Setup     from './pages/Setup'
 import FirstLogin from './pages/FirstLogin'
-import Dashboard  from './pages/Dashboard'
-import Settings   from './pages/Settings'
-import Team       from './pages/Team'
-import Workspace  from './pages/Workspace'
-import Inbox      from './pages/Inbox'
-import Contacts   from './pages/Contacts'
-import Analytics  from './pages/Analytics'
-import Layout     from './components/Layout'
-import ChatPanel  from './components/ChatPanel'
+import Dashboard    from './pages/Dashboard'
+import Settings     from './pages/Settings'
+import Team         from './pages/Team'
+import Workspace    from './pages/Workspace'
+import Inbox        from './pages/Inbox'
+import Contacts     from './pages/Contacts'
+import Analytics    from './pages/Analytics'
+import Trash        from './pages/Trash'
+import TeamCalendar from './pages/TeamCalendar'
+import Files        from './pages/Files'
+import Layout       from './components/Layout'
+import ChatPanel    from './components/ChatPanel'
 
 function Loader() {
   return (
@@ -56,10 +59,13 @@ function AppRoutes() {
           <Route path="/inbox"     element={<Inbox />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/workspace"  element={<Workspace />} />
+          <Route path="/files"     element={<Files />} />
           <Route path="/contacts"  element={<Contacts />} />
+          <Route path="/calendar"  element={<TeamCalendar />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/team"      element={<Team />} />
           <Route path="/settings"  element={<Settings />} />
+          <Route path="/trash"     element={<Trash />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

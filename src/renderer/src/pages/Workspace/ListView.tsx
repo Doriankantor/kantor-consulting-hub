@@ -119,7 +119,7 @@ function Th({ label, sortKey, current, dir, onClick }: {
 // ── Main ───────────────────────────────────────────────────────────────────
 
 export default function ListView() {
-  const { tasks, columns, selectTask } = useWorkspace()
+  const { tasks, columns, selectTask, archiveTask } = useWorkspace()
   const [sortKey, setSortKey] = useState<SortKey>('due_date')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [filters, setFilters] = useState<Filters>({
@@ -175,6 +175,7 @@ export default function ListView() {
               <Th label="Stage"           sortKey="column_id"       current={sortKey} dir={sortDir} onClick={handleSort} />
               <Th label="Due Date"        sortKey="due_date"        current={sortKey} dir={sortDir} onClick={handleSort} />
               <Th label="Priority"        sortKey="priority"        current={sortKey} dir={sortDir} onClick={handleSort} />
+              <th className="px-4 py-3 w-16"/>
             </tr>
           </thead>
           <tbody>
@@ -191,7 +192,7 @@ export default function ListView() {
                 <tr
                   key={task.id}
                   onClick={() => selectTask(task)}
-                  className={`border-b border-gray-100 dark:border-white/[0.05] cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.04] ${i % 2 === 0 ? '' : 'bg-gray-50/50 dark:bg-white/[0.015]'}`}
+                  className={`group border-b border-gray-100 dark:border-white/[0.05] cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-white/[0.04] ${i % 2 === 0 ? '' : 'bg-gray-50/50 dark:bg-white/[0.015]'}`}
                 >
                   {/* Title */}
                   <td className="px-4 py-3 max-w-[220px]">
@@ -235,6 +236,21 @@ export default function ListView() {
                       <div className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority]}`} />
                       <span className={`text-sm capitalize ${PRIORITY_COLORS[task.priority]}`}>{task.priority}</span>
                     </div>
+                  </td>
+                  {/* Archive action */}
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={e => { e.stopPropagation(); archiveTask(task.id) }}
+                      title="Archive"
+                      className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2 py-1 rounded-lg text-gray-400 dark:text-white/40 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 text-xs transition-all whitespace-nowrap"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 13 13" fill="none">
+                        <rect x="1" y="3.5" width="11" height="8.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+                        <path d="M1 3.5l1.5-2.5h8L12 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+                        <path d="M4.5 7h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                      </svg>
+                      Archive
+                    </button>
                   </td>
                 </tr>
               )

@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
+import { useAuth } from '../../contexts/AuthContext'
 import KanbanView from './KanbanView'
 import TimelineView from './TimelineView'
 import ListView from './ListView'
@@ -61,9 +63,63 @@ const VIEWS: { id: ViewMode; label: string; icon: React.ReactNode }[] = [
 // ── Workspace shell ────────────────────────────────────────────────────────
 
 export default function Workspace() {
-  const { viewMode, setViewMode, tasks, columns, selectedTask, createTask, selectTask } = useWorkspace()
+  const {
+    viewMode, setViewMode, tasks, columns, selectedTask, createTask, selectTask,
+    boards, activeBoard, archiveBoard, deleteBoard, duplicateBoard, renameBoard,
+    createBoard, setActiveBoardId, archivedBoards, restoreBoard, restoreTask,
+  } = useWorkspace()
+  const { localUser } = useAuth()
+  const isAdmin = localUser?.role === 'admin'
+
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+
+  // Archived tasks drawer
+  const [showArchivedTasks, setShowArchivedTasks] = useState(false)
+  const [archivedTasks, setArchivedTasks] = useState<import('../../types').Task[]>([])
+  const [archivedTasksLoading, setArchivedTasksLoading] = useState(false)
+
+  async function loadArchivedTasks() {
+    setArchivedTasksLoading(true)
+    try {
+      const rows = await window.api.workspace.getArchivedTasks() as import('../../types').Task[]
+      // filter to active board only
+      setArchivedTasks(rows.filter(t => t.board_id === activeBoard?.id))
+    } catch {}
+    setArchivedTasksLoading(false)
+  }
+
+  async function handleRestoreTask(taskId: string) {
+    await restoreTask(taskId)
+    setArchivedTasks(prev => prev.filter(t => t.id !== taskId))
+  }
+
+  useEffect(() => {
+    if (showArchivedTasks) loadArchivedTasks()
+  }, [showArchivedTasks, activeBoard?.id])
+
+  // Board menu state
+  const [boardMenuOpen, setBoardMenuOpen] = useState(false)
+  const boardMenuRef = useRef<HTMLDivElement>(null)
+  const boardMenuBtnRef = useRef<HTMLButtonElement>(null)
+  const boardMenuPortalRef = useRef<HTMLDivElement>(null)
+  const [boardMenuPos, setBoardMenuPos] = useState({ top: 0, right: 0 })
+
+  // Rename state
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+
+  // Archive confirm state
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
+
+  // Delete confirm state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteConfirmName, setDeleteConfirmName] = useState('')
+
+  // Board tasks (only tasks from the active board)
+  const boardTasks = useMemo(() =>
+    activeBoard ? tasks.filter(t => t.board_id === activeBoard.id) : tasks,
+  [tasks, activeBoard])
 
   const searchResults = searchQuery.trim()
     ? tasks.filter(t =>
@@ -71,6 +127,18 @@ export default function Workspace() {
         (t.client ?? '').toLowerCase().includes(searchQuery.toLowerCase())
       )
     : []
+
+  // Close board menu on outside click (exclude the portal dropdown itself)
+  useEffect(() => {
+    function handleMouseDown(e: MouseEvent) {
+      const target = e.target as Node
+      const insideBtn    = boardMenuRef.current?.contains(target)
+      const insidePortal = boardMenuPortalRef.current?.contains(target)
+      if (!insideBtn && !insidePortal) setBoardMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [])
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
@@ -95,40 +163,181 @@ export default function Workspace() {
     return () => window.removeEventListener('keydown', handler)
   }, [columns, createTask, setViewMode])
 
-  const totalTasks = tasks.length
-  const inProgress = tasks.filter(t =>
+  const inProgress = boardTasks.filter(t =>
     ['col-drafting', 'col-review', 'col-delivery'].includes(t.column_id)
   ).length
+
+  function handleRename() {
+    setBoardMenuOpen(false)
+    setRenameValue(activeBoard?.name ?? '')
+    setRenaming(true)
+  }
+
+  async function handleDuplicate() {
+    if (!activeBoard) return
+    setBoardMenuOpen(false)
+    const newName = window.prompt('Name for the duplicated board:', `Copy of ${activeBoard.name}`)
+    if (!newName?.trim()) return
+    const newId = await duplicateBoard(activeBoard.id, newName.trim())
+    setActiveBoardId(newId)
+  }
+
+  function handleArchive() {
+    setBoardMenuOpen(false)
+    setShowArchiveConfirm(true)
+  }
+
+  function handleDelete() {
+    setBoardMenuOpen(false)
+    setDeleteConfirmName('')
+    setShowDeleteConfirm(true)
+  }
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Workspace header */}
       <div className="titlebar-drag shrink-0 flex items-center justify-between px-5 py-3 border-b border-black/[0.06] dark:border-white/[0.07] bg-white/60 dark:bg-transparent backdrop-blur-sm">
         <div className="titlebar-no-drag flex flex-col">
-          <h1 className="text-base font-bold text-gray-900 dark:text-white leading-tight">Workspace</h1>
+          {renaming ? (
+            <form onSubmit={async e => {
+              e.preventDefault()
+              if (renameValue.trim() && activeBoard) {
+                await renameBoard(activeBoard.id, renameValue.trim())
+                setRenaming(false)
+              }
+            }}>
+              <input
+                autoFocus
+                value={renameValue}
+                onChange={e => setRenameValue(e.target.value)}
+                onBlur={() => setRenaming(false)}
+                onKeyDown={e => e.key === 'Escape' && setRenaming(false)}
+                className="titlebar-no-drag text-base font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-hub-gold focus:outline-none"
+              />
+            </form>
+          ) : (
+            <h1 className="text-base font-bold text-gray-900 dark:text-white leading-tight">
+              {activeBoard?.name ?? 'Workspace'}
+            </h1>
+          )}
           <p className="text-[11px] text-gray-400 dark:text-white/50 mt-0.5">
-            {totalTasks} tasks · {inProgress} in progress · {columns.length} stages
+            {boardTasks.length} tasks · {inProgress} in progress · {columns.length} stages
+            {' · '}
+            <button
+              onClick={() => setShowArchivedTasks(v => !v)}
+              className="underline underline-offset-2 hover:text-gray-600 dark:hover:text-white/70 transition"
+            >
+              {showArchivedTasks ? 'Hide archived' : 'Show archived'}
+            </button>
           </p>
         </div>
 
-        {/* View switcher */}
-        <div className="titlebar-no-drag flex items-center gap-1 bg-gray-100 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl p-1">
-          {VIEWS.map(v => (
-            <button
-              key={v.id}
-              onClick={() => setViewMode(v.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                viewMode === v.id
-                  ? 'bg-hub-gold text-white shadow-sm'
-                  : 'text-gray-500 dark:text-white/65 hover:text-gray-700 dark:hover:text-white/75 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]'
-              }`}
-            >
-              {v.icon}
-              {v.label}
-            </button>
-          ))}
+        <div className="titlebar-no-drag flex items-center gap-2">
+          {/* View switcher */}
+          <div className="flex items-center gap-1 bg-gray-100 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl p-1">
+            {VIEWS.map(v => (
+              <button
+                key={v.id}
+                onClick={() => setViewMode(v.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  viewMode === v.id
+                    ? 'bg-hub-gold text-white shadow-sm'
+                    : 'text-gray-500 dark:text-white/65 hover:text-gray-700 dark:hover:text-white/75 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]'
+                }`}
+              >
+                {v.icon}
+                {v.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Three-dot board menu */}
+          {activeBoard && (
+            <div ref={boardMenuRef}>
+              <button
+                ref={boardMenuBtnRef}
+                onClick={() => {
+                  const rect = boardMenuBtnRef.current?.getBoundingClientRect()
+                  if (rect) setBoardMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+                  setBoardMenuOpen(v => !v)
+                }}
+                className="titlebar-no-drag p-2 rounded-xl text-gray-400 dark:text-white/50 hover:text-gray-700 dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition"
+                title="Board options"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <circle cx="8" cy="3" r="1.2" fill="currentColor"/>
+                  <circle cx="8" cy="8" r="1.2" fill="currentColor"/>
+                  <circle cx="8" cy="13" r="1.2" fill="currentColor"/>
+                </svg>
+              </button>
+              {boardMenuOpen && createPortal(
+                <div
+                  ref={boardMenuPortalRef}
+                  style={{ position: 'fixed', top: boardMenuPos.top, right: boardMenuPos.right, zIndex: 9999 }}
+                  className="w-44 bg-white dark:bg-[#1a2233] border border-gray-200 dark:border-white/[0.1] rounded-xl shadow-xl overflow-hidden"
+                >
+                  <button onClick={handleRename} className="titlebar-no-drag w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 dark:text-white/80 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition text-left">
+                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M9.5 1.5l2 2-7 7H2.5v-2l7-7z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
+                    Rename
+                  </button>
+                  <button onClick={handleDuplicate} className="titlebar-no-drag w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 dark:text-white/80 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition text-left">
+                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="4" y="4" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3"/><path d="M1 9V2a1 1 0 011-1h7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                    Duplicate
+                  </button>
+                  {activeBoard.archived !== 1 && (
+                    <button onClick={handleArchive} className="titlebar-no-drag w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 dark:text-white/80 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition text-left">
+                      <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1" y="3.5" width="11" height="8.5" rx="1" stroke="currentColor" strokeWidth="1.3"/><path d="M1 3.5l1.5-2.5h8L12 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/><path d="M4.5 7h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                      Archive
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <>
+                      <div className="mx-3 my-1 border-t border-gray-100 dark:border-white/[0.06]"/>
+                      <button onClick={handleDelete} className="titlebar-no-drag w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition text-left">
+                        <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M1.5 3h10M4.5 3V2h4v1M2.5 3l.7 8.5h6.6L10.5 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>,
+                document.body
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Archived board banner */}
+      {activeBoard?.archived === 1 && (
+        <div className="shrink-0 flex items-center gap-3 px-5 py-3 bg-amber-500/10 border-b border-amber-500/20">
+          <svg width="15" height="15" viewBox="0 0 13 13" fill="none" className="text-amber-500 shrink-0">
+            <rect x="1" y="3.5" width="11" height="8.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M1 3.5l1.5-2.5h8L12 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+            <path d="M4.5 7h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+          </svg>
+          <p className="text-sm text-amber-700 dark:text-amber-400 flex-1">
+            This project is archived. Restore it to make changes.
+          </p>
+          <button
+            onClick={async () => { if (activeBoard) await restoreBoard(activeBoard.id) }}
+            className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold transition shrink-0"
+          >
+            Restore project
+          </button>
+          <button
+            onClick={async () => {
+              if (!activeBoard) return
+              const newName = window.prompt('Name for the duplicated board:', `Copy of ${activeBoard.name}`)
+              if (!newName?.trim()) return
+              const newId = await duplicateBoard(activeBoard.id, newName.trim())
+              setActiveBoardId(newId)
+            }}
+            className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-400 text-xs font-semibold transition shrink-0"
+          >
+            Duplicate
+          </button>
+        </div>
+      )}
 
       {/* View content */}
       <div className="flex-1 overflow-hidden">
@@ -137,6 +346,42 @@ export default function Workspace() {
         {viewMode === 'list'     && <ListView />}
         {viewMode === 'calendar' && <CalendarView />}
       </div>
+
+      {/* Archived tasks drawer */}
+      {showArchivedTasks && (
+        <div className="shrink-0 border-t border-gray-200 dark:border-white/[0.08] bg-white/60 dark:bg-black/20 max-h-64 overflow-y-auto">
+          <div className="px-5 py-3 flex items-center justify-between sticky top-0 bg-white/90 dark:bg-[#1a2233]/90 backdrop-blur-sm border-b border-gray-100 dark:border-white/[0.06]">
+            <p className="text-xs font-semibold text-gray-500 dark:text-white/60 uppercase tracking-wider">
+              Archived tasks {archivedTasks.length > 0 ? `(${archivedTasks.length})` : ''}
+            </p>
+            <button onClick={() => setShowArchivedTasks(false)} className="titlebar-no-drag text-gray-400 hover:text-gray-600 dark:hover:text-white/60 transition">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            </button>
+          </div>
+          {archivedTasksLoading ? (
+            <p className="text-sm text-gray-400 dark:text-white/50 text-center py-6">Loading…</p>
+          ) : archivedTasks.length === 0 ? (
+            <p className="text-sm text-gray-400 dark:text-white/50 text-center py-6">No archived tasks in this board.</p>
+          ) : (
+            <div className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+              {archivedTasks.map(task => (
+                <div key={task.id} className="flex items-center gap-3 px-5 py-2.5 group hover:bg-gray-50 dark:hover:bg-white/[0.04] transition">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-600 dark:text-white/65 truncate">{task.title}</p>
+                    {task.client && <p className="text-xs text-gray-400 dark:text-white/40 truncate">{task.client}</p>}
+                  </div>
+                  <button
+                    onClick={() => handleRestoreTask(task.id)}
+                    className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-medium transition"
+                  >
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Task detail panel (shared across all views) */}
       {selectedTask && <TaskDetailPanel />}
@@ -183,6 +428,60 @@ export default function Workspace() {
                   <span><kbd className="font-mono">⌘K</kbd> Search</span>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Archive confirmation dialog */}
+      {showArchiveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowArchiveConfirm(false)}>
+          <div className="bg-white dark:bg-[#1a2233] rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-200 dark:border-white/[0.1]" onClick={e => e.stopPropagation()}>
+            <h2 className="text-base font-bold text-gray-900 dark:text-white mb-2">Archive this project?</h2>
+            <p className="text-sm text-gray-500 dark:text-white/65 mb-5 leading-relaxed">
+              It will be hidden from the workspace but all data, tasks, and files will be preserved. You can restore it at any time.
+            </p>
+            <div className="flex gap-2.5 justify-end">
+              <button onClick={() => setShowArchiveConfirm(false)} className="titlebar-no-drag px-4 py-2 rounded-xl bg-gray-100 dark:bg-white/[0.08] text-gray-700 dark:text-white/75 text-sm font-medium hover:bg-gray-200 dark:hover:bg-white/[0.13] transition">Cancel</button>
+              <button onClick={async () => {
+                if (!activeBoard) return
+                const by = localUser?.name ?? localUser?.email ?? 'Admin'
+                await archiveBoard(activeBoard.id, by)
+                setShowArchiveConfirm(false)
+              }} className="titlebar-no-drag px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold transition">Archive</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation dialog (admin only) */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="bg-white dark:bg-[#1a2233] rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-200 dark:border-white/[0.1]" onClick={e => e.stopPropagation()}>
+            <h2 className="text-base font-bold text-red-500 mb-2">Permanently delete "{activeBoard?.name}"?</h2>
+            <p className="text-sm text-gray-500 dark:text-white/65 mb-4 leading-relaxed">
+              This will delete all tasks, comments, attachments, and data. This cannot be undone.
+            </p>
+            <p className="text-xs text-gray-400 dark:text-white/55 mb-2">Type the project name to confirm:</p>
+            <input
+              autoFocus
+              value={deleteConfirmName}
+              onChange={e => setDeleteConfirmName(e.target.value)}
+              placeholder={activeBoard?.name}
+              className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30 mb-4"
+            />
+            <div className="flex gap-2.5 justify-end">
+              <button onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmName('') }} className="titlebar-no-drag px-4 py-2 rounded-xl bg-gray-100 dark:bg-white/[0.08] text-gray-700 dark:text-white/75 text-sm font-medium transition">Cancel</button>
+              <button
+                disabled={deleteConfirmName !== activeBoard?.name}
+                onClick={async () => {
+                  if (!activeBoard || deleteConfirmName !== activeBoard.name) return
+                  await deleteBoard(activeBoard.id)
+                  setShowDeleteConfirm(false); setDeleteConfirmName('')
+                }}
+                className="titlebar-no-drag px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition">
+                Delete permanently
+              </button>
             </div>
           </div>
         </div>

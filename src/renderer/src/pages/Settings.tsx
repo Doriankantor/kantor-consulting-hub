@@ -110,6 +110,12 @@ export default function Settings() {
   const [editAreaColor,setEditAreaColor]= useState('')
   const [areaMsg,      setAreaMsg]      = useState<{type:'ok'|'err';text:string}|null>(null)
 
+  // ── Archived Projects ──────────────────────────────────────────────────────
+  const [archivedProjects, setArchivedProjects] = useState<import('../types').Board[]>([])
+  const [archivedLoading, setArchivedLoading] = useState(false)
+  const [archiveMsg, setArchiveMsg] = useState<{type:'ok'|'err';text:string}|null>(null)
+  const [boardTaskCounts, setBoardTaskCounts] = useState<Record<string, number>>({})
+
   // ── App ────────────────────────────────────────────────────────────────────
   const [appVersion, setAppVersion] = useState('')
 
@@ -125,6 +131,20 @@ export default function Settings() {
     window.api.app.getVersion().then(setAppVersion)
     window.api.settings.get('gmail_app_password').then(p => setGmailSaved(!!p))
     if (isAdmin) { loadAreas(); loadTeam(); loadTemplates() }
+    async function loadArchived() {
+      setArchivedLoading(true)
+      try {
+        const boardsList = await window.api.boards.listArchived()
+        setArchivedProjects(boardsList)
+        const counts: Record<string, number> = {}
+        await Promise.all(boardsList.map(async (b: import('../types').Board) => {
+          counts[b.id] = await window.api.boards.taskCount(b.id)
+        }))
+        setBoardTaskCounts(counts)
+      } catch {}
+      setArchivedLoading(false)
+    }
+    loadArchived()
   }, [isAdmin, localUser])
 
   async function loadTeam() {
@@ -200,6 +220,22 @@ export default function Settings() {
     await loadAreas(); await refreshAreas()
     setAreaMsg({ type: 'ok', text: `"${name}" deleted.` })
     setTimeout(() => setAreaMsg(null), 3000)
+  }
+
+  // Archived projects
+  async function handleRestoreBoard(id: string, name: string) {
+    await window.api.boards.restore(id)
+    setArchivedProjects(prev => prev.filter(b => b.id !== id))
+    setArchiveMsg({ type: 'ok', text: `"${name}" restored successfully.` })
+    setTimeout(() => setArchiveMsg(null), 3000)
+  }
+
+  async function handleDeleteBoard(id: string, name: string) {
+    if (!confirm(`Permanently delete "${name}"?\n\nThis will delete all tasks, comments, and data. This cannot be undone.`)) return
+    await window.api.boards.delete(id)
+    setArchivedProjects(prev => prev.filter(b => b.id !== id))
+    setArchiveMsg({ type: 'ok', text: `"${name}" permanently deleted.` })
+    setTimeout(() => setArchiveMsg(null), 3000)
   }
 
   // API key
@@ -854,6 +890,79 @@ export default function Settings() {
             </div>
           </Section>
         )}
+
+        {/* Archived Projects */}
+        <Section title="Archived Projects">
+          <div className="px-5 py-4">
+            {archiveMsg && (
+              <div className={`mb-3 p-2.5 rounded-xl text-xs ${archiveMsg.type === 'ok' ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
+                {archiveMsg.text}
+              </div>
+            )}
+            {archivedLoading ? (
+              <p className="text-sm text-gray-400 dark:text-white/50 py-3 text-center">Loading…</p>
+            ) : archivedProjects.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-white/50 py-3 text-center">No archived projects.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-[10px] text-gray-400 dark:text-white/50 uppercase tracking-widest">
+                      <th className="text-left pb-3 font-semibold">Project</th>
+                      <th className="text-right pb-3 font-semibold">Tasks</th>
+                      <th className="text-left pb-3 pl-4 font-semibold">Archived</th>
+                      <th className="text-left pb-3 pl-4 font-semibold">By</th>
+                      <th className="pb-3"/>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                    {archivedProjects.map(board => (
+                      <tr key={board.id} className="group">
+                        <td className="py-3 pr-4">
+                          <div className="flex items-center gap-2">
+                            <svg width="12" height="12" viewBox="0 0 13 13" fill="none" className="text-gray-400 dark:text-white/40 shrink-0">
+                              <rect x="1" y="3.5" width="11" height="8.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+                              <path d="M1 3.5l1.5-2.5h8L12 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+                              <path d="M4.5 7h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                            </svg>
+                            <span className="font-medium text-gray-700 dark:text-white/75 italic">{board.name}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 text-right text-gray-400 dark:text-white/50 tabular-nums">
+                          {boardTaskCounts[board.id] ?? '–'}
+                        </td>
+                        <td className="py-3 pl-4 text-gray-400 dark:text-white/50 text-xs">
+                          {board.archived_at ? new Date(board.archived_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '–'}
+                        </td>
+                        <td className="py-3 pl-4 text-gray-400 dark:text-white/50 text-xs truncate max-w-[100px]">
+                          {board.archived_by ?? '–'}
+                        </td>
+                        <td className="py-3 pl-4">
+                          <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
+                            <button
+                              onClick={() => handleRestoreBoard(board.id, board.name)}
+                              className="titlebar-no-drag px-2.5 py-1.5 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-medium transition"
+                            >
+                              Restore
+                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleDeleteBoard(board.id, board.name)}
+                                className="titlebar-no-drag px-2.5 py-1.5 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-500/10 text-xs transition"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </Section>
 
         {/* App */}
         <Section title="App">

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import type { ViewMode } from '../types'
@@ -74,6 +74,26 @@ const ChatIcon = () => (
   </svg>
 )
 
+const CalendarIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+    <rect x="1.5" y="2.5" width="12" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M5 1.5v2M10 1.5v2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    <path d="M1.5 6h12" stroke="currentColor" strokeWidth="1.3"/>
+  </svg>
+)
+
+const FilesIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+    <path d="M2 13V3a1 1 0 0 1 1-1h4l2 2h4a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+  </svg>
+)
+
+const TrashIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+    <path d="M2.5 4.5h10M6 4.5V3h3v1.5M5 4.5l.5 8h4l.5-8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+)
+
 // ── View switcher (inside workspace section) ───────────────────────────────
 
 const VIEW_BUTTONS: { id: ViewMode; label: string }[] = [
@@ -112,8 +132,12 @@ function WorkspaceViewSwitcher() {
 
 export default function Sidebar() {
   const { isAdmin, localUser } = useAuth()
-  const { tasks } = useWorkspace()
-  const [inboxUnread, setInboxUnread] = useState(0)
+  const { tasks, boards, archivedBoards, activeBoard, setActiveBoardId, createBoard } = useWorkspace()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [inboxUnread,  setInboxUnread]  = useState(0)
+  const [trashCount,   setTrashCount]   = useState(0)
+  const [archiveOpen,  setArchiveOpen]  = useState(false)
 
   const userId = localUser?.id ?? 'local-admin'
 
@@ -124,11 +148,24 @@ export default function Sidebar() {
     } catch {}
   }, [userId])
 
+  const refreshTrashCount = useCallback(async () => {
+    try {
+      const count = await window.api.trash.count()
+      setTrashCount(count)
+    } catch {}
+  }, [])
+
   useEffect(() => {
     refreshInboxCount()
     const interval = setInterval(refreshInboxCount, 30000)
     return () => clearInterval(interval)
   }, [refreshInboxCount])
+
+  useEffect(() => {
+    refreshTrashCount()
+    const interval = setInterval(refreshTrashCount, 60000)
+    return () => clearInterval(interval)
+  }, [refreshTrashCount])
 
   // Dashboard badge: only count urgent tasks updated AFTER the last time
   // the user viewed the dashboard for ≥3 seconds
@@ -147,14 +184,25 @@ export default function Sidebar() {
     t.updated_at > dashSeenAt
   ).length
 
+  // Nav items excluding workspace (rendered separately)
   const navItems: NavItem[] = [
     { to: '/inbox',     label: 'Inbox',     icon: <InboxIcon />,     badge: inboxUnread || undefined },
     { to: '/dashboard', label: 'Dashboard', icon: <DashboardIcon />, badge: urgentCount || undefined },
-    { to: '/workspace', label: 'Workspace',  icon: <WorkspaceIcon /> },
+  ]
+
+  const navItemsAfterWorkspace: NavItem[] = [
+    { to: '/files',     label: 'Files',     icon: <FilesIcon /> },
     { to: '/contacts',  label: 'Contacts',  icon: <ContactsIcon /> },
+    { to: '/calendar',  label: 'Calendar',  icon: <CalendarIcon /> },
     ...(isAdmin ? [{ to: '/analytics', label: 'Analytics', icon: <AnalyticsIcon /> }] : []),
     { to: '/team',      label: 'Team',       icon: <TeamIcon /> },
     { to: '/settings',  label: 'Settings',   icon: <SettingsIcon /> },
+    {
+      to: '/trash',
+      label: 'Trash',
+      icon: <span className={trashCount > 0 ? 'text-red-400 dark:text-red-400' : ''}><TrashIcon /></span>,
+      badge: trashCount || undefined,
+    },
   ]
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -164,9 +212,19 @@ export default function Sidebar() {
         : 'text-[#555] dark:text-white/75 hover:text-[#2d2d2d] dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.08] px-3'
     }`
 
+  const isOnWorkspace = location.pathname.startsWith('/workspace')
+
+  async function handleNewBoard() {
+    const name = window.prompt('Board name:')
+    if (!name?.trim()) return
+    await createBoard(name.trim())
+    navigate('/workspace')
+  }
+
   return (
     <aside className="w-52 shrink-0 bg-white/90 dark:bg-black/[0.3] backdrop-blur-xl border-r border-black/[0.08] dark:border-white/[0.08] flex flex-col py-3 overflow-hidden">
       <nav className="flex-1 px-2.5 space-y-0.5 overflow-y-auto">
+        {/* Items before workspace */}
         {navItems.map(item => (
           <div key={item.to}>
             <NavLink to={item.to} className={linkClass}>
@@ -178,10 +236,61 @@ export default function Sidebar() {
                 </span>
               ) : null}
             </NavLink>
-            {/* Inline view switcher under Workspace */}
-            {item.to === '/workspace' && (
-              <WorkspaceViewSwitcher />
-            )}
+          </div>
+        ))}
+
+        {/* Workspace section with board sub-items */}
+        <div>
+          <NavLink to="/workspace" className={linkClass}>
+            <span className="shrink-0"><WorkspaceIcon /></span>
+            <span className="flex-1">Workspace</span>
+          </NavLink>
+
+          {/* Board sub-items */}
+          <div className="mt-0.5 space-y-0.5 pl-1">
+            {boards.map(board => (
+              <button
+                key={board.id}
+                onClick={() => { setActiveBoardId(board.id); navigate('/workspace') }}
+                className={`titlebar-no-drag w-full flex items-center gap-2 pl-5 pr-3 py-1.5 rounded-xl text-xs transition ${
+                  activeBoard?.id === board.id && isOnWorkspace
+                    ? 'bg-[#EEF0FF] dark:bg-white/[0.15] text-[#4338CA] dark:text-white font-semibold'
+                    : 'text-[#555] dark:text-white/75 hover:text-[#2d2d2d] dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.08]'
+                }`}
+              >
+                <span className={`w-1 h-1 rounded-full shrink-0 ${activeBoard?.id === board.id && isOnWorkspace ? 'bg-[#4338CA] dark:bg-white' : 'bg-gray-300 dark:bg-white/25'}`} />
+                <span className="truncate text-left">{board.name}</span>
+              </button>
+            ))}
+
+            {/* New Board button */}
+            <button
+              onClick={handleNewBoard}
+              className="titlebar-no-drag w-full flex items-center gap-1.5 pl-5 pr-3 py-1.5 rounded-xl text-xs text-[#888] dark:text-white/40 hover:text-[#555] dark:hover:text-white/65 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="shrink-0">
+                <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+              <span>New Board</span>
+            </button>
+          </div>
+
+          {/* View switcher */}
+          <WorkspaceViewSwitcher />
+        </div>
+
+        {/* Items after workspace */}
+        {navItemsAfterWorkspace.map(item => (
+          <div key={item.to}>
+            <NavLink to={item.to} className={linkClass}>
+              <span className="shrink-0">{item.icon}</span>
+              <span className="flex-1">{item.label}</span>
+              {item.badge ? (
+                <span className="ml-auto px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-bold min-w-[18px] text-center">
+                  {item.badge}
+                </span>
+              ) : null}
+            </NavLink>
           </div>
         ))}
       </nav>
@@ -196,6 +305,48 @@ export default function Sidebar() {
           <span className="flex-1 text-left">Team Chat</span>
         </button>
       </div>
+
+      {/* Archive section */}
+      {archivedBoards.length > 0 && (
+        <div className="px-2.5 mt-2 mb-1">
+          <button
+            onClick={() => setArchiveOpen(v => !v)}
+            className="titlebar-no-drag w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-[#888] dark:text-white/40 hover:text-[#555] dark:hover:text-white/60 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition"
+          >
+            {/* Archive box icon */}
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="shrink-0">
+              <rect x="1" y="3.5" width="11" height="8.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+              <path d="M1 3.5l1.5-2.5h8L12 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+              <path d="M4.5 7h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            </svg>
+            <span className="flex-1 text-left font-medium">Archive</span>
+            <span className="text-[10px] opacity-60">{archivedBoards.length}</span>
+            {/* chevron */}
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className={`transition-transform ${archiveOpen ? 'rotate-180' : ''}`}>
+              <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+
+          {archiveOpen && (
+            <div className="mt-1 space-y-0.5">
+              {archivedBoards.map(board => (
+                <button
+                  key={board.id}
+                  onClick={() => { setActiveBoardId(board.id); navigate('/workspace') }}
+                  className="titlebar-no-drag w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-[#888] dark:text-white/40 hover:text-[#555] dark:hover:text-white/60 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition group"
+                >
+                  <svg width="11" height="11" viewBox="0 0 13 13" fill="none" className="shrink-0 opacity-50">
+                    <rect x="1" y="3.5" width="11" height="8.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+                    <path d="M1 3.5l1.5-2.5h8L12 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+                    <path d="M4.5 7h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                  </svg>
+                  <span className="flex-1 text-left italic truncate opacity-70">{board.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Admin indicator */}
       {isAdmin && (

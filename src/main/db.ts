@@ -485,5 +485,69 @@ export function initDatabase(): void {
     );
   `)
 
+  // ── Workspace boards ─────────────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS workspace_boards (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      position    INTEGER DEFAULT 0,
+      archived    INTEGER DEFAULT 0,
+      archived_at DATETIME,
+      archived_by TEXT,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    INSERT OR IGNORE INTO workspace_boards (id, name, position)
+      VALUES ('board-main', 'Main Board', 0);
+  `)
+
+  // Migrate: add board_id to workspace_tasks
+  try { db.exec("ALTER TABLE workspace_tasks ADD COLUMN board_id TEXT DEFAULT 'board-main';") } catch {}
+  db.exec("UPDATE workspace_tasks SET board_id = 'board-main' WHERE board_id IS NULL;")
+
+  // Migrate: add archived column to workspace_tasks (per-task archiving)
+  try { db.exec('ALTER TABLE workspace_tasks ADD COLUMN archived INTEGER DEFAULT 0;') } catch {}
+  db.exec('UPDATE workspace_tasks SET archived = 0 WHERE archived IS NULL;')
+
+  // Migrate: add deleted column to workspace_boards for trash support
+  try { db.exec('ALTER TABLE workspace_boards ADD COLUMN deleted INTEGER DEFAULT 0;') } catch {}
+
+  // ── Trash table ──────────────────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS trash (
+      id              TEXT PRIMARY KEY,
+      item_type       TEXT NOT NULL,
+      item_id         TEXT NOT NULL,
+      item_name       TEXT NOT NULL,
+      item_data_json  TEXT NOT NULL,
+      deleted_by_id   TEXT,
+      deleted_by_name TEXT,
+      deleted_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+      expires_at      DATETIME NOT NULL
+    );
+  `)
+
+  // ── Calendar events table ────────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS calendar_events (
+      id               TEXT PRIMARY KEY,
+      title            TEXT NOT NULL,
+      description      TEXT,
+      location         TEXT,
+      start_date       TEXT NOT NULL,
+      end_date         TEXT NOT NULL,
+      all_day          INTEGER DEFAULT 0,
+      color            TEXT DEFAULT '#6366f1',
+      visibility       TEXT DEFAULT 'team',
+      created_by_id    TEXT,
+      created_by_name  TEXT,
+      attendees_json   TEXT DEFAULT '[]',
+      linked_task_id   TEXT,
+      google_event_id  TEXT,
+      created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `)
+
   console.log(`[DB] Initialized at ${dbPath}`)
 }
