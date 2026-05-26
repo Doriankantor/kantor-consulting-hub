@@ -1155,8 +1155,8 @@ export default function Settings() {
                   </button>
                 )}
 
-                {/* Check for updates — admin only */}
-                {isAdmin && updateState !== 'available' && updateState !== 'downloading' && updateState !== 'ready' && (
+                {/* Check for updates — all users */}
+                {updateState !== 'available' && updateState !== 'downloading' && updateState !== 'ready' && (
                   <button
                     onClick={checkNow}
                     disabled={updateState === 'checking'}
