@@ -318,27 +318,16 @@ export default function Settings() {
     setTimeout(() => setDriveMsg(null), 3000)
   }
 
-  // Personal Google Account
+  // Personal Google Account — single-step loopback flow
   async function handleConnectGoogle() {
+    if (!localUser?.id) return
     setConnectingGoogle(true)
+    setGoogleMsg(null)
     try {
-      const url = await window.api.userGoogle.getAuthUrl()
-      setGoogleAuthUrl(url)
-      if (url) { window.open(url, '_blank'); setShowGoogleSetup(true) }
-    } finally {
-      setConnectingGoogle(false)
-    }
-  }
-
-  async function handleGoogleCode() {
-    if (!localUser?.id || !googleAuthCode.trim()) return
-    setConnectingGoogle(true)
-    try {
-      const result = await window.api.userGoogle.exchangeCode(localUser.id, googleAuthCode.trim())
+      // Opens the browser, waits for the loopback redirect, exchanges code — all in one call
+      const result = await window.api.userGoogle.connect(localUser.id)
       if (result.ok) {
         setGoogleConnected(true)
-        setShowGoogleSetup(false)
-        setGoogleAuthCode('')
         setGoogleMsg({ type: 'ok', text: 'Google account connected successfully.' })
       } else {
         setGoogleMsg({ type: 'err', text: result.error ?? 'Failed to connect.' })
@@ -1056,29 +1045,14 @@ export default function Settings() {
                   disabled={connectingGoogle}
                   className="titlebar-no-drag px-3 py-1.5 rounded-lg text-xs bg-indigo-500 hover:bg-indigo-600 text-white transition disabled:opacity-50"
                 >
-                  {connectingGoogle ? 'Opening…' : 'Connect'}
+                  {connectingGoogle ? 'Waiting for browser…' : 'Connect'}
                 </button>
               )}
             </div>
-            {showGoogleSetup && !googleConnected && (
-              <div className="space-y-2 p-3 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.08]">
-                <p className="text-xs text-gray-500 dark:text-white/50">Paste the authorization code from the browser:</p>
-                <div className="flex gap-2">
-                  <input
-                    value={googleAuthCode}
-                    onChange={e => setGoogleAuthCode(e.target.value)}
-                    placeholder="4/0AX…"
-                    className="titlebar-no-drag flex-1 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-transparent text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
-                  />
-                  <button
-                    onClick={handleGoogleCode}
-                    disabled={!googleAuthCode.trim() || connectingGoogle}
-                    className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-indigo-500 text-white text-xs disabled:opacity-50 transition"
-                  >
-                    {connectingGoogle ? 'Saving…' : 'Save'}
-                  </button>
-                </div>
-              </div>
+            {connectingGoogle && (
+              <p className="text-xs text-gray-400 dark:text-white/40 italic">
+                Browser opened — complete sign-in and the connection will complete automatically…
+              </p>
             )}
           </div>
         </Section>

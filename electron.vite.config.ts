@@ -16,6 +16,8 @@ export default defineConfig(({ mode }) => {
         // at runtime exactly as shown in the Supabase admin docs.
         'process.env.SUPABASE_URL':              JSON.stringify(env.SUPABASE_URL),
         'process.env.SUPABASE_SERVICE_ROLE_KEY': JSON.stringify(env.SUPABASE_SERVICE_ROLE_KEY),
+        'process.env.GOOGLE_CLIENT_ID':          JSON.stringify(env.GOOGLE_CLIENT_ID),
+        'process.env.GOOGLE_CLIENT_SECRET':      JSON.stringify(env.GOOGLE_CLIENT_SECRET),
       },
     },
     preload: {

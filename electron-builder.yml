@@ -22,7 +22,7 @@ asarUnpack:
 
 publish:
   provider: github
-  owner: kantorconsulting
+  owner: Doriankantor
   repo: kantor-consulting-hub
   releaseType: release
 

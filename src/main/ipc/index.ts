@@ -8,7 +8,7 @@ import { randomBytes } from 'crypto'
 import { getDatabase, hashPassword } from '../db'
 import { driveSync } from '../google/drive'
 import { sendEmail, inviteEmailHtml } from '../google/gmail'
-import { getUserGoogleAuthUrl, exchangeUserGoogleCode, getUserGoogleStatus, disconnectUserGoogle } from '../google/userGoogle'
+import { connectUserGoogle, getUserGoogleStatus, disconnectUserGoogle } from '../google/userGoogle'
 
 // ── Supabase admin client (service role) ──────────────────────────────────
 // process.env.SUPABASE_URL and process.env.SUPABASE_SERVICE_ROLE_KEY are
@@ -1463,10 +1463,13 @@ function registerFilesHandlers() {
 // ── User Google ────────────────────────────────────────────────────────────
 
 function registerUserGoogleHandlers() {
-  ipcMain.handle('userGoogle:getAuthUrl',   ()                                   => getUserGoogleAuthUrl())
-  ipcMain.handle('userGoogle:exchangeCode', (_e, userId: string, code: string)   => exchangeUserGoogleCode(userId, code))
-  ipcMain.handle('userGoogle:getStatus',    (_e, userId: string)                 => getUserGoogleStatus(userId))
-  ipcMain.handle('userGoogle:disconnect',   (_e, userId: string)                 => { disconnectUserGoogle(userId); return { ok: true } })
+  ipcMain.handle('userGoogle:connect',    (_e, userId: string) => connectUserGoogle(userId))
+  ipcMain.handle('userGoogle:getStatus',  (_e, userId: string) => getUserGoogleStatus(userId))
+  ipcMain.handle('userGoogle:disconnect', (_e, userId: string) => { disconnectUserGoogle(userId); return { ok: true } })
+}
+
+function registerDriveConnectHandler() {
+  ipcMain.handle('drive:connect', () => driveSync.connect())
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────
@@ -1500,5 +1503,6 @@ export function registerIpcHandlers(): void {
   registerCalendarHandlers()
   registerFilesHandlers()
   registerUserGoogleHandlers()
+  registerDriveConnectHandler()
   startTrashAutoDelete()
 }

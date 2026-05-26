@@ -288,6 +288,7 @@ interface Window {
       savePreferences: (userId: string, prefs: Record<string, unknown>)                     => Promise<boolean>
     }
     drive: {
+      connect:        () => Promise<{ ok: boolean; error?: string }>
       getStatus:      () => Promise<string>
       getAuthUrl:     () => Promise<string | null>
       exchangeCode:   (code: string) => Promise<{ ok: boolean; error?: string }>
@@ -446,10 +447,9 @@ interface Window {
       listAll: () => Promise<FileRecord[]>
     }
     userGoogle: {
-      getAuthUrl:   () => Promise<string>
-      exchangeCode: (userId: string, code: string) => Promise<{ ok: boolean; error?: string }>
-      getStatus:    (userId: string) => Promise<{ connected: boolean }>
-      disconnect:   (userId: string) => Promise<{ ok: true }>
+      connect:    (userId: string) => Promise<{ ok: boolean; error?: string }>
+      getStatus:  (userId: string) => Promise<{ connected: boolean }>
+      disconnect: (userId: string) => Promise<{ ok: boolean }>
     }
   }
 }

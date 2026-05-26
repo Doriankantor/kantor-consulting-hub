@@ -41,6 +41,7 @@ const api = {
     savePreferences: (userId: string, prefs: Record<string, unknown>)                     => ipcRenderer.invoke('team:savePreferences', userId, prefs),
   },
   drive: {
+    connect:        ()              => ipcRenderer.invoke('drive:connect'),
     getStatus:      ()              => ipcRenderer.invoke('drive:getStatus'),
     getAuthUrl:     ()              => ipcRenderer.invoke('drive:getAuthUrl'),
     exchangeCode:   (code: string)  => ipcRenderer.invoke('drive:exchangeCode', code),
@@ -190,10 +191,9 @@ const api = {
     listAll: () => ipcRenderer.invoke('files:listAll'),
   },
   userGoogle: {
-    getAuthUrl:   ()                               => ipcRenderer.invoke('userGoogle:getAuthUrl'),
-    exchangeCode: (userId: string, code: string)   => ipcRenderer.invoke('userGoogle:exchangeCode', userId, code),
-    getStatus:    (userId: string)                 => ipcRenderer.invoke('userGoogle:getStatus', userId),
-    disconnect:   (userId: string)                 => ipcRenderer.invoke('userGoogle:disconnect', userId),
+    connect:    (userId: string) => ipcRenderer.invoke('userGoogle:connect', userId),
+    getStatus:  (userId: string) => ipcRenderer.invoke('userGoogle:getStatus', userId),
+    disconnect: (userId: string) => ipcRenderer.invoke('userGoogle:disconnect', userId),
   },
   updater: {
     onAvailable:    (cb: (info: { version: string; releaseNotes?: string | null }) => void) =>

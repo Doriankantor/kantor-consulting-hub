@@ -1,7 +1,12 @@
 import { google } from 'googleapis'
 import { Readable } from 'stream'
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, shell } from 'electron'
+import { createServer } from 'http'
 import { getDatabase } from '../db'
+
+// ── Env credentials (injected at build time) ─────────────────────────────────
+const ENV_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID     ?? ''
+const ENV_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? ''
 
 function getSetting(key: string): string | null {
   try {
@@ -30,13 +35,12 @@ export class DriveSync {
   constructor() { this.init() }
 
   init(): void {
-    const clientId     = getSetting('google_client_id')
-    const clientSecret = getSetting('google_client_secret')
+    // Prefer env-injected credentials; fall back to DB-stored (legacy manual setup)
+    const clientId     = ENV_CLIENT_ID     || getSetting('google_client_id')     || ''
+    const clientSecret = ENV_CLIENT_SECRET || getSetting('google_client_secret') || ''
     const refreshToken = getSetting('google_refresh_token')
     if (!clientId || !clientSecret) return
-    this.oauth2Client = new google.auth.OAuth2(
-      clientId, clientSecret, 'urn:ietf:wg:oauth:2.0:oob'
-    )
+    this.oauth2Client = new google.auth.OAuth2(clientId, clientSecret, 'http://localhost')
     if (refreshToken) {
       this.oauth2Client.setCredentials({ refresh_token: refreshToken })
       this.drive = google.drive({ version: 'v3', auth: this.oauth2Client })
@@ -55,27 +59,57 @@ export class DriveSync {
     } catch { /* window may not be ready */ }
   }
 
-  getAuthUrl(): string | null {
-    if (!this.oauth2Client) return null
-    return this.oauth2Client.generateAuthUrl({
-      access_type: 'offline',
-      scope: [
-        'https://www.googleapis.com/auth/drive.file',
-        'https://mail.google.com/',
-        'https://www.googleapis.com/auth/calendar',
-      ],
-      prompt: 'consent',
-    })
-  }
-
-  async exchangeCode(code: string): Promise<{ ok: boolean; error?: string }> {
+  /** Full loopback OAuth flow — opens browser, waits for redirect, stores token. */
+  async connect(): Promise<{ ok: boolean; error?: string }> {
+    const clientId     = ENV_CLIENT_ID     || getSetting('google_client_id')     || ''
+    const clientSecret = ENV_CLIENT_SECRET || getSetting('google_client_secret') || ''
+    if (!clientId || !clientSecret) {
+      return { ok: false, error: 'Google OAuth credentials not configured.' }
+    }
     try {
-      if (!this.oauth2Client) {
-        return { ok: false, error: 'OAuth2 client not initialised. Add Client ID and Secret first.' }
-      }
-      const { tokens } = await this.oauth2Client.getToken(code)
-      this.oauth2Client.setCredentials(tokens)
+      const result = await new Promise<{ code: string; client: InstanceType<typeof google.auth.OAuth2> }>((resolve, reject) => {
+        const server = createServer((req, res) => {
+          try {
+            const url      = new URL(req.url ?? '/', 'http://localhost')
+            const code     = url.searchParams.get('code')
+            const errParam = url.searchParams.get('error')
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+            res.end(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:40px;text-align:center;">
+              ${code
+                ? '<h2 style="color:#22c55e">✓ Drive connected</h2><p>You can close this tab.</p>'
+                : `<h2 style="color:#ef4444">Connection failed</h2><p>${errParam ?? 'Unknown error'}</p>`
+              }
+            </body></html>`)
+            server.close()
+            if (code) resolve({ code, client: (server as any).__client })
+            else reject(new Error(errParam ?? 'No code received'))
+          } catch (e: any) { server.close(); reject(e) }
+        })
+        server.on('error', reject)
+        server.listen(0, '127.0.0.1', () => {
+          const port        = (server.address() as { port: number }).port
+          const redirectUri = `http://localhost:${port}`
+          const client      = new google.auth.OAuth2(clientId, clientSecret, redirectUri)
+          const authUrl     = client.generateAuthUrl({
+            access_type: 'offline',
+            scope: [
+              'https://www.googleapis.com/auth/drive.file',
+              'https://mail.google.com/',
+              'https://www.googleapis.com/auth/calendar',
+            ],
+            prompt: 'consent',
+          })
+          ;(server as any).__client = client
+          shell.openExternal(authUrl)
+        })
+        const t = setTimeout(() => { server.close(); reject(new Error('Timed out')) }, 5 * 60 * 1000)
+        server.on('close', () => clearTimeout(t))
+      })
+
+      const { tokens } = await result.client.getToken(result.code)
+      result.client.setCredentials(tokens)
       if (tokens.refresh_token) setSetting('google_refresh_token', tokens.refresh_token)
+      this.oauth2Client = result.client
       this.drive = google.drive({ version: 'v3', auth: this.oauth2Client })
       this.broadcast('synced')
       this.startAutoSync()
@@ -83,6 +117,12 @@ export class DriveSync {
     } catch (e: any) {
       return { ok: false, error: e.message }
     }
+  }
+
+  // Keep for legacy IPC compatibility
+  getAuthUrl(): string | null { return null }
+  async exchangeCode(_code: string): Promise<{ ok: boolean; error?: string }> {
+    return { ok: false, error: 'Use drive:connect instead.' }
   }
 
   private async getOrCreateFolder(name: string, parentId?: string): Promise<string> {
