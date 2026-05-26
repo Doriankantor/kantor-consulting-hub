@@ -56,6 +56,14 @@ export default function Settings() {
   const [keyMsg,     setKeyMsg]     = useState<{type:'ok'|'err';text:string}|null>(null)
   const [savingKey,  setSavingKey]  = useState(false)
 
+  // ── Connected Accounts (Personal Google) ──────────────────────────────────
+  const [googleConnected,  setGoogleConnected]  = useState(false)
+  const [googleAuthUrl,    setGoogleAuthUrl]    = useState<string|null>(null) // eslint-disable-line @typescript-eslint/no-unused-vars
+  const [googleAuthCode,   setGoogleAuthCode]   = useState('')
+  const [googleMsg,        setGoogleMsg]        = useState<{type:'ok'|'err';text:string}|null>(null)
+  const [connectingGoogle, setConnectingGoogle] = useState(false)
+  const [showGoogleSetup,  setShowGoogleSetup]  = useState(false)
+
   // ── Claude per-user ────────────────────────────────────────────────────────
   const [claudeConnected,   setClaudeConnected]   = useState(false)
   const [showClaudeConnect, setShowClaudeConnect] = useState(false)
@@ -118,6 +126,12 @@ export default function Settings() {
 
   // ── App ────────────────────────────────────────────────────────────────────
   const [appVersion, setAppVersion] = useState('')
+
+  useEffect(() => {
+    if (localUser?.id) {
+      window.api.userGoogle.getStatus(localUser.id).then(s => setGoogleConnected(s.connected)).catch(() => {})
+    }
+  }, [localUser?.id])
 
   useEffect(() => {
     window.api.settings.get('anthropic_api_key').then(k => {
@@ -290,6 +304,43 @@ export default function Settings() {
     setSyncingNow(false)
     setDriveMsg({ type: 'ok', text: 'Sync completed.' })
     setTimeout(() => setDriveMsg(null), 3000)
+  }
+
+  // Personal Google Account
+  async function handleConnectGoogle() {
+    setConnectingGoogle(true)
+    try {
+      const url = await window.api.userGoogle.getAuthUrl()
+      setGoogleAuthUrl(url)
+      if (url) { window.open(url, '_blank'); setShowGoogleSetup(true) }
+    } finally {
+      setConnectingGoogle(false)
+    }
+  }
+
+  async function handleGoogleCode() {
+    if (!localUser?.id || !googleAuthCode.trim()) return
+    setConnectingGoogle(true)
+    try {
+      const result = await window.api.userGoogle.exchangeCode(localUser.id, googleAuthCode.trim())
+      if (result.ok) {
+        setGoogleConnected(true)
+        setShowGoogleSetup(false)
+        setGoogleAuthCode('')
+        setGoogleMsg({ type: 'ok', text: 'Google account connected successfully.' })
+      } else {
+        setGoogleMsg({ type: 'err', text: result.error ?? 'Failed to connect.' })
+      }
+    } finally {
+      setConnectingGoogle(false)
+    }
+  }
+
+  async function handleDisconnectGoogle() {
+    if (!localUser?.id) return
+    await window.api.userGoogle.disconnect(localUser.id)
+    setGoogleConnected(false)
+    setGoogleMsg({ type: 'ok', text: 'Google account disconnected.' })
   }
 
   // Gmail
@@ -959,6 +1010,62 @@ export default function Settings() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        </Section>
+
+        {/* Connected Accounts */}
+        <Section title="Connected Accounts">
+          <div className="px-5 py-4 space-y-3">
+            {googleMsg && (
+              <div className={`p-2.5 rounded-xl text-xs ${googleMsg.type === 'ok' ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
+                {googleMsg.text}
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`w-2 h-2 rounded-full ${googleConnected ? 'bg-green-500' : 'bg-gray-300 dark:bg-white/25'}`} />
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">Personal Google Account</p>
+                  <p className="text-xs text-gray-400 dark:text-white/50 mt-0.5">Calendar read/write · Drive read-only</p>
+                </div>
+              </div>
+              {googleConnected ? (
+                <button
+                  onClick={handleDisconnectGoogle}
+                  className="titlebar-no-drag px-3 py-1.5 rounded-lg text-xs border border-red-500/20 text-red-400 hover:bg-red-500/10 transition"
+                >
+                  Disconnect
+                </button>
+              ) : (
+                <button
+                  onClick={handleConnectGoogle}
+                  disabled={connectingGoogle}
+                  className="titlebar-no-drag px-3 py-1.5 rounded-lg text-xs bg-indigo-500 hover:bg-indigo-600 text-white transition disabled:opacity-50"
+                >
+                  {connectingGoogle ? 'Opening…' : 'Connect'}
+                </button>
+              )}
+            </div>
+            {showGoogleSetup && !googleConnected && (
+              <div className="space-y-2 p-3 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.08]">
+                <p className="text-xs text-gray-500 dark:text-white/50">Paste the authorization code from the browser:</p>
+                <div className="flex gap-2">
+                  <input
+                    value={googleAuthCode}
+                    onChange={e => setGoogleAuthCode(e.target.value)}
+                    placeholder="4/0AX…"
+                    className="titlebar-no-drag flex-1 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-transparent text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
+                  />
+                  <button
+                    onClick={handleGoogleCode}
+                    disabled={!googleAuthCode.trim() || connectingGoogle}
+                    className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-indigo-500 text-white text-xs disabled:opacity-50 transition"
+                  >
+                    {connectingGoogle ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
               </div>
             )}
           </div>

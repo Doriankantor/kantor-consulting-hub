@@ -48,6 +48,7 @@ const api = {
     disconnect:     ()              => ipcRenderer.invoke('drive:disconnect'),
     isConnected:    ()              => ipcRenderer.invoke('drive:isConnected'),
     reinit:         ()              => ipcRenderer.invoke('drive:reinit'),
+    listFolder:     (folderPath: string) => ipcRenderer.invoke('drive:listFolder', folderPath),
     onStatusChange: (cb: (s: string) => void) => ipcRenderer.on('drive:status', (_e, s) => cb(s)),
   },
   areas: {
@@ -187,6 +188,12 @@ const api = {
   },
   files: {
     listAll: () => ipcRenderer.invoke('files:listAll'),
+  },
+  userGoogle: {
+    getAuthUrl:   ()                               => ipcRenderer.invoke('userGoogle:getAuthUrl'),
+    exchangeCode: (userId: string, code: string)   => ipcRenderer.invoke('userGoogle:exchangeCode', userId, code),
+    getStatus:    (userId: string)                 => ipcRenderer.invoke('userGoogle:getStatus', userId),
+    disconnect:   (userId: string)                 => ipcRenderer.invoke('userGoogle:disconnect', userId),
   },
   updater: {
     onAvailable: (cb: (info: { version: string }) => void) =>

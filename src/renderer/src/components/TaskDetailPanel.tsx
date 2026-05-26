@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext'
 import RichTextEditor from './RichTextEditor'
 import ClaudeAISidebar from './ClaudeAISidebar'
 import DriveBrowserPanel from './DriveBrowserPanel'
+import { FileTypeIcon } from './FileTypeIcon'
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -1029,11 +1030,10 @@ export default function TaskDetailPanel() {
                   {attachments.length > 0 && (
                     <div className="space-y-1.5 mb-2">
                       {attachments.map(att => {
-                        const icon = att.type === 'gdoc' ? '📝' : att.type === 'file' ? '📎' : '🔗'
                         const canDelete = att.author_id === currentUserId || isAdminUser
                         return (
                           <div key={att.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] group">
-                            <span className="text-sm shrink-0">{icon}</span>
+                            <FileTypeIcon name={att.name} type={att.type} />
                             <div className="flex-1 min-w-0">
                               <button
                                 onClick={() => window.api.attachments.open(att.id)}

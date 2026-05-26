@@ -49,6 +49,35 @@ function EventModal({ event, defaultDate, onSave, onDelete, onClose, teamMembers
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
+  // Recurrence
+  const [recurrence, setRecurrence] = useState<{
+    freq: 'none'|'daily'|'weekly'|'biweekly'|'monthly'|'annually'
+    endType: 'never'|'count'|'date'
+    endCount: number
+    endDate: string
+  }>(() => {
+    if (!event?.recurrence_json) return { freq: 'none', endType: 'never', endCount: 10, endDate: '' }
+    try { return JSON.parse(event.recurrence_json) } catch { return { freq: 'none', endType: 'never', endCount: 10, endDate: '' } }
+  })
+
+  // Meeting link
+  const [meetingLink, setMeetingLink] = useState(event?.meeting_link ?? '')
+  const [meetingType, setMeetingType] = useState(event?.meeting_type ?? 'zoom')
+
+  // External attendees
+  const [externalAttendees, setExternalAttendees] = useState<{email: string; name: string}[]>(() => {
+    if (!event?.external_attendees_json) return []
+    try { return JSON.parse(event.external_attendees_json) } catch { return [] }
+  })
+  const [extEmail, setExtEmail] = useState('')
+  const [extName,  setExtName]  = useState('')
+  const [contacts, setContacts] = useState<{id:string; full_name:string; email_primary:string}[]>([])
+  const [contactSearch, setContactSearch] = useState('')
+
+  useEffect(() => {
+    window.api.contacts.list().then((list: any[]) => setContacts(list)).catch(() => {})
+  }, [])
+
   async function handleSave() {
     if (!title.trim()) return
     setSaving(true)
@@ -66,6 +95,10 @@ function EventModal({ event, defaultDate, onSave, onDelete, onClose, teamMembers
         color,
         visibility,
         attendees: attendeeObjs,
+        recurrence_json: recurrence.freq === 'none' ? null : recurrence,
+        meeting_link: meetingLink.trim() || null,
+        meeting_type: meetingLink.trim() ? meetingType : null,
+        external_attendees: externalAttendees,
       })
       onClose()
     } finally {
@@ -136,6 +169,30 @@ function EventModal({ event, defaultDate, onSave, onDelete, onClose, teamMembers
             placeholder="Location (optional)"
             className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
           />
+          {/* Meeting link */}
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-white/50 mb-1.5">Meeting link (optional)</label>
+            <div className="flex gap-2">
+              <select
+                value={meetingType}
+                onChange={e => setMeetingType(e.target.value)}
+                className="px-2 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-xs focus:outline-none"
+              >
+                <option value="zoom">Zoom</option>
+                <option value="teams">Teams</option>
+                <option value="meet">Meet</option>
+                <option value="other">Other</option>
+              </select>
+              <input
+                type="url"
+                value={meetingLink}
+                onChange={e => setMeetingLink(e.target.value)}
+                placeholder="https://…"
+                className="flex-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+              />
+            </div>
+          </div>
+
           {/* Color */}
           <div>
             <label className="block text-xs text-gray-500 dark:text-white/50 mb-2">Color</label>
@@ -192,6 +249,155 @@ function EventModal({ event, defaultDate, onSave, onDelete, onClose, teamMembers
               ))}
             </div>
           </div>
+          {/* Recurrence */}
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-white/50 mb-2">Repeat</label>
+            <select
+              value={recurrence.freq}
+              onChange={e => setRecurrence(r => ({ ...r, freq: e.target.value as any }))}
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+            >
+              <option value="none">Does not repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Bi-weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="annually">Annually</option>
+            </select>
+            {recurrence.freq !== 'none' && (
+              <div className="mt-2 space-y-2">
+                <div className="flex gap-2">
+                  {(['never','count','date'] as const).map(et => (
+                    <button
+                      key={et}
+                      onClick={() => setRecurrence(r => ({ ...r, endType: et }))}
+                      className={`px-3 py-1 rounded-lg text-xs border transition ${
+                        recurrence.endType === et
+                          ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400'
+                          : 'border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-white/60'
+                      }`}
+                    >
+                      {et === 'never' ? 'Never' : et === 'count' ? 'After N times' : 'End date'}
+                    </button>
+                  ))}
+                </div>
+                {recurrence.endType === 'count' && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 dark:text-white/50">Occurrences:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={recurrence.endCount}
+                      onChange={e => setRecurrence(r => ({ ...r, endCount: parseInt(e.target.value) || 1 }))}
+                      className="w-20 px-2 py-1 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-transparent text-gray-900 dark:text-white text-xs focus:outline-none"
+                    />
+                  </div>
+                )}
+                {recurrence.endType === 'date' && (
+                  <input
+                    type="date"
+                    value={recurrence.endDate}
+                    onChange={e => setRecurrence(r => ({ ...r, endDate: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-transparent text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  />
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* External Attendees */}
+          <div>
+            <label className="block text-xs text-gray-500 dark:text-white/50 mb-2">External Attendees</label>
+            {externalAttendees.length > 0 && (
+              <div className="space-y-1 mb-2">
+                {externalAttendees.map((ea, i) => (
+                  <div key={i} className="flex items-center gap-2 px-2 py-1 rounded-lg bg-gray-50 dark:bg-white/[0.04] border border-gray-100 dark:border-white/[0.06]">
+                    <span className="flex-1 text-xs text-gray-700 dark:text-white/75 truncate">{ea.name || ea.email}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-500/15 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-500/20">External</span>
+                    <button
+                      onClick={() => setExternalAttendees(prev => prev.filter((_, j) => j !== i))}
+                      className="text-gray-300 dark:text-white/25 hover:text-red-400 transition"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Search contacts */}
+            <div className="space-y-2">
+              <input
+                value={contactSearch}
+                onChange={e => setContactSearch(e.target.value)}
+                placeholder="Search contacts…"
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+              />
+              {contactSearch && (
+                <div className="max-h-24 overflow-y-auto border border-gray-100 dark:border-white/[0.08] rounded-xl">
+                  {contacts
+                    .filter(c => c.email_primary && (
+                      c.full_name.toLowerCase().includes(contactSearch.toLowerCase()) ||
+                      c.email_primary.toLowerCase().includes(contactSearch.toLowerCase())
+                    ))
+                    .slice(0, 5)
+                    .map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          if (!externalAttendees.some(ea => ea.email === c.email_primary)) {
+                            setExternalAttendees(prev => [...prev, { email: c.email_primary, name: c.full_name }])
+                          }
+                          setContactSearch('')
+                        }}
+                        className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-gray-700 dark:text-white/75 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition text-left"
+                      >
+                        <span>{c.full_name}</span>
+                        <span className="text-gray-400 dark:text-white/35">{c.email_primary}</span>
+                      </button>
+                    ))
+                  }
+                  {contactSearch && !contacts.some(c => c.email_primary?.toLowerCase().includes(contactSearch.toLowerCase())) && (
+                    <button
+                      onClick={() => {
+                        const email = contactSearch.trim()
+                        if (email.includes('@') && !externalAttendees.some(ea => ea.email === email)) {
+                          setExternalAttendees(prev => [...prev, { email, name: email }])
+                        }
+                        setContactSearch('')
+                      }}
+                      className="w-full px-3 py-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition text-left"
+                    >
+                      + Add "{contactSearch}" as external
+                    </button>
+                  )}
+                </div>
+              )}
+              {/* Manual email entry */}
+              <div className="flex gap-2">
+                <input
+                  value={extEmail}
+                  onChange={e => setExtEmail(e.target.value)}
+                  placeholder="email@example.com"
+                  className="flex-1 px-3 py-1.5 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
+                />
+                <button
+                  onClick={() => {
+                    if (!extEmail.trim().includes('@')) return
+                    if (!externalAttendees.some(ea => ea.email === extEmail.trim())) {
+                      setExternalAttendees(prev => [...prev, { email: extEmail.trim(), name: extName.trim() || extEmail.trim() }])
+                    }
+                    setExtEmail(''); setExtName('')
+                  }}
+                  disabled={!extEmail.includes('@')}
+                  className="px-2 py-1.5 rounded-xl border border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-white/60 text-xs hover:bg-gray-50 dark:hover:bg-white/[0.06] transition disabled:opacity-40"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+
         </div>
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 dark:border-white/[0.08]">
           <div>
@@ -442,6 +648,18 @@ function AgendaView({ events, onEventClick }: { events: CalendarEvent[]; onEvent
                     {ev.all_day ? 'All day' : `${ev.start_date.slice(11,16)} – ${ev.end_date.slice(11,16)}`}
                   </div>
                 </div>
+                {ev.meeting_link && (
+                  <a
+                    href={ev.meeting_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-medium hover:bg-indigo-500/20 transition"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="4" stroke="currentColor" strokeWidth="1.2"/><path d="M3.5 5h3M5 3.5v3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>
+                    Join {ev.meeting_type ?? 'Meeting'}
+                  </a>
+                )}
               </div>
             ))}
           </div>

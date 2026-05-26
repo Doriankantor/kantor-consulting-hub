@@ -62,6 +62,7 @@ export class DriveSync {
       scope: [
         'https://www.googleapis.com/auth/drive.file',
         'https://mail.google.com/',
+        'https://www.googleapis.com/auth/calendar',
       ],
       prompt: 'consent',
     })
@@ -159,6 +160,151 @@ export class DriveSync {
   }
 
   isConnected(): boolean { return !!this.drive }
+
+  async listFolder(folderPath: string): Promise<{ id: string; name: string; mimeType: string; size?: string; modifiedTime?: string }[]> {
+    if (!this.drive) return []
+    try {
+      const parts = folderPath.split('/').filter(Boolean)
+      let parentId: string | undefined = undefined
+      for (const part of parts) {
+        const safeName = part.replace(/'/g, "\\'")
+        const q = `name='${safeName}' and mimeType='application/vnd.google-apps.folder' and trashed=false` +
+                  (parentId ? ` and '${parentId}' in parents` : '')
+        const res = await this.drive.files.list({ q, fields: 'files(id)', pageSize: 1 })
+        if (!res.data.files?.length) return []
+        parentId = res.data.files[0].id as string
+      }
+      if (!parentId) return []
+      const res = await this.drive.files.list({
+        q: `'${parentId}' in parents and trashed=false`,
+        fields: 'files(id,name,mimeType,size,modifiedTime)',
+        pageSize: 50,
+        orderBy: 'name',
+      })
+      return (res.data.files ?? []).map(f => ({
+        id: f.id ?? '',
+        name: f.name ?? '',
+        mimeType: f.mimeType ?? '',
+        size: f.size ?? undefined,
+        modifiedTime: f.modifiedTime ?? undefined,
+      }))
+    } catch (e: any) {
+      console.error('[Drive] listFolder error:', e.message)
+      return []
+    }
+  }
+
+  async copyFileToDrive(localPath: string, fileName: string, folderPath: string): Promise<string | null> {
+    if (!this.drive) return null
+    try {
+      const parts = folderPath.split('/').filter(Boolean)
+      let parentId: string | undefined = undefined
+      for (const part of parts) {
+        parentId = await this.getOrCreateFolder(part, parentId)
+      }
+      if (!parentId) return null
+      const { createReadStream } = await import('fs')
+      const created = await this.drive.files.create({
+        requestBody: { name: fileName, parents: [parentId] },
+        media: { body: createReadStream(localPath) },
+        fields: 'id',
+      })
+      return created.data.id ?? null
+    } catch (e: any) {
+      console.error('[Drive] copyFileToDrive error:', e.message)
+      return null
+    }
+  }
+
+  async createCalendarEvent(event: {
+    title: string
+    description?: string | null
+    location?: string | null
+    startDate: string
+    endDate: string
+    allDay: boolean
+    attendeeEmails: string[]
+    meetingLink?: string | null
+    rrule?: string | null
+  }): Promise<string | null> {
+    if (!this.drive) return null
+    try {
+      const calendar = google.calendar({ version: 'v3', auth: this.oauth2Client! })
+      const start = event.allDay
+        ? { date: event.startDate.slice(0, 10) }
+        : { dateTime: new Date(event.startDate).toISOString(), timeZone: 'UTC' }
+      const end = event.allDay
+        ? { date: event.endDate.slice(0, 10) }
+        : { dateTime: new Date(event.endDate).toISOString(), timeZone: 'UTC' }
+
+      const body: any = {
+        summary: event.title,
+        description: event.description ?? undefined,
+        location: event.location ?? undefined,
+        start,
+        end,
+        attendees: event.attendeeEmails.map(email => ({ email })),
+      }
+      if (event.meetingLink) {
+        body.description = (body.description ?? '') + `\n\nJoin meeting: ${event.meetingLink}`
+      }
+      if (event.rrule) {
+        body.recurrence = [event.rrule]
+      }
+
+      const res = await calendar.events.insert({
+        calendarId: 'primary',
+        sendUpdates: 'all',
+        requestBody: body,
+      })
+      return res.data.id ?? null
+    } catch (e: any) {
+      console.error('[Drive] createCalendarEvent error:', e.message)
+      return null
+    }
+  }
+
+  async updateCalendarEvent(googleEventId: string, update: {
+    title?: string
+    description?: string | null
+    location?: string | null
+    startDate?: string
+    endDate?: string
+    allDay?: boolean
+    attendeeEmails?: string[]
+  }): Promise<boolean> {
+    if (!this.drive) return false
+    try {
+      const calendar = google.calendar({ version: 'v3', auth: this.oauth2Client! })
+      const patch: any = {}
+      if (update.title) patch.summary = update.title
+      if (update.description !== undefined) patch.description = update.description ?? undefined
+      if (update.location !== undefined) patch.location = update.location ?? undefined
+      if (update.startDate) {
+        patch.start = update.allDay
+          ? { date: update.startDate.slice(0, 10) }
+          : { dateTime: new Date(update.startDate).toISOString(), timeZone: 'UTC' }
+      }
+      if (update.endDate) {
+        patch.end = update.allDay
+          ? { date: update.endDate.slice(0, 10) }
+          : { dateTime: new Date(update.endDate).toISOString(), timeZone: 'UTC' }
+      }
+      if (update.attendeeEmails) {
+        patch.attendees = update.attendeeEmails.map(email => ({ email }))
+      }
+      await calendar.events.patch({
+        calendarId: 'primary',
+        eventId: googleEventId,
+        sendUpdates: 'all',
+        requestBody: patch,
+      })
+      return true
+    } catch (e: any) {
+      console.error('[Drive] updateCalendarEvent error:', e.message)
+      return false
+    }
+  }
 }
 
 export const driveSync = new DriveSync()

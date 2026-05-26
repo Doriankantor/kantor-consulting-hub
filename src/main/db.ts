@@ -549,5 +549,23 @@ export function initDatabase(): void {
     );
   `)
 
+  // ── New migrations for features ────────────────────────────────────────────
+  // Recurring calendar events
+  try { db.exec("ALTER TABLE calendar_events ADD COLUMN recurrence_json TEXT;") } catch {}
+  try { db.exec("ALTER TABLE calendar_events ADD COLUMN recurrence_parent_id TEXT;") } catch {}
+
+  // Meeting links on calendar events
+  try { db.exec("ALTER TABLE calendar_events ADD COLUMN meeting_link TEXT;") } catch {}
+  try { db.exec("ALTER TABLE calendar_events ADD COLUMN meeting_type TEXT;") } catch {}
+
+  // External attendees on calendar events
+  try { db.exec("ALTER TABLE calendar_events ADD COLUMN external_attendees_json TEXT DEFAULT '[]';") } catch {}
+
+  // Per-user Google OAuth tokens
+  try { db.exec(`CREATE TABLE IF NOT EXISTS user_google_tokens (
+    user_id TEXT PRIMARY KEY, access_token TEXT, refresh_token TEXT NOT NULL,
+    scopes TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`) } catch {}
+
   console.log(`[DB] Initialized at ${dbPath}`)
 }

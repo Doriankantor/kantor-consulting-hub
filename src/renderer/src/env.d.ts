@@ -222,6 +222,11 @@ interface CalendarEvent {
   google_event_id: string | null
   created_at: string
   updated_at: string
+  recurrence_json?: string | null
+  recurrence_parent_id?: string | null
+  meeting_link?: string | null
+  meeting_type?: string | null
+  external_attendees_json?: string | null
 }
 
 interface FileRecord {
@@ -290,6 +295,7 @@ interface Window {
       disconnect:     () => Promise<boolean>
       isConnected:    () => Promise<boolean>
       reinit:         () => Promise<string>
+      listFolder:     (folderPath: string) => Promise<{ id: string; name: string; mimeType: string; size?: string; modifiedTime?: string }[]>
       onStatusChange: (cb: (status: string) => void) => void
     }
     areas: {
@@ -430,6 +436,12 @@ interface Window {
     }
     files: {
       listAll: () => Promise<FileRecord[]>
+    }
+    userGoogle: {
+      getAuthUrl:   () => Promise<string>
+      exchangeCode: (userId: string, code: string) => Promise<{ ok: boolean; error?: string }>
+      getStatus:    (userId: string) => Promise<{ connected: boolean }>
+      disconnect:   (userId: string) => Promise<{ ok: true }>
     }
   }
 }

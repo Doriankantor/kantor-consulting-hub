@@ -18,10 +18,22 @@ export default function DriveBrowserPanel({ taskId, authorId, authorName, onClos
   const [linkName,     setLinkName]     = useState('')
   const [linkType,     setLinkType]     = useState<'url' | 'gdoc'>('url')
   const [addingLink,   setAddingLink]   = useState(false)
+  const [sharedFiles,  setSharedFiles]  = useState<{id:string;name:string;mimeType:string;size?:string}[]>([])
+  const [loadingFiles, setLoadingFiles] = useState(false)
 
   useEffect(() => {
     window.api.drive.isConnected().then(setDriveConnected).catch(() => setDriveConnected(false))
   }, [])
+
+  useEffect(() => {
+    if (tab === 'drive' && driveConnected) {
+      setLoadingFiles(true)
+      window.api.drive.listFolder('KantorConsultingHub/Shared')
+        .then(setSharedFiles)
+        .catch(() => setSharedFiles([]))
+        .finally(() => setLoadingFiles(false))
+    }
+  }, [tab, driveConnected])
 
   async function handleUploadFile() {
     setUploading(true)
@@ -195,29 +207,41 @@ export default function DriveBrowserPanel({ taskId, authorId, authorName, onClos
               </div>
 
               {driveConnected ? (
-                <>
-                  <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-xl p-3">
-                    <div className="flex items-start gap-2">
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-blue-500 mt-0.5 shrink-0">
-                        <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.3"/>
-                        <path d="M8 7v5M8 5v1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                      </svg>
-                      <p className="text-xs text-blue-700 dark:text-blue-300">
-                        File browser for Drive requires additional setup. You can open Kantor Hub Drive directly in your browser.
-                      </p>
-                    </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-500 dark:text-white/50">Shared Folder</span>
+                    <button
+                      onClick={() => window.open('https://drive.google.com', '_blank')}
+                      className="text-xs text-indigo-500 hover:text-indigo-600 transition"
+                    >
+                      Open Drive ↗
+                    </button>
                   </div>
-                  <button
-                    onClick={() => window.open('https://drive.google.com', '_blank')}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium bg-white dark:bg-white/[0.08] border border-gray-200 dark:border-white/[0.12] text-gray-700 dark:text-white/75 hover:bg-gray-50 dark:hover:bg-white/[0.12] transition"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M8 2L4.5 8H2l2.5 4h7L14 8h-2.5L8 2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
-                      <path d="M4.5 8l3.5 4 3.5-4" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
-                    </svg>
-                    Open Kantor Hub Drive in Browser
-                  </button>
-                </>
+                  {loadingFiles ? (
+                    <div className="flex justify-center py-4">
+                      <div className="w-5 h-5 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+                    </div>
+                  ) : sharedFiles.length === 0 ? (
+                    <p className="text-xs text-gray-400 dark:text-white/35 text-center py-4">
+                      No files in KantorConsultingHub/Shared
+                    </p>
+                  ) : (
+                    <div className="space-y-1 max-h-64 overflow-y-auto">
+                      {sharedFiles.map(f => (
+                        <div
+                          key={f.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-white/[0.04] transition cursor-default"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-gray-400 dark:text-white/35 shrink-0">
+                            <rect x="2" y="1" width="10" height="12" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+                          </svg>
+                          <span className="text-xs text-gray-700 dark:text-white/75 truncate flex-1">{f.name}</span>
+                          {f.size && <span className="text-[10px] text-gray-400 dark:text-white/30 shrink-0">{Math.round(parseInt(f.size)/1024)}K</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ) : (
                 <>
                   <p className="text-sm text-gray-500 dark:text-white/50">

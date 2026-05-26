@@ -8,6 +8,7 @@ import { randomBytes } from 'crypto'
 import { getDatabase, hashPassword } from '../db'
 import { driveSync } from '../google/drive'
 import { sendEmail, inviteEmailHtml } from '../google/gmail'
+import { getUserGoogleAuthUrl, exchangeUserGoogleCode, getUserGoogleStatus, disconnectUserGoogle } from '../google/userGoogle'
 
 // ── Supabase admin client (service role) ──────────────────────────────────
 // process.env.SUPABASE_URL and process.env.SUPABASE_SERVICE_ROLE_KEY are
@@ -347,6 +348,7 @@ function registerDriveHandlers() {
   ipcMain.handle('drive:disconnect',   ()                      => { driveSync.disconnect(); return true })
   ipcMain.handle('drive:isConnected',  ()                      => driveSync.isConnected())
   ipcMain.handle('drive:reinit',       ()                      => { driveSync.init(); return driveSync.status })
+  ipcMain.handle('drive:listFolder',   (_e, folderPath: string) => driveSync.listFolder(folderPath))
 }
 
 // ── Areas ─────────────────────────────────────────────────────────────────
@@ -597,10 +599,22 @@ function registerAttachmentHandlers() {
     const destPath = join(attachmentsDir, id + ext)
     copyFileSync(srcPath, destPath)
 
-    const name = basename(srcPath)
+    const fileName = basename(srcPath)
     getDatabase().prepare(`INSERT INTO task_attachments (id,task_id,name,type,local_path,mime_type,author_id,author_name) VALUES (?,?,?,?,?,?,?,?)`)
-      .run(id, taskId, name, 'file', destPath, '', authorId, authorName)
-    return { ok: true, id, name, local_path: destPath }
+      .run(id, taskId, fileName, 'file', destPath, '', authorId, authorName)
+
+    // Auto-copy to Drive if connected
+    if (driveSync.isConnected()) {
+      try {
+        const task = getDatabase().prepare('SELECT wt.title, wb.name as board_name FROM workspace_tasks wt LEFT JOIN workspace_boards wb ON wt.board_id = wb.id WHERE wt.id = ?').get(taskId) as { title: string; board_name: string } | undefined
+        const projectName = task?.board_name ?? 'General'
+        const taskTitle = task?.title ?? 'Untitled'
+        const folderPath = `KantorConsultingHub/${projectName}/${taskTitle}`
+        void driveSync.copyFileToDrive(destPath, fileName, folderPath)
+      } catch {}
+    }
+
+    return { ok: true, id, name: fileName, local_path: destPath }
   })
 
   ipcMain.handle('attachments:addUrl', (_e, taskId: string, name: string, url: string, type: string, authorId: string, authorName: string) => {
@@ -1271,11 +1285,50 @@ function startTrashAutoDelete() {
 function registerCalendarHandlers() {
   const db = () => getDatabase()
 
-  ipcMain.handle('calendar:list', (_e, startDate: string, endDate: string) =>
-    db().prepare(`SELECT * FROM calendar_events
+  ipcMain.handle('calendar:list', (_e, startDate: string, endDate: string) => {
+    const raw = db().prepare(`SELECT * FROM calendar_events
       WHERE start_date <= ? AND end_date >= ?
-      ORDER BY start_date ASC`).all(endDate, startDate)
-  )
+      ORDER BY start_date ASC`).all(endDate, startDate) as any[]
+
+    // Expand recurring events
+    const expanded: any[] = []
+    for (const ev of raw) {
+      expanded.push(ev)
+      if (!ev.recurrence_json) continue
+      try {
+        const r = JSON.parse(ev.recurrence_json) as { freq: string; interval?: number; endType: 'never'|'count'|'date'; endCount?: number; endDate?: string }
+        if (!r.freq || r.freq === 'none') continue
+        const masterStart = new Date(ev.start_date)
+        const masterEnd   = new Date(ev.end_date)
+        const duration    = masterEnd.getTime() - masterStart.getTime()
+        const freqMap: Record<string, number> = { daily: 1, weekly: 7, biweekly: 14, monthly: 30, annually: 365 }
+        const intervalDays = (freqMap[r.freq] ?? 7) * (r.interval ?? 1)
+        const rangeEndDate = new Date(endDate + 'T23:59:59')
+        let count = 1
+        let cursor = new Date(masterStart)
+        // advance by one interval to skip master
+        if (r.freq === 'monthly') { cursor.setMonth(cursor.getMonth() + (r.interval ?? 1)) }
+        else { cursor.setDate(cursor.getDate() + intervalDays) }
+        while (cursor <= rangeEndDate) {
+          if (r.endType === 'count' && count >= (r.endCount ?? 1)) break
+          if (r.endType === 'date' && r.endDate && cursor > new Date(r.endDate)) break
+          const instanceEnd = new Date(cursor.getTime() + duration)
+          expanded.push({
+            ...ev,
+            id: ev.id + '-' + cursor.toISOString().slice(0, 10),
+            start_date: ev.all_day ? cursor.toISOString().slice(0, 10) : cursor.toISOString().slice(0, 16),
+            end_date:   ev.all_day ? instanceEnd.toISOString().slice(0, 10) : instanceEnd.toISOString().slice(0, 16),
+            recurrence_parent_id: ev.id,
+          })
+          count++
+          if (r.freq === 'monthly') { cursor.setMonth(cursor.getMonth() + (r.interval ?? 1)) }
+          else { cursor.setDate(cursor.getDate() + intervalDays) }
+          if (count > 365) break // safety cap
+        }
+      } catch {}
+    }
+    return expanded
+  })
 
   ipcMain.handle('calendar:get', (_e, id: string) =>
     db().prepare('SELECT * FROM calendar_events WHERE id=?').get(id)
@@ -1284,8 +1337,8 @@ function registerCalendarHandlers() {
   ipcMain.handle('calendar:create', (_e, data: Record<string, unknown>) => {
     const id = uuid()
     db().prepare(`INSERT INTO calendar_events
-      (id,title,description,location,start_date,end_date,all_day,color,visibility,created_by_id,created_by_name,attendees_json,linked_task_id)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      (id,title,description,location,start_date,end_date,all_day,color,visibility,created_by_id,created_by_name,attendees_json,linked_task_id,recurrence_json,meeting_link,meeting_type,external_attendees_json)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(
         id,
         data.title,
@@ -1299,8 +1352,47 @@ function registerCalendarHandlers() {
         data.created_by_id ?? null,
         data.created_by_name ?? null,
         JSON.stringify(data.attendees ?? []),
-        data.linked_task_id ?? null
+        data.linked_task_id ?? null,
+        data.recurrence_json ? JSON.stringify(data.recurrence_json) : null,
+        data.meeting_link ?? null,
+        data.meeting_type ?? null,
+        JSON.stringify(data.external_attendees ?? [])
       )
+
+    // Sync to Google Calendar if hub Drive is connected and there are attendees
+    const attendeeObjs = Array.isArray(data.attendees) ? data.attendees : []
+    const allAttendees = [...attendeeObjs, ...(Array.isArray(data.external_attendees) ? data.external_attendees : [])]
+    if (driveSync.isConnected() && allAttendees.length > 0) {
+      const attendeeEmails = allAttendees.map((a: any) => a.email).filter(Boolean)
+      void driveSync.createCalendarEvent({
+        title: String(data.title),
+        description: data.description as string ?? null,
+        location: data.location as string ?? null,
+        startDate: String(data.start_date),
+        endDate: String(data.end_date),
+        allDay: !!(data.all_day),
+        attendeeEmails,
+        meetingLink: data.meeting_link as string ?? null,
+      }).then(googleEventId => {
+        if (googleEventId) {
+          getDatabase().prepare("UPDATE calendar_events SET google_event_id=? WHERE id=?").run(googleEventId, id)
+        }
+      })
+
+      // Send in-app notifications to internal attendees
+      for (const attendee of attendeeObjs) {
+        if ((attendee as any).id) {
+          createNotification({
+            user_id: (attendee as any).id,
+            type: 'calendar_invite',
+            title: `You've been invited to "${data.title}"`,
+            body: `${data.start_date ? new Date(data.start_date as string).toLocaleString() : ''}`,
+            actor_name: data.created_by_name as string ?? undefined,
+          })
+        }
+      }
+    }
+
     return { ok: true, id }
   })
 
@@ -1311,13 +1403,34 @@ function registerCalendarHandlers() {
       title: 'title', description: 'description', location: 'location',
       start_date: 'start_date', end_date: 'end_date', all_day: 'all_day',
       color: 'color', visibility: 'visibility', linked_task_id: 'linked_task_id',
+      meeting_link: 'meeting_link', meeting_type: 'meeting_type',
     }
     for (const [k, col] of Object.entries(fields)) {
       if (k in data) { sets.push(`${col}=?`); vals.push(data[k]) }
     }
     if ('attendees' in data) { sets.push('attendees_json=?'); vals.push(JSON.stringify(data.attendees)) }
+    if ('recurrence_json' in data) { sets.push('recurrence_json=?'); vals.push(data.recurrence_json ? JSON.stringify(data.recurrence_json) : null) }
+    if ('external_attendees' in data) { sets.push('external_attendees_json=?'); vals.push(JSON.stringify(data.external_attendees ?? [])) }
     sets.push("updated_at=datetime('now')")
     if (sets.length > 1) db().prepare(`UPDATE calendar_events SET ${sets.join(',')} WHERE id=?`).run(...vals, id)
+
+    // Sync to Google Calendar if hub Drive is connected
+    const ev = db().prepare('SELECT * FROM calendar_events WHERE id=?').get(id) as any
+    if (driveSync.isConnected() && ev?.google_event_id) {
+      const attendeeObjs = ev.attendees_json ? JSON.parse(ev.attendees_json) : []
+      const extAttendees = ev.external_attendees_json ? JSON.parse(ev.external_attendees_json) : []
+      const emails = [...attendeeObjs, ...extAttendees].map((a: any) => a.email).filter(Boolean)
+      void driveSync.updateCalendarEvent(ev.google_event_id, {
+        title: data.title as string ?? ev.title,
+        description: data.description as string ?? ev.description,
+        location: data.location as string ?? ev.location,
+        startDate: data.start_date as string ?? ev.start_date,
+        endDate: data.end_date as string ?? ev.end_date,
+        allDay: !!(data.all_day ?? ev.all_day),
+        attendeeEmails: emails,
+      })
+    }
+
     return { ok: true }
   })
 
@@ -1345,6 +1458,15 @@ function registerFilesHandlers() {
       ORDER BY a.created_at DESC
     `).all()
   })
+}
+
+// ── User Google ────────────────────────────────────────────────────────────
+
+function registerUserGoogleHandlers() {
+  ipcMain.handle('userGoogle:getAuthUrl',   ()                                   => getUserGoogleAuthUrl())
+  ipcMain.handle('userGoogle:exchangeCode', (_e, userId: string, code: string)   => exchangeUserGoogleCode(userId, code))
+  ipcMain.handle('userGoogle:getStatus',    (_e, userId: string)                 => getUserGoogleStatus(userId))
+  ipcMain.handle('userGoogle:disconnect',   (_e, userId: string)                 => { disconnectUserGoogle(userId); return { ok: true } })
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────
@@ -1377,5 +1499,6 @@ export function registerIpcHandlers(): void {
   registerTrashHandlers()
   registerCalendarHandlers()
   registerFilesHandlers()
+  registerUserGoogleHandlers()
   startTrashAutoDelete()
 }
