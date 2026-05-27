@@ -638,5 +638,16 @@ export function initDatabase(): void {
     );
   `)
 
+  // Ensure the primary admin account always has role='admin'
+  // (guards against accidental role downgrade or DB inconsistency)
+  try {
+    db.exec("UPDATE local_users SET role='admin' WHERE id='local-admin'")
+    // Also ensure the configured admin email has admin role, whatever its id
+    const adminEmailRow = db.prepare("SELECT value FROM settings WHERE key='local_admin_email'").get() as { value: string } | undefined
+    if (adminEmailRow?.value) {
+      db.prepare("UPDATE local_users SET role='admin' WHERE LOWER(email)=?").run(adminEmailRow.value.toLowerCase())
+    }
+  } catch {}
+
   console.log(`[DB] Initialized at ${dbPath}`)
 }
