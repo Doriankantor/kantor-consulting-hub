@@ -10,7 +10,7 @@
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "package": "npm run build && electron-builder",
     "make:mac": "npm run build && electron-builder --mac --universal",
-    "release": "npm run build && electron-builder --mac --universal --publish always && rm -rf dist"
+    "release": "npm run build && electron-builder --mac --universal --publish always && find dist -maxdepth 1 -name 'KantorConsultingHub-*' ! -name \"*$(node -p \"require('./package.json').version\")*\" -delete"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
