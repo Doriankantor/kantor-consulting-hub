@@ -23,7 +23,7 @@ notify() { osascript -e "display notification \"$2\" with title \"$1\"" 2>/dev/n
 # ── On any error: notify, print message, keep window open ────────────────────
 trap 'fail "Release failed — see above for details."; \
       notify "Release Failed ✗" "Kantor Hub release failed — check Terminal."; \
-      echo ""; read -p "Press Enter to close..." _' ERR
+      echo ""; read -p "Press Enter to close..." _ || true || true' ERR
 
 set -e   # exit on first error (trap above catches it)
 
@@ -40,7 +40,7 @@ if [ -z "$GH_TOKEN" ]; then
   echo "  Add this line to ~/.zprofile and reopen Terminal:"
   echo "  export GH_TOKEN=ghp_yourtoken"
   echo ""
-  read -p "Press Enter to close..." _
+  read -p "Press Enter to close..." _ || true
   exit 1
 fi
 ok "GH_TOKEN found"
@@ -92,4 +92,4 @@ echo ""
 
 notify "Release Published ✓" "Kantor Hub v$NEW_VERSION is live on GitHub Releases."
 
-read -p "Press Enter to close..." _
+read -p "Press Enter to close..." _ || true
