@@ -150,6 +150,9 @@ app.whenReady().then(() => {
         'echo "  Updating Kantor Consulting Hub..."',
         'echo ""',
         'curl -sL https://raw.githubusercontent.com/Doriankantor/kantor-consulting-hub/main/install.sh | bash',
+        'echo ""',
+        'echo "  ✓ Update complete. You can close this window now."',
+        'echo ""',
       ].join('\n'), { mode: 0o755 })
       // Strip quarantine so macOS doesn't block it
       spawnSync('xattr', ['-cr', scriptPath])

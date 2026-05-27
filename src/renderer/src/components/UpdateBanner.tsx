@@ -37,28 +37,29 @@ export default function UpdateBanner() {
     )
   }
 
-  // ── Download error ───────────────────────────────────────────────────────
+  // ── Download error — show as a plain update prompt, no "failed" wording ──
   if (state === 'error') {
     return (
-      <div className="flex items-center gap-3 px-4 py-2 bg-red-500/[0.07] border-b border-red-500/[0.12] text-sm shrink-0">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-red-400 shrink-0">
+      <div className="flex items-center gap-3 px-4 py-2 bg-indigo-500/[0.07] border-b border-indigo-500/[0.12] text-sm shrink-0">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-indigo-500 shrink-0">
           <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.4"/>
           <path d="M7 4.5v3M7 9v.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
         </svg>
         <span className="text-gray-700 dark:text-white/80 flex-1">
-          Auto-update failed — click to install via Terminal instead.
+          {version ? <><strong>v{version}</strong> is available — </> : 'An update is available — '}
+          please click here to open Terminal to complete the update.
         </span>
         <button
           onClick={installViaTerminal}
-          className="px-3 py-1 rounded-lg bg-gray-100 dark:bg-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.13] text-gray-600 dark:text-white/70 text-xs font-semibold transition shrink-0"
+          className="px-3 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold transition shrink-0"
         >
-          Install via Terminal
+          Open Terminal
         </button>
         <button
           onClick={dismiss}
           className="px-3 py-1 rounded-lg border border-gray-200 dark:border-white/[0.1] text-xs text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition shrink-0"
         >
-          Dismiss
+          Later
         </button>
       </div>
     )
