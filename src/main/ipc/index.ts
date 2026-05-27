@@ -1548,8 +1548,8 @@ function registerUserGoogleHandlers() {
   ipcMain.handle('userGoogle:getCalendars', async (_e, userId: string) => {
     return getUserCalendars(userId)
   })
-  ipcMain.handle('userGoogle:getCalendarEvents', async (_e, userId: string, calendarId: string, startDate: string, endDate: string) => {
-    return getUserCalendarEvents(userId, calendarId, startDate, endDate)
+  ipcMain.handle('userGoogle:getCalendarEvents', async (_e, userId: string, calendarId: string, startDate: string, endDate: string, calendarColor?: string) => {
+    return getUserCalendarEvents(userId, calendarId, startDate, endDate, calendarColor)
   })
 }
 

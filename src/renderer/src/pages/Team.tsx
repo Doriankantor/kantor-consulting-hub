@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import TeamMemberProfilePanel from '../components/TeamMemberProfilePanel'
 
 // ── Avatar ─────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ export default function Team() {
 
   const [members, setMembers] = useState<LocalTeamMember[]>([])
   const [loading, setLoading]   = useState(true)
+  const [profileMemberId, setProfileMemberId] = useState<string | null>(null)
 
   // Invite form
   const [name,   setName]   = useState('')
@@ -235,7 +237,11 @@ export default function Team() {
           ) : (
             <div className="divide-y divide-gray-100 dark:divide-white/[0.05]">
               {members.map(member => (
-                <div key={member.id} className="flex items-center justify-between px-5 py-4 group">
+                <div
+                  key={member.id}
+                  className="flex items-center justify-between px-5 py-4 group hover:bg-gray-50 dark:hover:bg-white/[0.03] transition cursor-pointer"
+                  onClick={() => setProfileMemberId(member.id)}
+                >
                   <div className="flex items-center gap-3.5">
                     <Avatar name={member.full_name} email={member.email} />
                     <div>
@@ -261,7 +267,7 @@ export default function Team() {
                     <RoleBadge role={member.role} />
                     {isAdmin && member.id !== currentId && (
                       <button
-                        onClick={() => handleRemove(member)}
+                        onClick={e => { e.stopPropagation(); handleRemove(member) }}
                         className="titlebar-no-drag opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition"
                         title="Remove member"
                       >
@@ -283,6 +289,14 @@ export default function Team() {
           </p>
         )}
       </div>
+
+      {profileMemberId && (
+        <TeamMemberProfilePanel
+          memberId={profileMemberId}
+          onClose={() => setProfileMemberId(null)}
+          showSendMessage={true}
+        />
+      )}
     </div>
   )
 }

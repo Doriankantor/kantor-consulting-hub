@@ -454,8 +454,8 @@ interface Window {
       connect:           (userId: string) => Promise<{ ok: boolean; error?: string }>
       getStatus:         (userId: string) => Promise<{ connected: boolean }>
       disconnect:        (userId: string) => Promise<{ ok: boolean }>
-      getCalendars:      (userId: string) => Promise<{ id: string; summary: string; backgroundColor: string; foregroundColor: string; primary: boolean; accessRole: string }[]>
-      getCalendarEvents: (userId: string, calendarId: string, startDate: string, endDate: string) => Promise<{ id: string; summary: string; start: string; end: string; allDay: boolean; color: string; location?: string; meetingLink?: string; calendarId: string }[]>
+      getCalendars:      (userId: string) => Promise<{ id: string; summary: string; backgroundColor: string; foregroundColor: string; primary: boolean; accessRole: string }[] | { needsReauth: true }>
+      getCalendarEvents: (userId: string, calendarId: string, startDate: string, endDate: string, calendarColor?: string) => Promise<{ id: string; summary: string; start: string; end: string; allDay: boolean; color: string; location?: string; meetingLink?: string; calendarId: string }[]>
     }
     personalTodo: {
       list:       (userId: string) => Promise<{ id:string; user_id:string; title:string; due_date:string|null; due_time:string|null; completed:number; completed_at:string|null; created_at:string }[]>

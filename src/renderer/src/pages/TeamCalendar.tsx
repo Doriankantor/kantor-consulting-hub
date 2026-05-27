@@ -733,6 +733,7 @@ export default function TeamCalendar() {
   })
   const [googleEvents, setGoogleEvents] = useState<Record<string, {id:string; summary:string; start:string; end:string; allDay:boolean; color:string; location?:string; meetingLink?:string; calendarId:string}[]>>({})
   const [userGoogleConnected, setUserGoogleConnected] = useState(false)
+  const [googleNeedsReauth, setGoogleNeedsReauth] = useState(false)
   const [myTasks, setMyTasks] = useState<any[]>([])
 
   const year  = currentDate.getFullYear()
@@ -750,7 +751,13 @@ export default function TeamCalendar() {
     window.api.userGoogle.getStatus(localUser.id).then(s => {
       setUserGoogleConnected(s.connected)
       if (s.connected) {
-        window.api.userGoogle.getCalendars(localUser.id).then(cals => {
+        window.api.userGoogle.getCalendars(localUser.id).then(result => {
+          if ('needsReauth' in result && result.needsReauth) {
+            setUserGoogleConnected(false)
+            setGoogleNeedsReauth(true)
+            return
+          }
+          const cals = result as { id:string; summary:string; backgroundColor:string; foregroundColor:string; primary:boolean; accessRole:string }[]
           setGoogleCalendars(cals)
           setEnabledCalendars(prev => {
             const next = new Set(prev)
@@ -790,11 +797,12 @@ export default function TeamCalendar() {
     if (ids.length === 0) return
     const start = view === 'agenda' ? toDateStr(new Date()) : rangeStart
     const end   = view === 'agenda' ? toDateStr(new Date(Date.now() + 90 * 86400000)) : rangeEnd
-    Promise.all(ids.map(id =>
-      window.api.userGoogle.getCalendarEvents(localUser!.id, id, start, end)
+    Promise.all(ids.map(id => {
+      const cal = googleCalendars.find(c => c.id === id)
+      return window.api.userGoogle.getCalendarEvents(localUser!.id, id, start, end, cal?.backgroundColor)
         .then(evs => [id, evs] as const)
         .catch(() => [id, []] as const)
-    )).then(results => {
+    })).then(results => {
       setGoogleEvents(Object.fromEntries(results))
     })
   }, [localUser?.id, userGoogleConnected, googleCalendars, enabledCalendars, view, rangeStart, rangeEnd, syncTick])
@@ -1084,8 +1092,31 @@ export default function TeamCalendar() {
               </label>
             ))}
 
-            {!userGoogleConnected && (
-              <p className="text-[10px] text-gray-400 dark:text-white/30 mt-1">Connect Google in Settings to see personal calendars</p>
+            {(!userGoogleConnected || googleNeedsReauth) && (
+              <div className="mt-2 p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
+                <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium mb-1.5">
+                  {googleNeedsReauth ? 'Re-connect Google to sync calendars' : 'Connect Google to see your calendars'}
+                </p>
+                <button
+                  onClick={() => {
+                    if (!localUser?.id) return
+                    window.api.userGoogle.connect(localUser.id).then(r => {
+                      if (r.ok) {
+                        setUserGoogleConnected(true)
+                        setGoogleNeedsReauth(false)
+                        window.api.userGoogle.getCalendars(localUser.id).then(result => {
+                          if (!('needsReauth' in result)) {
+                            setGoogleCalendars(result)
+                          }
+                        }).catch(() => {})
+                      }
+                    }).catch(() => {})
+                  }}
+                  className="w-full px-2 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] font-semibold transition"
+                >
+                  {googleNeedsReauth ? 'Re-connect' : 'Connect Google'}
+                </button>
+              </div>
             )}
           </div>
 

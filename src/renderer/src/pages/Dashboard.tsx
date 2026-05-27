@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { PRIORITY_DOT, CONTENT_TYPE_COLORS, CONTENT_TYPE_LABELS } from '../types'
+import TeamMemberProfilePanel from '../components/TeamMemberProfilePanel'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -76,8 +77,9 @@ function feedIcon(source: 'activity' | 'comment', action: string): string {
 
 export default function Dashboard() {
   const { localUser } = useAuth()
-  const { tasks, columns, members, selectTask } = useWorkspace()
+  const { tasks, columns, members, selectTask, openTask, setActiveBoardId } = useWorkspace()
   const navigate = useNavigate()
+  const [profileMemberId, setProfileMemberId] = useState<string | null>(null)
 
   const firstName = localUser?.name?.split(' ')[0] ?? localUser?.email?.split('@')[0] ?? 'there'
   const isAdmin   = localUser?.role === 'admin'
@@ -195,7 +197,10 @@ export default function Dashboard() {
                 return (
                   <div
                     key={task.id}
-                    onClick={() => selectTask(task)}
+                    onClick={() => {
+                      navigate('/workspace')
+                      setTimeout(() => selectTask(task), 100)
+                    }}
                     className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-white/[0.04] cursor-pointer transition group"
                   >
                     <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${PRIORITY_DOT[task.priority]}`} />
@@ -245,7 +250,13 @@ export default function Dashboard() {
                 {feed.map(entry => (
                   <div
                     key={entry.id}
-                    className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/[0.03] transition cursor-default group"
+                    className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/[0.03] transition cursor-pointer group"
+                    title={entry.task_id ? 'Click to open task' : undefined}
+                    onClick={() => {
+                      if (!entry.task_id) return
+                      navigate('/workspace')
+                      setTimeout(() => openTask(entry.task_id, entry.source === 'comment' ? 'comments' : undefined), 150)
+                    }}
                   >
                     {/* Avatar */}
                     <div
@@ -300,7 +311,11 @@ export default function Dashboard() {
             </div>
             <div className="p-4 space-y-2">
               {members.map(m => (
-                <div key={m.id} className="flex items-center gap-2.5">
+                <div
+                  key={m.id}
+                  className={`flex items-center gap-2.5 ${isAdmin ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.04] rounded-xl px-2 py-1 -mx-2 transition' : ''}`}
+                  onClick={() => isAdmin && setProfileMemberId(m.id)}
+                >
                   <div
                     className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-white text-[10px] font-bold"
                     style={{ backgroundColor: nameColor(m.full_name ?? m.email) }}
@@ -345,6 +360,13 @@ export default function Dashboard() {
 
         </div>
       </div>
+
+      {profileMemberId && (
+        <TeamMemberProfilePanel
+          memberId={profileMemberId}
+          onClose={() => setProfileMemberId(null)}
+        />
+      )}
     </div>
   )
 }

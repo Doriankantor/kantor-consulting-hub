@@ -171,9 +171,18 @@ const GOOGLE_COLORS: Record<string, string> = {
   '9':'#3f51b5','10':'#0b8043','11':'#d60000'
 }
 
-export async function getUserCalendars(userId: string): Promise<{ id: string; summary: string; backgroundColor: string; foregroundColor: string; primary: boolean; accessRole: string }[]> {
+export async function getUserCalendars(userId: string): Promise<{ id: string; summary: string; backgroundColor: string; foregroundColor: string; primary: boolean; accessRole: string }[] | { needsReauth: true }> {
+  const db = getDatabase()
+  const tokenRow = db.prepare('SELECT refresh_token, scopes FROM user_google_tokens WHERE user_id=?').get(userId) as { refresh_token: string; scopes: string | null } | undefined
+  if (!tokenRow) return { needsReauth: true }
+
+  // If stored scopes don't include calendar, force re-auth
+  if (tokenRow.scopes && !tokenRow.scopes.includes('calendar')) {
+    return { needsReauth: true }
+  }
+
   const client = getUserGoogleClient(userId)
-  if (!client) return []
+  if (!client) return { needsReauth: true }
   try {
     const cal = google.calendar({ version: 'v3', auth: client })
     const res = await cal.calendarList.list({ minAccessRole: 'reader' })
@@ -185,17 +194,31 @@ export async function getUserCalendars(userId: string): Promise<{ id: string; su
       primary: !!(c.primary),
       accessRole: c.accessRole ?? 'reader',
     }))
-  } catch { return [] }
+  } catch (e: any) {
+    // If it's an auth/scope error, signal re-auth needed
+    if (e.code === 401 || e.code === 403 || (e.message && (e.message.includes('invalid_grant') || e.message.includes('insufficient')))) {
+      return { needsReauth: true }
+    }
+    return []
+  }
 }
 
 export async function getUserCalendarEvents(
   userId: string,
   calendarId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  calendarColor?: string
 ): Promise<{ id: string; summary: string; start: string; end: string; allDay: boolean; color: string; location?: string; meetingLink?: string; calendarId: string }[]> {
   const client = getUserGoogleClient(userId)
   if (!client) return []
+
+  const GOOGLE_EVENT_COLORS: Record<string, string> = {
+    '1':'#7986cb','2':'#33b679','3':'#8e24aa','4':'#e67c73',
+    '5':'#f6c026','6':'#f5511d','7':'#039be5','8':'#616161',
+    '9':'#3f51b5','10':'#0b8043','11':'#d60000'
+  }
+
   try {
     const cal = google.calendar({ version: 'v3', auth: client })
     const res = await cal.events.list({
@@ -204,19 +227,20 @@ export async function getUserCalendarEvents(
       timeMax: new Date(endDate + 'T23:59:59').toISOString(),
       singleEvents: true,
       orderBy: 'startTime',
-      maxResults: 100,
+      maxResults: 500,
+      showDeleted: false,
     })
     return (res.data.items ?? []).map(ev => {
       const startStr = ev.start?.dateTime ?? ev.start?.date ?? ''
       const endStr   = ev.end?.dateTime   ?? ev.end?.date   ?? ''
       const allDay   = !ev.start?.dateTime
-      const color    = ev.colorId ? (GOOGLE_COLORS[ev.colorId] ?? '#6366f1') : '#6366f1'
-      // Derive meeting link: prefer hangoutLink, else check location if it looks like a URL
-      let meetingLink: string | undefined
-      if (ev.hangoutLink) {
-        meetingLink = ev.hangoutLink
-      } else if (ev.location && /^https?:\/\//i.test(ev.location)) {
-        meetingLink = ev.location
+      // Color: use event colorId if set, else use calendar color
+      const color = ev.colorId ? (GOOGLE_EVENT_COLORS[ev.colorId] ?? calendarColor ?? '#6366f1') : (calendarColor ?? '#6366f1')
+      // Meeting link: hangoutLink is Google Meet, or check conferenceData, or URL in location
+      let meetingLink = ev.hangoutLink ?? undefined
+      if (!meetingLink && ev.conferenceData?.entryPoints) {
+        const videoEntry = ev.conferenceData.entryPoints.find(e => e.entryPointType === 'video')
+        if (videoEntry?.uri) meetingLink = videoEntry.uri
       }
       return {
         id: ev.id ?? crypto.randomUUID(),

@@ -68,6 +68,8 @@ export default function Todo() {
   const [showCalEvents, setShowCalEvents] = useState<boolean>(() => {
     try { return localStorage.getItem(`todo-show-cal-${userId}`) !== 'false' } catch { return true }
   })
+  const [googleConnected, setGoogleConnected] = useState(false)
+  const [googleNeedsReauth, setGoogleNeedsReauth] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -94,8 +96,15 @@ export default function Todo() {
   const loadCalendarItems = useCallback(async () => {
     try {
       const status = await window.api.userGoogle.getStatus(userId)
+      setGoogleConnected(status.connected)
       if (!status.connected) return
-      const cals = await window.api.userGoogle.getCalendars(userId)
+      const calsResult = await window.api.userGoogle.getCalendars(userId)
+      if ('needsReauth' in calsResult && calsResult.needsReauth) {
+        setGoogleNeedsReauth(true)
+        setGoogleConnected(false)
+        return
+      }
+      const cals = calsResult as { id:string; summary:string; backgroundColor:string; foregroundColor:string; primary:boolean; accessRole:string }[]
       // Read enabled toggles from localStorage (same format as TeamCalendar)
       let enabledSet: Set<string>
       try {
@@ -113,7 +122,7 @@ export default function Todo() {
       for (const cal of cals) {
         if (!enabledSet.has(cal.id)) continue
         try {
-          const evs = await window.api.userGoogle.getCalendarEvents(userId, cal.id, startDate, endDate)
+          const evs = await window.api.userGoogle.getCalendarEvents(userId, cal.id, startDate, endDate, cal.backgroundColor)
           for (const ev of evs) {
             items.push({
               id: 'gcal-' + ev.id,
@@ -620,6 +629,11 @@ export default function Todo() {
                 <div className="text-3xl">✓</div>
                 <p className="text-sm font-medium text-gray-500 dark:text-white/65">Nothing to do!</p>
                 <p className="text-xs text-gray-400 dark:text-white/50">Tasks assigned to you will appear here.</p>
+                {(!googleConnected || googleNeedsReauth) && (
+                  <p className="text-xs text-indigo-500 dark:text-indigo-400 mt-2 cursor-pointer hover:underline" onClick={() => navigate('/settings')}>
+                    {googleNeedsReauth ? 'Re-connect Google in Settings to sync calendar events' : 'Connect Google in Settings to see calendar events'}
+                  </p>
+                )}
               </div>
             )}
           </div>
