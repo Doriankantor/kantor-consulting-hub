@@ -896,21 +896,34 @@ export default function TeamCalendar() {
     await loadEvents()
   }
 
+  // Convert a Google Calendar ISO datetime string to a local-time string
+  // that the WeekView can safely slice(0,10) / slice(11,16) without timezone errors
+  function toLocalStr(isoStr: string, allDay: boolean): string {
+    if (!isoStr) return isoStr
+    if (allDay) return isoStr.slice(0, 10) // date-only strings are already local
+    const d = new Date(isoStr)
+    if (isNaN(d.getTime())) return isoStr
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  }
+
   // Build combined events for display
   const allDisplayEvents = useMemo(() => {
     const out: CalendarEvent[] = []
     if (enabledCalendars.has('hub')) out.push(...events)
 
-    // Google personal events
+    // Google personal events — convert UTC datetimes to local time so WeekView
+    // string-slicing (slice(11,13) for hour) works correctly in every timezone
     for (const [, calEvs] of Object.entries(googleEvents)) {
       for (const ev of calEvs) {
+        const localStart = toLocalStr(ev.start, ev.allDay)
+        const localEnd   = toLocalStr(ev.end || ev.start, ev.allDay)
         out.push({
           id: 'g-' + ev.id,
           title: ev.summary,
           description: null,
           location: ev.location ?? null,
-          start_date: ev.start,
-          end_date: ev.end || ev.start,
+          start_date: localStart,
+          end_date: localEnd,
           all_day: ev.allDay ? 1 : 0,
           color: ev.color,
           visibility: 'personal',
