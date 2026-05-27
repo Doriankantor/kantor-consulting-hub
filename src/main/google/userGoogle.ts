@@ -164,3 +164,52 @@ export function getUserGoogleClient(userId: string): InstanceType<typeof google.
   client.setCredentials({ refresh_token: row.refresh_token })
   return client
 }
+
+export async function getUserCalendars(userId: string): Promise<{ id: string; summary: string; backgroundColor: string; primary: boolean }[]> {
+  const client = getUserGoogleClient(userId)
+  if (!client) return []
+  try {
+    const cal = google.calendar({ version: 'v3', auth: client })
+    const res = await cal.calendarList.list({ minAccessRole: 'reader' })
+    return (res.data.items ?? []).map(c => ({
+      id: c.id ?? '',
+      summary: c.summary ?? '',
+      backgroundColor: c.backgroundColor ?? '#6366f1',
+      primary: !!(c.primary),
+    }))
+  } catch { return [] }
+}
+
+export async function getUserCalendarEvents(
+  userId: string,
+  calendarId: string,
+  startDate: string,
+  endDate: string
+): Promise<{ id: string; summary: string; start: string; end: string; allDay: boolean; color: string }[]> {
+  const client = getUserGoogleClient(userId)
+  if (!client) return []
+  try {
+    const cal = google.calendar({ version: 'v3', auth: client })
+    const res = await cal.events.list({
+      calendarId,
+      timeMin: new Date(startDate).toISOString(),
+      timeMax: new Date(endDate + 'T23:59:59').toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+      maxResults: 100,
+    })
+    return (res.data.items ?? []).map(ev => {
+      const startStr = ev.start?.dateTime ?? ev.start?.date ?? ''
+      const endStr   = ev.end?.dateTime   ?? ev.end?.date   ?? ''
+      const allDay   = !ev.start?.dateTime
+      return {
+        id: ev.id ?? crypto.randomUUID(),
+        summary: ev.summary ?? '(No title)',
+        start: startStr,
+        end: endStr,
+        allDay,
+        color: '#6366f1',
+      }
+    })
+  } catch { return [] }
+}

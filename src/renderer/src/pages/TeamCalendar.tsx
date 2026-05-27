@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useWorkspace } from '../contexts/WorkspaceContext'
+import { useNavigate } from 'react-router-dom'
 
 type CalView = 'month' | 'week' | 'agenda'
 
@@ -673,6 +675,8 @@ function AgendaView({ events, onEventClick }: { events: CalendarEvent[]; onEvent
 
 export default function TeamCalendar() {
   const { localUser } = useAuth()
+  const { openTask, setActiveBoardId } = useWorkspace()
+  const navigate = useNavigate()
   const [view,         setView]         = useState<CalView>('month')
   const [currentDate,  setCurrentDate]  = useState(new Date())
   const [events,       setEvents]       = useState<CalendarEvent[]>([])
@@ -682,8 +686,51 @@ export default function TeamCalendar() {
   const [editingEvent, setEditingEvent] = useState<Partial<CalendarEvent> | null>(null)
   const [defaultDate,  setDefaultDate]  = useState<string | undefined>()
 
+  // Left sidebar state
+  const [googleCalendars, setGoogleCalendars] = useState<{id:string; summary:string; backgroundColor:string; primary:boolean}[]>([])
+  const [enabledCalendars, setEnabledCalendars] = useState<Set<string>>(() => {
+    try {
+      const userId = localUser?.id ?? 'local-admin'
+      const saved = localStorage.getItem(`cal-toggles-${userId}`)
+      return saved ? new Set(JSON.parse(saved)) : new Set(['hub', 'task-deadlines'])
+    } catch { return new Set(['hub', 'task-deadlines']) }
+  })
+  const [googleEvents, setGoogleEvents] = useState<Record<string, {id:string; summary:string; start:string; end:string; allDay:boolean; color:string}[]>>({})
+  const [userGoogleConnected, setUserGoogleConnected] = useState(false)
+  const [myTasks, setMyTasks] = useState<any[]>([])
+
   const year  = currentDate.getFullYear()
   const month = currentDate.getMonth()
+
+  // Save toggle state to localStorage
+  useEffect(() => {
+    const userId = localUser?.id ?? 'local-admin'
+    localStorage.setItem(`cal-toggles-${userId}`, JSON.stringify([...enabledCalendars]))
+  }, [enabledCalendars, localUser?.id])
+
+  // Load Google calendars on mount
+  useEffect(() => {
+    if (!localUser?.id) return
+    window.api.userGoogle.getStatus(localUser.id).then(s => {
+      setUserGoogleConnected(s.connected)
+      if (s.connected) {
+        window.api.userGoogle.getCalendars(localUser.id).then(cals => {
+          setGoogleCalendars(cals)
+          setEnabledCalendars(prev => {
+            const next = new Set(prev)
+            for (const c of cals) if (!next.has(c.id)) next.add(c.id)
+            return next
+          })
+        }).catch(() => {})
+      }
+    }).catch(() => {})
+  }, [localUser?.id])
+
+  // Load my tasks for deadlines
+  useEffect(() => {
+    if (!localUser?.id) return
+    window.api.todo.getMyTasks(localUser.id).then(setMyTasks).catch(() => {})
+  }, [localUser?.id])
 
   // Compute range for fetching
   const rangeStart = view === 'month'
@@ -699,6 +746,22 @@ export default function TeamCalendar() {
     result.setDate(d.getDate() - day)
     return result
   }
+
+  // Load Google personal calendar events when range or toggles change
+  useEffect(() => {
+    if (!localUser?.id || !userGoogleConnected) return
+    const ids = googleCalendars.filter(c => enabledCalendars.has(c.id)).map(c => c.id)
+    if (ids.length === 0) return
+    const start = view === 'agenda' ? toDateStr(new Date()) : rangeStart
+    const end   = view === 'agenda' ? toDateStr(new Date(Date.now() + 90 * 86400000)) : rangeEnd
+    Promise.all(ids.map(id =>
+      window.api.userGoogle.getCalendarEvents(localUser!.id, id, start, end)
+        .then(evs => [id, evs] as const)
+        .catch(() => [id, []] as const)
+    )).then(results => {
+      setGoogleEvents(Object.fromEntries(results))
+    })
+  }, [localUser?.id, userGoogleConnected, googleCalendars, enabledCalendars, view, rangeStart, rangeEnd])
 
   const loadEvents = useCallback(async () => {
     try {
@@ -774,6 +837,83 @@ export default function TeamCalendar() {
     await loadEvents()
   }
 
+  // Build combined events for display
+  const allDisplayEvents = useMemo(() => {
+    const out: CalendarEvent[] = []
+    if (enabledCalendars.has('hub')) out.push(...events)
+
+    // Google personal events
+    for (const [, calEvs] of Object.entries(googleEvents)) {
+      for (const ev of calEvs) {
+        out.push({
+          id: 'g-' + ev.id,
+          title: ev.summary,
+          description: null,
+          location: null,
+          start_date: ev.start,
+          end_date: ev.end || ev.start,
+          all_day: ev.allDay ? 1 : 0,
+          color: ev.color,
+          visibility: 'personal',
+          created_by_id: null,
+          created_by_name: null,
+          attendees_json: '[]',
+          linked_task_id: null,
+          google_event_id: ev.id,
+          created_at: '',
+          updated_at: '',
+        })
+      }
+    }
+
+    // Task deadlines
+    if (enabledCalendars.has('task-deadlines')) {
+      const userId = localUser?.id ?? 'local-admin'
+      const deadlineTasks = myTasks.filter(t =>
+        t.due_date &&
+        !t.completed_at &&
+        t.column_id !== 'col-published' &&
+        t.archived !== 1 &&
+        (t.assignee_ids ?? []).includes(userId)
+      )
+      for (const t of deadlineTasks) {
+        out.push({
+          id: 'deadline-' + t.id,
+          title: t.title,
+          description: null,
+          location: null,
+          start_date: t.due_date,
+          end_date: t.due_date,
+          all_day: 1,
+          color: '#f59e0b',
+          visibility: 'personal',
+          created_by_id: null,
+          created_by_name: null,
+          attendees_json: '[]',
+          linked_task_id: t.id,
+          google_event_id: null,
+          created_at: '',
+          updated_at: '',
+        })
+      }
+    }
+
+    return out
+  }, [events, enabledCalendars, googleEvents, myTasks, localUser?.id])
+
+  function handleDeadlineEventClick(ev: CalendarEvent) {
+    if (ev.linked_task_id && ev.id.startsWith('deadline-')) {
+      const task = myTasks.find(t => t.id === ev.linked_task_id)
+      if (task) {
+        setActiveBoardId(task.board_id)
+        openTask(ev.linked_task_id)
+        navigate('/workspace')
+        return
+      }
+    }
+    openEditEvent(ev)
+  }
+
   const headerLabel = view === 'month'
     ? `${MONTH_NAMES[month]} ${year}`
     : view === 'week'
@@ -831,27 +971,100 @@ export default function TeamCalendar() {
         </div>
       </div>
 
-      {/* Calendar area */}
-      <div className="flex-1 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl overflow-hidden flex flex-col">
-        {loading ? (
-          <div className="flex items-center justify-center flex-1">
-            <div className="w-6 h-6 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+      {/* Main row: left sidebar + calendar */}
+      <div className="flex-1 flex gap-4 min-h-0">
+        {/* Left sidebar */}
+        <div className="w-48 shrink-0 flex flex-col gap-2 overflow-y-auto">
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider mb-2">My Calendars</h3>
+
+            {/* Kantor Hub — always on */}
+            <label className="flex items-center gap-2 py-1 cursor-not-allowed opacity-90">
+              <div className="w-3 h-3 rounded-sm bg-indigo-500 flex items-center justify-center shrink-0">
+                <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3 5.5 6.5 2" stroke="white" strokeWidth="1.2" strokeLinecap="round"/></svg>
+              </div>
+              <span className="text-xs text-gray-700 dark:text-white/70">Kantor Hub</span>
+            </label>
+
+            {/* Task Deadlines toggle */}
+            <label
+              className="flex items-center gap-2 py-1 cursor-pointer"
+              onClick={() => {
+                setEnabledCalendars(prev => {
+                  const next = new Set(prev)
+                  if (next.has('task-deadlines')) next.delete('task-deadlines')
+                  else next.add('task-deadlines')
+                  return next
+                })
+              }}
+            >
+              <div className={`w-3 h-3 rounded-sm border transition flex items-center justify-center shrink-0 ${
+                enabledCalendars.has('task-deadlines') ? 'bg-amber-500 border-amber-500' : 'border-gray-300 dark:border-white/20'
+              }`}>
+                {enabledCalendars.has('task-deadlines') && (
+                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3 5.5 6.5 2" stroke="white" strokeWidth="1.2" strokeLinecap="round"/></svg>
+                )}
+              </div>
+              <span className="text-xs text-gray-700 dark:text-white/70">Task Deadlines</span>
+            </label>
+
+            {/* Personal Google calendars */}
+            {userGoogleConnected && googleCalendars.map(cal => (
+              <label
+                key={cal.id}
+                className="flex items-center gap-2 py-1 cursor-pointer"
+                onClick={() => {
+                  setEnabledCalendars(prev => {
+                    const next = new Set(prev)
+                    if (next.has(cal.id)) next.delete(cal.id)
+                    else next.add(cal.id)
+                    return next
+                  })
+                }}
+              >
+                <div
+                  className="w-3 h-3 rounded-sm border flex items-center justify-center transition shrink-0"
+                  style={{
+                    backgroundColor: enabledCalendars.has(cal.id) ? cal.backgroundColor : 'transparent',
+                    borderColor: cal.backgroundColor,
+                  }}
+                >
+                  {enabledCalendars.has(cal.id) && (
+                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3 5.5 6.5 2" stroke="white" strokeWidth="1.2" strokeLinecap="round"/></svg>
+                  )}
+                </div>
+                <span className="text-xs text-gray-700 dark:text-white/70 truncate">{cal.summary}</span>
+              </label>
+            ))}
+
+            {!userGoogleConnected && (
+              <p className="text-[10px] text-gray-400 dark:text-white/30 mt-1">Connect Google in Settings to see personal calendars</p>
+            )}
           </div>
-        ) : view === 'month' ? (
-          <MonthView
-            year={year} month={month} events={events}
-            onDayClick={openNewEvent} onEventClick={openEditEvent}
-          />
-        ) : view === 'week' ? (
-          <WeekView
-            weekStart={getWeekStart(currentDate)} events={events}
-            onSlotClick={openNewEvent} onEventClick={openEditEvent}
-          />
-        ) : (
-          <div className="p-4 flex-1 overflow-y-auto">
-            <AgendaView events={events} onEventClick={openEditEvent} />
-          </div>
-        )}
+        </div>
+
+        {/* Calendar area */}
+        <div className="flex-1 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl overflow-hidden flex flex-col">
+          {loading ? (
+            <div className="flex items-center justify-center flex-1">
+              <div className="w-6 h-6 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+            </div>
+          ) : view === 'month' ? (
+            <MonthView
+              year={year} month={month} events={allDisplayEvents}
+              onDayClick={openNewEvent} onEventClick={handleDeadlineEventClick}
+            />
+          ) : view === 'week' ? (
+            <WeekView
+              weekStart={getWeekStart(currentDate)} events={allDisplayEvents}
+              onSlotClick={openNewEvent} onEventClick={handleDeadlineEventClick}
+            />
+          ) : (
+            <div className="p-4 flex-1 overflow-y-auto">
+              <AgendaView events={allDisplayEvents} onEventClick={handleDeadlineEventClick} />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Event modal */}

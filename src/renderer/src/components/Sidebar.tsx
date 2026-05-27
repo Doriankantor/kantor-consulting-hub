@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { createPortal } from 'react-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { useUpdate } from '../contexts/UpdateContext'
@@ -96,6 +97,15 @@ const TrashIcon = () => (
   </svg>
 )
 
+const TodoIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+    <rect x="1.5" y="1.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M3.5 4l1 1 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+    <rect x="1.5" y="8.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M9 4.5h4.5M9 7.5h4.5M9 10.5h4.5M9 12.5h2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+)
+
 // ── View switcher (inside workspace section) ───────────────────────────────
 
 const VIEW_BUTTONS: { id: ViewMode; label: string }[] = [
@@ -130,19 +140,141 @@ function WorkspaceViewSwitcher() {
   )
 }
 
+// ── New Board Modal ────────────────────────────────────────────────────────
+
+interface NewBoardModalProps {
+  areas: Area[]
+  onClose: () => void
+  onCreate: (name: string, areaIds: string[], description: string) => Promise<void>
+}
+
+function NewBoardModal({ areas, onClose, onCreate }: NewBoardModalProps) {
+  const [name, setName] = useState('')
+  const [selectedAreaIds, setSelectedAreaIds] = useState<string[]>([])
+  const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+
+  async function handleSubmit() {
+    setSubmitted(true)
+    if (!name.trim()) return
+    setSaving(true)
+    try {
+      await onCreate(name.trim(), selectedAreaIds, description)
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function toggleArea(id: string) {
+    setSelectedAreaIds(prev =>
+      prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]
+    )
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-200 dark:border-white/[0.12]">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">New Board</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-white/75 transition">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4 4l10 10M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Board name */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1.5">Board name *</label>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+              placeholder="e.g. Q3 Research"
+              autoFocus
+              className={`w-full px-3 py-2 rounded-xl border text-sm bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 ${
+                submitted && !name.trim()
+                  ? 'border-red-400 dark:border-red-500'
+                  : 'border-gray-200 dark:border-white/[0.1]'
+              }`}
+            />
+            {submitted && !name.trim() && (
+              <p className="text-xs text-red-500 mt-1">Board name is required.</p>
+            )}
+          </div>
+
+          {/* Area tags */}
+          {areas.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1.5">Areas (optional)</label>
+              <div className="flex flex-wrap gap-1.5">
+                {areas.map(area => (
+                  <button
+                    key={area.id}
+                    type="button"
+                    onClick={() => toggleArea(area.id)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition ${
+                      selectedAreaIds.includes(area.id)
+                        ? 'text-white border-transparent'
+                        : 'border-gray-200 dark:border-white/[0.12] text-gray-600 dark:text-white/60 hover:border-gray-300 dark:hover:border-white/20'
+                    }`}
+                    style={selectedAreaIds.includes(area.id) ? { backgroundColor: area.color, borderColor: area.color } : {}}
+                  >
+                    {area.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Description */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1.5">Description (optional)</label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="What is this board for?"
+              rows={2}
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-2 mt-5">
+          <button
+            onClick={onClose}
+            className="flex-1 px-4 py-2 rounded-xl text-sm border border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-white/65 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!name.trim() || saving}
+            className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-500 hover:bg-indigo-600 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Creating…' : 'Create Board'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 // ── Main sidebar ───────────────────────────────────────────────────────────
 
 export default function Sidebar() {
   const { isAdmin, localUser } = useAuth()
-  const { tasks, boards, archivedBoards, activeBoard, setActiveBoardId, createBoard } = useWorkspace()
+  const { boards, archivedBoards, activeBoard, setActiveBoardId, createBoard, refreshBoards, areas } = useWorkspace()
   const { state: updateState } = useUpdate()
   const updateAvailable = updateState === 'available' || updateState === 'downloading' || updateState === 'ready'
   const navigate = useNavigate()
   const location = useLocation()
   const [inboxUnread,  setInboxUnread]  = useState(0)
-  const [trashCount,   setTrashCount]   = useState(0)
   const [archiveOpen,  setArchiveOpen]  = useState(false)
   const [memberBoardIds, setMemberBoardIds] = useState<string[]>([])
+  const [newBoardModal, setNewBoardModal] = useState(false)
 
   const userId = localUser?.id ?? 'local-admin'
 
@@ -162,13 +294,6 @@ export default function Sidebar() {
     } catch {}
   }, [userId])
 
-  const refreshTrashCount = useCallback(async () => {
-    try {
-      const count = await window.api.trash.count()
-      setTrashCount(count)
-    } catch {}
-  }, [])
-
   useEffect(() => {
     refreshInboxCount()
     const interval = setInterval(refreshInboxCount, 30000)
@@ -180,33 +305,11 @@ export default function Sidebar() {
     }
   }, [refreshInboxCount])
 
-  useEffect(() => {
-    refreshTrashCount()
-    const interval = setInterval(refreshTrashCount, 60000)
-    return () => clearInterval(interval)
-  }, [refreshTrashCount])
-
-  // Dashboard badge: only count urgent tasks updated AFTER the last time
-  // the user viewed the dashboard for ≥3 seconds
-  const [dashSeenAt, setDashSeenAt] = useState<string>(() =>
-    localStorage.getItem('dashboardSeenAt') ?? new Date(0).toISOString()
-  )
-  useEffect(() => {
-    const onSeen = () => setDashSeenAt(localStorage.getItem('dashboardSeenAt') ?? new Date().toISOString())
-    window.addEventListener('dashboardSeen', onSeen)
-    return () => window.removeEventListener('dashboardSeen', onSeen)
-  }, [])
-
-  const urgentCount = tasks.filter(t =>
-    t.priority === 'urgent' &&
-    t.column_id !== 'col-published' &&
-    t.updated_at > dashSeenAt
-  ).length
-
   // Nav items excluding workspace (rendered separately)
   const navItems: NavItem[] = [
     { to: '/inbox',     label: 'Inbox',     icon: <InboxIcon />,     badge: inboxUnread || undefined },
-    { to: '/dashboard', label: 'Dashboard', icon: <DashboardIcon />, badge: urgentCount || undefined },
+    { to: '/todo',      label: 'To-Do',     icon: <TodoIcon /> },
+    { to: '/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
   ]
 
   const navItemsAfterWorkspace: NavItem[] = [
@@ -216,12 +319,7 @@ export default function Sidebar() {
     ...(isAdmin ? [{ to: '/analytics', label: 'Analytics', icon: <AnalyticsIcon /> }] : []),
     { to: '/team',      label: 'Team',       icon: <TeamIcon /> },
     { to: '/settings',  label: 'Settings',   icon: <SettingsIcon />, updateDot: updateAvailable },
-    {
-      to: '/trash',
-      label: 'Trash',
-      icon: <span className={trashCount > 0 ? 'text-red-400 dark:text-red-400' : ''}><TrashIcon /></span>,
-      badge: trashCount || undefined,
-    },
+    { to: '/trash',     label: 'Trash',      icon: <TrashIcon /> },
   ]
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -233,15 +331,13 @@ export default function Sidebar() {
 
   const isOnWorkspace = location.pathname.startsWith('/workspace')
 
-  async function handleNewBoard() {
-    const name = window.prompt('Board name:')
-    if (!name?.trim()) return
-    const newId = await createBoard(name.trim())
+  async function handleNewBoard(name: string, _areaIds: string[], _description: string) {
+    const newId = await createBoard(name)
+    await refreshBoards()
     navigate('/workspace')
-    // Signal the workspace to show the members modal for the new board
     if (isAdmin) {
       setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('newBoardCreated', { detail: { id: newId, name: name.trim() } }))
+        window.dispatchEvent(new CustomEvent('newBoardCreated', { detail: { id: newId, name } }))
       }, 200)
     }
   }
@@ -288,16 +384,18 @@ export default function Sidebar() {
               </button>
             ))}
 
-            {/* New Board button */}
-            <button
-              onClick={handleNewBoard}
-              className="titlebar-no-drag w-full flex items-center gap-1.5 pl-5 pr-3 py-1.5 rounded-xl text-xs text-[#888] dark:text-white/40 hover:text-[#555] dark:hover:text-white/65 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition"
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="shrink-0">
-                <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-              <span>New Board</span>
-            </button>
+            {/* New Board button — admin only */}
+            {isAdmin && (
+              <button
+                onClick={() => setNewBoardModal(true)}
+                className="titlebar-no-drag w-full flex items-center gap-1.5 pl-5 pr-3 py-1.5 rounded-xl text-xs text-[#888] dark:text-white/40 hover:text-[#555] dark:hover:text-white/65 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition"
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="shrink-0">
+                  <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+                <span>New Board</span>
+              </button>
+            )}
           </div>
 
           {/* View switcher */}
@@ -386,6 +484,15 @@ export default function Sidebar() {
             <span className="text-[10px] font-semibold text-gray-600 dark:text-white/75">Admin</span>
           </div>
         </div>
+      )}
+
+      {/* New Board Modal */}
+      {newBoardModal && (
+        <NewBoardModal
+          areas={areas}
+          onClose={() => setNewBoardModal(false)}
+          onCreate={handleNewBoard}
+        />
       )}
     </aside>
   )

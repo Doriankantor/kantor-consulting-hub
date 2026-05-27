@@ -16,6 +16,7 @@ import Analytics    from './pages/Analytics'
 import Trash        from './pages/Trash'
 import TeamCalendar from './pages/TeamCalendar'
 import Files        from './pages/Files'
+import Todo         from './pages/Todo'
 import Layout       from './components/Layout'
 import ChatPanel    from './components/ChatPanel'
 
@@ -59,6 +60,7 @@ function AppRoutes() {
         <Route element={<Layout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/inbox"     element={<Inbox />} />
+          <Route path="/todo"      element={<Todo />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/workspace"  element={<Workspace />} />
           <Route path="/files"     element={<Files />} />

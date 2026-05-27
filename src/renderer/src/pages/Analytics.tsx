@@ -87,11 +87,23 @@ function BarChart({ data }: { data: { date: string; value: number }[] }) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 
+interface CompletionData {
+  total: number
+  today: number
+  thisWeek: number
+  lastWeek: number
+  memberStats: { id: string; name: string; assigned: number; completed: number; overdue: number; pct: number }[]
+  avgTimeByType: { contentType: string; avgDays: number | null; count: number }[]
+  timeline: { date: string; count: number }[]
+  todayList: { id: string; title: string; content_type: string }[]
+}
+
 interface AnalyticsData {
   tasks: Record<string, unknown>[]
   activity: Record<string, unknown>[]
   comments: Record<string, unknown>[]
   stageActivity: Record<string, unknown>[]
+  completions?: CompletionData
 }
 
 export default function Analytics() {
@@ -339,6 +351,114 @@ export default function Analytics() {
         <ChartCard title="7-Day Activity (Tasks + Comments)">
           <BarChart data={activityChartData} />
         </ChartCard>
+
+        {/* Completions Section */}
+        {data.completions && (() => {
+          const c = data.completions!
+          const weekDelta = c.thisWeek - c.lastWeek
+          const CONTENT_TYPE_SHORT: Record<string, string> = {
+            'policy-brief': 'Policy Brief',
+            'research-report': 'Research Report',
+            'op-ed': 'Op-Ed',
+            'briefing-note': 'Briefing Note',
+            'consulting-engagement': 'Consulting',
+            'client-advisory': 'Client Advisory',
+          }
+          const maxAvgDays = Math.max(...c.avgTimeByType.filter(t => t.avgDays !== null).map(t => t.avgDays as number), 1)
+          return (
+            <>
+              {/* Completion stats row */}
+              <div className="grid grid-cols-3 gap-4 mt-4">
+                <div className="bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl p-4">
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{c.today}</p>
+                  <p className="text-xs text-gray-400 dark:text-white/65 mt-1">Completed Today</p>
+                </div>
+                <div className="bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl p-4">
+                  <div className="flex items-center gap-2">
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{c.thisWeek}</p>
+                    {weekDelta !== 0 && (
+                      <span className={`text-xs font-semibold flex items-center gap-0.5 ${weekDelta > 0 ? 'text-green-500' : 'text-red-400'}`}>
+                        {weekDelta > 0 ? '▲' : '▼'} {Math.abs(weekDelta)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-white/65 mt-1">This Week <span className="opacity-60">(vs {c.lastWeek} last week)</span></p>
+                </div>
+                <div className="bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl p-4">
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{c.total}</p>
+                  <p className="text-xs text-gray-400 dark:text-white/65 mt-1">Total Completed</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                {/* Team Completion Rate */}
+                <ChartCard title="Team Completion Rate">
+                  {c.memberStats.length === 0 ? (
+                    <p className="text-sm text-gray-400 dark:text-white/50 italic">No team members yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {c.memberStats.map(m => {
+                        const initials = m.name.split(' ').map((w: string) => w[0]).join('').slice(0,2).toUpperCase()
+                        return (
+                          <div key={m.id} className="flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-full bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-[10px] font-bold shrink-0">
+                              {initials}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs text-gray-600 dark:text-white/70 truncate">{m.name}</span>
+                                <div className="flex items-center gap-2 ml-2 shrink-0">
+                                  <span className="text-xs text-gray-400 dark:text-white/45">{m.completed}/{m.assigned}</span>
+                                  {m.overdue > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded-md bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400 text-[10px] font-semibold">
+                                      {m.overdue} overdue
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="h-1.5 bg-gray-100 dark:bg-white/[0.06] rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-indigo-500 transition-all duration-500"
+                                  style={{ width: `${m.pct}%` }}
+                                />
+                              </div>
+                            </div>
+                            <span className="text-xs font-semibold text-gray-500 dark:text-white/50 w-8 text-right shrink-0">{m.pct}%</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </ChartCard>
+
+                {/* Avg Time to Complete */}
+                <ChartCard title="Avg Time to Complete (days)">
+                  {c.avgTimeByType.filter(t => t.count > 0).length === 0 ? (
+                    <p className="text-sm text-gray-400 dark:text-white/50 italic">No completed tasks yet.</p>
+                  ) : (
+                    c.avgTimeByType.filter(t => t.count > 0).map(t => (
+                      <HorizontalBar
+                        key={t.contentType}
+                        label={CONTENT_TYPE_SHORT[t.contentType] ?? t.contentType}
+                        value={t.avgDays ?? 0}
+                        max={maxAvgDays}
+                        color="#6366f1"
+                        count={t.avgDays ?? 0}
+                      />
+                    ))
+                  )}
+                </ChartCard>
+              </div>
+
+              {/* 30-Day Completion Timeline */}
+              <div className="mt-4">
+                <ChartCard title="30-Day Completion Timeline">
+                  <BarChart data={c.timeline.map(d => ({ date: d.date, value: d.count }))} />
+                </ChartCard>
+              </div>
+            </>
+          )
+        })()}
 
       </div>
     </div>

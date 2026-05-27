@@ -8,7 +8,7 @@ import { randomBytes } from 'crypto'
 import { getDatabase, hashPassword } from '../db'
 import { driveSync } from '../google/drive'
 import { sendEmail, inviteEmailHtml } from '../google/gmail'
-import { connectUserGoogle, getUserGoogleStatus, disconnectUserGoogle } from '../google/userGoogle'
+import { connectUserGoogle, getUserGoogleStatus, disconnectUserGoogle, getUserCalendars, getUserCalendarEvents } from '../google/userGoogle'
 
 // ── Supabase admin client (service role) ──────────────────────────────────
 // process.env.SUPABASE_URL and process.env.SUPABASE_SERVICE_ROLE_KEY are
@@ -1151,7 +1151,86 @@ function registerAnalyticsHandlers() {
       WHERE action LIKE 'moved to%'
       ORDER BY created_at ASC
     `).all() as { task_id: string; action: string; created_at: string }[]
-    return { tasks, activity, comments, stageActivity }
+
+    // ── Completions data ──────────────────────────────────────────────────────
+    const completedTasks = db.prepare(`
+      SELECT wt.*, lu.full_name as assignee_name
+      FROM workspace_tasks wt
+      LEFT JOIN local_users lu ON lu.id = (
+        SELECT json_each.value FROM json_each(wt.assignees_json) LIMIT 1
+      )
+      WHERE wt.column_id = 'col-published' AND wt.archived = 0
+      ORDER BY wt.updated_at DESC
+    `).all() as any[]
+
+    const todayStr = new Date().toISOString().slice(0, 10)
+    const todayCompletions = completedTasks.filter(t =>
+      (t.completed_at || t.updated_at || '').slice(0, 10) === todayStr
+    )
+
+    const now = new Date()
+    const weekStart = new Date(now)
+    weekStart.setDate(now.getDate() - now.getDay())
+    weekStart.setHours(0, 0, 0, 0)
+    const lastWeekStart = new Date(weekStart)
+    lastWeekStart.setDate(weekStart.getDate() - 7)
+    const thisWeekCompletions = completedTasks.filter(t => new Date(t.completed_at || t.updated_at || 0) >= weekStart)
+    const lastWeekCompletions = completedTasks.filter(t => {
+      const d = new Date(t.completed_at || t.updated_at || 0)
+      return d >= lastWeekStart && d < weekStart
+    })
+
+    const allMembers = db.prepare('SELECT id, full_name, email FROM local_users WHERE status=?').all('active') as any[]
+    const memberStats = allMembers.map(m => {
+      const assigned = db.prepare(`SELECT COUNT(*) as c FROM workspace_tasks WHERE archived=0 AND assignees_json LIKE ?`).get(`%"${m.id}"%`) as {c:number}
+      const completed = db.prepare(`SELECT COUNT(*) as c FROM workspace_tasks WHERE column_id='col-published' AND archived=0 AND assignees_json LIKE ?`).get(`%"${m.id}"%`) as {c:number}
+      const overdue = db.prepare(`SELECT COUNT(*) as c FROM workspace_tasks WHERE archived=0 AND column_id!='col-published' AND due_date < ? AND assignees_json LIKE ?`).get(todayStr, `%"${m.id}"%`) as {c:number}
+      return {
+        id: m.id,
+        name: m.full_name || m.email,
+        assigned: assigned.c,
+        completed: completed.c,
+        overdue: overdue.c,
+        pct: assigned.c > 0 ? Math.round((completed.c / assigned.c) * 100) : 0,
+      }
+    })
+
+    const contentTypes = ['policy-brief','research-report','op-ed','briefing-note','consulting-engagement','client-advisory']
+    const avgTimeByType = contentTypes.map(ct => {
+      const rows = db.prepare(`
+        SELECT
+          CAST((julianday(COALESCE(completed_at, updated_at)) - julianday(created_at)) AS INTEGER) as days
+        FROM workspace_tasks
+        WHERE content_type=? AND column_id='col-published' AND archived=0
+      `).all(ct) as {days:number}[]
+      const validRows = rows.filter(r => r.days !== null && r.days >= 0)
+      const avg = validRows.length > 0 ? Math.round(validRows.reduce((s,r) => s+r.days, 0) / validRows.length) : null
+      return { contentType: ct, avgDays: avg, count: validRows.length }
+    })
+
+    const timeline: {date:string; count:number}[] = []
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i); const ds = d.toISOString().slice(0,10)
+      const count = completedTasks.filter(t => (t.completed_at || t.updated_at || '').slice(0,10) === ds).length
+      timeline.push({ date: ds, count })
+    }
+
+    return {
+      tasks,
+      activity,
+      comments,
+      stageActivity,
+      completions: {
+        total: completedTasks.length,
+        today: todayCompletions.length,
+        thisWeek: thisWeekCompletions.length,
+        lastWeek: lastWeekCompletions.length,
+        memberStats,
+        avgTimeByType,
+        timeline,
+        todayList: todayCompletions.slice(0,10).map(t => ({ id: t.id, title: t.title, content_type: t.content_type })),
+      }
+    }
   })
 
   ipcMain.handle('analytics:exportPDF', async (_e) => {
@@ -1466,10 +1545,92 @@ function registerUserGoogleHandlers() {
   ipcMain.handle('userGoogle:connect',    (_e, userId: string) => connectUserGoogle(userId))
   ipcMain.handle('userGoogle:getStatus',  (_e, userId: string) => getUserGoogleStatus(userId))
   ipcMain.handle('userGoogle:disconnect', (_e, userId: string) => { disconnectUserGoogle(userId); return { ok: true } })
+  ipcMain.handle('userGoogle:getCalendars', async (_e, userId: string) => {
+    return getUserCalendars(userId)
+  })
+  ipcMain.handle('userGoogle:getCalendarEvents', async (_e, userId: string, calendarId: string, startDate: string, endDate: string) => {
+    return getUserCalendarEvents(userId, calendarId, startDate, endDate)
+  })
 }
 
 function registerDriveConnectHandler() {
   ipcMain.handle('drive:connect', () => driveSync.connect())
+}
+
+// ── To-Do ──────────────────────────────────────────────────────────────────
+
+function registerTodoHandlers() {
+  // Get all tasks assigned to a user (across all boards they're a member of)
+  ipcMain.handle('todo:getMyTasks', (_e, userId: string) => {
+    const rows = getDatabase().prepare(`
+      SELECT wt.*, wb.name as board_name
+      FROM workspace_tasks wt
+      LEFT JOIN workspace_boards wb ON wb.id = wt.board_id
+      WHERE wt.archived = 0
+        AND (
+          wt.assignees_json LIKE ? OR wt.assignees_json LIKE ? OR wt.assignees_json LIKE ?
+        )
+      ORDER BY wt.due_date ASC, wt.created_at DESC
+    `).all(`%"${userId}"%`, `%${userId}%`, `["${userId}"]`) as any[]
+
+    return rows.map(r => ({
+      ...r,
+      assignee_ids: (() => { try { return JSON.parse(r.assignees_json || '[]') } catch { return [] } })(),
+    }))
+  })
+
+  // Complete a task: move to last column, set completed_at, notify admin
+  ipcMain.handle('todo:complete', (_e, taskId: string, userId: string, userName: string) => {
+    const db = getDatabase()
+    const task = db.prepare('SELECT * FROM workspace_tasks WHERE id=?').get(taskId) as any
+    if (!task) return { ok: false }
+
+    const completedAt = new Date().toISOString()
+
+    // Find the last column (published/done)
+    const lastCol = db.prepare(
+      'SELECT id FROM workspace_columns ORDER BY position DESC LIMIT 1'
+    ).get() as { id: string } | undefined
+    const targetCol = lastCol?.id ?? 'col-published'
+
+    db.prepare('UPDATE workspace_tasks SET column_id=?, completed_at=?, updated_at=? WHERE id=?')
+      .run(targetCol, completedAt, completedAt, taskId)
+
+    // Add activity log entry
+    db.prepare('INSERT INTO task_activity (id,task_id,actor_name,action,created_at) VALUES (?,?,?,?,?)')
+      .run(crypto.randomUUID(), taskId, userName, `marked this task as complete`, completedAt)
+
+    // Notify admin (local-admin)
+    try {
+      db.prepare(`INSERT INTO notifications (id,user_id,type,title,body,task_id,task_title,actor_name)
+        VALUES (?,?,?,?,?,?,?,?)`)
+        .run(crypto.randomUUID(), 'local-admin', 'stage_change',
+          `${userName} completed: ${task.title}`,
+          null, taskId, task.title, userName)
+    } catch {}
+
+    return { ok: true }
+  })
+
+  // Dismiss/clear a completed task from the To-Do view
+  ipcMain.handle('todo:dismiss', (_e, userId: string, taskId: string) => {
+    getDatabase().prepare('INSERT OR IGNORE INTO todo_dismissed (user_id,task_id) VALUES (?,?)')
+      .run(userId, taskId)
+    return { ok: true }
+  })
+
+  // Get list of dismissed task IDs for a user
+  ipcMain.handle('todo:getDismissed', (_e, userId: string) => {
+    const rows = getDatabase().prepare('SELECT task_id FROM todo_dismissed WHERE user_id=?').all(userId) as {task_id:string}[]
+    return rows.map(r => r.task_id)
+  })
+
+  // Undo completion: restore to previous column (scoping)
+  ipcMain.handle('todo:uncomplete', (_e, taskId: string) => {
+    getDatabase().prepare('UPDATE workspace_tasks SET column_id=?, completed_at=NULL, updated_at=? WHERE id=?')
+      .run('col-scoping', new Date().toISOString(), taskId)
+    return { ok: true }
+  })
 }
 
 // ── Board Members ──────────────────────────────────────────────────────────
@@ -1620,5 +1781,6 @@ export function registerIpcHandlers(): void {
   registerUserGoogleHandlers()
   registerDriveConnectHandler()
   registerBoardMembersHandlers()
+  registerTodoHandlers()
   startTrashAutoDelete()
 }

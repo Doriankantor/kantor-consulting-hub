@@ -398,10 +398,6 @@ interface Window {
       duplicate:    (id: string, newName: string)        => Promise<{ ok: boolean; id: string }>
       taskCount:    (id: string)                         => Promise<number>
     }
-    analytics: {
-      getData:   () => Promise<{ tasks: Record<string,unknown>[]; activity: Record<string,unknown>[]; comments: Record<string,unknown>[]; stageActivity: Record<string,unknown>[] }>
-      exportPDF: () => Promise<{ ok: boolean; filePath?: string; error?: string }>
-    }
     updater: {
       onAvailable:    (cb: (info: { version: string; releaseNotes?: string | null }) => void) => void
       onProgress:     (cb: (p: { percent: number }) => void) => void
@@ -455,9 +451,37 @@ interface Window {
       listForUser: (userId: string) => Promise<string[]>
     }
     userGoogle: {
-      connect:    (userId: string) => Promise<{ ok: boolean; error?: string }>
-      getStatus:  (userId: string) => Promise<{ connected: boolean }>
-      disconnect: (userId: string) => Promise<{ ok: boolean }>
+      connect:           (userId: string) => Promise<{ ok: boolean; error?: string }>
+      getStatus:         (userId: string) => Promise<{ connected: boolean }>
+      disconnect:        (userId: string) => Promise<{ ok: boolean }>
+      getCalendars:      (userId: string) => Promise<{ id: string; summary: string; backgroundColor: string; primary: boolean }[]>
+      getCalendarEvents: (userId: string, calendarId: string, startDate: string, endDate: string) => Promise<{ id: string; summary: string; start: string; end: string; allDay: boolean; color: string }[]>
+    }
+    analytics: {
+      getData:   () => Promise<{
+        tasks: Record<string,unknown>[];
+        activity: Record<string,unknown>[];
+        comments: Record<string,unknown>[];
+        stageActivity: Record<string,unknown>[];
+        completions?: {
+          total: number;
+          today: number;
+          thisWeek: number;
+          lastWeek: number;
+          memberStats: { id: string; name: string; assigned: number; completed: number; overdue: number; pct: number }[];
+          avgTimeByType: { contentType: string; avgDays: number | null; count: number }[];
+          timeline: { date: string; count: number }[];
+          todayList: { id: string; title: string; content_type: string }[];
+        }
+      }>
+      exportPDF: () => Promise<{ ok: boolean; filePath?: string; error?: string }>
+    }
+    todo: {
+      getMyTasks:   (userId: string) => Promise<any[]>
+      complete:     (taskId: string, userId: string, userName: string) => Promise<{ ok: boolean }>
+      dismiss:      (userId: string, taskId: string) => Promise<{ ok: boolean }>
+      getDismissed: (userId: string) => Promise<string[]>
+      uncomplete:   (taskId: string) => Promise<{ ok: boolean }>
     }
   }
 }

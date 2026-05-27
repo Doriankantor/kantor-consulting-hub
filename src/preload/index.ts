@@ -191,9 +191,18 @@ const api = {
     listAll: () => ipcRenderer.invoke('files:listAll'),
   },
   userGoogle: {
-    connect:    (userId: string) => ipcRenderer.invoke('userGoogle:connect', userId),
-    getStatus:  (userId: string) => ipcRenderer.invoke('userGoogle:getStatus', userId),
-    disconnect: (userId: string) => ipcRenderer.invoke('userGoogle:disconnect', userId),
+    connect:           (userId: string) => ipcRenderer.invoke('userGoogle:connect', userId),
+    getStatus:         (userId: string) => ipcRenderer.invoke('userGoogle:getStatus', userId),
+    disconnect:        (userId: string) => ipcRenderer.invoke('userGoogle:disconnect', userId),
+    getCalendars:      (userId: string) => ipcRenderer.invoke('userGoogle:getCalendars', userId),
+    getCalendarEvents: (userId: string, calendarId: string, startDate: string, endDate: string) => ipcRenderer.invoke('userGoogle:getCalendarEvents', userId, calendarId, startDate, endDate),
+  },
+  todo: {
+    getMyTasks:   (userId: string) => ipcRenderer.invoke('todo:getMyTasks', userId),
+    complete:     (taskId: string, userId: string, userName: string) => ipcRenderer.invoke('todo:complete', taskId, userId, userName),
+    dismiss:      (userId: string, taskId: string) => ipcRenderer.invoke('todo:dismiss', userId, taskId),
+    getDismissed: (userId: string) => ipcRenderer.invoke('todo:getDismissed', userId),
+    uncomplete:   (taskId: string) => ipcRenderer.invoke('todo:uncomplete', taskId),
   },
   boardMembers: {
     list:        (boardId: string) => ipcRenderer.invoke('boardMembers:list', boardId),

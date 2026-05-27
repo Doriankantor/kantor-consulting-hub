@@ -592,5 +592,18 @@ export function initDatabase(): void {
     console.warn('[DB] board_members migration warning:', err)
   }
 
+  // To-Do: completed_at for workspace tasks
+  try { db.exec('ALTER TABLE workspace_tasks ADD COLUMN completed_at DATETIME;') } catch {}
+
+  // To-Do: dismissed tasks per user
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS todo_dismissed (
+      user_id    TEXT NOT NULL,
+      task_id    TEXT NOT NULL,
+      dismissed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, task_id)
+    );
+  `)
+
   console.log(`[DB] Initialized at ${dbPath}`)
 }
