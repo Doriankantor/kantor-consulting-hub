@@ -119,7 +119,7 @@ const api = {
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
   },
   workspace: {
-    getColumns:   ()                                      => ipcRenderer.invoke('workspace:getColumns'),
+    getColumns:   (boardId?: string)                      => ipcRenderer.invoke('workspace:getColumns', boardId),
     getTasks:     ()                                      => ipcRenderer.invoke('workspace:getTasks'),
     createTask:   (t: Record<string, unknown>)            => ipcRenderer.invoke('workspace:createTask', t),
     updateTask:   (id: string, p: Record<string, unknown>) => ipcRenderer.invoke('workspace:updateTask', id, p),

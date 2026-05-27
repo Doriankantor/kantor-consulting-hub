@@ -2,6 +2,7 @@ import React, {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   useCallback,
 } from 'react'
@@ -51,7 +52,7 @@ interface WorkspaceContextType {
 
   // Column actions
   renameColumn: (columnId: string, name: string) => Promise<void>
-  addColumn: () => Promise<void>
+  addColumn: () => Promise<string>   // returns new column id
 
   // Refresh actions
   refreshAreas: () => Promise<void>
@@ -98,6 +99,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [activeBoardId, setActiveBoardIdState] = useState<string>(() =>
     localStorage.getItem('activeBoard') ?? 'board-main'
   )
+  // Ref to skip the columns-reload effect on first mount (initial load handles it)
+  const columnsFirstRender = useRef(true)
 
   const activeBoard = boards.find(b => b.id === activeBoardId) ?? boards[0] ?? null
 
@@ -256,13 +259,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
     async function load() {
       try {
+        // Use activeBoardId snapshot from initial state for column loading
+        const boardId = localStorage.getItem('activeBoard') ?? 'board-main'
         const [cols, taskList, teamList] = await Promise.all([
-          window.api.workspace.getColumns(),
+          window.api.workspace.getColumns(boardId),
           window.api.workspace.getTasks(),
           window.api.team.list(),
         ])
         if (!mounted) return
-        if (cols.length > 0) setColumns(cols)
+        setColumns(cols)
         setTasks(taskList)
         setMembers(teamList.map(m => ({
           id: m.id,
@@ -283,6 +288,25 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     return () => { mounted = false }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ── Reload columns when active board changes ─────────────────────────────
+  useEffect(() => {
+    // Skip on first mount — the initial useEffect handles it
+    if (columnsFirstRender.current) {
+      columnsFirstRender.current = false
+      return
+    }
+    let mounted = true
+    async function loadColumnsForBoard() {
+      try {
+        const cols = await window.api.workspace.getColumns(activeBoardId)
+        if (!mounted) return
+        setColumns(cols)
+      } catch {}
+    }
+    loadColumnsForBoard()
+    return () => { mounted = false }
+  }, [activeBoardId])
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -453,16 +477,19 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     await window.api.workspace.updateColumn(columnId, { name })
   }, [])
 
-  const addColumn = useCallback(async () => {
+  const addColumn = useCallback(async (): Promise<string> => {
+    const newId = crypto.randomUUID()
     const newCol: Column = {
-      id: crypto.randomUUID(),
+      id: newId,
       name: 'New Stage',
       position: columns.length,
       color: 'bg-slate-500',
+      board_id: activeBoardId,
     }
     setColumns(prev => [...prev, newCol])
     await window.api.workspace.addColumn(newCol as unknown as Record<string, unknown>)
-  }, [columns])
+    return newId
+  }, [columns, activeBoardId])
 
   return (
     <WorkspaceContext.Provider value={{

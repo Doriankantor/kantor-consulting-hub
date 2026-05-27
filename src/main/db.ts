@@ -505,6 +505,10 @@ export function initDatabase(): void {
   try { db.exec("ALTER TABLE workspace_tasks ADD COLUMN board_id TEXT DEFAULT 'board-main';") } catch {}
   db.exec("UPDATE workspace_tasks SET board_id = 'board-main' WHERE board_id IS NULL;")
 
+  // Migrate: add board_id to workspace_columns (columns are now board-scoped)
+  try { db.exec("ALTER TABLE workspace_columns ADD COLUMN board_id TEXT DEFAULT 'board-main';") } catch {}
+  db.exec("UPDATE workspace_columns SET board_id = 'board-main' WHERE board_id IS NULL;")
+
   // Migrate: add archived column to workspace_tasks (per-task archiving)
   try { db.exec('ALTER TABLE workspace_tasks ADD COLUMN archived INTEGER DEFAULT 0;') } catch {}
   db.exec('UPDATE workspace_tasks SET archived = 0 WHERE archived IS NULL;')

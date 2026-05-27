@@ -770,12 +770,15 @@ function registerWorkspaceHandlers() {
   const db = () => getDatabase()
 
   // ── Columns ──
-  ipcMain.handle('workspace:getColumns', () =>
-    db().prepare('SELECT * FROM workspace_columns ORDER BY position ASC').all()
-  )
+  ipcMain.handle('workspace:getColumns', (_e, boardId?: string) => {
+    if (boardId) {
+      return db().prepare('SELECT * FROM workspace_columns WHERE board_id=? ORDER BY position ASC').all(boardId)
+    }
+    return db().prepare('SELECT * FROM workspace_columns ORDER BY position ASC').all()
+  })
 
-  ipcMain.handle('workspace:addColumn', (_e, col: { id: string; name: string; position: number; color: string }) => {
-    db().prepare('INSERT INTO workspace_columns (id,name,position,color) VALUES (?,?,?,?)').run(col.id, col.name, col.position, col.color)
+  ipcMain.handle('workspace:addColumn', (_e, col: { id: string; name: string; position: number; color: string; board_id?: string }) => {
+    db().prepare('INSERT INTO workspace_columns (id,name,position,color,board_id) VALUES (?,?,?,?,?)').run(col.id, col.name, col.position, col.color, col.board_id ?? 'board-main')
     return { ok: true }
   })
 

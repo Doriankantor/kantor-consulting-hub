@@ -361,7 +361,7 @@ interface Window {
       openFile: () => Promise<{ canceled: boolean; filePaths: string[] }>
     }
     workspace: {
-      getColumns:   ()                                        => Promise<import('./types').Column[]>
+      getColumns:   (boardId?: string)                        => Promise<import('./types').Column[]>
       getTasks:     ()                                        => Promise<import('./types').Task[]>
       createTask:   (t: Record<string, unknown>)              => Promise<{ ok?: boolean }>
       updateTask:   (id: string, p: Record<string, unknown>)  => Promise<{ ok?: boolean }>

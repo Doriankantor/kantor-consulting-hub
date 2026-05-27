@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import {
   DndContext,
   DragOverlay,
@@ -284,7 +285,12 @@ const CONTENT_TYPE_LABELS_SHORT: Record<string, string> = {
   'client-advisory':       'Client Advisory',
 }
 
-function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) {
+function KanbanColumn({ columnId, areas, autoEdit = false, onEditStart }: {
+  columnId: string
+  areas: Area[]
+  autoEdit?: boolean
+  onEditStart?: () => void
+}) {
   const { columns, tasks, renameColumn, createTask } = useWorkspace()
   const col = columns.find(c => c.id === columnId)!
   const colTasks = tasks
@@ -305,6 +311,24 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
   const [showTemplatePicker, setShowTemplatePicker] = useState(false)
   const [templates, setTemplates] = useState<TaskTemplate[]>([])
   const [templatesLoaded, setTemplatesLoaded] = useState(false)
+  // Ref to anchor the picker portal to the "Add engagement" button
+  const addBtnRef = useRef<HTMLButtonElement>(null)
+  const [pickerAnchor, setPickerAnchor] = useState<DOMRect | null>(null)
+
+  // Auto-start editing when this column was just added
+  useEffect(() => {
+    if (autoEdit) {
+      setEditingName(true)
+      setNameValue(col.name)
+      onEditStart?.()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoEdit])
+
+  // Sync nameValue if col.name changes externally
+  useEffect(() => {
+    if (!editingName) setNameValue(col.name)
+  }, [col.name, editingName])
 
   async function handleRename() {
     setEditingName(false)
@@ -318,7 +342,15 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
   }
 
   async function handleOpenTemplatePicker() {
-    setShowTemplatePicker(v => !v)
+    if (showTemplatePicker) {
+      setShowTemplatePicker(false)
+      return
+    }
+    // Capture button position for portal positioning
+    if (addBtnRef.current) {
+      setPickerAnchor(addBtnRef.current.getBoundingClientRect())
+    }
+    setShowTemplatePicker(true)
     if (!templatesLoaded) {
       try {
         const data = await window.api.templates.list()
@@ -340,127 +372,153 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
     })
   }
 
-  return (
-    <div className="flex flex-col w-64 shrink-0 h-full rounded-2xl bg-white/[0.75] dark:bg-white/[0.08] backdrop-blur-md border border-black/[0.08] dark:border-white/[0.12] shadow-sm dark:shadow-none overflow-hidden">
-      {/* Header — inside the glass container */}
-      <div className="flex items-center justify-between px-3 py-2.5 border-b border-black/[0.05] dark:border-white/[0.06] shrink-0">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${col.color}`} />
-          {editingName ? (
-            <input
-              autoFocus
-              value={nameValue}
-              onChange={e => setNameValue(e.target.value)}
-              onBlur={handleRename}
-              onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditingName(false) }}
-              className="titlebar-no-drag bg-gray-100 dark:bg-white/10 border border-gray-300 dark:border-white/20 rounded px-1.5 py-0.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none w-36"
-            />
-          ) : (
+  // Template picker content (shared between portal and inline)
+  const pickerContent = (
+    <>
+      <div className="px-3 py-2 border-b border-white/[0.08]">
+        <p className="text-[10px] font-semibold text-white/40 uppercase tracking-widest">Start from</p>
+      </div>
+      <button
+        onClick={() => { setShowTemplatePicker(false); setAddingTask(true) }}
+        className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/[0.08] transition text-left"
+      >
+        <div className="w-7 h-7 rounded-lg bg-white/[0.1] flex items-center justify-center shrink-0 text-white/60">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-white/85">Start blank</p>
+          <p className="text-[10px] text-white/40">Empty engagement</p>
+        </div>
+      </button>
+      {templates.length > 0 && (
+        <div className="border-t border-white/[0.08]">
+          <p className="px-3 pt-2 pb-1 text-[10px] font-semibold text-white/40 uppercase tracking-widest">Templates</p>
+          {templates.map(tpl => (
             <button
-              onDoubleClick={() => { setEditingName(true); setNameValue(col.name) }}
-              className="titlebar-no-drag text-sm font-bold text-gray-900 dark:text-white/90 hover:text-gray-700 dark:hover:text-white transition"
-              title="Double-click to rename"
+              key={tpl.id}
+              onClick={() => handlePickTemplate(tpl)}
+              className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/[0.08] transition text-left"
             >
-              {col.name}
+              <div className="w-7 h-7 rounded-lg bg-hub-gold/20 border border-hub-gold/30 flex items-center justify-center shrink-0">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="text-hub-gold">
+                  <rect x="1" y="1" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+                  <path d="M3 4h4M3 6.5h2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-white/85 truncate">{tpl.name}</p>
+                <p className="text-[10px] text-white/40 truncate">
+                  {CONTENT_TYPE_LABELS_SHORT[tpl.content_type] ?? tpl.content_type} · {tpl.duration_days}d
+                </p>
+              </div>
+              {!!tpl.is_builtin && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/[0.08] text-white/40 shrink-0">Built-in</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+      {!templatesLoaded && (
+        <div className="flex items-center justify-center py-4">
+          <div className="w-4 h-4 border-2 border-hub-gold/20 border-t-hub-gold rounded-full animate-spin" />
+        </div>
+      )}
+    </>
+  )
+
+  // Render picker via portal so it escapes overflow:hidden clipping
+  const pickerPortal = showTemplatePicker && pickerAnchor
+    ? createPortal(
+        <>
+          {/* Invisible backdrop to close on outside click */}
+          <div className="fixed inset-0 z-40" onClick={() => setShowTemplatePicker(false)} />
+          <div
+            className="fixed z-50 bg-[#1e1b4b]/95 backdrop-blur-xl border border-white/[0.12] rounded-2xl shadow-2xl overflow-hidden"
+            style={{
+              // Position above the button: bottom edge sits 4px above the button's top
+              bottom: `${window.innerHeight - pickerAnchor.top + 4}px`,
+              left: `${pickerAnchor.left}px`,
+              width: `${pickerAnchor.width}px`,
+              maxHeight: '70vh',
+              overflowY: 'auto',
+            }}
+          >
+            {pickerContent}
+          </div>
+        </>,
+        document.body
+      )
+    : null
+
+  return (
+    <>
+      {pickerPortal}
+      <div className="flex flex-col w-64 shrink-0 h-full rounded-2xl bg-white/[0.75] dark:bg-white/[0.08] backdrop-blur-md border border-black/[0.08] dark:border-white/[0.12] shadow-sm dark:shadow-none overflow-hidden">
+        {/* Header */}
+        <div className="group flex items-center justify-between px-3 py-2.5 border-b border-black/[0.05] dark:border-white/[0.06] shrink-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className={`w-2 h-2 rounded-full shrink-0 ${col.color}`} />
+            {editingName ? (
+              <input
+                autoFocus
+                value={nameValue}
+                onChange={e => setNameValue(e.target.value)}
+                onBlur={handleRename}
+                onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditingName(false) }}
+                className="titlebar-no-drag bg-gray-100 dark:bg-white/10 border border-gray-300 dark:border-white/20 rounded px-1.5 py-0.5 text-sm font-semibold text-gray-900 dark:text-white focus:outline-none w-36"
+              />
+            ) : (
+              <span className="text-sm font-bold text-gray-900 dark:text-white/90 truncate">
+                {col.name}
+              </span>
+            )}
+            <span className="text-xs text-gray-500 dark:text-white/65 tabular-nums shrink-0">{colTasks.length}</span>
+          </div>
+          {/* Pencil icon — visible on header hover */}
+          {!editingName && (
+            <button
+              onClick={() => { setEditingName(true); setNameValue(col.name) }}
+              title="Rename stage"
+              className="titlebar-no-drag opacity-0 group-hover:opacity-100 ml-1 p-1 rounded text-gray-400 dark:text-white/35 hover:text-gray-700 dark:hover:text-white/80 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition shrink-0"
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                <path d="M7.8 1.2l2 2L3 10H1V8L7.8 1.2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+              </svg>
             </button>
           )}
-          <span className="text-xs text-gray-500 dark:text-white/65 tabular-nums">{colTasks.length}</span>
         </div>
-      </div>
 
-      {/* Cards */}
-      <div
-        ref={setNodeRef}
-        className={`flex-1 min-h-0 overflow-y-auto p-2 space-y-2 transition-colors ${
-          isOver ? 'bg-black/[0.04] dark:bg-white/[0.06] ring-inset ring-1 ring-black/[0.06] dark:ring-white/25' : ''
-        }`}
-      >
-        <SortableContext items={colTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-          {colTasks.map(task => <SortableCard key={task.id} task={task} areas={areas} />)}
-        </SortableContext>
+        {/* Cards */}
+        <div
+          ref={setNodeRef}
+          className={`flex-1 min-h-0 overflow-y-auto p-2 space-y-2 transition-colors ${
+            isOver ? 'bg-black/[0.04] dark:bg-white/[0.06] ring-inset ring-1 ring-black/[0.06] dark:ring-white/25' : ''
+          }`}
+        >
+          <SortableContext items={colTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+            {colTasks.map(task => <SortableCard key={task.id} task={task} areas={areas} />)}
+          </SortableContext>
 
-        {addingTask ? (
-          <div className="bg-white dark:bg-white/10 border border-gray-200 dark:border-white/20 rounded-2xl p-3">
-            <input
-              autoFocus
-              value={newTitle}
-              onChange={e => setNewTitle(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleAddTask(); if (e.key === 'Escape') { setAddingTask(false); setNewTitle('') } }}
-              placeholder="Engagement title…"
-              className="titlebar-no-drag w-full bg-transparent text-sm text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-white/40 outline-none mb-2"
-            />
-            <div className="flex gap-1.5">
-              <button onClick={handleAddTask} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-hub-gold text-white text-xs font-semibold hover:bg-hub-gold-light transition">Add</button>
-              <button onClick={() => { setAddingTask(false); setNewTitle('') }} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/75 text-xs hover:bg-gray-200 dark:hover:bg-white/20 transition">Cancel</button>
+          {addingTask ? (
+            <div className="bg-white dark:bg-white/10 border border-gray-200 dark:border-white/20 rounded-2xl p-3">
+              <input
+                autoFocus
+                value={newTitle}
+                onChange={e => setNewTitle(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddTask(); if (e.key === 'Escape') { setAddingTask(false); setNewTitle('') } }}
+                placeholder="Engagement title…"
+                className="titlebar-no-drag w-full bg-transparent text-sm text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-white/40 outline-none mb-2"
+              />
+              <div className="flex gap-1.5">
+                <button onClick={handleAddTask} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-hub-gold text-white text-xs font-semibold hover:bg-hub-gold-light transition">Add</button>
+                <button onClick={() => { setAddingTask(false); setNewTitle('') }} className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-white/75 text-xs hover:bg-gray-200 dark:hover:bg-white/20 transition">Cancel</button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="relative">
-            {/* Template picker popup */}
-            {showTemplatePicker && (
-              <>
-                {/* Backdrop */}
-                <div className="fixed inset-0 z-10" onClick={() => setShowTemplatePicker(false)} />
-                <div className="absolute bottom-full left-0 right-0 mb-1 z-20 bg-[#1e1b4b]/95 backdrop-blur-xl border border-white/[0.12] rounded-2xl shadow-2xl overflow-hidden">
-                  <div className="px-3 py-2 border-b border-white/[0.08]">
-                    <p className="text-[10px] font-semibold text-white/40 uppercase tracking-widest">Start from</p>
-                  </div>
-
-                  {/* Blank option */}
-                  <button
-                    onClick={() => { setShowTemplatePicker(false); setAddingTask(true) }}
-                    className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/[0.08] transition text-left"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-white/[0.1] flex items-center justify-center shrink-0 text-white/60">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                        <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-white/85">Start blank</p>
-                      <p className="text-[10px] text-white/40">Empty engagement</p>
-                    </div>
-                  </button>
-
-                  {templates.length > 0 && (
-                    <div className="border-t border-white/[0.08]">
-                      <p className="px-3 pt-2 pb-1 text-[10px] font-semibold text-white/40 uppercase tracking-widest">Templates</p>
-                      {templates.map(tpl => (
-                        <button
-                          key={tpl.id}
-                          onClick={() => handlePickTemplate(tpl)}
-                          className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-white/[0.08] transition text-left"
-                        >
-                          <div className="w-7 h-7 rounded-lg bg-hub-gold/20 border border-hub-gold/30 flex items-center justify-center shrink-0">
-                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="text-hub-gold">
-                              <rect x="1" y="1" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
-                              <path d="M3 4h4M3 6.5h2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                            </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-semibold text-white/85 truncate">{tpl.name}</p>
-                            <p className="text-[10px] text-white/40 truncate">
-                              {CONTENT_TYPE_LABELS_SHORT[tpl.content_type] ?? tpl.content_type} · {tpl.duration_days}d
-                            </p>
-                          </div>
-                          {!!tpl.is_builtin && (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/[0.08] text-white/40 shrink-0">Built-in</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {!templatesLoaded && (
-                    <div className="flex items-center justify-center py-4">
-                      <div className="w-4 h-4 border-2 border-hub-gold/20 border-t-hub-gold rounded-full animate-spin" />
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-
+          ) : (
             <button
+              ref={addBtnRef}
               onClick={handleOpenTemplatePicker}
               className="titlebar-no-drag w-full flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-gray-400 dark:text-white/65 hover:text-gray-700 dark:hover:text-white/80 border border-dashed border-gray-300 dark:border-white/20 hover:border-gray-400 dark:hover:border-white/40 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition text-sm mt-1"
             >
@@ -469,10 +527,10 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
               </svg>
               Add engagement
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -481,6 +539,8 @@ function KanbanColumn({ columnId, areas }: { columnId: string; areas: Area[] }) 
 export default function KanbanView() {
   const { columns, tasks, moveTask, reorderWithinColumn, addColumn, areas } = useWorkspace()
   const [activeTask, setActiveTask] = useState<Task | null>(null)
+  // Track the id of the column just added so we can auto-focus its name for editing
+  const [newColumnId, setNewColumnId] = useState<string | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -533,10 +593,21 @@ export default function KanbanView() {
           <div className="flex gap-4 p-5 h-full items-stretch min-w-max">
             {columns
               .sort((a, b) => a.position - b.position)
-              .map(col => <KanbanColumn key={col.id} columnId={col.id} areas={areas} />)}
+              .map(col => (
+                <KanbanColumn
+                  key={col.id}
+                  columnId={col.id}
+                  areas={areas}
+                  autoEdit={col.id === newColumnId}
+                  onEditStart={() => setNewColumnId(null)}
+                />
+              ))}
 
             <button
-              onClick={addColumn}
+              onClick={async () => {
+                const id = await addColumn()
+                setNewColumnId(id)
+              }}
               className="titlebar-no-drag flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-dashed border-gray-300 dark:border-white/20 text-gray-400 dark:text-white/65 hover:text-gray-700 dark:hover:text-white/70 hover:border-gray-400 dark:hover:border-white/40 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition text-sm mt-8 w-56 shrink-0"
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">

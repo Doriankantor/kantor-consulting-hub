@@ -35,6 +35,7 @@ export interface Column {
   name: string
   position: number
   color: string // Tailwind bg class
+  board_id?: string
 }
 
 // ── Task / Deliverable ─────────────────────────────────────────────────────
