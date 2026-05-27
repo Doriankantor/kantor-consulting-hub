@@ -434,19 +434,36 @@ function KanbanColumn({ columnId, areas, autoEdit = false, onEditStart }: {
         <>
           {/* Invisible backdrop to close on outside click */}
           <div className="fixed inset-0 z-40" onClick={() => setShowTemplatePicker(false)} />
-          <div
-            className="fixed z-50 bg-[#1e1b4b]/95 backdrop-blur-xl border border-white/[0.12] rounded-2xl shadow-2xl overflow-hidden"
-            style={{
-              // Position above the button: bottom edge sits 4px above the button's top
-              bottom: `${window.innerHeight - pickerAnchor.top + 4}px`,
-              left: `${pickerAnchor.left}px`,
-              width: `${pickerAnchor.width}px`,
-              maxHeight: '70vh',
-              overflowY: 'auto',
-            }}
-          >
-            {pickerContent}
-          </div>
+          {(() => {
+            // Decide whether to open above or below based on available space
+            const gap = 4
+            const spaceAbove = pickerAnchor.top - gap - 8   // 8px from top edge of viewport
+            const spaceBelow = window.innerHeight - pickerAnchor.bottom - gap - 8
+            const openAbove = spaceAbove >= spaceBelow || spaceAbove >= 220
+
+            const posStyle: React.CSSProperties = openAbove
+              ? {
+                  bottom: `${window.innerHeight - pickerAnchor.top + gap}px`,
+                  maxHeight: `${Math.max(spaceAbove, 120)}px`,
+                }
+              : {
+                  top: `${pickerAnchor.bottom + gap}px`,
+                  maxHeight: `${Math.max(spaceBelow, 120)}px`,
+                }
+
+            return (
+              <div
+                className="fixed z-50 bg-[#1e1b4b]/95 backdrop-blur-xl border border-white/[0.12] rounded-2xl shadow-2xl overflow-y-auto overflow-x-hidden"
+                style={{
+                  left: `${pickerAnchor.left}px`,
+                  width: `${pickerAnchor.width}px`,
+                  ...posStyle,
+                }}
+              >
+                {pickerContent}
+              </div>
+            )
+          })()}
         </>,
         document.body
       )
