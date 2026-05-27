@@ -207,7 +207,7 @@ const GOOGLE_COLORS: Record<string, string> = {
   '9':'#3f51b5','10':'#0b8043','11':'#d60000'
 }
 
-export async function getUserCalendars(userId: string): Promise<{ id: string; summary: string; backgroundColor: string; foregroundColor: string; primary: boolean; accessRole: string }[] | { needsReauth: true }> {
+export async function getUserCalendars(userId: string): Promise<{ id: string; summary: string; backgroundColor: string; foregroundColor: string; primary: boolean; accessRole: string }[] | { needsReauth: true } | { apiError: string }> {
   const db = getDatabase()
   let tokenRow: { refresh_token: string; scopes: string | null } | undefined
   try {
@@ -241,15 +241,15 @@ export async function getUserCalendars(userId: string): Promise<{ id: string; su
     }))
   } catch (e: any) {
     const msg: string = e.message ?? ''
-    // Only signal re-auth for genuine authentication/authorisation failures
+    // Genuine auth failures → re-auth
     const isAuthError =
       e.code === 401 ||
       msg.includes('invalid_grant') ||
       msg.includes('Token has been expired') ||
       (e.code === 403 && (msg.includes('insufficient') || msg.includes('forbidden') || msg.includes('scope')))
     if (isAuthError) return { needsReauth: true }
-    // Other 403s (e.g. "Calendar API not enabled") or network errors → empty, don't force re-auth
-    return []
+    // Surface non-auth errors (e.g. Calendar API not enabled) with the raw message
+    return { apiError: `${e.code ? e.code + ': ' : ''}${msg || 'Unknown error'}` }
   }
 }
 

@@ -455,7 +455,7 @@ interface Window {
       connect:           (userId: string) => Promise<{ ok: boolean; error?: string }>
       getStatus:         (userId: string) => Promise<{ connected: boolean }>
       disconnect:        (userId: string) => Promise<{ ok: boolean }>
-      getCalendars:      (userId: string) => Promise<{ id: string; summary: string; backgroundColor: string; foregroundColor: string; primary: boolean; accessRole: string }[] | { needsReauth: true }>
+      getCalendars:      (userId: string) => Promise<{ id: string; summary: string; backgroundColor: string; foregroundColor: string; primary: boolean; accessRole: string }[] | { needsReauth: true } | { apiError: string }>
       getCalendarEvents: (userId: string, calendarId: string, startDate: string, endDate: string, calendarColor?: string) => Promise<{ id: string; summary: string; start: string; end: string; allDay: boolean; color: string; location?: string; meetingLink?: string; calendarId: string }[]>
       diagnose:          (userId: string) => Promise<{ ok: boolean; storedScopes: string | null; calendarError: string | null; tokenExists: boolean }>
     }

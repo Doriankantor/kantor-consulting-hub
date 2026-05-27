@@ -735,6 +735,7 @@ export default function TeamCalendar() {
   const [userGoogleConnected, setUserGoogleConnected] = useState(false)
   const [googleNeedsReauth, setGoogleNeedsReauth] = useState(false)
   const [googleDiagError, setGoogleDiagError] = useState<string | null>(null)
+  const [googleApiError, setGoogleApiError] = useState<string | null>(null)
   const [myTasks, setMyTasks] = useState<any[]>([])
 
   const year  = currentDate.getFullYear()
@@ -758,11 +759,15 @@ export default function TeamCalendar() {
             setGoogleNeedsReauth(true)
             return
           }
-          const cals = result as { id:string; summary:string; backgroundColor:string; foregroundColor:string; primary:boolean; accessRole:string }[]
-          setGoogleCalendars(cals)
+          if ('apiError' in result) {
+            setGoogleApiError(result.apiError)
+            return
+          }
+          setGoogleApiError(null)
+          setGoogleCalendars(result)
           setEnabledCalendars(prev => {
             const next = new Set(prev)
-            for (const c of cals) if (!next.has(c.id)) next.add(c.id)
+            for (const c of result) if (!next.has(c.id)) next.add(c.id)
             return next
           })
         }).catch(() => {})
@@ -1093,6 +1098,22 @@ export default function TeamCalendar() {
               </label>
             ))}
 
+            {googleApiError && userGoogleConnected && !googleNeedsReauth && (
+              <div className="mt-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold mb-1">Google Calendar API error</p>
+                <p className="text-[9px] text-amber-600/80 dark:text-amber-400/70 mb-2 break-words leading-relaxed">{googleApiError}</p>
+                <p className="text-[9px] text-gray-500 dark:text-white/40 mb-1.5 leading-relaxed">
+                  You may need to enable the <strong>Google Calendar API</strong> in your Google Cloud project.
+                </p>
+                <button
+                  onClick={() => window.open('https://console.cloud.google.com/apis/library/calendar-json.googleapis.com', '_blank')}
+                  className="w-full px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-semibold transition"
+                >
+                  Open Google Cloud Console →
+                </button>
+              </div>
+            )}
+
             {(!userGoogleConnected || googleNeedsReauth) && (
               <div className="mt-2 p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20">
                 <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium mb-1.5">
@@ -1117,14 +1138,16 @@ export default function TeamCalendar() {
                         setUserGoogleConnected(true)
                         setGoogleNeedsReauth(false)
                         const result = await window.api.userGoogle.getCalendars(localUser.id).catch(() => null)
-                        if (result && !('needsReauth' in result)) {
-                          setGoogleCalendars(result)
-                          setEnabledCalendars(prev => {
-                            const next = new Set(prev)
-                            for (const c of result) if (!next.has(c.id)) next.add(c.id)
-                            return next
-                          })
-                        }
+                        if (!result) return
+                        if ('needsReauth' in result) { setGoogleNeedsReauth(true); return }
+                        if ('apiError' in result) { setGoogleApiError(result.apiError); return }
+                        setGoogleApiError(null)
+                        setGoogleCalendars(result)
+                        setEnabledCalendars(prev => {
+                          const next = new Set(prev)
+                          for (const c of result) if (!next.has(c.id)) next.add(c.id)
+                          return next
+                        })
                       } else {
                         setGoogleDiagError(r.error ?? 'Connection failed')
                       }
