@@ -17,10 +17,14 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+// Notify the sidebar to refresh its counter immediately
+function notifyRead() {
+  window.dispatchEvent(new CustomEvent('notificationsChanged'))
+}
+
 type NotifType = AppNotification['type']
 type Filter = 'all' | 'unread' | 'mention' | 'deadline'
 
-// Which panel section each notification type maps to
 const SECTION_FOR_TYPE: Record<NotifType, string> = {
   comment:      'comments',
   mention:      'comments',
@@ -46,6 +50,16 @@ const TYPE_COLOR: Record<NotifType, string> = {
   deadline:     'bg-red-500/15 text-red-400',
   stage_change: 'bg-amber-500/15 text-amber-400',
   attachment:   'bg-cyan-500/15 text-cyan-400',
+}
+
+// Left-border color per type (unread only)
+const BORDER_COLOR: Record<NotifType, string> = {
+  comment:      'border-l-blue-400',
+  mention:      'border-l-purple-400',
+  assignment:   'border-l-green-400',
+  deadline:     'border-l-red-400',
+  stage_change: 'border-l-amber-400',
+  attachment:   'border-l-cyan-400',
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -77,30 +91,31 @@ export default function Inbox() {
     return () => clearInterval(interval)
   }, [load])
 
-  // Navigate to the task card, scroll to the relevant section, mark as read
-  function handleGoToCard(n: AppNotification, e?: React.MouseEvent) {
-    e?.stopPropagation()
-    if (!n.task_id) return
-
-    // Mark read immediately
-    if (!n.read) {
-      window.api.notifications.markRead(n.id).catch(() => {})
-      setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: 1 } : x))
-    }
-
-    // Open the task in the workspace panel, scrolled to the right section
-    openTask(n.task_id, SECTION_FOR_TYPE[n.type])
-    navigate('/workspace')
+  // Mark a single notification as read — updates local state + counter immediately
+  function markOneRead(id: string) {
+    window.api.notifications.markRead(id).catch(() => {})
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: 1 } : n))
+    notifyRead()
   }
 
-  async function handleMarkRead(id: string) {
-    await window.api.notifications.markRead(id)
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: 1 } : n))
+  // Click on the row body → mark as read in place (no navigation)
+  function handleRowClick(n: AppNotification) {
+    if (!n.read) markOneRead(n.id)
+  }
+
+  // Click "Go to card" → mark as read + navigate to task
+  function handleGoToCard(n: AppNotification, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!n.read) markOneRead(n.id)
+    if (!n.task_id) return
+    openTask(n.task_id, SECTION_FOR_TYPE[n.type])
+    navigate('/workspace')
   }
 
   async function handleMarkAllRead() {
     await window.api.notifications.markAllRead(userId)
     setNotifications(prev => prev.map(n => ({ ...n, read: 1 })))
+    notifyRead()
   }
 
   const filtered = notifications.filter(n => {
@@ -154,6 +169,9 @@ export default function Inbox() {
             }`}
           >
             {f.label}
+            {f.id === 'unread' && unreadCount > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-hub-blue/20 text-hub-blue text-[10px] font-bold">{unreadCount}</span>
+            )}
           </button>
         ))}
       </div>
@@ -170,59 +188,76 @@ export default function Inbox() {
           </div>
         ) : (
           <div className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
-            {filtered.map(n => (
-              <div
-                key={n.id}
-                onClick={() => handleGoToCard(n)}
-                className={`group flex items-start gap-3 px-6 py-3.5 cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition ${
-                  !n.read ? 'bg-blue-50/50 dark:bg-hub-blue/[0.04]' : ''
-                }`}
-              >
-                {/* Unread dot */}
-                <div className={`w-1.5 h-1.5 rounded-full mt-2 shrink-0 transition ${
-                  !n.read ? 'bg-hub-blue' : 'bg-transparent'
-                }`} />
+            {filtered.map(n => {
+              const isUnread = !n.read
+              return (
+                <div
+                  key={n.id}
+                  onClick={() => handleRowClick(n)}
+                  className={`group relative flex items-start gap-3 pl-4 pr-6 py-3.5 cursor-pointer transition border-l-[3px] ${
+                    isUnread
+                      ? `${BORDER_COLOR[n.type]} bg-blue-50/60 dark:bg-hub-blue/[0.06] hover:bg-blue-50 dark:hover:bg-hub-blue/[0.09]`
+                      : 'border-l-transparent hover:bg-black/[0.02] dark:hover:bg-white/[0.02]'
+                  }`}
+                >
+                  {/* Unread dot */}
+                  <div className={`w-1.5 h-1.5 rounded-full mt-2 shrink-0 transition ${
+                    isUnread ? 'bg-hub-blue' : 'bg-transparent'
+                  }`} />
 
-                {/* Type icon */}
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm ${TYPE_COLOR[n.type]}`}>
-                  {TYPE_ICON[n.type]}
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm leading-snug ${!n.read ? 'font-semibold text-gray-900 dark:text-white' : 'text-gray-700 dark:text-white/70'}`}>
-                    {n.title}
-                  </p>
-                  {n.body && (
-                    <p className="text-xs text-gray-500 dark:text-white/65 mt-0.5 line-clamp-2 leading-relaxed">{n.body}</p>
-                  )}
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    {n.task_title && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-white/[0.08] text-[10px] text-gray-500 dark:text-white/65 font-medium border border-gray-200 dark:border-white/[0.06]">
-                        {n.task_title}
-                      </span>
-                    )}
-                    {n.actor_name && (
-                      <span className="text-[10px] text-gray-400 dark:text-white/50">{n.actor_name}</span>
-                    )}
-                    <span className="text-[10px] text-gray-300 dark:text-white/50 ml-auto">{relativeTime(n.created_at)}</span>
+                  {/* Type icon */}
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm ${TYPE_COLOR[n.type]}`}>
+                    {TYPE_ICON[n.type]}
                   </div>
-                </div>
 
-                {/* "Go to card" button — always visible on hover */}
-                {n.task_id && (
-                  <button
-                    onClick={e => handleGoToCard(n, e)}
-                    className="shrink-0 self-center opacity-0 group-hover:opacity-100 transition flex items-center gap-1 px-2.5 py-1 rounded-lg bg-hub-gold/10 hover:bg-hub-gold/20 text-hub-gold text-[11px] font-semibold border border-hub-gold/20 hover:border-hub-gold/40 whitespace-nowrap"
-                  >
-                    Go to card
-                    <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
-                      <path d="M2 7L7 2M7 2H3.5M7 2V5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm leading-snug ${
+                      isUnread
+                        ? 'font-semibold text-gray-900 dark:text-white'
+                        : 'font-normal text-gray-600 dark:text-white/60'
+                    }`}>
+                      {n.title}
+                    </p>
+                    {n.body && (
+                      <p className={`text-xs mt-0.5 line-clamp-2 leading-relaxed ${
+                        isUnread
+                          ? 'text-gray-600 dark:text-white/70'
+                          : 'text-gray-400 dark:text-white/45'
+                      }`}>{n.body}</p>
+                    )}
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      {n.task_title && (
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${
+                          isUnread
+                            ? 'bg-gray-100 dark:bg-white/[0.1] text-gray-600 dark:text-white/70 border-gray-200 dark:border-white/[0.08]'
+                            : 'bg-gray-50 dark:bg-white/[0.05] text-gray-400 dark:text-white/50 border-gray-100 dark:border-white/[0.05]'
+                        }`}>
+                          {n.task_title}
+                        </span>
+                      )}
+                      {n.actor_name && (
+                        <span className="text-[10px] text-gray-400 dark:text-white/50">{n.actor_name}</span>
+                      )}
+                      <span className="text-[10px] text-gray-300 dark:text-white/40 ml-auto">{relativeTime(n.created_at)}</span>
+                    </div>
+                  </div>
+
+                  {/* "Go to card" button */}
+                  {n.task_id && (
+                    <button
+                      onClick={e => handleGoToCard(n, e)}
+                      className="shrink-0 self-center opacity-0 group-hover:opacity-100 transition flex items-center gap-1 px-2.5 py-1 rounded-lg bg-hub-gold/10 hover:bg-hub-gold/20 text-hub-gold text-[11px] font-semibold border border-hub-gold/20 hover:border-hub-gold/40 whitespace-nowrap"
+                    >
+                      Go to card
+                      <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
+                        <path d="M2 7L7 2M7 2H3.5M7 2V5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

@@ -172,7 +172,12 @@ export default function Sidebar() {
   useEffect(() => {
     refreshInboxCount()
     const interval = setInterval(refreshInboxCount, 30000)
-    return () => clearInterval(interval)
+    // Refresh immediately when the Inbox page marks notifications as read
+    window.addEventListener('notificationsChanged', refreshInboxCount)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('notificationsChanged', refreshInboxCount)
+    }
   }, [refreshInboxCount])
 
   useEffect(() => {
