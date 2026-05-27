@@ -69,8 +69,8 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
     })
 
     window.api.updater.onError(() => {
-      // silently reset to idle on error; dev mode fires this
-      setState(s => s === 'checking' ? 'idle' : s)
+      // Reset to idle on any error (catches stuck downloads too)
+      setState('idle')
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

@@ -59,7 +59,7 @@ export default function Settings() {
   const { user, localUser, isAdmin, signOut } = useAuth()
   const { theme, setTheme, gradientTheme, setGradientTheme, lightTheme, setLightTheme } = useTheme()
   const { refreshAreas } = useWorkspace()
-  const { state: updateState, version: updateVersion, lastChecked, autoInstall, releaseNotes, checkNow, downloadNow, setAutoInstall } = useUpdate()
+  const { state: updateState, version: updateVersion, percent: updatePercent, lastChecked, autoInstall, releaseNotes, checkNow, downloadNow, setAutoInstall } = useUpdate()
 
   // ── API key ────────────────────────────────────────────────────────────────
   const [maskedKey,  setMaskedKey]  = useState<string | null>(null)
@@ -1115,9 +1115,17 @@ export default function Settings() {
                   </button>
                 )}
                 {updateState === 'downloading' && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-3.5 h-3.5 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
-                    <span className="text-xs text-gray-400 dark:text-white/40">Downloading…</span>
+                  <div className="flex flex-col items-end gap-1 w-40">
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-xs text-gray-400 dark:text-white/40">Downloading…</span>
+                      <span className="text-xs text-gray-400 dark:text-white/40 tabular-nums">{updatePercent}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-indigo-500 transition-all duration-300"
+                        style={{ width: `${updatePercent}%` }}
+                      />
+                    </div>
                   </div>
                 )}
                 {updateState === 'ready' && (
