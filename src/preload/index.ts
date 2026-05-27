@@ -195,6 +195,14 @@ const api = {
     getStatus:  (userId: string) => ipcRenderer.invoke('userGoogle:getStatus', userId),
     disconnect: (userId: string) => ipcRenderer.invoke('userGoogle:disconnect', userId),
   },
+  boardMembers: {
+    list:        (boardId: string) => ipcRenderer.invoke('boardMembers:list', boardId),
+    add:         (boardId: string, userId: string, addedByName: string) => ipcRenderer.invoke('boardMembers:add', boardId, userId, addedByName),
+    remove:      (boardId: string, userId: string) => ipcRenderer.invoke('boardMembers:remove', boardId, userId),
+    check:       (boardId: string, userId: string) => ipcRenderer.invoke('boardMembers:check', boardId, userId),
+    taskCount:   (boardId: string, userId: string) => ipcRenderer.invoke('boardMembers:taskCount', boardId, userId),
+    listForUser: (userId: string) => ipcRenderer.invoke('boardMembers:listForUser', userId),
+  },
   updater: {
     onAvailable:    (cb: (info: { version: string; releaseNotes?: string | null }) => void) =>
       ipcRenderer.on('updater:available', (_e, info) => cb(info)),

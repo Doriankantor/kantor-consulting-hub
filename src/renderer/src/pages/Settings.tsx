@@ -110,6 +110,98 @@ export default function Settings() {
   const [editName,    setEditName]    = useState('')
   const [editRole,    setEditRole]    = useState('')
 
+  // ── Team tabs ──────────────────────────────────────────────────────────────
+  const [teamTab, setTeamTab] = useState<'members'|'board-access'>('members')
+
+  // ── Board Access matrix ────────────────────────────────────────────────────
+  type BoardRow = { id: string; name: string }
+  const [matrixBoards,  setMatrixBoards]  = useState<BoardRow[]>([])
+  const [matrixMembers, setMatrixMembers] = useState<LocalTeamMember[]>([])
+  const [matrix, setMatrix] = useState<Record<string, Set<string>>>({}) // boardId → Set<userId>
+  const [matrixLoading, setMatrixLoading] = useState(false)
+  const [matrixMsg,     setMatrixMsg]     = useState<{type:'ok'|'err';text:string}|null>(null)
+
+  async function loadMatrix() {
+    setMatrixLoading(true)
+    try {
+      const [bs, ms] = await Promise.all([window.api.boards.list(false), window.api.team.list()])
+      setMatrixBoards(bs.map(b => ({ id: b.id, name: b.name })))
+      setMatrixMembers(ms)
+      const m: Record<string, Set<string>> = {}
+      for (const b of bs) {
+        const bMembers = await window.api.boardMembers.list(b.id)
+        m[b.id] = new Set(bMembers.map(bm => bm.user_id))
+      }
+      setMatrix(m)
+    } catch {
+      setMatrixMsg({ type: 'err', text: 'Failed to load board access data.' })
+      setTimeout(() => setMatrixMsg(null), 3000)
+    }
+    setMatrixLoading(false)
+  }
+
+  async function toggleBoardAccess(boardId: string, userId: string, hasAccess: boolean) {
+    const member = matrixMembers.find(m => m.id === userId)
+    const board  = matrixBoards.find(b => b.id === boardId)
+    if (!member || !board) return
+    try {
+      if (hasAccess) {
+        await window.api.boardMembers.remove(boardId, userId)
+        setMatrix(prev => {
+          const next = { ...prev }
+          next[boardId] = new Set(prev[boardId])
+          next[boardId].delete(userId)
+          return next
+        })
+      } else {
+        const adderName = localUser?.name ?? 'Admin'
+        await window.api.boardMembers.add(boardId, userId, adderName)
+        setMatrix(prev => {
+          const next = { ...prev }
+          next[boardId] = new Set(prev[boardId])
+          next[boardId].add(userId)
+          return next
+        })
+      }
+    } catch {
+      setMatrixMsg({ type: 'err', text: 'Failed to update access.' })
+      setTimeout(() => setMatrixMsg(null), 3000)
+    }
+  }
+
+  async function grantAllBoards(userId: string) {
+    const adderName = localUser?.name ?? 'Admin'
+    for (const b of matrixBoards) {
+      if (!matrix[b.id]?.has(userId)) {
+        await window.api.boardMembers.add(b.id, userId, adderName).catch(() => {})
+        setMatrix(prev => {
+          const next = { ...prev }
+          next[b.id] = new Set(prev[b.id])
+          next[b.id].add(userId)
+          return next
+        })
+      }
+    }
+  }
+
+  async function revokeAllBoards(userId: string, memberName: string) {
+    if (!confirm(`Remove ${memberName} from all non-admin boards? They will lose access immediately.`)) return
+    for (const b of matrixBoards) {
+      if (matrix[b.id]?.has(userId)) {
+        // Don't remove admins
+        const memberRow = matrixMembers.find(m => m.id === userId)
+        if (memberRow?.role === 'admin') continue
+        await window.api.boardMembers.remove(b.id, userId).catch(() => {})
+        setMatrix(prev => {
+          const next = { ...prev }
+          next[b.id] = new Set(prev[b.id])
+          next[b.id].delete(userId)
+          return next
+        })
+      }
+    }
+  }
+
   // ── Templates ─────────────────────────────────────────────────────────────
   const [templates,      setTemplates]      = useState<TaskTemplate[]>([])
   const [templateLoading,setTemplateLoading]= useState(false)
@@ -156,7 +248,7 @@ export default function Settings() {
     window.api.drive.isConnected().then(setDriveConnected)
     window.api.app.getVersion().then(setAppVersion)
     window.api.settings.get('gmail_app_password').then(p => setGmailSaved(!!p))
-    if (isAdmin) { loadAreas(); loadTeam(); loadTemplates() }
+    if (isAdmin) { loadAreas(); loadTeam(); loadTemplates(); loadMatrix() }
     async function loadArchived() {
       setArchivedLoading(true)
       try {
@@ -846,6 +938,23 @@ export default function Settings() {
         {/* Team Management (admin only) */}
         {isAdmin && (
           <Section title="Team Management">
+            {/* Tabs */}
+            <div className="flex border-b border-gray-100 dark:border-white/[0.06]">
+              <button
+                onClick={() => setTeamTab('members')}
+                className={`titlebar-no-drag px-5 py-3 text-xs font-semibold transition border-b-2 ${teamTab === 'members' ? 'border-hub-gold text-hub-gold' : 'border-transparent text-gray-400 dark:text-white/50 hover:text-gray-600 dark:hover:text-white/70'}`}
+              >
+                Members
+              </button>
+              <button
+                onClick={() => { setTeamTab('board-access'); if (matrixBoards.length === 0) loadMatrix() }}
+                className={`titlebar-no-drag px-5 py-3 text-xs font-semibold transition border-b-2 ${teamTab === 'board-access' ? 'border-hub-gold text-hub-gold' : 'border-transparent text-gray-400 dark:text-white/50 hover:text-gray-600 dark:hover:text-white/70'}`}
+              >
+                Board Access
+              </button>
+            </div>
+
+            {teamTab === 'members' && (
             <div className="px-5 py-4">
               <div className="flex items-center justify-between mb-4">
                 <p className="text-xs text-gray-400 dark:text-white/65">{members.length} member{members.length !== 1 ? 's' : ''}</p>
@@ -940,6 +1049,100 @@ export default function Settings() {
                 </div>
               )}
             </div>
+            )}
+
+            {/* Board Access tab */}
+            {teamTab === 'board-access' && (
+              <div className="px-5 py-4">
+                {matrixMsg && (
+                  <div className={`mb-3 p-2.5 rounded-xl text-xs ${matrixMsg.type === 'ok' ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
+                    {matrixMsg.text}
+                  </div>
+                )}
+                {matrixLoading ? (
+                  <p className="text-sm text-gray-400 dark:text-white/50 py-4 text-center">Loading…</p>
+                ) : matrixBoards.length === 0 ? (
+                  <p className="text-sm text-gray-400 dark:text-white/50 py-4 text-center">No boards yet.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr>
+                          <th className="text-left py-2 pr-3 text-gray-400 dark:text-white/50 font-semibold uppercase tracking-wider text-[10px]">Member</th>
+                          {matrixBoards.map(b => (
+                            <th key={b.id} className="py-2 px-2 text-gray-400 dark:text-white/50 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap max-w-[80px] truncate" title={b.name}>
+                              <span className="block truncate max-w-[72px]">{b.name}</span>
+                            </th>
+                          ))}
+                          <th className="py-2 pl-3 text-right text-gray-400 dark:text-white/50 font-semibold uppercase tracking-wider text-[10px]">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                        {matrixMembers.map(m => {
+                          const isAdminMember = m.role === 'admin'
+                          const name = m.full_name || m.email
+                          return (
+                            <tr key={m.id} className="group hover:bg-gray-50 dark:hover:bg-white/[0.02] transition">
+                              <td className="py-2.5 pr-3 min-w-[120px]">
+                                <div>
+                                  <p className="font-medium text-gray-700 dark:text-white/80 truncate max-w-[140px]">{name}</p>
+                                  <p className="text-[10px] text-gray-400 dark:text-white/45 truncate max-w-[140px]">{m.email}</p>
+                                </div>
+                              </td>
+                              {matrixBoards.map(b => {
+                                const hasAccess = isAdminMember || !!(matrix[b.id]?.has(m.id))
+                                return (
+                                  <td key={b.id} className="py-2.5 px-2 text-center">
+                                    <input
+                                      type="checkbox"
+                                      checked={hasAccess}
+                                      disabled={isAdminMember}
+                                      onChange={() => toggleBoardAccess(b.id, m.id, hasAccess)}
+                                      className={`titlebar-no-drag w-4 h-4 rounded cursor-pointer disabled:cursor-not-allowed ${hasAccess ? 'accent-green-500' : ''}`}
+                                      title={hasAccess ? 'Has access' : 'No access'}
+                                    />
+                                  </td>
+                                )
+                              })}
+                              <td className="py-2.5 pl-3">
+                                <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition">
+                                  {!isAdminMember && (
+                                    <>
+                                      <button
+                                        onClick={() => grantAllBoards(m.id)}
+                                        className="titlebar-no-drag px-2 py-1 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-600 dark:text-green-400 text-[10px] font-medium transition whitespace-nowrap"
+                                      >
+                                        Grant all
+                                      </button>
+                                      <button
+                                        onClick={() => revokeAllBoards(m.id, name)}
+                                        className="titlebar-no-drag px-2 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 text-[10px] font-medium transition whitespace-nowrap"
+                                      >
+                                        Revoke all
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                        {/* Summary row */}
+                        <tr className="border-t-2 border-gray-200 dark:border-white/[0.1]">
+                          <td className="py-2 pr-3 text-[10px] text-gray-400 dark:text-white/50 font-semibold uppercase tracking-wider">Total members</td>
+                          {matrixBoards.map(b => (
+                            <td key={b.id} className="py-2 px-2 text-center text-[11px] font-bold text-gray-600 dark:text-white/65">
+                              {matrix[b.id]?.size ?? 0}
+                            </td>
+                          ))}
+                          <td />
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </Section>
         )}
 

@@ -1472,6 +1472,121 @@ function registerDriveConnectHandler() {
   ipcMain.handle('drive:connect', () => driveSync.connect())
 }
 
+// ── Board Members ──────────────────────────────────────────────────────────
+
+function registerBoardMembersHandlers() {
+  const db = () => getDatabase()
+
+  ipcMain.handle('boardMembers:list', (_e, boardId: string) => {
+    return db().prepare(`
+      SELECT bm.user_id, lu.full_name, lu.email, lu.role, bm.added_at
+      FROM board_members bm
+      JOIN local_users lu ON lu.id = bm.user_id
+      WHERE bm.board_id = ?
+      ORDER BY bm.added_at ASC
+    `).all(boardId) as { user_id: string; full_name: string; email: string; role: string; added_at: string }[]
+  })
+
+  ipcMain.handle('boardMembers:add', async (_e, boardId: string, userId: string, addedByName: string) => {
+    try {
+      db().prepare(`INSERT OR IGNORE INTO board_members (board_id, user_id, added_by) VALUES (?, ?, ?)`)
+        .run(boardId, userId, addedByName)
+
+      // Get board name and user info for notification/email
+      const board = db().prepare('SELECT name FROM workspace_boards WHERE id=?').get(boardId) as { name: string } | undefined
+      const boardName = board?.name ?? boardId
+      const userRow = db().prepare('SELECT email, full_name FROM local_users WHERE id=?').get(userId) as { email: string; full_name: string | null } | undefined
+
+      // Create in-app notification
+      createNotification({
+        user_id: userId,
+        type: 'board_added',
+        title: `You've been added to ${boardName}`,
+        body: `You now have access to ${boardName} on Kantor Consulting Hub`,
+        actor_name: addedByName,
+      })
+
+      // Send email notification
+      if (userRow?.email) {
+        try {
+          const gmailPass = getSetting('gmail_app_password')
+          if (gmailPass) {
+            const nodemailer = await import('nodemailer')
+            const transporter = nodemailer.default.createTransport({
+              service: 'gmail',
+              auth: { user: 'kantorconsulting.hub@gmail.com', pass: gmailPass },
+            })
+            await transporter.sendMail({
+              from: '"Kantor Consulting Hub" <kantorconsulting.hub@gmail.com>',
+              to: userRow.email,
+              subject: `You now have access to ${boardName}`,
+              html: `
+                <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px">
+                  <h2 style="color:#1a2233">You've been added to ${boardName}</h2>
+                  <p style="color:#555">Hi ${userRow.full_name ?? userRow.email},</p>
+                  <p style="color:#555">
+                    ${addedByName} has added you to the <strong>${boardName}</strong> board on Kantor Consulting Hub.
+                    You now have access to view and manage deliverables on this board.
+                  </p>
+                  <p style="color:#888;font-size:12px;margin-top:24px">Kantor Consulting Hub</p>
+                </div>
+              `,
+            })
+          }
+        } catch (emailErr) {
+          console.warn('[boardMembers:add] email send failed:', emailErr)
+        }
+      }
+
+      return { ok: true }
+    } catch (err: unknown) {
+      return { ok: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('boardMembers:remove', (_e, boardId: string, userId: string) => {
+    db().prepare('DELETE FROM board_members WHERE board_id=? AND user_id=?').run(boardId, userId)
+    return { ok: true }
+  })
+
+  ipcMain.handle('boardMembers:check', (_e, boardId: string, userId: string) => {
+    // Admin always has access
+    const user = db().prepare('SELECT role FROM local_users WHERE id=?').get(userId) as { role: string } | undefined
+    if (user?.role === 'admin' || userId === 'local-admin') return { hasAccess: true }
+    const row = db().prepare('SELECT 1 FROM board_members WHERE board_id=? AND user_id=?').get(boardId, userId)
+    return { hasAccess: !!row }
+  })
+
+  ipcMain.handle('boardMembers:taskCount', (_e, boardId: string, userId: string) => {
+    const rows = db().prepare(
+      `SELECT assignees_json FROM workspace_tasks WHERE board_id=? AND (archived IS NULL OR archived=0)`
+    ).all(boardId) as { assignees_json: string }[]
+    let count = 0
+    for (const r of rows) {
+      try {
+        const ids: string[] = JSON.parse(r.assignees_json || '[]')
+        if (ids.includes(userId)) count++
+      } catch {}
+    }
+    return count
+  })
+
+  ipcMain.handle('boardMembers:listForUser', (_e, userId: string) => {
+    // Admin gets all board IDs
+    const user = db().prepare('SELECT role FROM local_users WHERE id=?').get(userId) as { role: string } | undefined
+    if (user?.role === 'admin' || userId === 'local-admin') {
+      const allBoards = db().prepare('SELECT id FROM workspace_boards WHERE archived=0').all() as { id: string }[]
+      return allBoards.map(b => b.id)
+    }
+    const rows = db().prepare(
+      `SELECT bm.board_id FROM board_members bm
+       JOIN workspace_boards wb ON wb.id = bm.board_id
+       WHERE bm.user_id=? AND wb.archived=0`
+    ).all(userId) as { board_id: string }[]
+    return rows.map(r => r.board_id)
+  })
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 
 export function registerIpcHandlers(): void {
@@ -1504,5 +1619,6 @@ export function registerIpcHandlers(): void {
   registerFilesHandlers()
   registerUserGoogleHandlers()
   registerDriveConnectHandler()
+  registerBoardMembersHandlers()
   startTrashAutoDelete()
 }

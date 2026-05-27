@@ -446,6 +446,14 @@ interface Window {
     files: {
       listAll: () => Promise<FileRecord[]>
     }
+    boardMembers: {
+      list:        (boardId: string) => Promise<{ user_id: string; full_name: string; email: string; role: string; added_at: string }[]>
+      add:         (boardId: string, userId: string, addedByName: string) => Promise<{ ok: boolean; error?: string }>
+      remove:      (boardId: string, userId: string) => Promise<{ ok: boolean }>
+      check:       (boardId: string, userId: string) => Promise<{ hasAccess: boolean }>
+      taskCount:   (boardId: string, userId: string) => Promise<number>
+      listForUser: (userId: string) => Promise<string[]>
+    }
     userGoogle: {
       connect:    (userId: string) => Promise<{ ok: boolean; error?: string }>
       getStatus:  (userId: string) => Promise<{ connected: boolean }>

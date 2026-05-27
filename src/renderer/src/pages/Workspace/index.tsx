@@ -1,5 +1,6 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useAuth } from '../../contexts/AuthContext'
 import KanbanView from './KanbanView'
@@ -7,8 +8,124 @@ import TimelineView from './TimelineView'
 import ListView from './ListView'
 import CalendarView from './CalendarView'
 import TaskDetailPanel from '../../components/TaskDetailPanel'
+import BoardMembersPanel from '../../components/BoardMembersPanel'
 import type { ViewMode } from '../../types'
 import { CONTENT_TYPE_LABELS } from '../../types'
+
+// ── Color helpers (shared with BoardMembersPanel) ─────────────────────────
+
+const MEMBER_COLORS = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444','#06b6d4']
+
+function memberColor(userId: string): string {
+  let h = 0
+  for (const c of userId) h = (h * 31 + c.charCodeAt(0)) & 0xffffffff
+  return MEMBER_COLORS[Math.abs(h) % MEMBER_COLORS.length]
+}
+
+function memberInitials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  return parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : name.slice(0, 2).toUpperCase()
+}
+
+// ── BoardMemberAvatars ─────────────────────────────────────────────────────
+
+interface AvatarMember {
+  user_id: string
+  full_name: string
+  email: string
+  role: string
+  added_at: string
+}
+
+interface BoardMemberAvatarsProps {
+  boardId: string
+  boardName: string
+  isAdmin: boolean
+  currentUserId: string
+  currentUserName: string
+}
+
+function BoardMemberAvatars({ boardId, boardName, isAdmin, currentUserId, currentUserName }: BoardMemberAvatarsProps) {
+  const [members, setMembers] = useState<AvatarMember[]>([])
+  const [showPanel, setShowPanel] = useState(false)
+
+  const loadMembers = useCallback(() => {
+    window.api.boardMembers.list(boardId).then(setMembers).catch(() => {})
+  }, [boardId])
+
+  useEffect(() => {
+    loadMembers()
+  }, [loadMembers])
+
+  const shown = members.slice(0, 5)
+  const overflow = members.length - 5
+
+  return (
+    <>
+      <div className="flex items-center gap-1.5">
+        {/* Overlapping avatars */}
+        <div
+          className="flex items-center cursor-pointer"
+          onClick={() => setShowPanel(true)}
+          title="Board members"
+        >
+          {shown.map((m, i) => {
+            const name = m.full_name || m.email
+            return (
+              <div
+                key={m.user_id}
+                className="w-6 h-6 rounded-full border-2 border-white dark:border-[#1a2233] flex items-center justify-center text-white text-[9px] font-bold select-none"
+                style={{
+                  backgroundColor: memberColor(m.user_id),
+                  marginLeft: i === 0 ? 0 : -6,
+                  zIndex: shown.length - i,
+                  position: 'relative',
+                }}
+                title={name}
+              >
+                {memberInitials(name)}
+              </div>
+            )
+          })}
+          {overflow > 0 && (
+            <div
+              className="w-6 h-6 rounded-full border-2 border-white dark:border-[#1a2233] bg-gray-300 dark:bg-white/20 flex items-center justify-center text-gray-600 dark:text-white/70 text-[8px] font-bold"
+              style={{ marginLeft: -6, position: 'relative', zIndex: 0 }}
+            >
+              +{overflow}
+            </div>
+          )}
+        </div>
+
+        {/* Add member button (admin only) */}
+        {isAdmin && (
+          <button
+            onClick={() => setShowPanel(true)}
+            className="titlebar-no-drag w-6 h-6 rounded-full border border-dashed border-gray-300 dark:border-white/25 flex items-center justify-center text-gray-400 dark:text-white/40 hover:border-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition"
+            title="Manage board members"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {showPanel && (
+        <BoardMembersPanel
+          boardId={boardId}
+          boardName={boardName}
+          isAdmin={isAdmin}
+          currentUserId={currentUserId}
+          currentUserName={currentUserName}
+          onClose={() => { setShowPanel(false); loadMembers() }}
+        />
+      )}
+    </>
+  )
+}
 
 // ── View switcher tabs ─────────────────────────────────────────────────────
 
@@ -69,10 +186,69 @@ export default function Workspace() {
     createBoard, setActiveBoardId, archivedBoards, restoreBoard, restoreTask,
   } = useWorkspace()
   const { localUser } = useAuth()
+  const navigate = useNavigate()
   const isAdmin = localUser?.role === 'admin'
 
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+
+  // ── Access protection ───────────────────────────────────────────────────
+  const [accessDenied, setAccessDenied] = useState(false)
+  useEffect(() => {
+    if (!activeBoard || isAdmin) { setAccessDenied(false); return }
+    const userId = localUser?.id ?? 'local-admin'
+    window.api.boardMembers.check(activeBoard.id, userId).then(({ hasAccess }) => {
+      if (!hasAccess) {
+        setAccessDenied(true)
+        window.api.boardMembers.listForUser(userId).then(ids => {
+          if (ids.length > 0) { setActiveBoardId(ids[0]); setAccessDenied(false) }
+          else navigate('/dashboard')
+        }).catch(() => navigate('/dashboard'))
+      } else {
+        setAccessDenied(false)
+      }
+    }).catch(() => setAccessDenied(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBoard?.id, isAdmin])
+
+  // ── New board members modal ─────────────────────────────────────────────
+  const [newBoardMembersModal, setNewBoardMembersModal] = useState<{ boardId: string; boardName: string } | null>(null)
+  const [allTeamForModal, setAllTeamForModal] = useState<{ id: string; full_name: string | null; email: string }[]>([])
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set())
+  const [addingModalMembers, setAddingModalMembers] = useState(false)
+
+  // ── Existing boards setup banner (admin only, one-time) ─────────────────
+  const [showSetupBanner, setShowSetupBanner] = useState(false)
+  const [setupBoardIndex, setSetupBoardIndex] = useState(0)
+  const [setupPanelBoard, setSetupPanelBoard] = useState<{ id: string; name: string } | null>(null)
+
+  useEffect(() => {
+    if (!isAdmin || boards.length === 0) return
+    const dismissed = localStorage.getItem('boardMembershipSetupDismissed')
+    if (dismissed) {
+      const until = Number(dismissed)
+      if (until > Date.now()) return
+    }
+    // Check if any board has 0 non-admin members
+    Promise.all(boards.map(b =>
+      window.api.boardMembers.list(b.id).then(ms => ms.filter(m => m.role !== 'admin').length)
+    )).then(counts => {
+      if (counts.some(c => c === 0)) setShowSetupBanner(true)
+    }).catch(() => {})
+  }, [isAdmin, boards])
+
+  // Listen for new board creation event from sidebar
+  useEffect(() => {
+    function handleNewBoardCreated(e: Event) {
+      const detail = (e as CustomEvent<{ id: string; name: string }>).detail
+      if (detail && isAdmin) {
+        openNewBoardMembersModal(detail.id, detail.name)
+      }
+    }
+    window.addEventListener('newBoardCreated', handleNewBoardCreated)
+    return () => window.removeEventListener('newBoardCreated', handleNewBoardCreated)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin])
 
   // Archived tasks drawer
   const [showArchivedTasks, setShowArchivedTasks] = useState(false)
@@ -193,6 +369,26 @@ export default function Workspace() {
     setShowDeleteConfirm(true)
   }
 
+  async function openNewBoardMembersModal(boardId: string, boardName: string) {
+    const team = await window.api.team.list().catch(() => [])
+    // Exclude admin from the list (admin always has access)
+    setAllTeamForModal(team.filter(m => m.role !== 'admin' && m.id !== 'local-admin').map(m => ({ id: m.id, full_name: m.full_name, email: m.email })))
+    setSelectedMemberIds(new Set())
+    setNewBoardMembersModal({ boardId, boardName })
+  }
+
+  async function handleAddModalMembers() {
+    if (!newBoardMembersModal) return
+    setAddingModalMembers(true)
+    const adderName = localUser?.name ?? 'Admin'
+    for (const uid of selectedMemberIds) {
+      await window.api.boardMembers.add(newBoardMembersModal.boardId, uid, adderName).catch(() => {})
+    }
+    setAddingModalMembers(false)
+    setNewBoardMembersModal(null)
+    setSelectedMemberIds(new Set())
+  }
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Workspace header */}
@@ -231,6 +427,17 @@ export default function Workspace() {
             </button>
           </p>
         </div>
+
+        {/* Board member avatars + add button */}
+        {activeBoard && (
+          <BoardMemberAvatars
+            boardId={activeBoard.id}
+            boardName={activeBoard.name}
+            isAdmin={isAdmin}
+            currentUserId={localUser?.id ?? 'local-admin'}
+            currentUserName={localUser?.name ?? 'Admin'}
+          />
+        )}
 
         <div className="titlebar-no-drag flex items-center gap-2">
           {/* View switcher */}
@@ -339,12 +546,57 @@ export default function Workspace() {
         </div>
       )}
 
+      {/* Setup banner (admin only, one-time) */}
+      {showSetupBanner && isAdmin && (
+        <div className="shrink-0 flex items-center gap-3 px-5 py-3 bg-indigo-500/10 border-b border-indigo-500/20">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-indigo-500 shrink-0">
+            <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M7 4v3M7 9.5v.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <p className="text-sm text-indigo-700 dark:text-indigo-300 flex-1">
+            Set up board membership for your existing boards to control who sees what.
+          </p>
+          <button
+            onClick={() => {
+              setShowSetupBanner(false)
+              if (boards.length > 0) {
+                setSetupBoardIndex(0)
+                setSetupPanelBoard({ id: boards[0].id, name: boards[0].name })
+              }
+            }}
+            className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold transition shrink-0"
+          >
+            Set up now
+          </button>
+          <button
+            onClick={() => {
+              localStorage.setItem('boardMembershipSetupDismissed', String(Date.now() + 24 * 3600 * 1000))
+              setShowSetupBanner(false)
+            }}
+            className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-xs font-semibold transition shrink-0"
+          >
+            Later
+          </button>
+        </div>
+      )}
+
       {/* View content */}
       <div className="flex-1 overflow-hidden">
-        {viewMode === 'kanban'   && <KanbanView />}
-        {viewMode === 'timeline' && <TimelineView />}
-        {viewMode === 'list'     && <ListView />}
-        {viewMode === 'calendar' && <CalendarView />}
+        {accessDenied ? (
+          <div className="flex-1 flex items-center justify-center h-full">
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-900 dark:text-white">Access denied</p>
+              <p className="text-sm text-gray-400 dark:text-white/50 mt-1">You are not a member of this board.</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {viewMode === 'kanban'   && <KanbanView />}
+            {viewMode === 'timeline' && <TimelineView />}
+            {viewMode === 'list'     && <ListView />}
+            {viewMode === 'calendar' && <CalendarView />}
+          </>
+        )}
       </div>
 
       {/* Archived tasks drawer */}
@@ -482,6 +734,91 @@ export default function Workspace() {
                 className="titlebar-no-drag px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition">
                 Delete permanently
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Setup wizard panel (admin — walks through each board) */}
+      {setupPanelBoard && (
+        <BoardMembersPanel
+          boardId={setupPanelBoard.id}
+          boardName={setupPanelBoard.name}
+          isAdmin={true}
+          currentUserId={localUser?.id ?? 'local-admin'}
+          currentUserName={localUser?.name ?? 'Admin'}
+          onClose={() => {
+            const nextIndex = setupBoardIndex + 1
+            if (nextIndex < boards.length) {
+              setSetupBoardIndex(nextIndex)
+              setSetupPanelBoard({ id: boards[nextIndex].id, name: boards[nextIndex].name })
+            } else {
+              setSetupPanelBoard(null)
+            }
+          }}
+        />
+      )}
+
+      {/* New board members modal */}
+      {newBoardMembersModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setNewBoardMembersModal(null)}>
+          <div className="bg-white dark:bg-[#1a2233] rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-200 dark:border-white/[0.1]" onClick={e => e.stopPropagation()}>
+            <h2 className="text-base font-bold text-gray-900 dark:text-white mb-1">
+              Who should have access to "{newBoardMembersModal.boardName}"?
+            </h2>
+            <p className="text-xs text-gray-400 dark:text-white/50 mb-4">Select team members to grant access to this board.</p>
+
+            {allTeamForModal.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-white/50 py-4 text-center">No team members to add.</p>
+            ) : (
+              <div className="space-y-1 max-h-60 overflow-y-auto mb-4">
+                {allTeamForModal.map(m => {
+                  const name = m.full_name || m.email
+                  const checked = selectedMemberIds.has(m.id)
+                  return (
+                    <label key={m.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.04] cursor-pointer transition">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setSelectedMemberIds(prev => {
+                            const next = new Set(prev)
+                            if (checked) next.delete(m.id)
+                            else next.add(m.id)
+                            return next
+                          })
+                        }}
+                        className="titlebar-no-drag w-4 h-4 rounded accent-indigo-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 dark:text-white/85 truncate">{name}</p>
+                        <p className="text-xs text-gray-400 dark:text-white/45 truncate">{m.email}</p>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3">
+              <button
+                onClick={() => setNewBoardMembersModal(null)}
+                className="titlebar-no-drag text-xs text-gray-400 dark:text-white/50 hover:text-gray-600 dark:hover:text-white/70 underline transition"
+              >
+                Skip for now
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setNewBoardMembersModal(null)} className="titlebar-no-drag px-4 py-2 rounded-xl bg-gray-100 dark:bg-white/[0.08] text-gray-700 dark:text-white/75 text-sm font-medium transition">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddModalMembers}
+                  disabled={addingModalMembers || selectedMemberIds.size === 0}
+                  className="titlebar-no-drag px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white text-sm font-semibold transition"
+                >
+                  {addingModalMembers ? 'Adding…' : `Add ${selectedMemberIds.size > 0 ? selectedMemberIds.size : ''} member${selectedMemberIds.size !== 1 ? 's' : ''}`}
+                </button>
+              </div>
             </div>
           </div>
         </div>

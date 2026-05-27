@@ -142,8 +142,18 @@ export default function Sidebar() {
   const [inboxUnread,  setInboxUnread]  = useState(0)
   const [trashCount,   setTrashCount]   = useState(0)
   const [archiveOpen,  setArchiveOpen]  = useState(false)
+  const [memberBoardIds, setMemberBoardIds] = useState<string[]>([])
 
   const userId = localUser?.id ?? 'local-admin'
+
+  // Load board membership for non-admin users
+  useEffect(() => {
+    if (isAdmin) return
+    if (!userId) return
+    window.api.boardMembers.listForUser(userId).then(ids => setMemberBoardIds(ids)).catch(() => {})
+  }, [isAdmin, userId])
+
+  const visibleBoards = isAdmin ? boards : boards.filter(b => memberBoardIds.includes(b.id))
 
   const refreshInboxCount = useCallback(async () => {
     try {
@@ -221,8 +231,14 @@ export default function Sidebar() {
   async function handleNewBoard() {
     const name = window.prompt('Board name:')
     if (!name?.trim()) return
-    await createBoard(name.trim())
+    const newId = await createBoard(name.trim())
     navigate('/workspace')
+    // Signal the workspace to show the members modal for the new board
+    if (isAdmin) {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('newBoardCreated', { detail: { id: newId, name: name.trim() } }))
+      }, 200)
+    }
   }
 
   return (
@@ -252,7 +268,7 @@ export default function Sidebar() {
 
           {/* Board sub-items */}
           <div className="mt-0.5 space-y-0.5 pl-1">
-            {boards.map(board => (
+            {visibleBoards.map(board => (
               <button
                 key={board.id}
                 onClick={() => { setActiveBoardId(board.id); navigate('/workspace') }}

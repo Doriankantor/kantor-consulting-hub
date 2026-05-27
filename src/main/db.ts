@@ -567,5 +567,30 @@ export function initDatabase(): void {
     scopes TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`) } catch {}
 
+  // ── Board membership ─────────────────────────────────────────────────────
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS board_members (
+        board_id   TEXT NOT NULL,
+        user_id    TEXT NOT NULL,
+        added_by   TEXT,
+        added_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (board_id, user_id)
+      );
+    `)
+    // Seed admin into all existing boards (idempotent)
+    db.exec(`
+      INSERT OR IGNORE INTO board_members (board_id, user_id, added_by)
+        SELECT id, 'local-admin', 'system' FROM workspace_boards;
+    `)
+    // One-time setup banner flag
+    db.exec(`
+      INSERT OR IGNORE INTO settings (key, value, updated_at)
+        VALUES ('board_membership_setup_dismissed', '0', CURRENT_TIMESTAMP);
+    `)
+  } catch (err) {
+    console.warn('[DB] board_members migration warning:', err)
+  }
+
   console.log(`[DB] Initialized at ${dbPath}`)
 }
