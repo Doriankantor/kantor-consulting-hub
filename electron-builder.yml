@@ -32,6 +32,9 @@ mac:
     - target: dmg
       arch:
         - universal
+    - target: zip
+      arch:
+        - universal
   category: public.app-category.productivity
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
@@ -48,5 +51,8 @@ dmg:
   window:
     width: 540
     height: 380
+
+zip:
+  artifactName: KantorConsultingHub-${version}-mac.${ext}
 
 npmRebuild: true

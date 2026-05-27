@@ -1274,7 +1274,9 @@ export default function Settings() {
                 {updateState === 'uptodate' && (
                   <div className="flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                    <span className="text-xs text-green-600 dark:text-green-400">Up to date</span>
+                    <span className="text-xs text-green-600 dark:text-green-400">
+                      You are on the latest version{appVersion ? ` (v${appVersion})` : ''}
+                    </span>
                   </div>
                 )}
                 {(updateState === 'available' || updateState === 'downloading' || updateState === 'ready') && (

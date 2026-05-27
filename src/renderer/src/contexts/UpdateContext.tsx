@@ -1,5 +1,25 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
 
+// Convert raw electron-updater error strings into short human-readable messages
+function sanitizeError(raw: string): string {
+  if (!raw) return 'Something went wrong. Please try again.'
+  const r = raw.toLowerCase()
+  if (r.includes('latest-mac.yml') || r.includes('latest-mac.json') || r.includes('not found') || r.includes('404'))
+    return 'Could not find update metadata. Please try again later.'
+  if (r.includes('zip') || r.includes('no suitable') || r.includes('file not provided'))
+    return 'Update file unavailable. Please try again later.'
+  if (r.includes('network') || r.includes('enotfound') || r.includes('econnrefused') || r.includes('fetch'))
+    return 'No internet connection. Check your network and retry.'
+  if (r.includes('code signature') || r.includes('codesign'))
+    return 'Update blocked by macOS security. Please download the latest version manually from GitHub.'
+  if (r.includes('cancelled') || r.includes('canceled'))
+    return 'Update was cancelled.'
+  // If it looks like a long JSON blob, hide the details
+  if (raw.length > 120 || raw.startsWith('{') || raw.startsWith('['))
+    return 'Could not check for updates. Please try again later.'
+  return raw
+}
+
 export type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'uptodate' | 'error'
 
 interface UpdateContextValue {
@@ -72,7 +92,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
 
     window.api.updater.onError((err) => {
       // Surface the error so user can see what went wrong + retry
-      setErrorMsg(err || 'Unknown error')
+      setErrorMsg(sanitizeError(err || ''))
       setState('error')
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -88,7 +108,10 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
 
   const checkNow = useCallback(async () => {
     setState('checking')
-    try { await window.api.updater.checkNow() } catch {}
+    try { await window.api.updater.checkNow() } catch (e: any) {
+      setErrorMsg(sanitizeError(e?.message ?? ''))
+      setState('error')
+    }
   }, [])
 
   const downloadNow = useCallback(async () => {
@@ -98,11 +121,11 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
     try {
       const result = await window.api.updater.downloadNow()
       if (!result.ok && result.error) {
-        setErrorMsg(result.error)
+        setErrorMsg(sanitizeError(result.error))
         setState('error')
       }
     } catch (e: any) {
-      setErrorMsg(e?.message ?? 'Download failed')
+      setErrorMsg(sanitizeError(e?.message ?? ''))
       setState('error')
     }
   }, [])
