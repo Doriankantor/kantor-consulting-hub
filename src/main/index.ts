@@ -1,6 +1,8 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
-import { spawnSync } from 'child_process'
+import { spawnSync, spawn } from 'child_process'
+import { writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { initDatabase, getDatabase } from './db'
@@ -139,17 +141,27 @@ app.whenReady().then(() => {
   })
   // Opens Terminal and runs the install script — bypasses Gatekeeper entirely for unsigned builds
   ipcMain.handle('updater:openTerminalUpdate', () => {
-    const script = 'curl -sL https://raw.githubusercontent.com/Doriankantor/kantor-consulting-hub/main/install.sh | bash'
     try {
-      spawnSync('osascript', [
-        '-e', 'tell application "Terminal" to activate',
-        '-e', `tell application "Terminal" to do script "${script}"`
-      ])
+      // Write a .command file — macOS opens these directly in Terminal via `open`
+      const scriptPath = join(tmpdir(), 'kch-update.command')
+      writeFileSync(scriptPath, [
+        '#!/bin/bash',
+        'echo ""',
+        'echo "  Updating Kantor Consulting Hub..."',
+        'echo ""',
+        'curl -sL https://raw.githubusercontent.com/Doriankantor/kantor-consulting-hub/main/install.sh | bash',
+      ].join('\n'), { mode: 0o755 })
+      // Strip quarantine so macOS doesn't block it
+      spawnSync('xattr', ['-cr', scriptPath])
+      // open the .command file — macOS routes it to Terminal automatically
+      const child = spawn('open', [scriptPath], { detached: true, stdio: 'ignore' })
+      child.unref()
+      console.log('[Updater] opened Terminal with install script:', scriptPath)
     } catch (e) {
-      console.warn('[Updater] osascript failed:', e)
+      console.warn('[Updater] openTerminalUpdate failed:', e)
     }
     // Quit after a short delay so Terminal has time to open
-    setTimeout(() => app.quit(), 1500)
+    setTimeout(() => app.quit(), 2500)
   })
   ipcMain.handle('updater:checkNow', async () => {
     if (is.dev) { mainWindow?.webContents.send('updater:notAvailable'); return { ok: true } }
