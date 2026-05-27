@@ -137,6 +137,20 @@ app.whenReady().then(() => {
     }
     autoUpdater.quitAndInstall()
   })
+  // Opens Terminal and runs the install script — bypasses Gatekeeper entirely for unsigned builds
+  ipcMain.handle('updater:openTerminalUpdate', () => {
+    const script = 'curl -sL https://raw.githubusercontent.com/Doriankantor/kantor-consulting-hub/main/install.sh | bash'
+    try {
+      spawnSync('osascript', [
+        '-e', 'tell application "Terminal" to activate',
+        '-e', `tell application "Terminal" to do script "${script}"`
+      ])
+    } catch (e) {
+      console.warn('[Updater] osascript failed:', e)
+    }
+    // Quit after a short delay so Terminal has time to open
+    setTimeout(() => app.quit(), 1500)
+  })
   ipcMain.handle('updater:checkNow', async () => {
     if (is.dev) { mainWindow?.webContents.send('updater:notAvailable'); return { ok: true } }
     try { await autoUpdater.checkForUpdates(); return { ok: true } }

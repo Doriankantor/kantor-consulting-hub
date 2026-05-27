@@ -405,12 +405,13 @@ interface Window {
       onNotAvailable: (cb: () => void) => void
       onChecking:     (cb: () => void) => void
       onError:        (cb: (err: string) => void) => void
-      install:        () => Promise<void>
-      checkNow:       () => Promise<{ ok: boolean; error?: string }>
-      downloadNow:    () => Promise<{ ok: boolean; error?: string }>
-      getLastChecked: () => Promise<number | null>
-      setAutoInstall: (val: boolean) => Promise<boolean>
-      getAutoInstall: () => Promise<boolean>
+      install:            () => Promise<void>
+      openTerminalUpdate: () => Promise<void>
+      checkNow:           () => Promise<{ ok: boolean; error?: string }>
+      downloadNow:        () => Promise<{ ok: boolean; error?: string }>
+      getLastChecked:     () => Promise<number | null>
+      setAutoInstall:     (val: boolean) => Promise<boolean>
+      getAutoInstall:     () => Promise<boolean>
     }
     contacts: {
       list:              ()                                              => Promise<Contact[]>

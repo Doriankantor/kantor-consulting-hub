@@ -236,8 +236,9 @@ const api = {
       ipcRenderer.on('updater:checking', () => cb()),
     onError:        (cb: (err: string) => void) =>
       ipcRenderer.on('updater:error', (_e, err) => cb(err)),
-    install:        () => ipcRenderer.invoke('updater:install'),
-    checkNow:       () => ipcRenderer.invoke('updater:checkNow'),
+    install:               () => ipcRenderer.invoke('updater:install'),
+    openTerminalUpdate:    () => ipcRenderer.invoke('updater:openTerminalUpdate'),
+    checkNow:              () => ipcRenderer.invoke('updater:checkNow'),
     downloadNow:    () => ipcRenderer.invoke('updater:downloadNow'),
     getLastChecked: () => ipcRenderer.invoke('updater:getLastChecked'),
     setAutoInstall: (val: boolean) => ipcRenderer.invoke('updater:setAutoInstall', val),
