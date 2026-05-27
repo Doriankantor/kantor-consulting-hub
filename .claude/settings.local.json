@@ -90,7 +90,8 @@
       "Bash(node -p \"require\\('./package.json'\\).version\")",
       "Bash(git rm *)",
       "Bash(hdiutil info *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git rev-list *)"
     ]
   }
 }
