@@ -454,8 +454,19 @@ interface Window {
       connect:           (userId: string) => Promise<{ ok: boolean; error?: string }>
       getStatus:         (userId: string) => Promise<{ connected: boolean }>
       disconnect:        (userId: string) => Promise<{ ok: boolean }>
-      getCalendars:      (userId: string) => Promise<{ id: string; summary: string; backgroundColor: string; primary: boolean }[]>
-      getCalendarEvents: (userId: string, calendarId: string, startDate: string, endDate: string) => Promise<{ id: string; summary: string; start: string; end: string; allDay: boolean; color: string }[]>
+      getCalendars:      (userId: string) => Promise<{ id: string; summary: string; backgroundColor: string; foregroundColor: string; primary: boolean; accessRole: string }[]>
+      getCalendarEvents: (userId: string, calendarId: string, startDate: string, endDate: string) => Promise<{ id: string; summary: string; start: string; end: string; allDay: boolean; color: string; location?: string; meetingLink?: string; calendarId: string }[]>
+    }
+    personalTodo: {
+      list:       (userId: string) => Promise<{ id:string; user_id:string; title:string; due_date:string|null; due_time:string|null; completed:number; completed_at:string|null; created_at:string }[]>
+      create:     (item: { id:string; user_id:string; title:string; due_date?:string; due_time?:string }) => Promise<{ ok:boolean }>
+      complete:   (id: string) => Promise<{ ok:boolean }>
+      uncomplete: (id: string) => Promise<{ ok:boolean }>
+      delete:     (id: string) => Promise<{ ok:boolean }>
+    }
+    notificationPrefs: {
+      get:  (userId: string) => Promise<{ first_reminder_min: number; second_reminder_min: number; apply_calendar: number; apply_tasks: number; apply_personal: number; email_prefs_json: string }>
+      save: (userId: string, prefs: Record<string,unknown>) => Promise<{ ok: boolean }>
     }
     analytics: {
       getData:   () => Promise<{

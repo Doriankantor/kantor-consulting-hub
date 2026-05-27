@@ -544,10 +544,22 @@ function WeekView({
     return events.filter(e => e.start_date.slice(0,10) <= ds && e.end_date.slice(0,10) >= ds)
   }
 
+  function allDayEventsForDay(d: Date): CalendarEvent[] {
+    return eventsForDay(d).filter(e => e.all_day)
+  }
+
+  function hourlyEventsForDayHour(d: Date, h: number): CalendarEvent[] {
+    return eventsForDay(d).filter(e => {
+      if (e.all_day) return false
+      const startH = parseInt(e.start_date.slice(11,13))
+      return startH === h
+    })
+  }
+
   return (
     <div className="flex-1 overflow-auto">
       <div className="grid" style={{ gridTemplateColumns: '48px repeat(7, 1fr)' }}>
-        {/* Header */}
+        {/* Header row: day names */}
         <div className="border-b border-r border-gray-100 dark:border-white/[0.06]" />
         {days.map((d, i) => {
           const isToday = toDateStr(d) === today
@@ -560,6 +572,31 @@ function WeekView({
             </div>
           )
         })}
+        {/* All-day row */}
+        <div className="border-b border-r border-gray-100 dark:border-white/[0.06] pr-2 pt-1 text-right text-[10px] text-gray-400 dark:text-white/30 min-h-[28px]">
+          all-day
+        </div>
+        {days.map((d, i) => {
+          const allDayEvs = allDayEventsForDay(d)
+          return (
+            <div
+              key={`allday-${i}`}
+              onClick={() => onSlotClick(toDateStr(d))}
+              className="border-b border-r border-gray-100 dark:border-white/[0.06] min-h-[28px] p-0.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.02] transition"
+            >
+              {allDayEvs.map(ev => (
+                <div
+                  key={ev.id}
+                  onClick={e => { e.stopPropagation(); onEventClick(ev) }}
+                  style={{ backgroundColor: ev.color + '33', borderLeft: `2px solid ${ev.color}` }}
+                  className="px-1 py-0.5 rounded text-[10px] truncate text-gray-800 dark:text-white/90 cursor-pointer hover:opacity-80 mb-0.5"
+                >
+                  {ev.title}
+                </div>
+              ))}
+            </div>
+          )
+        })}
         {/* Hour rows */}
         {hours.map(h => (
           <>
@@ -568,11 +605,7 @@ function WeekView({
             </div>
             {days.map((d, i) => {
               const ds = toDateStr(d)
-              const slotEvents = eventsForDay(d).filter(e => {
-                if (e.all_day) return h === 8
-                const startH = parseInt(e.start_date.slice(11,13))
-                return startH === h
-              })
+              const slotEvents = hourlyEventsForDayHour(d, h)
               return (
                 <div
                   key={`${h}-${i}`}
@@ -686,8 +719,11 @@ export default function TeamCalendar() {
   const [editingEvent, setEditingEvent] = useState<Partial<CalendarEvent> | null>(null)
   const [defaultDate,  setDefaultDate]  = useState<string | undefined>()
 
+  // 5-minute auto-sync tick
+  const [syncTick, setSyncTick] = useState(0)
+
   // Left sidebar state
-  const [googleCalendars, setGoogleCalendars] = useState<{id:string; summary:string; backgroundColor:string; primary:boolean}[]>([])
+  const [googleCalendars, setGoogleCalendars] = useState<{id:string; summary:string; backgroundColor:string; foregroundColor:string; primary:boolean; accessRole:string}[]>([])
   const [enabledCalendars, setEnabledCalendars] = useState<Set<string>>(() => {
     try {
       const userId = localUser?.id ?? 'local-admin'
@@ -695,7 +731,7 @@ export default function TeamCalendar() {
       return saved ? new Set(JSON.parse(saved)) : new Set(['hub', 'task-deadlines'])
     } catch { return new Set(['hub', 'task-deadlines']) }
   })
-  const [googleEvents, setGoogleEvents] = useState<Record<string, {id:string; summary:string; start:string; end:string; allDay:boolean; color:string}[]>>({})
+  const [googleEvents, setGoogleEvents] = useState<Record<string, {id:string; summary:string; start:string; end:string; allDay:boolean; color:string; location?:string; meetingLink?:string; calendarId:string}[]>>({})
   const [userGoogleConnected, setUserGoogleConnected] = useState(false)
   const [myTasks, setMyTasks] = useState<any[]>([])
 
@@ -761,7 +797,7 @@ export default function TeamCalendar() {
     )).then(results => {
       setGoogleEvents(Object.fromEntries(results))
     })
-  }, [localUser?.id, userGoogleConnected, googleCalendars, enabledCalendars, view, rangeStart, rangeEnd])
+  }, [localUser?.id, userGoogleConnected, googleCalendars, enabledCalendars, view, rangeStart, rangeEnd, syncTick])
 
   const loadEvents = useCallback(async () => {
     try {
@@ -779,6 +815,15 @@ export default function TeamCalendar() {
   }, [view, year, month, currentDate])
 
   useEffect(() => { loadEvents() }, [loadEvents])
+
+  // 5-minute auto-sync
+  useEffect(() => {
+    const id = setInterval(() => {
+      loadEvents()
+      setSyncTick(t => t + 1)
+    }, 5 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [loadEvents])
 
   useEffect(() => {
     window.api.team.list().then(setTeamMembers).catch(() => {})
@@ -849,7 +894,7 @@ export default function TeamCalendar() {
           id: 'g-' + ev.id,
           title: ev.summary,
           description: null,
-          location: null,
+          location: ev.location ?? null,
           start_date: ev.start,
           end_date: ev.end || ev.start,
           all_day: ev.allDay ? 1 : 0,
@@ -862,6 +907,7 @@ export default function TeamCalendar() {
           google_event_id: ev.id,
           created_at: '',
           updated_at: '',
+          meeting_link: ev.meetingLink ?? null,
         })
       }
     }
@@ -974,7 +1020,8 @@ export default function TeamCalendar() {
       {/* Main row: left sidebar + calendar */}
       <div className="flex-1 flex gap-4 min-h-0">
         {/* Left sidebar */}
-        <div className="w-48 shrink-0 flex flex-col gap-2 overflow-y-auto">
+        <div className="w-48 shrink-0 flex flex-col gap-3 overflow-y-auto">
+          {/* My Calendars section */}
           <div>
             <h3 className="text-xs font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider mb-2">My Calendars</h3>
 
@@ -1008,8 +1055,8 @@ export default function TeamCalendar() {
               <span className="text-xs text-gray-700 dark:text-white/70">Task Deadlines</span>
             </label>
 
-            {/* Personal Google calendars */}
-            {userGoogleConnected && googleCalendars.map(cal => (
+            {/* Personal Google calendars: My Calendars */}
+            {userGoogleConnected && googleCalendars.filter(c => c.accessRole === 'owner' || c.primary).map(cal => (
               <label
                 key={cal.id}
                 className="flex items-center gap-2 py-1 cursor-pointer"
@@ -1041,6 +1088,40 @@ export default function TeamCalendar() {
               <p className="text-[10px] text-gray-400 dark:text-white/30 mt-1">Connect Google in Settings to see personal calendars</p>
             )}
           </div>
+
+          {/* Other Calendars section */}
+          {userGoogleConnected && googleCalendars.filter(c => c.accessRole !== 'owner' && !c.primary).length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider mb-2">Other Calendars</h3>
+              {googleCalendars.filter(c => c.accessRole !== 'owner' && !c.primary).map(cal => (
+                <label
+                  key={cal.id}
+                  className="flex items-center gap-2 py-1 cursor-pointer"
+                  onClick={() => {
+                    setEnabledCalendars(prev => {
+                      const next = new Set(prev)
+                      if (next.has(cal.id)) next.delete(cal.id)
+                      else next.add(cal.id)
+                      return next
+                    })
+                  }}
+                >
+                  <div
+                    className="w-3 h-3 rounded-sm border flex items-center justify-center transition shrink-0"
+                    style={{
+                      backgroundColor: enabledCalendars.has(cal.id) ? cal.backgroundColor : 'transparent',
+                      borderColor: cal.backgroundColor,
+                    }}
+                  >
+                    {enabledCalendars.has(cal.id) && (
+                      <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 4L3 5.5 6.5 2" stroke="white" strokeWidth="1.2" strokeLinecap="round"/></svg>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-700 dark:text-white/70 truncate">{cal.summary}</span>
+                </label>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Calendar area */}

@@ -165,7 +165,13 @@ export function getUserGoogleClient(userId: string): InstanceType<typeof google.
   return client
 }
 
-export async function getUserCalendars(userId: string): Promise<{ id: string; summary: string; backgroundColor: string; primary: boolean }[]> {
+const GOOGLE_COLORS: Record<string, string> = {
+  '1':'#7986cb','2':'#33b679','3':'#8e24aa','4':'#e67c73',
+  '5':'#f6c026','6':'#f5511d','7':'#039be5','8':'#616161',
+  '9':'#3f51b5','10':'#0b8043','11':'#d60000'
+}
+
+export async function getUserCalendars(userId: string): Promise<{ id: string; summary: string; backgroundColor: string; foregroundColor: string; primary: boolean; accessRole: string }[]> {
   const client = getUserGoogleClient(userId)
   if (!client) return []
   try {
@@ -175,7 +181,9 @@ export async function getUserCalendars(userId: string): Promise<{ id: string; su
       id: c.id ?? '',
       summary: c.summary ?? '',
       backgroundColor: c.backgroundColor ?? '#6366f1',
+      foregroundColor: c.foregroundColor ?? '#ffffff',
       primary: !!(c.primary),
+      accessRole: c.accessRole ?? 'reader',
     }))
   } catch { return [] }
 }
@@ -185,7 +193,7 @@ export async function getUserCalendarEvents(
   calendarId: string,
   startDate: string,
   endDate: string
-): Promise<{ id: string; summary: string; start: string; end: string; allDay: boolean; color: string }[]> {
+): Promise<{ id: string; summary: string; start: string; end: string; allDay: boolean; color: string; location?: string; meetingLink?: string; calendarId: string }[]> {
   const client = getUserGoogleClient(userId)
   if (!client) return []
   try {
@@ -202,13 +210,24 @@ export async function getUserCalendarEvents(
       const startStr = ev.start?.dateTime ?? ev.start?.date ?? ''
       const endStr   = ev.end?.dateTime   ?? ev.end?.date   ?? ''
       const allDay   = !ev.start?.dateTime
+      const color    = ev.colorId ? (GOOGLE_COLORS[ev.colorId] ?? '#6366f1') : '#6366f1'
+      // Derive meeting link: prefer hangoutLink, else check location if it looks like a URL
+      let meetingLink: string | undefined
+      if (ev.hangoutLink) {
+        meetingLink = ev.hangoutLink
+      } else if (ev.location && /^https?:\/\//i.test(ev.location)) {
+        meetingLink = ev.location
+      }
       return {
         id: ev.id ?? crypto.randomUUID(),
         summary: ev.summary ?? '(No title)',
         start: startStr,
         end: endStr,
         allDay,
-        color: '#6366f1',
+        color,
+        location: ev.location ?? undefined,
+        meetingLink,
+        calendarId,
       }
     })
   } catch { return [] }

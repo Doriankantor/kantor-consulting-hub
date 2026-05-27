@@ -212,6 +212,17 @@ const api = {
     taskCount:   (boardId: string, userId: string) => ipcRenderer.invoke('boardMembers:taskCount', boardId, userId),
     listForUser: (userId: string) => ipcRenderer.invoke('boardMembers:listForUser', userId),
   },
+  personalTodo: {
+    list:       (userId: string) => ipcRenderer.invoke('personalTodo:list', userId),
+    create:     (item: { id: string; user_id: string; title: string; due_date?: string; due_time?: string }) => ipcRenderer.invoke('personalTodo:create', item),
+    complete:   (id: string) => ipcRenderer.invoke('personalTodo:complete', id),
+    uncomplete: (id: string) => ipcRenderer.invoke('personalTodo:uncomplete', id),
+    delete:     (id: string) => ipcRenderer.invoke('personalTodo:delete', id),
+  },
+  notificationPrefs: {
+    get:  (userId: string) => ipcRenderer.invoke('notificationPrefs:get', userId),
+    save: (userId: string, prefs: Record<string,unknown>) => ipcRenderer.invoke('notificationPrefs:save', userId, prefs),
+  },
   updater: {
     onAvailable:    (cb: (info: { version: string; releaseNotes?: string | null }) => void) =>
       ipcRenderer.on('updater:available', (_e, info) => cb(info)),

@@ -1748,6 +1748,190 @@ function registerBoardMembersHandlers() {
   })
 }
 
+// ── Personal To-Do ─────────────────────────────────────────────────────────
+
+function registerPersonalTodoHandlers() {
+  const db = () => getDatabase()
+
+  ipcMain.handle('personalTodo:list', (_e, userId: string) => {
+    return db().prepare('SELECT * FROM personal_todos WHERE user_id=? ORDER BY due_date ASC, due_time ASC, created_at DESC').all(userId)
+  })
+
+  ipcMain.handle('personalTodo:create', (_e, item: { id: string; user_id: string; title: string; due_date?: string; due_time?: string }) => {
+    db().prepare('INSERT INTO personal_todos (id, user_id, title, due_date, due_time) VALUES (?,?,?,?,?)')
+      .run(item.id, item.user_id, item.title, item.due_date ?? null, item.due_time ?? null)
+    return { ok: true }
+  })
+
+  ipcMain.handle('personalTodo:complete', (_e, id: string) => {
+    db().prepare('UPDATE personal_todos SET completed=1, completed_at=? WHERE id=?').run(new Date().toISOString(), id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('personalTodo:uncomplete', (_e, id: string) => {
+    db().prepare('UPDATE personal_todos SET completed=0, completed_at=NULL WHERE id=?').run(id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('personalTodo:delete', (_e, id: string) => {
+    db().prepare('DELETE FROM personal_todos WHERE id=?').run(id)
+    return { ok: true }
+  })
+}
+
+// ── Notification Prefs + Scheduler ─────────────────────────────────────────
+
+// Track sent reminders to avoid duplicates (in-memory, resets on restart)
+const sentReminders = new Set<string>()
+
+function registerNotificationSchedulerHandlers() {
+  ipcMain.handle('notificationPrefs:get', (_e, userId: string) => {
+    const row = getDatabase().prepare('SELECT * FROM notification_prefs WHERE user_id=?').get(userId) as any
+    if (!row) return { first_reminder_min: 60, second_reminder_min: 30, apply_calendar: 1, apply_tasks: 1, apply_personal: 1, email_prefs_json: '{}' }
+    return row
+  })
+
+  ipcMain.handle('notificationPrefs:save', (_e, userId: string, prefs: Record<string,unknown>) => {
+    const db = getDatabase()
+    const existing = db.prepare('SELECT user_id FROM notification_prefs WHERE user_id=?').get(userId)
+    if (existing) {
+      db.prepare('UPDATE notification_prefs SET first_reminder_min=?, second_reminder_min=?, apply_calendar=?, apply_tasks=?, apply_personal=?, email_prefs_json=? WHERE user_id=?')
+        .run(prefs.first_reminder_min ?? 60, prefs.second_reminder_min ?? 30, prefs.apply_calendar ?? 1, prefs.apply_tasks ?? 1, prefs.apply_personal ?? 1, typeof prefs.email_prefs_json === 'string' ? prefs.email_prefs_json : JSON.stringify(prefs.email_prefs_json ?? {}), userId)
+    } else {
+      db.prepare('INSERT INTO notification_prefs (user_id, first_reminder_min, second_reminder_min, apply_calendar, apply_tasks, apply_personal, email_prefs_json) VALUES (?,?,?,?,?,?,?)')
+        .run(userId, prefs.first_reminder_min ?? 60, prefs.second_reminder_min ?? 30, prefs.apply_calendar ?? 1, prefs.apply_tasks ?? 1, prefs.apply_personal ?? 1, typeof prefs.email_prefs_json === 'string' ? prefs.email_prefs_json : JSON.stringify(prefs.email_prefs_json ?? {}))
+    }
+    return { ok: true }
+  })
+}
+
+function fireSystemNotification(title: string, body: string) {
+  try {
+    const { Notification } = require('electron')
+    if (Notification.isSupported()) {
+      new Notification({ title, body, silent: false }).show()
+    }
+  } catch {}
+}
+
+async function sendReminderEmail(toEmail: string, subject: string, dateStr: string) {
+  try {
+    const gmailPass = getSetting('gmail_app_password')
+    if (!gmailPass || !toEmail) return
+    const nodemailer = await import('nodemailer')
+    const transporter = nodemailer.default.createTransport({ service: 'gmail', auth: { user: 'kantorconsulting.hub@gmail.com', pass: gmailPass } })
+    await transporter.sendMail({
+      from: '"Kantor Consulting Hub" <kantorconsulting.hub@gmail.com>',
+      to: toEmail,
+      subject,
+      html: `<div style="font-family:sans-serif;padding:24px"><h2>${subject}</h2><p>Date: ${dateStr}</p><p style="color:#888;font-size:12px">Kantor Consulting Hub</p></div>`,
+    })
+  } catch {}
+}
+
+async function checkAndSendReminders() {
+  const db = getDatabase()
+  const now = new Date()
+  const users = db.prepare('SELECT id, email FROM local_users WHERE status=?').all('active') as { id:string; email:string }[]
+
+  for (const user of users) {
+    const prefs = db.prepare('SELECT * FROM notification_prefs WHERE user_id=?').get(user.id) as any ?? { first_reminder_min: 60, second_reminder_min: 30, apply_calendar: 1, apply_tasks: 1, apply_personal: 1, email_prefs_json: '{}' }
+    const emailPrefs: Record<string,boolean> = (() => { try { return JSON.parse(prefs.email_prefs_json ?? '{}') } catch { return {} } })()
+    const reminderMins = [prefs.first_reminder_min, prefs.second_reminder_min].filter((m: number) => m > 0)
+
+    for (const mins of reminderMins) {
+      const windowStart = new Date(now.getTime() + (mins - 1) * 60_000)
+      const windowEnd   = new Date(now.getTime() + (mins + 1) * 60_000)
+      const ws = windowStart.toISOString().slice(0, 16)
+      const we = windowEnd.toISOString().slice(0, 16)
+
+      // Calendar events
+      if (prefs.apply_calendar) {
+        const events = db.prepare(`
+          SELECT id, title, start_date, meeting_link FROM calendar_events
+          WHERE start_date >= ? AND start_date <= ? AND all_day = 0
+        `).all(ws, we) as { id:string; title:string; start_date:string; meeting_link:string|null }[]
+
+        for (const ev of events) {
+          const key = `cal-${ev.id}-${mins}-${now.toISOString().slice(0,13)}`
+          if (sentReminders.has(key)) continue
+          sentReminders.add(key)
+
+          const body = `${mins >= 60 ? `${mins/60}h` : `${mins}min`} from now`
+
+          const attendeesRaw = db.prepare('SELECT attendees_json FROM calendar_events WHERE id=?').get(ev.id) as { attendees_json:string } | undefined
+          const attendeeIds: string[] = (() => { try { return (JSON.parse(attendeesRaw?.attendees_json ?? '[]') as {id:string}[]).map((a: {id:string}) => a.id) } catch { return [] } })()
+          const notifyUsers = attendeeIds.length > 0 ? attendeeIds : [user.id]
+
+          for (const uid of notifyUsers) {
+            createNotification({ user_id: uid, type: 'deadline', title: `Reminder: ${ev.title} in ${body}`, body: `Calendar event at ${ev.start_date.slice(11,16)}` })
+          }
+
+          fireSystemNotification(`Reminder: ${ev.title}`, `Starting in ${body}`)
+
+          if (emailPrefs['email_calendar_reminder'] !== false) {
+            sendReminderEmail(user.email, `Reminder: ${ev.title} in ${body}`, ev.start_date)
+          }
+        }
+      }
+
+      // Task deadlines
+      if (prefs.apply_tasks) {
+        const dueTasks = db.prepare(`
+          SELECT wt.id, wt.title, wt.due_date, wt.assignees_json FROM workspace_tasks wt
+          WHERE wt.due_date >= ? AND wt.due_date <= ? AND wt.completed_at IS NULL AND wt.archived=0
+        `).all(ws.slice(0,10), we.slice(0,10)) as { id:string; title:string; due_date:string; assignees_json:string }[]
+
+        for (const t of dueTasks) {
+          const key = `task-${t.id}-${mins}-${now.toISOString().slice(0,10)}`
+          if (sentReminders.has(key)) continue
+          sentReminders.add(key)
+
+          const body = `Due ${mins >= 60 ? `${mins/60}h` : `${mins}min`} from now`
+          const assigneeIds: string[] = (() => { try { return JSON.parse(t.assignees_json ?? '[]') } catch { return [] } })()
+          const notifyUsers = assigneeIds.length > 0 ? assigneeIds : ['local-admin']
+
+          for (const uid of notifyUsers) {
+            createNotification({ user_id: uid, type: 'deadline', title: `Reminder: ${t.title}`, body })
+          }
+          fireSystemNotification(`Task Deadline: ${t.title}`, body)
+
+          if (emailPrefs['email_task_deadline'] !== false) {
+            sendReminderEmail(user.email, `Task deadline reminder: ${t.title}`, t.due_date)
+          }
+        }
+      }
+
+      // Personal todos
+      if (prefs.apply_personal) {
+        const personalItems = db.prepare(`
+          SELECT id, title, due_date, due_time FROM personal_todos
+          WHERE user_id=? AND completed=0 AND due_date IS NOT NULL
+          AND (due_date || 'T' || COALESCE(due_time,'09:00')) >= ?
+          AND (due_date || 'T' || COALESCE(due_time,'09:00')) <= ?
+        `).all(user.id, ws, we) as { id:string; title:string; due_date:string; due_time:string|null }[]
+
+        for (const item of personalItems) {
+          const key = `personal-${item.id}-${mins}-${now.toISOString().slice(0,13)}`
+          if (sentReminders.has(key)) continue
+          sentReminders.add(key)
+
+          const body = `${mins >= 60 ? `${mins/60}h` : `${mins}min`} from now`
+          createNotification({ user_id: user.id, type: 'deadline', title: `Reminder: ${item.title}`, body })
+          fireSystemNotification(`Personal To-Do: ${item.title}`, `Due in ${body}`)
+        }
+      }
+    }
+  }
+}
+
+function startNotificationScheduler() {
+  setInterval(async () => {
+    try { await checkAndSendReminders() } catch (e) { console.warn('[scheduler]', e) }
+  }, 60_000)
+  setTimeout(() => checkAndSendReminders().catch(() => {}), 30_000)
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 
 export function registerIpcHandlers(): void {
@@ -1782,5 +1966,8 @@ export function registerIpcHandlers(): void {
   registerDriveConnectHandler()
   registerBoardMembersHandlers()
   registerTodoHandlers()
+  registerPersonalTodoHandlers()
+  registerNotificationSchedulerHandlers()
+  startNotificationScheduler()
   startTrashAutoDelete()
 }

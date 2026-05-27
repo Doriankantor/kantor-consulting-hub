@@ -81,6 +81,24 @@ export default function Settings() {
   const [showClaudeConnect, setShowClaudeConnect] = useState(false)
   const [teamKeyExists,     setTeamKeyExists]     = useState(false)
 
+  // ── Notification preferences ──────────────────────────────────────────────
+  const [notifPrefs, setNotifPrefs] = useState<{
+    first_reminder_min: number
+    second_reminder_min: number
+    apply_calendar: boolean
+    apply_tasks: boolean
+    apply_personal: boolean
+    emailPrefs: Record<string, boolean>
+  }>({
+    first_reminder_min: 60,
+    second_reminder_min: 30,
+    apply_calendar: true,
+    apply_tasks: true,
+    apply_personal: true,
+    emailPrefs: {},
+  })
+  const [notifSaving, setNotifSaving] = useState(false)
+
   // ── Drive ──────────────────────────────────────────────────────────────────
   const [driveConnected, setDriveConnected] = useState(false)
   const [driveAuthUrl,   setDriveAuthUrl]   = useState<string|null>(null)
@@ -248,6 +266,19 @@ export default function Settings() {
     window.api.drive.isConnected().then(setDriveConnected)
     window.api.app.getVersion().then(setAppVersion)
     window.api.settings.get('gmail_app_password').then(p => setGmailSaved(!!p))
+    if (localUser?.id) {
+      window.api.notificationPrefs.get(localUser.id).then(p => {
+        const emailPrefs: Record<string,boolean> = (() => { try { return JSON.parse(p.email_prefs_json ?? '{}') } catch { return {} } })()
+        setNotifPrefs({
+          first_reminder_min: p.first_reminder_min,
+          second_reminder_min: p.second_reminder_min,
+          apply_calendar: !!p.apply_calendar,
+          apply_tasks: !!p.apply_tasks,
+          apply_personal: !!p.apply_personal,
+          emailPrefs,
+        })
+      }).catch(() => {})
+    }
     if (isAdmin) { loadAreas(); loadTeam(); loadTemplates(); loadMatrix() }
     async function loadArchived() {
       setArchivedLoading(true)
@@ -354,6 +385,41 @@ export default function Settings() {
     setArchivedProjects(prev => prev.filter(b => b.id !== id))
     setArchiveMsg({ type: 'ok', text: `"${name}" permanently deleted.` })
     setTimeout(() => setArchiveMsg(null), 3000)
+  }
+
+  // Notification prefs
+  async function saveNotifPrefs(updated: typeof notifPrefs) {
+    if (!localUser?.id) return
+    setNotifSaving(true)
+    await window.api.notificationPrefs.save(localUser.id, {
+      first_reminder_min: updated.first_reminder_min,
+      second_reminder_min: updated.second_reminder_min,
+      apply_calendar: updated.apply_calendar ? 1 : 0,
+      apply_tasks: updated.apply_tasks ? 1 : 0,
+      apply_personal: updated.apply_personal ? 1 : 0,
+      email_prefs_json: JSON.stringify(updated.emailPrefs),
+    })
+    setNotifSaving(false)
+  }
+
+  function updateEmailPref(key: string, value: boolean) {
+    const updated = { ...notifPrefs, emailPrefs: { ...notifPrefs.emailPrefs, [key]: value } }
+    setNotifPrefs(updated)
+    saveNotifPrefs(updated)
+  }
+
+  function setAllEmailPrefs(value: boolean) {
+    const keys = [
+      'email_task_assigned','email_task_deadline','email_task_deadline_30','email_task_overdue',
+      'email_task_stage','email_task_completed','email_task_comment','email_task_mention',
+      'email_calendar_reminder','email_calendar_reminder_30','email_calendar_new','email_calendar_added',
+      'email_board_added','email_team_invited','email_team_removed',
+      'email_app_update','email_weekly_digest',
+    ]
+    const emailPrefs = Object.fromEntries(keys.map(k => [k, value]))
+    const updated = { ...notifPrefs, emailPrefs }
+    setNotifPrefs(updated)
+    saveNotifPrefs(updated)
   }
 
   // API key
@@ -1258,6 +1324,179 @@ export default function Settings() {
               </p>
             )}
           </div>
+        </Section>
+
+        {/* Notifications */}
+        <Section title="Notifications">
+          {/* Reminder Timing */}
+          <Row>
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">First reminder</p>
+              <p className="text-xs text-gray-500 dark:text-white/50 mt-0.5">When to send the first reminder before an event or deadline</p>
+            </div>
+            <select
+              value={notifPrefs.first_reminder_min}
+              onChange={e => {
+                const updated = { ...notifPrefs, first_reminder_min: parseInt(e.target.value) }
+                setNotifPrefs(updated)
+                saveNotifPrefs(updated)
+              }}
+              className="px-3 py-1.5 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none"
+            >
+              <option value={5}>5 minutes</option>
+              <option value={10}>10 minutes</option>
+              <option value={15}>15 minutes</option>
+              <option value={30}>30 minutes</option>
+              <option value={60}>1 hour</option>
+              <option value={120}>2 hours</option>
+              <option value={1440}>1 day</option>
+            </select>
+          </Row>
+          <Row>
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">Second reminder</p>
+              <p className="text-xs text-gray-500 dark:text-white/50 mt-0.5">Optional second reminder</p>
+            </div>
+            <select
+              value={notifPrefs.second_reminder_min}
+              onChange={e => {
+                const updated = { ...notifPrefs, second_reminder_min: parseInt(e.target.value) }
+                setNotifPrefs(updated)
+                saveNotifPrefs(updated)
+              }}
+              className="px-3 py-1.5 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm focus:outline-none"
+            >
+              <option value={0}>None</option>
+              <option value={5}>5 minutes</option>
+              <option value={10}>10 minutes</option>
+              <option value={15}>15 minutes</option>
+              <option value={30}>30 minutes</option>
+              <option value={60}>1 hour</option>
+              <option value={120}>2 hours</option>
+              <option value={1440}>1 day</option>
+            </select>
+          </Row>
+          <Row>
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">Apply reminders to</p>
+            </div>
+            <div className="flex items-center gap-4">
+              {[
+                { key: 'apply_calendar', label: 'Calendar' },
+                { key: 'apply_tasks', label: 'Tasks' },
+                { key: 'apply_personal', label: 'Personal' },
+              ].map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={(notifPrefs as any)[key]}
+                    onChange={e => {
+                      const updated = { ...notifPrefs, [key]: e.target.checked }
+                      setNotifPrefs(updated)
+                      saveNotifPrefs(updated)
+                    }}
+                    className="rounded border-gray-300 dark:border-white/20 text-indigo-500 w-4 h-4"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-white/75">{label}</span>
+                </label>
+              ))}
+            </div>
+          </Row>
+        </Section>
+
+        {/* Email Notifications */}
+        <Section title="Email Notifications">
+          <Row>
+            <div className="flex gap-3">
+              <button onClick={() => setAllEmailPrefs(true)} className="titlebar-no-drag px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition">Turn on all</button>
+              <button onClick={() => setAllEmailPrefs(false)} className="titlebar-no-drag px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition">Turn off all</button>
+            </div>
+            {notifSaving && <span className="text-xs text-gray-400 dark:text-white/40">Saving…</span>}
+          </Row>
+
+          {/* Task notifications */}
+          {[
+            { key: 'email_task_assigned',    label: 'Task assigned to you' },
+            { key: 'email_task_deadline',    label: 'Task deadline reminder (1st reminder)' },
+            { key: 'email_task_deadline_30', label: 'Task deadline reminder (2nd reminder)' },
+            { key: 'email_task_overdue',     label: 'Task overdue' },
+            { key: 'email_task_stage',       label: 'Task stage changed' },
+            ...(isAdmin ? [{ key: 'email_task_completed', label: 'Task completed (admin only)' }] : []),
+            { key: 'email_task_comment',  label: 'Comment on your task' },
+            { key: 'email_task_mention',  label: '@mention in a comment' },
+          ].map(({ key, label }) => (
+            <Row key={key}>
+              <span className="text-sm text-gray-700 dark:text-white/80">{label}</span>
+              <button
+                onClick={() => updateEmailPref(key, !(notifPrefs.emailPrefs[key] !== false))}
+                className={`titlebar-no-drag w-9 h-5 rounded-full transition-colors relative shrink-0 ${notifPrefs.emailPrefs[key] !== false ? 'bg-indigo-500' : 'bg-gray-200 dark:bg-white/[0.12]'}`}
+              >
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${notifPrefs.emailPrefs[key] !== false ? 'left-4' : 'left-0.5'}`} />
+              </button>
+            </Row>
+          ))}
+
+          {/* Calendar sub-header */}
+          <div className="px-5 py-2 border-b border-gray-100 dark:border-white/[0.06] bg-gray-50/50 dark:bg-white/[0.02]">
+            <p className="text-xs font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider">Calendar</p>
+          </div>
+          {[
+            { key: 'email_calendar_reminder',    label: 'Calendar event reminder (1st reminder)' },
+            { key: 'email_calendar_reminder_30', label: 'Calendar event reminder (2nd reminder)' },
+            { key: 'email_calendar_new',         label: 'New team calendar event created' },
+            { key: 'email_calendar_added',       label: 'You were added as an attendee' },
+          ].map(({ key, label }) => (
+            <Row key={key}>
+              <span className="text-sm text-gray-700 dark:text-white/80">{label}</span>
+              <button
+                onClick={() => updateEmailPref(key, !(notifPrefs.emailPrefs[key] !== false))}
+                className={`titlebar-no-drag w-9 h-5 rounded-full transition-colors relative shrink-0 ${notifPrefs.emailPrefs[key] !== false ? 'bg-indigo-500' : 'bg-gray-200 dark:bg-white/[0.12]'}`}
+              >
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${notifPrefs.emailPrefs[key] !== false ? 'left-4' : 'left-0.5'}`} />
+              </button>
+            </Row>
+          ))}
+
+          {/* Team sub-header */}
+          <div className="px-5 py-2 border-b border-gray-100 dark:border-white/[0.06] bg-gray-50/50 dark:bg-white/[0.02]">
+            <p className="text-xs font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider">Team</p>
+          </div>
+          {[
+            { key: 'email_board_added', label: 'You were added to a board' },
+            ...(isAdmin ? [
+              { key: 'email_team_invited', label: 'Team member invited (admin only)' },
+              { key: 'email_team_removed', label: 'Team member removed (admin only)' },
+            ] : []),
+          ].map(({ key, label }) => (
+            <Row key={key}>
+              <span className="text-sm text-gray-700 dark:text-white/80">{label}</span>
+              <button
+                onClick={() => updateEmailPref(key, !(notifPrefs.emailPrefs[key] !== false))}
+                className={`titlebar-no-drag w-9 h-5 rounded-full transition-colors relative shrink-0 ${notifPrefs.emailPrefs[key] !== false ? 'bg-indigo-500' : 'bg-gray-200 dark:bg-white/[0.12]'}`}
+              >
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${notifPrefs.emailPrefs[key] !== false ? 'left-4' : 'left-0.5'}`} />
+              </button>
+            </Row>
+          ))}
+
+          {/* System sub-header */}
+          <div className="px-5 py-2 border-b border-gray-100 dark:border-white/[0.06] bg-gray-50/50 dark:bg-white/[0.02]">
+            <p className="text-xs font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider">System</p>
+          </div>
+          {[
+            ...(isAdmin ? [{ key: 'email_app_update', label: 'App update available (admin only)' }] : []),
+            { key: 'email_weekly_digest', label: 'Weekly digest (every Monday 8am)' },
+          ].map(({ key, label }) => (
+            <Row key={key}>
+              <span className="text-sm text-gray-700 dark:text-white/80">{label}</span>
+              <button
+                onClick={() => updateEmailPref(key, !(notifPrefs.emailPrefs[key] !== false))}
+                className={`titlebar-no-drag w-9 h-5 rounded-full transition-colors relative shrink-0 ${notifPrefs.emailPrefs[key] !== false ? 'bg-indigo-500' : 'bg-gray-200 dark:bg-white/[0.12]'}`}
+              >
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${notifPrefs.emailPrefs[key] !== false ? 'left-4' : 'left-0.5'}`} />
+              </button>
+            </Row>
+          ))}
         </Section>
 
         {/* Updates */}

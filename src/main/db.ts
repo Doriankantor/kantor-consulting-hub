@@ -605,5 +605,32 @@ export function initDatabase(): void {
     );
   `)
 
+  // Personal to-do items (per user, not shared)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS personal_todos (
+      id          TEXT PRIMARY KEY,
+      user_id     TEXT NOT NULL,
+      title       TEXT NOT NULL,
+      due_date    TEXT,
+      due_time    TEXT,
+      completed   INTEGER DEFAULT 0,
+      completed_at DATETIME,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `)
+
+  // Notification preferences (per user)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notification_prefs (
+      user_id           TEXT PRIMARY KEY,
+      first_reminder_min  INTEGER DEFAULT 60,
+      second_reminder_min INTEGER DEFAULT 30,
+      apply_calendar      INTEGER DEFAULT 1,
+      apply_tasks         INTEGER DEFAULT 1,
+      apply_personal      INTEGER DEFAULT 1,
+      email_prefs_json    TEXT DEFAULT '{}'
+    );
+  `)
+
   console.log(`[DB] Initialized at ${dbPath}`)
 }

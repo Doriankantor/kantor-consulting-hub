@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
 // ── Color helpers ──────────────────────────────────────────────────────────
@@ -62,12 +62,11 @@ export default function BoardMembersPanel({ boardId, boardName, isAdmin, current
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [removeTaskCount, setRemoveTaskCount] = useState(0)
 
-  // Add member
-  const [addQuery, setAddQuery] = useState('')
+  // Team checklist state
   const [allTeam, setAllTeam] = useState<TeamMemberRow[]>([])
-  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [addQuery, setAddQuery] = useState('')
   const [adding, setAdding] = useState(false)
-  const addInputRef = useRef<HTMLInputElement>(null)
 
   async function loadMembers() {
     try {
@@ -84,27 +83,6 @@ export default function BoardMembersPanel({ boardId, boardName, isAdmin, current
     }).catch(() => {})
   }, [boardId])
 
-  // Filter suggestions: team members not already on board
-  const memberIds = new Set(members.map(m => m.user_id))
-  const suggestions = allTeam.filter(m => {
-    if (memberIds.has(m.id)) return false
-    if (!addQuery.trim()) return false
-    const q = addQuery.toLowerCase()
-    return (
-      (m.full_name ?? '').toLowerCase().includes(q) ||
-      m.email.toLowerCase().includes(q)
-    )
-  })
-
-  async function handleAdd(member: TeamMemberRow) {
-    setAdding(true)
-    await window.api.boardMembers.add(boardId, member.id, currentUserName)
-    setAddQuery('')
-    setDropdownOpen(false)
-    await loadMembers()
-    setAdding(false)
-  }
-
   async function startRemove(userId: string) {
     const count = await window.api.boardMembers.taskCount(boardId, userId)
     setRemoveTaskCount(count)
@@ -118,6 +96,45 @@ export default function BoardMembersPanel({ boardId, boardName, isAdmin, current
     await loadMembers()
   }
 
+  async function handleAddSelected() {
+    if (selected.size === 0) return
+    setAdding(true)
+    for (const id of selected) {
+      await window.api.boardMembers.add(boardId, id, currentUserName).catch(() => {})
+    }
+    setSelected(new Set())
+    await loadMembers()
+    setAdding(false)
+  }
+
+  const memberIds = new Set(members.map(m => m.user_id))
+
+  // Filtered team list for checklist
+  const filteredTeam = allTeam.filter(m => {
+    if (!addQuery.trim()) return true
+    const q = addQuery.toLowerCase()
+    return (m.full_name ?? '').toLowerCase().includes(q) || m.email.toLowerCase().includes(q)
+  })
+
+  const nonMembers = filteredTeam.filter(m => !memberIds.has(m.id))
+
+  function toggleSelected(id: string) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function selectAll() {
+    setSelected(new Set(nonMembers.map(m => m.id)))
+  }
+
+  function deselectAll() {
+    setSelected(new Set())
+  }
+
   const panel = (
     <>
       {/* Backdrop */}
@@ -127,12 +144,12 @@ export default function BoardMembersPanel({ boardId, boardName, isAdmin, current
       />
 
       {/* Panel */}
-      <div className="fixed top-0 right-0 bottom-0 z-50 w-80 bg-white dark:bg-[#1a2233] border-l border-gray-200 dark:border-white/[0.08] flex flex-col shadow-2xl">
+      <div className="fixed top-0 right-0 bottom-0 z-50 w-96 bg-white dark:bg-[#1a2233] border-l border-gray-200 dark:border-white/[0.08] flex flex-col shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-white/[0.06]">
           <div>
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">Board Members</h2>
-            <p className="text-xs text-gray-400 dark:text-white/50 mt-0.5">{members.length} member{members.length !== 1 ? 's' : ''}</p>
+            <p className="text-xs text-gray-400 dark:text-white/50 mt-0.5">{boardName} · {members.length} member{members.length !== 1 ? 's' : ''}</p>
           </div>
           <button
             onClick={onClose}
@@ -145,7 +162,7 @@ export default function BoardMembersPanel({ boardId, boardName, isAdmin, current
         </div>
 
         {/* Member list */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="overflow-y-auto border-b border-gray-100 dark:border-white/[0.06]" style={{ maxHeight: '40%' }}>
           {loading ? (
             <p className="text-sm text-gray-400 dark:text-white/50 text-center py-8">Loading…</p>
           ) : members.length === 0 ? (
@@ -160,7 +177,6 @@ export default function BoardMembersPanel({ boardId, boardName, isAdmin, current
 
                 return (
                   <div key={m.user_id} className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/[0.03] transition group">
-                    {/* Remove confirmation */}
                     {removingId === m.user_id ? (
                       <div className="space-y-2">
                         <p className="text-xs text-gray-700 dark:text-white/75 leading-relaxed">
@@ -169,52 +185,33 @@ export default function BoardMembersPanel({ boardId, boardName, isAdmin, current
                         </p>
                         {removeTaskCount > 0 && (
                           <p className="text-xs text-amber-600 dark:text-amber-400">
-                            Warning: {name} has {removeTaskCount} active task{removeTaskCount !== 1 ? 's' : ''} on this board. These will remain assigned to them.
+                            Warning: {name} has {removeTaskCount} active task{removeTaskCount !== 1 ? 's' : ''} on this board.
                           </p>
                         )}
                         <div className="flex gap-2 pt-1">
-                          <button
-                            onClick={confirmRemove}
-                            className="titlebar-no-drag flex-1 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-semibold transition"
-                          >
+                          <button onClick={confirmRemove} className="titlebar-no-drag flex-1 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-semibold transition">
                             Remove anyway
                           </button>
-                          <button
-                            onClick={() => setRemovingId(null)}
-                            className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.08] text-gray-600 dark:text-white/65 text-xs transition"
-                          >
+                          <button onClick={() => setRemovingId(null)} className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.08] text-gray-600 dark:text-white/65 text-xs transition">
                             Cancel
                           </button>
                         </div>
                       </div>
                     ) : (
                       <div className="flex items-center gap-3">
-                        {/* Avatar */}
-                        <div
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 select-none"
-                          style={{ backgroundColor: memberColor(m.user_id) }}
-                          title={name}
-                        >
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 select-none" style={{ backgroundColor: memberColor(m.user_id) }}>
                           {initials(name)}
                         </div>
-
-                        {/* Info */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <p className="text-sm font-medium text-gray-800 dark:text-white/90 truncate">{name}</p>
-                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${
-                              isAdminMember
-                                ? 'bg-indigo-50 dark:bg-indigo-500/15 border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400'
-                                : 'bg-gray-50 dark:bg-white/[0.05] border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/55'
-                            }`}>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${isAdminMember ? 'bg-indigo-50 dark:bg-indigo-500/15 border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400' : 'bg-gray-50 dark:bg-white/[0.05] border-gray-200 dark:border-white/10 text-gray-500 dark:text-white/55'}`}>
                               {isAdminMember ? 'Admin' : 'Member'}
                             </span>
                           </div>
                           <p className="text-xs text-gray-400 dark:text-white/45 truncate">{m.email}</p>
                           <p className="text-[10px] text-gray-300 dark:text-white/30 mt-0.5">Added {fmtDate(m.added_at)}</p>
                         </div>
-
-                        {/* Remove button */}
                         {canRemove && (
                           <button
                             onClick={() => startRemove(m.user_id)}
@@ -235,51 +232,95 @@ export default function BoardMembersPanel({ boardId, boardName, isAdmin, current
           )}
         </div>
 
-        {/* Add member (admin only) */}
+        {/* Add member checklist (admin only) */}
         {isAdmin && (
-          <div className="border-t border-gray-100 dark:border-white/[0.06] px-4 py-3">
-            <div className="relative">
-              <input
-                ref={addInputRef}
-                value={addQuery}
-                onChange={e => { setAddQuery(e.target.value); setDropdownOpen(true) }}
-                onFocus={() => addQuery && setDropdownOpen(true)}
-                onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
-                placeholder="Add team member…"
-                disabled={adding}
-                className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition disabled:opacity-50"
-              />
-              {adding && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
-              )}
+          <div className="flex-1 flex flex-col min-h-0 px-4 py-3 gap-2">
+            <p className="text-xs font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wider">Add Members</p>
 
-              {/* Dropdown */}
-              {dropdownOpen && suggestions.length > 0 && (
-                <div className="absolute bottom-full mb-1 left-0 right-0 bg-white dark:bg-[#1a2233] border border-gray-200 dark:border-white/[0.1] rounded-xl shadow-lg overflow-hidden z-10">
-                  {suggestions.map(m => {
-                    const name = m.full_name || m.email
-                    return (
-                      <button
-                        key={m.id}
-                        onMouseDown={() => handleAdd(m)}
-                        className="titlebar-no-drag w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-white/[0.05] transition text-left"
-                      >
-                        <div
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
-                          style={{ backgroundColor: memberColor(m.id) }}
-                        >
-                          {initials(name)}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-gray-800 dark:text-white/85 truncate">{name}</p>
-                          <p className="text-[10px] text-gray-400 dark:text-white/45 truncate">{m.email}</p>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
+            {/* Search */}
+            <input
+              value={addQuery}
+              onChange={e => setAddQuery(e.target.value)}
+              placeholder="Filter by name or email…"
+              className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition"
+            />
+
+            {/* Select all / Deselect all */}
+            {allTeam.length > members.length && (
+              <div className="flex gap-2">
+                <button
+                  onClick={selectAll}
+                  className="titlebar-no-drag text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  Select all
+                </button>
+                <span className="text-xs text-gray-300 dark:text-white/25">·</span>
+                <button
+                  onClick={deselectAll}
+                  className="titlebar-no-drag text-xs text-gray-400 dark:text-white/40 hover:underline"
+                >
+                  Deselect all
+                </button>
+              </div>
+            )}
+
+            {/* Checklist */}
+            <div className="flex-1 overflow-y-auto max-h-80 space-y-1">
+              {filteredTeam.map(m => {
+                const name = m.full_name || m.email
+                const isMember = memberIds.has(m.id)
+                const isChecked = isMember || selected.has(m.id)
+
+                return (
+                  <div
+                    key={m.id}
+                    onClick={() => { if (!isMember) toggleSelected(m.id) }}
+                    className={`flex items-center gap-3 px-2 py-2 rounded-xl transition cursor-pointer ${isMember ? 'opacity-60 cursor-default' : 'hover:bg-gray-50 dark:hover:bg-white/[0.04]'}`}
+                  >
+                    {/* Avatar */}
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                      style={{ backgroundColor: memberColor(m.id) }}
+                    >
+                      {initials(name)}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-gray-800 dark:text-white/85 truncate">{name}</p>
+                      <p className="text-[10px] text-gray-400 dark:text-white/40 truncate">{m.email}</p>
+                    </div>
+
+                    {/* Member badge or checkbox */}
+                    {isMember ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-500/10 border border-green-500/20 text-green-500 shrink-0">
+                        Member
+                      </span>
+                    ) : (
+                      <div className={`w-4 h-4 rounded border transition flex items-center justify-center shrink-0 ${isChecked ? 'bg-indigo-500 border-indigo-500' : 'border-gray-300 dark:border-white/25'}`}>
+                        {isChecked && (
+                          <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                            <path d="M1.5 4L3 5.5 6.5 2" stroke="white" strokeWidth="1.2" strokeLinecap="round"/>
+                          </svg>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              {filteredTeam.length === 0 && (
+                <p className="text-xs text-gray-400 dark:text-white/40 text-center py-4">No team members found.</p>
               )}
             </div>
+
+            {/* Add button */}
+            <button
+              onClick={handleAddSelected}
+              disabled={selected.size === 0 || adding}
+              className="titlebar-no-drag w-full py-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 text-white text-xs font-semibold transition"
+            >
+              {adding ? 'Adding…' : `Add selected${selected.size > 0 ? ` (${selected.size})` : ''}`}
+            </button>
           </div>
         )}
       </div>
