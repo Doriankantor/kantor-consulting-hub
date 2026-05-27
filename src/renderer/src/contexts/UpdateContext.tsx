@@ -1,23 +1,24 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
 
-export type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'uptodate'
+export type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'uptodate' | 'error'
 
 interface UpdateContextValue {
   state: UpdateState
   version: string | null
   percent: number
+  errorMsg: string | null
   lastChecked: number | null
   autoInstall: boolean
   releaseNotes: string | null
   dismissed: boolean
   checkNow: () => Promise<void>
-  downloadNow: () => void
+  downloadNow: () => Promise<void>
   setAutoInstall: (val: boolean) => void
   dismiss: () => void
 }
 
 const UpdateContext = createContext<UpdateContextValue>({
-  state: 'idle', version: null, percent: 0, lastChecked: null,
+  state: 'idle', version: null, percent: 0, errorMsg: null, lastChecked: null,
   autoInstall: true, releaseNotes: null, dismissed: false,
   checkNow: async () => {}, downloadNow: () => {},
   setAutoInstall: () => {}, dismiss: () => {},
@@ -27,6 +28,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
   const [state,        setState]        = useState<UpdateState>('idle')
   const [version,      setVersion]      = useState<string | null>(null)
   const [percent,      setPercent]      = useState(0)
+  const [errorMsg,     setErrorMsg]     = useState<string | null>(null)
   const [lastChecked,  setLastChecked]  = useState<number | null>(null)
   const [autoInstall,  setAutoInstallS] = useState(true)
   const [releaseNotes, setReleaseNotes] = useState<string | null>(null)
@@ -68,9 +70,10 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
       setState('ready')
     })
 
-    window.api.updater.onError(() => {
-      // Reset to idle on any error (catches stuck downloads too)
-      setState('idle')
+    window.api.updater.onError((err) => {
+      // Surface the error so user can see what went wrong + retry
+      setErrorMsg(err || 'Unknown error')
+      setState('error')
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -88,9 +91,20 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
     try { await window.api.updater.checkNow() } catch {}
   }, [])
 
-  const downloadNow = useCallback(() => {
+  const downloadNow = useCallback(async () => {
+    setErrorMsg(null)
+    setPercent(0)
     setState('downloading')
-    window.api.updater.downloadNow().catch(() => {})
+    try {
+      const result = await window.api.updater.downloadNow()
+      if (!result.ok && result.error) {
+        setErrorMsg(result.error)
+        setState('error')
+      }
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? 'Download failed')
+      setState('error')
+    }
   }, [])
 
   const dismiss = useCallback(() => {
@@ -108,7 +122,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
 
   return (
     <UpdateContext.Provider value={{
-      state, version, percent, lastChecked, autoInstall, releaseNotes, dismissed,
+      state, version, percent, errorMsg, lastChecked, autoInstall, releaseNotes, dismissed,
       checkNow, downloadNow, setAutoInstall, dismiss,
     }}>
       {children}

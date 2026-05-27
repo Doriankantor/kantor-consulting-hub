@@ -59,7 +59,7 @@ export default function Settings() {
   const { user, localUser, isAdmin, signOut } = useAuth()
   const { theme, setTheme, gradientTheme, setGradientTheme, lightTheme, setLightTheme } = useTheme()
   const { refreshAreas } = useWorkspace()
-  const { state: updateState, version: updateVersion, percent: updatePercent, lastChecked, autoInstall, releaseNotes, checkNow, downloadNow, setAutoInstall } = useUpdate()
+  const { state: updateState, version: updateVersion, percent: updatePercent, errorMsg: updateErrorMsg, lastChecked, autoInstall, releaseNotes, checkNow, downloadNow, setAutoInstall } = useUpdate()
 
   // ── API key ────────────────────────────────────────────────────────────────
   const [maskedKey,  setMaskedKey]  = useState<string | null>(null)
@@ -1294,21 +1294,32 @@ export default function Settings() {
                     )}
                   </div>
                 )}
+                {updateState === 'error' && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                    <span className="text-xs text-red-500 dark:text-red-400 font-medium">Update failed</span>
+                  </div>
+                )}
                 {(updateState === 'idle' || updateState === 'checking') && lastChecked && (
                   <p className="text-xs text-gray-400 dark:text-white/40">
                     Last checked: {formatLastChecked(lastChecked)}
                   </p>
                 )}
-                {lastChecked && updateState === 'uptodate' && (
+                {lastChecked && (updateState === 'uptodate' || updateState === 'error') && (
                   <p className="text-xs text-gray-400 dark:text-white/40">
                     Last checked: {formatLastChecked(lastChecked)}
+                  </p>
+                )}
+                {updateState === 'error' && updateErrorMsg && (
+                  <p className="text-[11px] text-red-400/80 dark:text-red-400/70 max-w-[200px] leading-snug">
+                    {updateErrorMsg}
                   </p>
                 )}
               </div>
 
               {/* Action buttons */}
               <div className="flex flex-col items-end gap-2 shrink-0">
-                {/* Update now / Restart — all users */}
+                {/* Update now */}
                 {updateState === 'available' && (
                   <button
                     onClick={downloadNow}
@@ -1317,20 +1328,26 @@ export default function Settings() {
                     Update now
                   </button>
                 )}
+
+                {/* Progress bar */}
                 {updateState === 'downloading' && (
-                  <div className="flex flex-col items-end gap-1 w-40">
+                  <div className="flex flex-col items-end gap-1 w-44">
                     <div className="flex items-center justify-between w-full">
-                      <span className="text-xs text-gray-400 dark:text-white/40">Downloading…</span>
-                      <span className="text-xs text-gray-400 dark:text-white/40 tabular-nums">{updatePercent}%</span>
+                      <span className="text-xs text-gray-400 dark:text-white/40">
+                        {updatePercent < 5 ? 'Preparing…' : updatePercent < 99 ? 'Downloading…' : 'Verifying…'}
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-white/50 tabular-nums font-medium">{updatePercent}%</span>
                     </div>
                     <div className="w-full h-1.5 rounded-full bg-gray-200 dark:bg-white/10 overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-indigo-500 transition-all duration-300"
-                        style={{ width: `${updatePercent}%` }}
+                        className="h-full rounded-full bg-indigo-500 transition-all duration-500"
+                        style={{ width: `${Math.max(updatePercent, 3)}%` }}
                       />
                     </div>
                   </div>
                 )}
+
+                {/* Restart & install */}
                 {updateState === 'ready' && (
                   <button
                     onClick={() => window.api.updater.install()}
@@ -1340,7 +1357,17 @@ export default function Settings() {
                   </button>
                 )}
 
-                {/* Check for updates — all users */}
+                {/* Error — retry button */}
+                {updateState === 'error' && (
+                  <button
+                    onClick={downloadNow}
+                    className="titlebar-no-drag px-3 py-1.5 rounded-lg text-xs bg-gray-100 dark:bg-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.13] text-gray-600 dark:text-white/70 font-medium transition"
+                  >
+                    Retry
+                  </button>
+                )}
+
+                {/* Check for updates */}
                 {updateState !== 'available' && updateState !== 'downloading' && updateState !== 'ready' && (
                   <button
                     onClick={checkNow}

@@ -74,28 +74,41 @@ app.whenReady().then(() => {
   }
 
   if (!is.dev) {
-    autoUpdater.autoDownload        = false   // user chooses "Update now"
+    autoUpdater.autoDownload         = false   // user chooses "Update now"
     autoUpdater.autoInstallOnAppQuit = getAutoInstallPref()
+    autoUpdater.allowPrerelease      = false
+    // Pipe electron-updater logs to console so we can diagnose issues
+    autoUpdater.logger = {
+      info:  (...args: unknown[]) => console.log('[Updater]',  ...args),
+      warn:  (...args: unknown[]) => console.warn('[Updater]', ...args),
+      error: (...args: unknown[]) => console.error('[Updater]',...args),
+      debug: (...args: unknown[]) => console.log('[Updater:debug]', ...args),
+    } as any
 
     autoUpdater.on('checking-for-update', () => {
+      console.log('[Updater] checking-for-update')
       mainWindow?.webContents.send('updater:checking')
     })
     autoUpdater.on('update-available', (info) => {
+      console.log('[Updater] update-available', info.version)
       saveLastChecked()
       mainWindow?.webContents.send('updater:available', { version: info.version, releaseNotes: info.releaseNotes ?? null })
     })
     autoUpdater.on('update-not-available', () => {
+      console.log('[Updater] up to date')
       saveLastChecked()
       mainWindow?.webContents.send('updater:notAvailable')
     })
     autoUpdater.on('download-progress', (progress) => {
+      console.log(`[Updater] download-progress ${Math.round(progress.percent)}% (${progress.transferred}/${progress.total})`)
       mainWindow?.webContents.send('updater:progress', { percent: Math.round(progress.percent) })
     })
     autoUpdater.on('update-downloaded', (info) => {
+      console.log('[Updater] update-downloaded', info.version)
       mainWindow?.webContents.send('updater:ready', { version: info.version })
     })
     autoUpdater.on('error', (err) => {
-      console.error('[Updater]', err.message)
+      console.error('[Updater] error:', err.message)
       mainWindow?.webContents.send('updater:error', err.message)
     })
 
