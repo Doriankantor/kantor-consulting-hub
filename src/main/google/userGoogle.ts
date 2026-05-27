@@ -128,7 +128,18 @@ export async function connectUserGoogle(userId: string): Promise<{ ok: boolean; 
     // Exchange code for tokens using the same client (same redirect URI)
     const { tokens } = await code.client.getToken(code.code)
     if (!tokens.refresh_token) {
-      return { ok: false, error: 'No refresh token — please revoke app access in your Google account and try again.' }
+      // Google withholds the refresh token when the user already authorized this app.
+      // The existing refresh token is still valid — just update the scopes to reflect re-auth.
+      const existing = getDatabase()
+        .prepare('SELECT refresh_token FROM user_google_tokens WHERE user_id=?')
+        .get(userId) as { refresh_token: string } | undefined
+      if (existing?.refresh_token) {
+        getDatabase()
+          .prepare("UPDATE user_google_tokens SET scopes=?, updated_at=CURRENT_TIMESTAMP WHERE user_id=?")
+          .run(SCOPES.join(' '), userId)
+        return { ok: true }
+      }
+      return { ok: false, error: 'No refresh token — please revoke app access at myaccount.google.com/permissions and try again.' }
     }
 
     getDatabase()
@@ -173,10 +184,19 @@ const GOOGLE_COLORS: Record<string, string> = {
 
 export async function getUserCalendars(userId: string): Promise<{ id: string; summary: string; backgroundColor: string; foregroundColor: string; primary: boolean; accessRole: string }[] | { needsReauth: true }> {
   const db = getDatabase()
-  const tokenRow = db.prepare('SELECT refresh_token, scopes FROM user_google_tokens WHERE user_id=?').get(userId) as { refresh_token: string; scopes: string | null } | undefined
+  let tokenRow: { refresh_token: string; scopes: string | null } | undefined
+  try {
+    tokenRow = db.prepare('SELECT refresh_token, scopes FROM user_google_tokens WHERE user_id=?').get(userId) as typeof tokenRow
+  } catch {
+    // scopes column missing on old installs — fall back to just refresh_token
+    try {
+      const r = db.prepare('SELECT refresh_token FROM user_google_tokens WHERE user_id=?').get(userId) as { refresh_token: string } | undefined
+      if (r) tokenRow = { refresh_token: r.refresh_token, scopes: null }
+    } catch { return { needsReauth: true } }
+  }
   if (!tokenRow) return { needsReauth: true }
 
-  // If stored scopes don't include calendar, force re-auth
+  // If we know the stored scopes and they don't include calendar, force re-auth
   if (tokenRow.scopes && !tokenRow.scopes.includes('calendar')) {
     return { needsReauth: true }
   }
@@ -195,10 +215,15 @@ export async function getUserCalendars(userId: string): Promise<{ id: string; su
       accessRole: c.accessRole ?? 'reader',
     }))
   } catch (e: any) {
-    // If it's an auth/scope error, signal re-auth needed
-    if (e.code === 401 || e.code === 403 || (e.message && (e.message.includes('invalid_grant') || e.message.includes('insufficient')))) {
-      return { needsReauth: true }
-    }
+    const msg: string = e.message ?? ''
+    // Only signal re-auth for genuine authentication/authorisation failures
+    const isAuthError =
+      e.code === 401 ||
+      msg.includes('invalid_grant') ||
+      msg.includes('Token has been expired') ||
+      (e.code === 403 && (msg.includes('insufficient') || msg.includes('forbidden') || msg.includes('scope')))
+    if (isAuthError) return { needsReauth: true }
+    // Other 403s (e.g. "Calendar API not enabled") or network errors → empty, don't force re-auth
     return []
   }
 }

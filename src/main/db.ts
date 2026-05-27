@@ -566,6 +566,8 @@ export function initDatabase(): void {
     user_id TEXT PRIMARY KEY, access_token TEXT, refresh_token TEXT NOT NULL,
     scopes TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`) } catch {}
+  // Add scopes column to existing installs that pre-date it
+  try { db.exec(`ALTER TABLE user_google_tokens ADD COLUMN scopes TEXT`) } catch {}
 
   // ── Board membership ─────────────────────────────────────────────────────
   try {
