@@ -1,5 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
+import { spawnSync } from 'child_process'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { initDatabase, getDatabase } from './db'
@@ -105,6 +106,15 @@ app.whenReady().then(() => {
     })
     autoUpdater.on('update-downloaded', (info) => {
       console.log('[Updater] update-downloaded', info.version)
+      // Strip macOS quarantine so Gatekeeper doesn't block installation on unsigned builds
+      if (process.platform === 'darwin' && (info as any).downloadedFile) {
+        try {
+          spawnSync('xattr', ['-cr', (info as any).downloadedFile])
+          console.log('[Updater] stripped quarantine from', (info as any).downloadedFile)
+        } catch (e) {
+          console.warn('[Updater] xattr strip failed:', e)
+        }
+      }
       mainWindow?.webContents.send('updater:ready', { version: info.version })
     })
     autoUpdater.on('error', (err) => {
@@ -118,6 +128,13 @@ app.whenReady().then(() => {
 
   // ── Updater IPC ─────────────────────────────────────────────────────────
   ipcMain.handle('updater:install', () => {
+    // Strip quarantine from the cached update directory before installing (unsigned builds)
+    if (process.platform === 'darwin') {
+      try {
+        const updateDir = app.getPath('userData').replace(/[^/]+$/, '') + 'electron-updater'
+        spawnSync('xattr', ['-cr', updateDir])
+      } catch {}
+    }
     autoUpdater.quitAndInstall()
   })
   ipcMain.handle('updater:checkNow', async () => {
