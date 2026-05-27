@@ -166,6 +166,31 @@ export function disconnectUserGoogle(userId: string): void {
   getDatabase().prepare('DELETE FROM user_google_tokens WHERE user_id=?').run(userId)
 }
 
+/** Diagnostic: returns raw error from Calendar API so we can show it in UI */
+export async function diagnoseUserGoogle(userId: string): Promise<{ ok: boolean; storedScopes: string | null; calendarError: string | null; tokenExists: boolean }> {
+  const db = getDatabase()
+  let tokenRow: { refresh_token: string; scopes: string | null } | undefined
+  try {
+    tokenRow = db.prepare('SELECT refresh_token, scopes FROM user_google_tokens WHERE user_id=?').get(userId) as typeof tokenRow
+  } catch {
+    try {
+      const r = db.prepare('SELECT refresh_token FROM user_google_tokens WHERE user_id=?').get(userId) as { refresh_token: string } | undefined
+      if (r) tokenRow = { refresh_token: r.refresh_token, scopes: null }
+    } catch {}
+  }
+  if (!tokenRow) return { ok: false, storedScopes: null, calendarError: 'No token found in database', tokenExists: false }
+
+  const client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, 'http://localhost')
+  client.setCredentials({ refresh_token: tokenRow.refresh_token })
+  try {
+    const cal = google.calendar({ version: 'v3', auth: client })
+    const res = await cal.calendarList.list({ minAccessRole: 'reader', maxResults: 1 })
+    return { ok: true, storedScopes: tokenRow.scopes, calendarError: null, tokenExists: true }
+  } catch (e: any) {
+    return { ok: false, storedScopes: tokenRow.scopes, calendarError: `${e.code ?? ''} ${e.message ?? String(e)}`, tokenExists: true }
+  }
+}
+
 export function getUserGoogleClient(userId: string): InstanceType<typeof google.auth.OAuth2> | null {
   const row = getDatabase()
     .prepare('SELECT refresh_token FROM user_google_tokens WHERE user_id=?')

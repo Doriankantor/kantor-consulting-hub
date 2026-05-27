@@ -734,6 +734,7 @@ export default function TeamCalendar() {
   const [googleEvents, setGoogleEvents] = useState<Record<string, {id:string; summary:string; start:string; end:string; allDay:boolean; color:string; location?:string; meetingLink?:string; calendarId:string}[]>>({})
   const [userGoogleConnected, setUserGoogleConnected] = useState(false)
   const [googleNeedsReauth, setGoogleNeedsReauth] = useState(false)
+  const [googleDiagError, setGoogleDiagError] = useState<string | null>(null)
   const [myTasks, setMyTasks] = useState<any[]>([])
 
   const year  = currentDate.getFullYear()
@@ -1097,20 +1098,37 @@ export default function TeamCalendar() {
                 <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium mb-1.5">
                   {googleNeedsReauth ? 'Re-connect Google to sync calendars' : 'Connect Google to see your calendars'}
                 </p>
+                {googleDiagError && (
+                  <p className="text-[9px] text-red-400 mb-1.5 break-words">{googleDiagError}</p>
+                )}
                 <button
                   onClick={() => {
                     if (!localUser?.id) return
-                    window.api.userGoogle.connect(localUser.id).then(r => {
+                    setGoogleDiagError(null)
+                    window.api.userGoogle.connect(localUser.id).then(async r => {
                       if (r.ok) {
+                        // Run diagnostic to surface any API errors
+                        const diag = await (window.api.userGoogle as any).diagnose(localUser.id).catch(() => null)
+                        if (diag && !diag.ok) {
+                          setGoogleDiagError(diag.calendarError ?? 'Unknown error — check Google Cloud Console')
+                          setGoogleNeedsReauth(true)
+                          return
+                        }
                         setUserGoogleConnected(true)
                         setGoogleNeedsReauth(false)
-                        window.api.userGoogle.getCalendars(localUser.id).then(result => {
-                          if (!('needsReauth' in result)) {
-                            setGoogleCalendars(result)
-                          }
-                        }).catch(() => {})
+                        const result = await window.api.userGoogle.getCalendars(localUser.id).catch(() => null)
+                        if (result && !('needsReauth' in result)) {
+                          setGoogleCalendars(result)
+                          setEnabledCalendars(prev => {
+                            const next = new Set(prev)
+                            for (const c of result) if (!next.has(c.id)) next.add(c.id)
+                            return next
+                          })
+                        }
+                      } else {
+                        setGoogleDiagError(r.error ?? 'Connection failed')
                       }
-                    }).catch(() => {})
+                    }).catch((e: any) => setGoogleDiagError(e?.message ?? 'Connection failed'))
                   }}
                   className="w-full px-2 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] font-semibold transition"
                 >

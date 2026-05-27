@@ -196,6 +196,7 @@ const api = {
     disconnect:        (userId: string) => ipcRenderer.invoke('userGoogle:disconnect', userId),
     getCalendars:      (userId: string) => ipcRenderer.invoke('userGoogle:getCalendars', userId),
     getCalendarEvents: (userId: string, calendarId: string, startDate: string, endDate: string, calendarColor?: string) => ipcRenderer.invoke('userGoogle:getCalendarEvents', userId, calendarId, startDate, endDate, calendarColor),
+    diagnose:          (userId: string) => ipcRenderer.invoke('userGoogle:diagnose', userId),
   },
   todo: {
     getMyTasks:   (userId: string) => ipcRenderer.invoke('todo:getMyTasks', userId),

@@ -118,12 +118,18 @@ export default function Todo() {
       const startDate = today.toISOString().slice(0, 10)
       const endDate = new Date(today.getTime() + 14 * 86400000).toISOString().slice(0, 10)
 
+      const now = Date.now()
       const items: CalendarItem[] = []
       for (const cal of cals) {
         if (!enabledSet.has(cal.id)) continue
         try {
           const evs = await window.api.userGoogle.getCalendarEvents(userId, cal.id, startDate, endDate, cal.backgroundColor)
           for (const ev of evs) {
+            // Skip timed meetings that have already ended (all-day events always show)
+            if (!ev.allDay && ev.end) {
+              const endMs = new Date(ev.end).getTime()
+              if (endMs < now) continue
+            }
             items.push({
               id: 'gcal-' + ev.id,
               type: 'calendar-event',
