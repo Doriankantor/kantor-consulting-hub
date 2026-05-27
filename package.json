@@ -9,8 +9,8 @@
     "preview": "electron-vite preview",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "package": "npm run build && electron-builder",
-    "make:mac": "npm run build && electron-builder --mac --arch universal",
-    "release": "npm run build && electron-builder --mac --arch universal --publish always"
+    "make:mac": "npm run build && electron-builder --mac --universal",
+    "release": "npm run build && electron-builder --mac --universal --publish always"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
