@@ -261,28 +261,8 @@ function registerTeamHandlers() {
       return { error: 'This email is already a team member.' }
     }
 
-    // ── Supabase admin invite ───────────────────────────────────────────────
-    console.log('[Invite] SUPABASE_URL:              ', process.env.SUPABASE_URL              ? '✓ set' : '✗ MISSING')
-    console.log('[Invite] SUPABASE_SERVICE_ROLE_KEY: ', process.env.SUPABASE_SERVICE_ROLE_KEY ? '✓ set' : '✗ MISSING')
-    console.log('[Invite] Inviting:', email)
-
+    // ── Create local SQLite record ────────────────────────────────────────
     try {
-      const { data, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-        data: { full_name: params.full_name ?? '' },
-      })
-
-      console.log('[Invite] Supabase response data: ', JSON.stringify(data))
-      console.log('[Invite] Supabase response error:', JSON.stringify(inviteError))
-
-      if (inviteError) {
-        console.error('[Invite] Supabase error full object:', inviteError)
-        if (inviteError.message?.toLowerCase().includes('already registered')) {
-          return { error: 'This email is already a team member.' }
-        }
-        return { error: `Invite failed: ${inviteError.message}` }
-      }
-
-      // ── Create local SQLite record so the member appears in the list ──────
       const id           = uuid()
       const salt         = randomBytes(16).toString('hex')
       const tempPassword = 'KC-' + Math.random().toString(36).slice(2, 8).toUpperCase()
@@ -293,8 +273,31 @@ function registerTeamHandlers() {
           VALUES (?,?,?,?,'invited',?,?,1,'local-admin')`)
         .run(id, email, params.full_name ?? '', params.role ?? 'member', hash, salt)
 
-      console.log('[Invite] Local record created, id:', id)
-      return { ok: true, id }
+      console.log('[Invite] Local record created, id:', id, 'tempPassword:', tempPassword)
+
+      // ── Send invite email with temp password ──────────────────────────────
+      try {
+        const emailResult = await sendEmail(
+          email,
+          "You've been invited to Kantor Consulting Hub",
+          inviteEmailHtml({
+            name: params.full_name ?? email,
+            email,
+            tempPassword,
+            appVersion: app.getVersion(),
+          })
+        )
+        if (!emailResult.ok) {
+          console.warn('[Invite] Email send failed:', emailResult.error)
+        } else {
+          console.log('[Invite] Invite email sent to', email)
+        }
+      } catch (emailErr) {
+        console.warn('[Invite] Email exception:', emailErr)
+        // Don't fail the invite if email sending fails — record is already created
+      }
+
+      return { ok: true, id, tempPassword }
 
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)

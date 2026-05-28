@@ -104,7 +104,9 @@ export default function Team() {
       if (result.error) {
         setMsg({ type: 'err', text: result.error })
       } else {
-        setMsg({ type: 'ok', text: `Invite sent to ${trimmedEmail}` })
+        const tempPw = (result as any).tempPassword
+        const pwNote = tempPw ? ` Temp password: ${tempPw}` : ''
+        setMsg({ type: 'ok', text: `Invite sent to ${trimmedEmail}.${pwNote}` })
         setEmail('')
         setName('')
         setRole('member')
@@ -145,7 +147,7 @@ export default function Team() {
               Invite a team member
             </h2>
             <p className="text-xs text-gray-500 dark:text-white/55 mb-4">
-              They'll receive a Supabase invite email to set their password and access the Hub.
+              They'll receive an email with a temporary password to log in and set their own.
               Only <code className="bg-gray-100 dark:bg-white/[0.08] px-1 rounded text-[11px]">@kantor-consulting.com</code> addresses are allowed.
             </p>
 
