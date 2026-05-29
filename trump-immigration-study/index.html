@@ -126,11 +126,23 @@ const DATA = {
       "h2Programs": {
         "term2": {
           "h2b": { "statutoryCap": 66000, "fy2026Supplemental": 64716, "detail": "FY2026 supplemental initially announced 35,000 (Dec 31 2025) then final rule (Feb 3 2026) authorized up to 64,716 (44,716 returning workers + 20,000 allocation).", "rule": "H-2 modernization rule (eff. Jan 17 2025): removed designated-country limit; new authority to deny petitioners with labor-law violations.", "source": { "agency": "Federal Register / USCIS", "dataAsOf": "2026-02", "url": "https://www.federalregister.gov/documents/2026/02/03/2026-02131/" } },
-          "h2a": { "cap": "uncapped", "detail": "New AEWR wage methodology for job orders posted after Sep 30 2025; same Jan 17 2025 modernization rule applies. FY2025 certified-position total: from DOL OFLC quarterly disclosure (not pulled).", "source": { "agency": "DOL OFLC", "dataAsOf": "2025", "url": "https://www.uscis.gov/working-in-the-united-states/temporary-workers/h-2b-temporary-non-agricultural-workers" } }
+          "h2a": { "cap": "uncapped", "certifiedPositions": { "fy2024": 384900, "fy2025": 398258, "changePct": 0.035, "note": "Ag guest-worker program GREW +3.5% even as F-1 issuances fell ~28% — a divergence worth noting." }, "detail": "New AEWR wage methodology for job orders posted after Sep 30 2025; Jan 17 2025 modernization rule applies.", "source": { "agency": "DOL OFLC Selected Statistics FY2025 Q4", "dataAsOf": "2025-09-30", "url": "https://www.dol.gov/sites/dolgov/files/ETA/oflc/pdfs/H-2A_Selected_Statistics_FY2025_Q4.pdf" } }
         }
       },
       "studentVisas": {
-        "term2": { "name": "F-1/M-1/J-1 vetting", "date": "2025-05-27", "detail": "State Dept paused new student/exchange visa interview scheduling (May 27 2025); resumed June 2025 with mandatory social-media vetting (accounts must be public). 73% of surveyed institutions anticipated a fall-2025 international-enrollment decline. Exact FY2025 F-1 issuance counts: State Visa Office NIV tables (not pulled).", "source": { "agency": "State Dept / EPI / NAFSA", "dataAsOf": "2025-06", "url": "https://travel.state.gov/content/travel/en/News/visas-news/announcement-of-expanded-screening-and-vetting-for-visa-applicants.html" } }
+        "term2": { "name": "F-1/M-1/J-1 vetting", "date": "2025-05-27", "detail": "State Dept paused new student/exchange visa interview scheduling (May 27 2025); resumed June 2025 with mandatory social-media vetting (accounts must be public). 73% of surveyed institutions anticipated a fall-2025 international-enrollment decline.", "source": { "agency": "State Dept / EPI / NAFSA", "dataAsOf": "2025-06", "url": "https://travel.state.gov/content/travel/en/News/visas-news/announcement-of-expanded-screening-and-vetting-for-visa-applicants.html" } }
+      },
+      "studentVisaIssuances": {
+        "summary": "F-1 student visas issued at consulates abroad, by fiscal year (issuances, not admissions or enrollment). FY2025 preliminary (summed from 12 monthly NIV reports; method validated to within 0.06% on FY2024).",
+        "metricLabel": "F-1 visas issued",
+        "series": [
+          { "fy": 2021, "issued": 357839 },
+          { "fy": 2022, "issued": 411131 },
+          { "fy": 2023, "issued": 445418 },
+          { "fy": 2024, "issued": 400737 },
+          { "fy": 2025, "issued": 287915, "note": "Preliminary; -28.2% vs FY2024. Summer (Jun-Aug) -40%, coinciding with the May 2025 interview pause + social-media vetting." }
+        ],
+        "source": { "agency": "State Dept Visa Office (Report of the Visa Office Table XV(B) for FY21-24; monthly NIV issuance reports for FY25)", "edition": "FY2024 RVO + FY2025 monthly", "dataAsOf": "2025-09-30", "url": "https://travel.state.gov/content/travel/en/legal/visa-law0/visa-statistics/nonimmigrant-visa-statistics/monthly-nonimmigrant-visa-issuances.html" }
       },
       "diversityVisa": {
         "term2": { "name": "Diversity Visa pause", "annualPool": "~51,600 (DV-2025/2026, reduced from 55,000 by NACARA/NDAA offsets)", "selectees": { "dv2025": 131060, "dv2026": 129516 }, "pause": { "date": "2025-12-23", "detail": "State Dept paused ALL diversity-visa issuances (applicants may still apply/interview; no DVs issued; previously issued not revoked) pending review of DV vetting." }, "source": { "agency": "State Dept Visa Office", "dataAsOf": "2025-12-23", "url": "https://travel.state.gov/content/travel/en/News/visas-news/diversity-visa-issuance-updated-guidance.html" } }
@@ -187,7 +199,8 @@ const DATA = {
           "arrestsDailyAvgLate2025": 1100,
           "arrestsWeeklyJan2026": 8000,
           "arrestsWeeklyLate2024Baseline": 2000,
-          "noCriminalRecordShare": "Over 1 in 3 deported from detention in 2025 had no criminal record; 70.8% of those detained Apr 2026 had no criminal conviction (TRAC)"
+          "noCriminalRecordShare": "Over 1 in 3 deported from detention in 2025 had no criminal record; 70.8% of those detained Apr 2026 had no criminal conviction (TRAC)",
+          "fy2025InteriorArrests": "Full-FY2025 ERO administrative-arrest line STILL PENDING (FY2025 ERO report not yet published). Partial FOIA data (Deportation Data Project): 217,518 total ICE arrests Jan 20–Oct 15 2025 (a partial-term window, not a fiscal-year figure). Last locked annual: FY2024 = 113,430."
         },
         "source": { "agency": "TRAC report #767 / Deportation Data Project / MPI / Axios / Washington Post", "edition": "Taking Stock (TRAC #767)", "dataAsOf": "2025-12", "url": "https://tracreports.org/reports/767/" }
       }
@@ -243,7 +256,7 @@ const DATA = {
       "trend": "Collapsed in COVID, then sharp rise across Term 2",
       "adp": [
         { "fy": 2017, "total": 38106, "term": "term1", "source": "Am. Immigration Council (DHS budget data)" },
-        { "fy": 2018, "total": 42000, "term": "term1", "note": "~42,000; sources conflict (39,322 planning vs ~42,188 budget actual)" },
+        { "fy": 2018, "total": 42188, "term": "term1", "note": "Locked actual (40,075 adult + 2,113 family), DHS FY2020 CBJ; 39,322 was a planning figure" },
         { "fy": 2019, "cbpArrested": 30050, "iceArrested": 20115, "total": 50165, "term": "term1" },
         { "fy": 2020, "cbpArrested": 17098, "iceArrested": 16626, "total": 33724, "term": "term1" },
         { "fy": 2021, "cbpArrested": 12020, "iceArrested": 7441, "total": 19461, "term": "term1/biden" },
@@ -419,15 +432,13 @@ const DATA = {
   },
 
   "openGaps": [
-    "Exact FY2018 ICE detention ADP (39,322 planning vs ~42,188 budget actual) — DHS FY2020 Congressional Budget Justification.",
-    "FY2025 interior administrative-arrest line item (ICE ERO arrest dataset, separate from detention workbook).",
-    "Exact FY2025 F-1 visa issuance counts (State Visa Office NIV tables) and FY2025 H-2A certified positions (DOL OFLC).",
-    "Full-year 2025 BEA new-FDI (edition due June 2026); 2025 financial-account FDI (delayed by shutdown).",
-    "Verified self-deportation count beyond the ~72,000 CBP Home app figure (DHS 1.6M+ remains an unverified inference)."
+    "FY2025 interior administrative-arrest line still pending official release (ICE ERO FY2025 report not yet published; FOIA-based Deportation Data Project shows 217,518 arrests Jan 20-Oct 15 2025, a partial-term window).",
+    "Full-year 2025 BEA new-FDI (edition due June 2026); 2025 financial-account FDI delayed by the 2025 govt shutdown.",
+    "Verified self-deportation count beyond the ~72,000 CBP Home app figure (DHS 1.6M+ remains an unverified CPS-based inference)."
   ]
 };
 
-/* ============================ helpers / atoms ============================ */
+/* ============================ helpers / atoms ============================ */ / atoms ============================ */
 const fmt = (n) => n == null ? "—" : n.toLocaleString("en-US");
 const fmtB = (n) => n == null ? "—" : "$" + (n/1e9).toFixed(1) + "B";
 const fmtT = (n) => n == null ? "—" : "$" + (n/1e12).toFixed(1) + "T";
@@ -642,6 +653,26 @@ function H1bChart({ d }) {
   );
 }
 
+function F1Chart({ d }) {
+  const rows = d.series.map(s => ({ fy: "FY" + s.fy, issued: s.issued }));
+  return (
+    <Card>
+      <ChartFrame title="F-1 student visas issued" note="Peaked FY2023 (445k), then fell to ~288k in FY2025 (-28% vs FY2024) — summer issuances down ~40% after the May 2025 interview pause + social-media vetting. FY2025 preliminary (monthly sum).">
+        <ResponsiveContainer>
+          <BarChart data={rows} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+            <CartesianGrid stroke="#1e293b" vertical={false} />
+            <XAxis dataKey="fy" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+            <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={v => v/1000 + "k"} />
+            <Tooltip contentStyle={tipStyle} formatter={v => fmt(v)} />
+            <Bar isAnimationActive={false} dataKey="issued" fill="#818cf8" radius={[3,3,0,0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartFrame>
+      <Src s={d.source} />
+    </Card>
+  );
+}
+
 function PolicyRecord({ view }) {
   const p = DATA.policyRecord;
   const showT1 = view !== "term2", showT2 = view !== "term1";
@@ -669,15 +700,16 @@ function PolicyRecord({ view }) {
           <h3 className="text-sm font-semibold text-slate-300 mb-2 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>Visas
           </h3>
-          <div className="grid lg:grid-cols-2 gap-3">
+          <div className="grid lg:grid-cols-3 gap-3">
             <RefugeeChart d={p.visas.refugeeCeilings} />
             <H1bChart d={p.visas.h1bDenialRates} />
+            <F1Chart d={p.visas.studentVisaIssuances} />
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
             <VisaCard title="H-1B $100k fee (T2)" body="New $100,000 fee on H-1B petitions for workers abroad (eff. 9/21/25). Upheld 12/23/25 (Judge Howell, within §212(f)); on appeal." s={p.visas.h1bFee.term2.source}/>
-            <VisaCard title="Student visas (T2)" body="F/M/J interview pause (5/27/25); resumed 6/25 with mandatory public-social-media vetting. 73% of institutions expected enrollment decline." s={p.visas.studentVisas.term2.source}/>
+            <VisaCard title="Student visas (T2)" body="F/M/J interview pause (5/27/25); resumed 6/25 with public-social-media vetting. F-1 issuances fell ~28% (401k→288k FY24→FY25)." s={p.visas.studentVisas.term2.source}/>
             <VisaCard title="Diversity Visa (T2)" body={"All DV issuances PAUSED 12/23/25 pending vetting review. Pool ~51,600; DV-2026 selectees " + fmt(p.visas.diversityVisa.term2.selectees.dv2026) + "."} s={p.visas.diversityVisa.term2.source}/>
-            <VisaCard title="H-2B cap (T2)" body="FY2026 supplemental: announced 35k (12/31/25), final rule raised to 64,716 (2/3/26). H-2 modernization rule eff. 1/17/25." s={p.visas.h2Programs.term2.h2b.source}/>
+            <VisaCard title="H-2A/H-2B (T2)" body={"H-2A certified positions GREW +3.5% (" + fmt(p.visas.h2Programs.term2.h2a.certifiedPositions.fy2025) + ", FY25) even as F-1 fell. H-2B FY26 supplemental finalized at 64,716."} s={p.visas.h2Programs.term2.h2a.source}/>
           </div>
         </div>
       </div>
