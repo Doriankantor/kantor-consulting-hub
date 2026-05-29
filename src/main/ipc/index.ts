@@ -1109,9 +1109,12 @@ function registerContactsHandlers() {
 
 function registerTemplatesHandlers() {
   const db = () => getDatabase()
-  ipcMain.handle('templates:list', () =>
-    db().prepare('SELECT * FROM task_templates ORDER BY is_builtin DESC, name ASC').all()
-  )
+  ipcMain.handle('templates:list', (_e, boardId?: string) => {
+    if (boardId) {
+      return db().prepare('SELECT * FROM task_templates WHERE board_id=? OR board_id IS NULL ORDER BY is_builtin DESC, name ASC').all(boardId)
+    }
+    return db().prepare('SELECT * FROM task_templates ORDER BY is_builtin DESC, name ASC').all()
+  })
   ipcMain.handle('templates:create', (_e, data: Record<string, unknown>) => {
     const id = uuid()
     db().prepare(`INSERT INTO task_templates (id,name,content_type,duration_days,checklist_json,is_builtin) VALUES (?,?,?,?,?,0)`)
@@ -1978,6 +1981,7 @@ export function registerIpcHandlers(): void {
   startNotificationScheduler()
   startTrashAutoDelete()
   registerIntelligenceHandlers()
+  registerInfoPageHandlers()
 }
 
 // ── Intelligence auto-refresh (called from main/index.ts after app ready) ──
@@ -2315,14 +2319,14 @@ ${textContent.slice(0, 8000)}`
   })
 
   ipcMain.handle('intelligence:getQueue', () => {
-    return db().prepare("SELECT * FROM intelligence_sources WHERE status='approved' ORDER BY queued_at DESC, reviewed_at DESC").all()
+    return db().prepare("SELECT * FROM intelligence_sources WHERE status='approved' ORDER BY added_at DESC, reviewed_at DESC").all()
   })
 
   ipcMain.handle('intelligence:getPushLog', () => {
     return db().prepare('SELECT * FROM intelligence_push_log ORDER BY pushed_at DESC LIMIT 50').all()
   })
 
-  ipcMain.handle('intelligence:pushToContestedSkies', async (_e, params: { pushedById: string; pushedByName: string }) => {
+  ipcMain.handle('intelligence:pushToContestedSkies', async (_e, params: { pushedById: string; pushedByName: string; }) => {
     const token = process.env.GH_TOKEN
     if (!token) return { ok: false, error: 'GH_TOKEN not configured in .env' }
 
@@ -2502,5 +2506,313 @@ ${textContent.slice(0, 8000)}`
     db().prepare("UPDATE intelligence_sources SET status='pushed' WHERE status='approved'").run()
 
     return { ok: true, count: items.length, sections }
+  })
+}
+
+// ── Info Pages ────────────────────────────────────────────────────────────
+
+export function registerInfoPageHandlers(): void {
+  const db = () => getDatabase()
+
+  ipcMain.handle('infoPages:list', () => {
+    return db().prepare("SELECT * FROM workspace_boards WHERE board_type='info-page' AND archived=0 ORDER BY position ASC").all()
+  })
+
+  ipcMain.handle('infoPages:getConfig', (_e, pageId: string) => {
+    const row = db().prepare('SELECT board_config FROM workspace_boards WHERE id=?').get(pageId) as { board_config: string | null } | undefined
+    try { return row?.board_config ? JSON.parse(row.board_config) : {} } catch { return {} }
+  })
+
+  ipcMain.handle('infoPages:saveConfig', (_e, pageId: string, config: Record<string, unknown>) => {
+    db().prepare("UPDATE workspace_boards SET board_config=?,updated_at=datetime('now') WHERE id=?").run(JSON.stringify(config), pageId)
+    return { ok: true }
+  })
+
+  ipcMain.handle('infoPages:create', (_e, params: { name: string; config: Record<string, unknown> }) => {
+    const { randomUUID } = require('crypto')
+    const id = randomUUID()
+    const maxPos = (db().prepare("SELECT MAX(position) as mp FROM workspace_boards WHERE board_type='info-page'").get() as { mp: number | null })?.mp ?? 49
+    db().prepare("INSERT INTO workspace_boards (id,name,position,board_type,board_config) VALUES (?,?,?,'info-page',?)").run(id, params.name, maxPos + 1, JSON.stringify(params.config || {}))
+    return { ok: true, id }
+  })
+
+  ipcMain.handle('infoPages:delete', (_e, pageId: string) => {
+    db().prepare('DELETE FROM workspace_boards WHERE id=?').run(pageId)
+    db().prepare('DELETE FROM info_page_items WHERE page_id=?').run(pageId)
+    db().prepare('DELETE FROM info_page_commits WHERE page_id=?').run(pageId)
+    db().prepare('DELETE FROM info_page_owners WHERE page_id=?').run(pageId)
+    return { ok: true }
+  })
+
+  ipcMain.handle('infoPages:getLastCommit', async (_e, repo: string) => {
+    if (!repo) return null
+    const token = process.env.GH_TOKEN
+    if (!token) return null
+    try {
+      const res = await fetch(`https://api.github.com/repos/${repo}/commits/main`, {
+        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+      })
+      if (!res.ok) return null
+      const data = await res.json() as { commit: { author: { date: string }; message: string } }
+      return { date: data.commit.author.date, message: data.commit.message }
+    } catch { return null }
+  })
+
+  ipcMain.handle('infoPages:getOwners', (_e, pageId: string) => {
+    return db().prepare(`
+      SELECT ipo.user_id, lu.full_name, lu.email, ipo.assigned_at
+      FROM info_page_owners ipo
+      LEFT JOIN local_users lu ON lu.id = ipo.user_id
+      WHERE ipo.page_id=?
+    `).all(pageId)
+  })
+
+  ipcMain.handle('infoPages:addOwner', (_e, pageId: string, userId: string, assignedBy: string) => {
+    db().prepare("INSERT OR IGNORE INTO info_page_owners (page_id,user_id,assigned_by) VALUES (?,?,?)").run(pageId, userId, assignedBy)
+    return { ok: true }
+  })
+
+  ipcMain.handle('infoPages:removeOwner', (_e, pageId: string, userId: string) => {
+    db().prepare("DELETE FROM info_page_owners WHERE page_id=? AND user_id=?").run(pageId, userId)
+    return { ok: true }
+  })
+
+  ipcMain.handle('infoPages:isOwner', (_e, pageId: string, userId: string) => {
+    const row = db().prepare("SELECT 1 FROM info_page_owners WHERE page_id=? AND user_id=?").get(pageId, userId)
+    return !!row
+  })
+
+  ipcMain.handle('infoPages:getItems', (_e, pageId: string, tab?: string) => {
+    if (tab) return db().prepare('SELECT * FROM info_page_items WHERE page_id=? AND tab=? ORDER BY created_at DESC').all(pageId, tab)
+    return db().prepare('SELECT * FROM info_page_items WHERE page_id=? ORDER BY created_at DESC').all(pageId)
+  })
+
+  ipcMain.handle('infoPages:addItem', (_e, item: {
+    page_id: string; tab: string; sub_type?: string; title?: string;
+    content_json?: string; priority?: string; proposed_section?: string;
+    confidence?: string; source_ref?: string; analysis_json?: string;
+    created_by_id?: string; created_by_name?: string
+  }) => {
+    const { randomUUID } = require('crypto')
+    const id = randomUUID()
+    db().prepare(`
+      INSERT INTO info_page_items (id,page_id,tab,sub_type,title,content_json,priority,proposed_section,confidence,source_ref,analysis_json,created_by_id,created_by_name)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).run(id, item.page_id, item.tab, item.sub_type||null, item.title||null,
+           item.content_json||'{}', item.priority||'medium', item.proposed_section||null,
+           item.confidence||null, item.source_ref||null, item.analysis_json||null,
+           item.created_by_id||null, item.created_by_name||null)
+    return { ok: true, id }
+  })
+
+  ipcMain.handle('infoPages:updateItem', (_e, id: string, updates: Record<string, unknown>) => {
+    const allowed = ['title','content_json','status','priority','proposed_section','confidence','source_ref','analysis_json']
+    const sets: string[] = ["updated_at=datetime('now')"]
+    const vals: unknown[] = []
+    for (const key of allowed) {
+      if (updates[key] !== undefined) { sets.push(`${key}=?`); vals.push(updates[key]) }
+    }
+    if (sets.length > 1) db().prepare(`UPDATE info_page_items SET ${sets.join(',')} WHERE id=?`).run(...vals, id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('infoPages:deleteItem', (_e, id: string) => {
+    db().prepare('DELETE FROM info_page_items WHERE id=?').run(id)
+    db().prepare('DELETE FROM info_page_commits WHERE item_id=?').run(id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('infoPages:commitItems', (_e, params: {
+    pageId: string; itemIds: string[]; submittedById: string; submittedByName: string
+  }) => {
+    const { randomUUID } = require('crypto')
+    for (const itemId of params.itemIds) {
+      db().prepare("INSERT OR IGNORE INTO info_page_commits (id,page_id,item_id,submitted_by_id,submitted_by_name) VALUES (?,?,?,?,?)")
+        .run(randomUUID(), params.pageId, itemId, params.submittedById, params.submittedByName)
+      db().prepare("UPDATE info_page_items SET status='committed',updated_at=datetime('now') WHERE id=?").run(itemId)
+    }
+    return { ok: true }
+  })
+
+  ipcMain.handle('infoPages:getCommits', (_e, pageId: string, status?: string) => {
+    const sql = status
+      ? `SELECT ipc.*, ipi.title, ipi.tab, ipi.sub_type, ipi.confidence, ipi.proposed_section, ipi.content_json
+         FROM info_page_commits ipc LEFT JOIN info_page_items ipi ON ipi.id=ipc.item_id
+         WHERE ipc.page_id=? AND ipc.status=? ORDER BY ipc.submitted_at DESC`
+      : `SELECT ipc.*, ipi.title, ipi.tab, ipi.sub_type, ipi.confidence, ipi.proposed_section, ipi.content_json
+         FROM info_page_commits ipc LEFT JOIN info_page_items ipi ON ipi.id=ipc.item_id
+         WHERE ipc.page_id=? ORDER BY ipc.submitted_at DESC`
+    return status ? db().prepare(sql).all(pageId, status) : db().prepare(sql).all(pageId)
+  })
+
+  ipcMain.handle('infoPages:reviewCommit', (_e, commitId: string, action: 'approve'|'reject', params: {
+    reviewedById: string; reviewedByName: string; rejectionNote?: string
+  }) => {
+    const now = new Date().toISOString()
+    const status = action === 'approve' ? 'approved' : 'rejected'
+    db().prepare("UPDATE info_page_commits SET status=?,reviewed_by_id=?,reviewed_by_name=?,reviewed_at=?,rejection_note=? WHERE id=?")
+      .run(status, params.reviewedById, params.reviewedByName, now, params.rejectionNote||null, commitId)
+    if (action === 'approve') {
+      const commit = db().prepare('SELECT item_id FROM info_page_commits WHERE id=?').get(commitId) as { item_id: string } | undefined
+      if (commit) db().prepare("UPDATE info_page_items SET status='approved',updated_at=datetime('now') WHERE id=?").run(commit.item_id)
+    }
+    return { ok: true }
+  })
+
+  ipcMain.handle('infoPages:adminReviewCommit', (_e, commitId: string, action: 'approve'|'reject', params: {
+    reviewedById: string; reviewedByName: string; rejectionNote?: string
+  }) => {
+    const now = new Date().toISOString()
+    const status = action === 'approve' ? 'admin_approved' : 'rejected'
+    db().prepare("UPDATE info_page_commits SET status=?,admin_approved=?,admin_reviewed_by=?,admin_reviewed_at=?,rejection_note=? WHERE id=?")
+      .run(status, action==='approve'?1:0, params.reviewedById, params.reviewedByName, params.rejectionNote||null, commitId)
+    if (action === 'approve') {
+      const commit = db().prepare('SELECT item_id FROM info_page_commits WHERE id=?').get(commitId) as { item_id: string } | undefined
+      if (commit) db().prepare("UPDATE info_page_items SET status='pending_admin',updated_at=datetime('now') WHERE id=?").run(commit.item_id)
+    }
+    return { ok: true }
+  })
+
+  ipcMain.handle('infoPages:getPublished', (_e, pageId: string) => {
+    return db().prepare('SELECT * FROM info_page_published WHERE page_id=? ORDER BY date_implemented DESC LIMIT 50').all(pageId)
+  })
+
+  ipcMain.handle('infoPages:logPublished', (_e, entry: {
+    pageId: string; whatChanged: string; committedById: string; committedByName: string;
+    approvedById: string; approvedByName: string; promptUsed: string; itemIds: string[]; commitCount: number
+  }) => {
+    const { randomUUID } = require('crypto')
+    db().prepare(`INSERT INTO info_page_published (id,page_id,what_changed,committed_by_id,committed_by_name,approved_by_id,approved_by_name,prompt_used,item_ids_json,commit_count) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+      .run(randomUUID(), entry.pageId, entry.whatChanged, entry.committedById, entry.committedByName,
+           entry.approvedById, entry.approvedByName, entry.promptUsed, JSON.stringify(entry.itemIds), entry.commitCount)
+    // Mark items as implemented
+    for (const id of entry.itemIds) {
+      db().prepare("UPDATE info_page_items SET status='implemented',updated_at=datetime('now') WHERE id=?").run(id)
+      db().prepare("UPDATE info_page_commits SET status='implemented' WHERE item_id=?").run(id)
+    }
+    return { ok: true }
+  })
+
+  ipcMain.handle('infoPages:analyzeWithClaude', async (_e, params: {
+    pageId: string; pageName: string; userId?: string;
+    sources: unknown[]; manualItems: unknown[]
+  }) => {
+    try {
+      const userRow = params.userId
+        ? db().prepare("SELECT preferences_json FROM local_users WHERE id=?").get(params.userId) as { preferences_json: string } | undefined
+        : undefined
+      const prefs = userRow?.preferences_json ? JSON.parse(userRow.preferences_json) : {}
+      const globalKey = db().prepare("SELECT value FROM settings WHERE key='anthropic_api_key'").get() as { value: string } | undefined
+      const apiKey = prefs.anthropicApiKey || globalKey?.value
+      if (!apiKey) return { ok: false, error: 'No Anthropic API key configured' }
+
+      const AnthropicLib = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk')
+      const client = new AnthropicLib({ apiKey })
+
+      const sourcesText = (params.sources as any[]).slice(0, 20).map((s: any, i: number) =>
+        `[Source ${i+1}] ${s.title || s.handle || 'Untitled'} (${s.source_name || s.platform || 'unknown'}, confidence: ${s.confidence || 'unknown'})\n${s.snippet || s.content?.slice(0,200) || ''}`
+      ).join('\n\n')
+
+      const manualText = (params.manualItems as any[]).slice(0, 10).map((m: any, i: number) => {
+        const c = m.content_json ? (typeof m.content_json === 'string' ? JSON.parse(m.content_json) : m.content_json) : {}
+        return `[Manual ${i+1}] ${m.sub_type?.toUpperCase() || 'INFO'}: ${m.title || ''}\n${c.text || c.content || c.key_quotes?.join(', ') || ''}`
+      }).join('\n\n')
+
+      const pageConfig = db().prepare('SELECT board_config FROM workspace_boards WHERE id=?').get(params.pageId) as { board_config: string | null } | undefined
+      const config = pageConfig?.board_config ? JSON.parse(pageConfig.board_config) : {}
+
+      const msg = await client.messages.create({
+        model: 'claude-opus-4-5',
+        max_tokens: 2048,
+        messages: [{
+          role: 'user',
+          content: `You are analyzing intelligence content for the "${params.pageName}" information page (website: ${config.live_url || 'unknown'}).
+
+Based on the sources and manual information below, generate a specific, actionable todo list of changes to make to the website. Format ONLY as valid JSON array:
+
+[
+  {
+    "action": "Add new incident entry at top of feed",
+    "section": "Incident Feed",
+    "detail": "Specific detail of what to add/change",
+    "confidence": "high|medium|low",
+    "source": "Which source this comes from",
+    "priority": "high|medium|low"
+  }
+]
+
+Website sections available: Incident Feed, Platforms & Capabilities, Investment & Procurement, Finance Nexus, Source Archive, Statistics
+
+SOURCES:
+${sourcesText || 'None'}
+
+MANUAL INFORMATION:
+${manualText || 'None'}
+
+Return ONLY the JSON array, no other text.`
+        }]
+      })
+
+      const responseText = msg.content[0]?.type === 'text' ? msg.content[0].text : '[]'
+      const jsonMatch = responseText.match(/\[[\s\S]*\]/)
+      const items = jsonMatch ? JSON.parse(jsonMatch[0]) : []
+      return { ok: true, items }
+    } catch (e: any) {
+      return { ok: false, error: e.message }
+    }
+  })
+
+  ipcMain.handle('infoPages:generatePrompt', (_e, params: {
+    pageName: string; pageRepo: string; items: Array<{
+      action: string; section: string; detail: string; confidence: string; source: string
+    }>
+  }) => {
+    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    const n = params.items.length
+
+    const changesList = params.items.map((item, i) => {
+      const section = item.section
+      const conf = item.confidence?.toUpperCase() || 'MEDIUM'
+      if (section === 'Incident Feed') {
+        return `${i+1}. In Section 02 (Incident Feed), add a new incident entry at the top of the feed:
+   - Description: ${item.detail}
+   - Confidence: ${conf} (${conf==='HIGH'?'green':conf==='MEDIUM'?'amber':'red'} badge)
+   - Source: ${item.source}`
+      } else if (section === 'Investment & Procurement') {
+        return `${i+1}. In Section 04 (Investment & Procurement), add a new procurement signal entry:
+   - Description: ${item.detail}
+   - Confidence: ${conf}
+   - Source: ${item.source}`
+      } else if (section === 'Source Archive') {
+        return `${i+1}. In Section 07 (Source Archive), add a new entry:
+   - Title: ${item.action}
+   - Detail: ${item.detail}
+   - Confidence: ${conf}
+   - Source: ${item.source}`
+      } else if (section === 'Platforms & Capabilities') {
+        return `${i+1}. In Section 03 (Platforms & Capabilities):
+   - ${item.detail}
+   - Source: ${item.source}`
+      } else if (section === 'Finance Nexus') {
+        return `${i+1}. In Section 05 (Finance Nexus), add a new entry:
+   - ${item.detail}
+   - Confidence: ${conf}
+   - Source: ${item.source}`
+      } else {
+        return `${i+1}. ${item.action} (${section}):
+   - ${item.detail}
+   - Confidence: ${conf}
+   - Source: ${item.source}`
+      }
+    }).join('\n\n')
+
+    const prompt = `Update the ${params.pageName} website (github.com/${params.pageRepo}).
+Implement the following specific changes:
+
+${changesList}
+
+Preserve all existing HTML structure, CSS, and visual design exactly. Only add the new content listed above. Do not remove any existing content. After implementing all changes, commit with message: "Intelligence update: ${today} — ${n} item${n!==1?'s':''}" and push to main branch.`
+
+    return { ok: true, prompt }
   })
 }

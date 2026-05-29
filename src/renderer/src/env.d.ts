@@ -189,8 +189,81 @@ interface TaskTemplate {
   duration_days: number
   checklist_json: string
   is_builtin: number
+  board_id?: string
   created_at: string
   updated_at: string
+}
+
+interface InfoPage {
+  id: string
+  name: string
+  position: number
+  archived: number
+  board_type: string
+  board_config: string | null
+  created_at: string
+  updated_at: string
+}
+
+interface InfoPageConfig {
+  repo?: string
+  live_url?: string
+  keywords?: string
+  status?: 'active' | 'setup-pending'
+}
+
+interface InfoPageItem {
+  id: string
+  page_id: string
+  tab: string
+  sub_type: string | null
+  title: string | null
+  content_json: string
+  status: string
+  priority: string
+  proposed_section: string | null
+  confidence: string | null
+  source_ref: string | null
+  analysis_json: string | null
+  created_by_id: string | null
+  created_by_name: string | null
+  created_at: string
+  updated_at: string
+}
+
+interface InfoPageCommit {
+  id: string
+  page_id: string
+  item_id: string
+  title: string | null
+  tab: string | null
+  sub_type: string | null
+  confidence: string | null
+  proposed_section: string | null
+  content_json: string | null
+  submitted_by_id: string | null
+  submitted_by_name: string | null
+  submitted_at: string
+  status: string
+  reviewed_by_id: string | null
+  reviewed_by_name: string | null
+  reviewed_at: string | null
+  rejection_note: string | null
+  admin_approved: number
+}
+
+interface InfoPagePublished {
+  id: string
+  page_id: string
+  what_changed: string
+  date_implemented: string
+  committed_by_id: string | null
+  committed_by_name: string | null
+  approved_by_id: string | null
+  approved_by_name: string | null
+  prompt_used: string | null
+  item_ids_json: string
+  commit_count: number
 }
 
 interface TrashItem {
@@ -428,7 +501,7 @@ interface Window {
       deleteContact: (contactId: string)                         => Promise<{ ok?: boolean }>
     }
     templates: {
-      list:   ()                                              => Promise<TaskTemplate[]>
+      list:   (boardId?: string)                             => Promise<TaskTemplate[]>
       create: (data: Record<string, unknown>)                => Promise<{ ok?: boolean; id?: string }>
       update: (id: string, data: Record<string, unknown>)   => Promise<{ ok?: boolean }>
       delete: (id: string)                                   => Promise<{ ok?: boolean }>
@@ -541,6 +614,30 @@ interface Window {
       dismiss:      (userId: string, taskId: string) => Promise<{ ok: boolean }>
       getDismissed: (userId: string) => Promise<string[]>
       uncomplete:   (taskId: string) => Promise<{ ok: boolean }>
+    }
+    infoPages: {
+      list:              ()                                                    => Promise<InfoPage[]>
+      getConfig:         (pageId: string)                                      => Promise<InfoPageConfig>
+      saveConfig:        (pageId: string, config: Record<string,unknown>)      => Promise<{ ok: boolean }>
+      create:            (params: { name: string; config: Record<string,unknown> }) => Promise<{ ok: boolean; id: string }>
+      delete:            (pageId: string)                                      => Promise<{ ok: boolean }>
+      getLastCommit:     (repo: string)                                        => Promise<{ date: string; message: string } | null>
+      getOwners:         (pageId: string)                                      => Promise<Array<{ user_id: string; full_name: string | null; email: string; assigned_at: string }>>
+      addOwner:          (pageId: string, userId: string, by: string)          => Promise<{ ok: boolean }>
+      removeOwner:       (pageId: string, userId: string)                      => Promise<{ ok: boolean }>
+      isOwner:           (pageId: string, userId: string)                      => Promise<boolean>
+      getItems:          (pageId: string, tab?: string)                        => Promise<InfoPageItem[]>
+      addItem:           (item: Record<string,unknown>)                        => Promise<{ ok: boolean; id: string }>
+      updateItem:        (id: string, updates: Record<string,unknown>)         => Promise<{ ok: boolean }>
+      deleteItem:        (id: string)                                          => Promise<{ ok: boolean }>
+      commitItems:       (params: { pageId: string; itemIds: string[]; submittedById: string; submittedByName: string }) => Promise<{ ok: boolean }>
+      getCommits:        (pageId: string, status?: string)                     => Promise<InfoPageCommit[]>
+      reviewCommit:      (commitId: string, action: 'approve'|'reject', params: Record<string,unknown>) => Promise<{ ok: boolean }>
+      adminReviewCommit: (commitId: string, action: 'approve'|'reject', params: Record<string,unknown>) => Promise<{ ok: boolean }>
+      getPublished:      (pageId: string)                                      => Promise<InfoPagePublished[]>
+      logPublished:      (entry: Record<string,unknown>)                       => Promise<{ ok: boolean }>
+      analyzeWithClaude: (params: Record<string,unknown>)                      => Promise<{ ok: boolean; items?: Array<{ action: string; section: string; detail: string; confidence: string; source: string; priority: string }>; error?: string }>
+      generatePrompt:    (params: Record<string,unknown>)                      => Promise<{ ok: boolean; prompt?: string }>
     }
     intelligence: {
       getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number }) => Promise<IntelligenceSource[]>

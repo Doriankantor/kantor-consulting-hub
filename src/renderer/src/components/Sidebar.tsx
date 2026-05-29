@@ -99,6 +99,15 @@ const IntelligenceIcon = () => (
   </svg>
 )
 
+const InfoPagesIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+    <rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+    <rect x="8" y="1.5" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+    <rect x="1.5" y="8" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+    <rect x="8" y="8" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+  </svg>
+)
+
 const TrashIcon = () => (
   <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
     <path d="M2.5 4.5h10M6 4.5V3h3v1.5M5 4.5l.5 8h4l.5-8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -336,6 +345,7 @@ export default function Sidebar() {
   const navItemsAfterWorkspace: NavItem[] = [
     { to: '/files',        label: 'Files',        icon: <FilesIcon /> },
     { to: '/intelligence', label: 'Intelligence', icon: <IntelligenceIcon />, badge: intelUnreviewed || undefined },
+    { to: '/info-pages',   label: 'Info Pages',   icon: <InfoPagesIcon /> },
     { to: '/contacts',     label: 'Contacts',     icon: <ContactsIcon /> },
     { to: '/calendar',  label: 'Calendar',  icon: <CalendarIcon /> },
     ...(isAdmin ? [{ to: '/analytics', label: 'Analytics', icon: <AnalyticsIcon /> }] : []),

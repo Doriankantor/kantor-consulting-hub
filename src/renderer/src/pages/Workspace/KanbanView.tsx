@@ -285,9 +285,10 @@ const CONTENT_TYPE_LABELS_SHORT: Record<string, string> = {
   'client-advisory':       'Client Advisory',
 }
 
-function KanbanColumn({ columnId, areas, autoEdit = false, onEditStart }: {
+function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart }: {
   columnId: string
   areas: Area[]
+  boardId?: string
   autoEdit?: boolean
   onEditStart?: () => void
 }) {
@@ -353,7 +354,7 @@ function KanbanColumn({ columnId, areas, autoEdit = false, onEditStart }: {
     setShowTemplatePicker(true)
     if (!templatesLoaded) {
       try {
-        const data = await window.api.templates.list()
+        const data = await window.api.templates.list(boardId)
         setTemplates(data)
         setTemplatesLoaded(true)
       } catch {}
@@ -554,7 +555,7 @@ function KanbanColumn({ columnId, areas, autoEdit = false, onEditStart }: {
 // ── Board ──────────────────────────────────────────────────────────────────
 
 export default function KanbanView() {
-  const { columns, tasks, moveTask, reorderWithinColumn, addColumn, areas } = useWorkspace()
+  const { columns, tasks, moveTask, reorderWithinColumn, addColumn, areas, activeBoard } = useWorkspace()
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   // Track the id of the column just added so we can auto-focus its name for editing
   const [newColumnId, setNewColumnId] = useState<string | null>(null)
@@ -615,6 +616,7 @@ export default function KanbanView() {
                   key={col.id}
                   columnId={col.id}
                   areas={areas}
+                  boardId={activeBoard?.id}
                   autoEdit={col.id === newColumnId}
                   onEditStart={() => setNewColumnId(null)}
                 />

@@ -1,0 +1,405 @@
+{
+  "meta": {
+    "title": "Trump Immigration Policy & Economic Impact — Interactive Study",
+    "purpose": "Test (not assume) how much Trump-era immigration policy affects the US economy. Must surface effects in either direction, including null/positive.",
+    "compiledAsOf": "2026-05-28",
+    "terms": {
+      "term1": { "label": "Term 1", "start": "2017-01-20", "end": "2021-01-20", "complete": true },
+      "term2": { "label": "Term 2", "start": "2025-01-20", "end": null, "complete": false, "monthsElapsedApprox": 16 }
+    },
+    "comparisonRules": [
+      "Never compare raw totals: Term 1 is 4 full years, Term 2 is partial (~16 months as of May 2026). Annualize or align to same-month-of-term.",
+      "COVID (2020) is a confounder large enough to distort migration AND economic series. Treat explicitly.",
+      "Every figure carries inline source (agency, edition, data-as-of). Unsourceable figures marked estimated/unavailable.",
+      "Economic section: no single 'damage' number. Each measure carries a visible attribution-strength rating + confounders."
+    ],
+    "verificationStatus": "Reviewed; gaps filled and two data-integrity corrections applied (travel exports, Cuba encounters)."
+  },
+
+  "policyRecord": {
+    "travelBans": {
+      "term1": {
+        "summary": "Three iterations restricting entry of nationals from designated, mostly Muslim-majority countries, on vetting/national-security grounds.",
+        "headline": "3 iterations; 7→6→country-specific; upheld by Supreme Court 2018",
+        "trend": "Implemented and ultimately upheld",
+        "events": [
+          { "name": "EO 13769 (Travel Ban 1.0)", "date": "2017-01-27", "mechanism": "Executive Order 13769", "detail": "90-day entry suspension for 7 countries (Iran, Iraq, Libya, Somalia, Sudan, Syria, Yemen); 120-day USRAP suspension; indefinite Syrian refugee ban.", "legalBasis": "INA 212(f), 215(a)" },
+          { "name": "EO 13780 (Travel Ban 2.0)", "date": "2017-03-06", "mechanism": "Executive Order 13780", "detail": "Superseded 13769; dropped Iraq -> 6 countries.", "legalBasis": "INA 212(f), 215(a)" },
+          { "name": "Proclamation 9645 (Travel Ban 3.0)", "date": "2017-09-24", "mechanism": "Presidential Proclamation 9645", "detail": "Indefinite, country-specific restrictions varying by visa type; Iran, Libya, Syria, Yemen, Somalia, Chad (later removed), plus North Korea and certain Venezuelan officials.", "legalBasis": "INA 212(f), 215(a)" }
+        ],
+        "litigation": [
+          { "case": "Trump v. Hawaii, 585 U.S. ___ (138 S. Ct. 2392)", "date": "2018-06-26", "outcome": "UPHELD Proclamation 9645, 5-4. Rational-basis review; executive deference under 212(f); rejected INA and Establishment Clause challenges. Controlling precedent for the 2025 bans." }
+        ],
+        "source": { "agency": "SCOTUS / Justia / CRS", "edition": "Slip opinion 17-965", "dataAsOf": "2018-06-26", "url": "https://www.supremecourt.gov/opinions/17pdf/17-965_h315.pdf" }
+      },
+      "term2": {
+        "summary": "Revived and then sharply expanded entry-restriction regime, structured around full vs partial restrictions per country.",
+        "headline": "19 countries (Jun 2025) → 19 full + 20 partial + Palestinian travel-doc holders (Jan 2026)",
+        "trend": "In effect and expanding; no successful challenge found as of May 2026",
+        "events": [
+          { "name": "June 2025 Travel Ban Proclamation", "date": "2025-06-04", "effective": "2025-06-09", "mechanism": "Presidential Proclamation (Jun 4, 2025)", "detail": "Full suspension for 12 countries (Afghanistan, Burma/Myanmar, Chad, Rep. of the Congo, Equatorial Guinea, Eritrea, Haiti, Iran, Libya, Somalia, Sudan, Yemen). Partial restriction for 7 (Burundi, Cuba, Laos, Sierra Leone, Togo, Turkmenistan, Venezuela).", "legalBasis": "INA 212(f), 215(a); 3 U.S.C. 301" },
+          { "name": "Proclamation 10998 (December 2025 Expansion)", "date": "2025-12-16", "effective": "2026-01-01", "mechanism": "Presidential Proclamation 10998 (90 FR 59717, Dec 19 2025)", "detail": "Expanded to 19 fully-restricted countries + Palestinian Authority travel-document holders, and 20 partially-restricted countries (= 39 country-level designations). Cite Federal Register text directly; secondary summaries vary (36/39) by how PA holders are counted.", "legalBasis": "INA 212(f), 215(a)" }
+        ],
+        "fullyRestricted": ["Afghanistan", "Burkina Faso", "Burma (Myanmar)", "Chad", "Republic of the Congo", "Equatorial Guinea", "Eritrea", "Haiti", "Iran", "Laos", "Libya", "Mali", "Niger", "Sierra Leone", "Somalia", "South Sudan", "Sudan", "Syria", "Yemen", "Palestinian Authority travel-document holders"],
+        "partiallyRestricted": ["Angola", "Antigua and Barbuda", "Benin", "Burundi", "Cote d'Ivoire", "Cuba", "Dominica", "Gabon", "The Gambia", "Malawi", "Mauritania", "Nigeria", "Senegal", "Tanzania", "Togo", "Tonga", "Turkmenistan", "Venezuela", "Zambia", "Zimbabwe"],
+        "partialNote": "Partial = entry suspended for immigrants + B-1/B-2/F/M/J nonimmigrants; consular officers reduce validity on other NIV categories. Turkmenistan exception: immigrants only.",
+        "litigation": [
+          { "case": "(none successful found)", "date": "2026-05", "outcome": "As of May 2026 no active injunction or ruling blocking the 2025 proclamations. Consistent with Trump v. Hawaii deference. Criticism documented (NPR, JURIST, Am. Immigration Council) but no court block." }
+        ],
+        "source": { "agency": "Federal Register / CRS / NAFSA", "edition": "Proclamation 10998 (90 FR 59717)", "dataAsOf": "2025-12-19", "url": "https://www.congress.gov/crs-product/IN12631" }
+      }
+    },
+
+    "visas": {
+      "refugeeCeilings": {
+        "summary": "Annual refugee admission ceiling (Presidential Determination) vs actual admissions.",
+        "metricLabel": "Refugee ceiling vs actual admissions, by fiscal year",
+        "series": [
+          { "fy": 2017, "ceiling": 50000, "ceilingNote": "Obama set 110,000; Trump lowered to 50,000", "actual": 53700, "term": "term1" },
+          { "fy": 2018, "ceiling": 45000, "actual": 22491, "term": "term1" },
+          { "fy": 2019, "ceiling": 30000, "actual": 30000, "term": "term1" },
+          { "fy": 2020, "ceiling": 18000, "actual": 11814, "term": "term1" },
+          { "fy": 2021, "ceiling": 15000, "actual": 11411, "term": "term1", "note": "Lowest in USRAP history at the time" },
+          { "fy": 2026, "ceiling": 7500, "actual": null, "term": "term2", "note": "New record low; allocated primarily to white South African Afrikaners. Actual in progress (UNAVAILABLE)." }
+        ],
+        "source": { "agency": "State Dept Presidential Determinations / Global Refuge / MPI / CRS R47399", "edition": "FY2026 PD (Oct 30, 2025)", "dataAsOf": "2025-10-30", "url": "https://www.congress.gov/crs-product/R47399" }
+      },
+      "refugeeSuspension": {
+        "term2": { "mechanism": "EO 14163", "date": "2025-01-20", "effective": "2025-01-27", "detail": "Realigning USRAP — suspended refugee admissions; processing/funding/travel halted.",
+          "litigation": [
+            { "case": "Pacito v. Trump (W.D. Wash.)", "date": "2026-03-05", "outcome": "Ninth Circuit largely REVERSED district PIs: government must continue funding domestic resettlement services but need NOT resume processing refugees approved before the ban. Case open; Apr 7 2026 plaintiffs moved to amend (alleged Afrikaner-preference discrimination)." }
+          ],
+          "source": { "agency": "White House / IRAP / Ninth Circuit", "edition": "Pacito v. Trump docket", "dataAsOf": "2026-04-07", "url": "https://refugeerights.org/news-resources/pacito-v-trump-challenging-trumps-suspension-of-usrap" }
+        }
+      },
+      "h1bDenialRates": {
+        "summary": "H-1B petition denial rate for initial (new) employment, by fiscal year. Shows the Term-1 rise and post-litigation fall.",
+        "metricLabel": "H-1B denial rate, initial employment (%)",
+        "series": [
+          { "fy": 2015, "rate": 6 }, { "fy": 2016, "rate": 10 }, { "fy": 2017, "rate": 13 },
+          { "fy": 2018, "rate": 24 }, { "fy": 2019, "rate": 21 }, { "fy": 2020, "rate": 30, "note": "Q1 only; full-year fell to ~13% after ITServe Alliance v. Cuccinelli settlement forced rescission of restrictive memos" }
+        ],
+        "source": { "agency": "NFAP (USCIS H-1B Employer Data Hub)", "edition": "NFAP Policy Brief May 2020, Table 1", "dataAsOf": "2020-05", "url": "https://nfap.com/wp-content/uploads/2020/05/H-1B-Denial-Rates-and-Numerical-Limits-as-Indicators-of-Current-Restrictions.NFAP-Policy-Brief.May-2020-1.pdf" }
+      },
+      "h1bFee": {
+        "term2": { "name": "H-1B $100,000 fee Proclamation", "date": "2025-09-19", "effective": "2025-09-21", "detail": "New $100,000 fee on new H-1B petitions for workers outside the US.",
+          "litigation": [
+            { "case": "U.S. Chamber of Commerce + AAU; 20-state AG coalition; advocacy orgs (N.D. Cal.)", "date": "2025-12-23", "outcome": "U.S. District Judge Beryl A. Howell UPHELD the fee as within 212(f) delegation. Appeal launched. Fee in effect, on appeal." }
+          ],
+          "source": { "agency": "Global Immigration Blog / Bloomberg Law / CA DOJ", "dataAsOf": "2025-12-23", "url": "https://www.globalimmigrationblog.com/2025/12/federal-court-upholds-trump-administration-100000-fee-for-certain-h-1b-petitions/" }
+        }
+      },
+      "h2Programs": {
+        "term2": {
+          "h2b": { "statutoryCap": 66000, "fy2026Supplemental": 64716, "detail": "FY2026 supplemental initially announced 35,000 (Dec 31 2025) then final rule (Feb 3 2026) authorized up to 64,716 (44,716 returning workers + 20,000 allocation).", "rule": "H-2 modernization rule (eff. Jan 17 2025): removed designated-country limit; new authority to deny petitioners with labor-law violations.", "source": { "agency": "Federal Register / USCIS", "dataAsOf": "2026-02", "url": "https://www.federalregister.gov/documents/2026/02/03/2026-02131/" } },
+          "h2a": { "cap": "uncapped", "certifiedPositions": { "fy2024": 384900, "fy2025": 398258, "changePct": 0.035, "note": "Ag guest-worker program GREW +3.5% even as F-1 issuances fell ~28% — a divergence worth noting." }, "detail": "New AEWR wage methodology for job orders posted after Sep 30 2025; Jan 17 2025 modernization rule applies.", "source": { "agency": "DOL OFLC Selected Statistics FY2025 Q4", "dataAsOf": "2025-09-30", "url": "https://www.dol.gov/sites/dolgov/files/ETA/oflc/pdfs/H-2A_Selected_Statistics_FY2025_Q4.pdf" } }
+        }
+      },
+      "studentVisas": {
+        "term2": { "name": "F-1/M-1/J-1 vetting", "date": "2025-05-27", "detail": "State Dept paused new student/exchange visa interview scheduling (May 27 2025); resumed June 2025 with mandatory social-media vetting (accounts must be public). 73% of surveyed institutions anticipated a fall-2025 international-enrollment decline.", "source": { "agency": "State Dept / EPI / NAFSA", "dataAsOf": "2025-06", "url": "https://travel.state.gov/content/travel/en/News/visas-news/announcement-of-expanded-screening-and-vetting-for-visa-applicants.html" } }
+      },
+      "studentVisaIssuances": {
+        "summary": "F-1 student visas issued at consulates abroad, by fiscal year (issuances, not admissions or enrollment). FY2025 preliminary (summed from 12 monthly NIV reports; method validated to within 0.06% on FY2024).",
+        "metricLabel": "F-1 visas issued",
+        "series": [
+          { "fy": 2021, "issued": 357839 },
+          { "fy": 2022, "issued": 411131 },
+          { "fy": 2023, "issued": 445418 },
+          { "fy": 2024, "issued": 400737 },
+          { "fy": 2025, "issued": 287915, "note": "Preliminary; -28.2% vs FY2024. Summer (Jun-Aug) -40%, coinciding with the May 2025 interview pause + social-media vetting." }
+        ],
+        "source": { "agency": "State Dept Visa Office (Report of the Visa Office Table XV(B) for FY21-24; monthly NIV issuance reports for FY25)", "edition": "FY2024 RVO + FY2025 monthly", "dataAsOf": "2025-09-30", "url": "https://travel.state.gov/content/travel/en/legal/visa-law0/visa-statistics/nonimmigrant-visa-statistics/monthly-nonimmigrant-visa-issuances.html" }
+      },
+      "diversityVisa": {
+        "term2": { "name": "Diversity Visa pause", "annualPool": "~51,600 (DV-2025/2026, reduced from 55,000 by NACARA/NDAA offsets)", "selectees": { "dv2025": 131060, "dv2026": 129516 }, "pause": { "date": "2025-12-23", "detail": "State Dept paused ALL diversity-visa issuances (applicants may still apply/interview; no DVs issued; previously issued not revoked) pending review of DV vetting." }, "source": { "agency": "State Dept Visa Office", "dataAsOf": "2025-12-23", "url": "https://travel.state.gov/content/travel/en/News/visas-news/diversity-visa-issuance-updated-guidance.html" } }
+      },
+      "publicCharge": {
+        "term1": { "name": "Public Charge Final Rule (DHS 2019)", "date": "2019-08", "detail": "Set Oct 15, 2019; enjoined by 5 district courts; implemented Feb 24, 2020; government abandoned defense Mar 9, 2021, rule vacated.", "source": { "agency": "Federal Register / CRS", "dataAsOf": "2021-03-09", "url": "https://www.federalregister.gov/" } },
+        "covidProclamations": "Proc. 10014 (Apr 22 2020, immigrant visas); Proc. 10052 (Jun 22 2020, H-1B/H-2B/L-1/J-1) through Dec 31 2020. NAM v. Trump enjoined only for plaintiff orgs."
+      }
+    },
+
+    "borderConstruction": {
+      "term1": {
+        "summary": "Border-wall construction; mileage disputed by counting method (new vs replacement).",
+        "headline": "~69 mi new wall (GAO); ~458 total mi incl. replacement (CBP)",
+        "trend": "Built largely via emergency fund diversions; diversions later ruled unlawful/settled",
+        "miles": { "newWallGAO": 69, "totalBarrierCBP": 458, "note": "Majority (~351 mi primary + 22 mi secondary) was REPLACEMENT of existing barrier, not new mileage. PolitiFact stricter count: 52 mi new primary + 33 mi new secondary." },
+        "funding": { "congressional": 1400000000, "dodCounterdrug": 2500000000, "dodMilcon": 3600000000, "mechanism": "National Emergency declared Feb 15, 2019 (10 U.S.C. 2808 milcon, 284 counterdrug) + Treasury forfeiture funds." },
+        "litigation": [
+          { "case": "Sierra Club v. Trump / California v. Trump", "date": "2019-07-26", "outcome": "SCOTUS stayed injunction (construction continued). Ninth Circuit later ruled $3.6B milcon diversion unlawful. Biden terminated emergency Jan 20, 2021 (cases mooted). 2023 settlement over illegal transfers." }
+        ],
+        "source": { "agency": "GAO 2021 audit / CRS R45908", "edition": "GAO border-barrier audit 2021", "dataAsOf": "2023", "url": "https://www.congress.gov/crs-product/R45908" }
+      },
+      "term2": {
+        "summary": "New permanent barrier construction funded by direct Congressional appropriation (not emergency diversion).",
+        "headline": "~25 mi built as of Jan 2026; 80+ mi initiated; $46.5B appropriated",
+        "trend": "Active construction, slower-than-promised start",
+        "miles": { "newConstructedAsOfJan2026": 25, "projectsInitiated": 80, "paceMiPerWeek": 2, "targetMiPerWeek": 10 },
+        "funding": { "appropriation": 46500000000, "mechanism": "One Big Beautiful Bill Act, signed Jul 4, 2025 ($46.5B Smart Wall). Direct appropriation = lower litigation exposure than Term 1.", "contracts": "Oct 2025: 10 contracts, $4.5B for 230 mi. Granite (~$70.2M, ~7 mi, TX, Mar); Fisher (~$309M, ~27 mi, AZ, Jun)." },
+        "litigation": [
+          { "case": "(none comparable found)", "outcome": "No funding-diversion litigation; funding directly appropriated." }
+        ],
+        "source": { "agency": "CBP Smart Wall Map / White House / PolitiFact / Washington Times", "edition": "CBP Historic First Year", "dataAsOf": "2026-01-27", "url": "https://www.cbp.gov/border-security/along-us-borders/smart-wall-map" },
+        "note": "DHS Sec. Mullin (May 2026) projected primary wall complete Apr-Jun 2027."
+      }
+    },
+
+    "iceDeployment": {
+      "term1": {
+        "summary": "Interior enforcement posture: rescinded prosecutorial-discretion priorities ('anyone removable is a priority').",
+        "headline": "ERO admin arrests FY2017 143,470 (+30% YoY)",
+        "trend": "Elevated interior arrests/removals; FY2020 drop attributed partly to Title 42 reducing CBP referrals",
+        "adminArrests": [
+          { "fy": 2017, "value": 143470, "note": "+30% YoY" },
+          { "fy": 2018, "value": 158581, "note": "+11%" }
+        ],
+        "source": { "agency": "ICE ERO Annual Reports FY2017-FY2020 / GAO-24-106233", "dataAsOf": "2020-09-30", "url": "https://www.ice.gov/doclib/about/offices/ero/pdf/eroFY2018Report.pdf" }
+      },
+      "term2": {
+        "summary": "Sharp surge in interior enforcement; shift from jail-based to at-large community arrests; arrest quotas.",
+        "headline": "ICE arrests ~4.4x vs late Biden; >8,000/week by Jan 2026",
+        "trend": "Arrest surge outpaced removal throughput (bottleneck)",
+        "stats": {
+          "arrestsDailyAvgJan-Oct2025": 821,
+          "arrestsDailyAvgLate2025": 1100,
+          "arrestsWeeklyJan2026": 8000,
+          "arrestsWeeklyLate2024Baseline": 2000,
+          "noCriminalRecordShare": "Over 1 in 3 deported from detention in 2025 had no criminal record; 70.8% of those detained Apr 2026 had no criminal conviction (TRAC)",
+          "fy2025InteriorArrests": "Full-FY2025 ERO administrative-arrest line STILL PENDING (FY2025 ERO report not yet published). Partial FOIA data (Deportation Data Project): 217,518 total ICE arrests Jan 20–Oct 15 2025 (a partial-term window, not a fiscal-year figure). Last locked annual: FY2024 = 113,430."
+        },
+        "source": { "agency": "TRAC report #767 / Deportation Data Project / MPI / Axios / Washington Post", "edition": "Taking Stock (TRAC #767)", "dataAsOf": "2025-12", "url": "https://tracreports.org/reports/767/" }
+      }
+    },
+
+    "eoirBacklog": {
+      "term1": {
+        "summary": "Immigration court (EOIR) pending caseload.",
+        "headline": "~542,000 (Jan 2017) → surpassed 1,000,000 by FY2020",
+        "trend": "Backlog roughly doubled",
+        "series": [
+          { "date": "2017-01", "pending": 542000 },
+          { "date": "2020-09", "pending": 1000000, "note": "Surpassed 1M" }
+        ],
+        "judges": { "ijHired": 395, "note": "Quotas, expanded video hearings, 'no dark courtrooms'" },
+        "source": { "agency": "TRAC Immigration Court Backlog tool", "dataAsOf": "2020", "url": "https://tracreports.org/phptools/immigration/backlog/" }
+      },
+      "term2": {
+        "summary": "Backlog reduction via record case completions amid surge.",
+        "headline": "Backlog 3,288,186 (Mar 2026); down >447,000 since Jan 2025",
+        "trend": "Declining from peak; record completions",
+        "series": [
+          { "date": "2025-01-20", "pending": 4180000, "note": "EOIR figure at start of term (CRS alt: ~3.6M FY2024)" },
+          { "date": "2026-03-31", "pending": 3288186, "note": "Of which 2,318,797 asylum cases (TRAC)" }
+        ],
+        "completions": { "fy2025First11Months": 722000, "note": "Highest single-FY total in agency history" },
+        "judges": { "activeIJsJan2026": 570, "note": "Up from ~540 early 2024; countervailing reports of IJ firings — net contested" },
+        "source": { "agency": "TRAC / DOJ-EOIR milestones / CRS IN12492", "edition": "TRAC eoir quickfacts", "dataAsOf": "2026-03-31", "url": "https://tracreports.org/immigration/quickfacts/eoir.html" }
+      }
+    }
+  },
+
+  "numbersBand": {
+    "familySeparation": {
+      "summary": "Children separated under Zero Tolerance. The count rose for years as identification continued. Two figures are frequently conflated: the Ms. L. v. ICE court class (~2,737) vs the full universe since July 2017 (~5,500+).",
+      "headline": "~5,500+ children separated (cumulative, July 2017–2021)",
+      "trend": "Count climbed as identification continued through 2024",
+      "criticalCaveat": "Do NOT treat 2,737 (Ms. L. class) and ~5,500 (full universe) as interchangeable. Exact 'final' total never fixed at a round number; identification continued via the Biden Family Reunification Task Force through 2024.",
+      "timeline": [
+        { "dataAsOf": "2018-07", "value": 2654, "counts": "ORR-certified initial Ms. L. list", "source": "HHS OIG OEI-BL-18-00511" },
+        { "dataAsOf": "2018-12", "value": 2737, "counts": "Revised Ms. L. class in ORR care (of 2,816 possible; 79 later found not separated)", "source": "HHS OIG OEI-BL-18-00511 (issued Jan 2019)" },
+        { "dataAsOf": "2019-01-17", "value": null, "counts": "'Thousands more' than 2,737; separations began summer 2017 before formal tracking", "source": "HHS OIG OEI-BL-18-00511" },
+        { "dataAsOf": "2019-10", "value": 5400, "counts": "Total since July 2017 grew to >5,400 as pre-order separations identified", "source": "Court filings via ACLU; ~5,500 widely cited" },
+        { "dataAsOf": "2024-03-20", "value": 4656, "counts": "Biden Task Force EO-14011 working universe (scoped differently); 3,225 confirmed reunified; ~1,360 without confirmed reunification; Task Force directly reunified 795", "source": "DHS FRTF Interim Progress Report, Apr 22 2024" }
+      ],
+      "settlement": { "date": "2023-12-11", "detail": "Ms. L. v. ICE settlement approved (Judge Sabraw, S.D. Cal.); ~4,500-5,000 covered; bars most future separations 8 years." },
+      "source": { "agency": "HHS OIG / DHS OIG / DOJ OIG / ACLU / court filings", "edition": "OEI-BL-18-00511", "dataAsOf": "2024-04-22", "url": "https://oig.hhs.gov/oei/reports/oei-BL-18-00511.pdf" }
+    },
+
+    "detentions": {
+      "summary": "ICE ERO detention. Two distinct metrics: Average Daily Population (ADP, true average) vs end-of-FY/point-in-time snapshot. Excludes ORR and USMS.",
+      "headline": "ADP: FY2017 38,106 → FY2021 19,461 (COVID/Title 42) → FY2025 48,404 (Sep 2025 monthly 60,317)",
+      "trend": "Collapsed in COVID, then sharp rise across Term 2",
+      "adp": [
+        { "fy": 2017, "total": 38106, "term": "term1", "source": "Am. Immigration Council (DHS budget data)" },
+        { "fy": 2018, "total": 42188, "term": "term1", "note": "Locked actual (40,075 adult + 2,113 family), DHS FY2020 CBJ; 39,322 was a planning figure" },
+        { "fy": 2019, "cbpArrested": 30050, "iceArrested": 20115, "total": 50165, "term": "term1" },
+        { "fy": 2020, "cbpArrested": 17098, "iceArrested": 16626, "total": 33724, "term": "term1" },
+        { "fy": 2021, "cbpArrested": 12020, "iceArrested": 7441, "total": 19461, "term": "term1/biden" },
+        { "fy": 2022, "cbpArrested": 16936, "iceArrested": 5694, "total": 22630, "term": "biden" },
+        { "fy": 2023, "cbpArrested": 18912, "iceArrested": 9377, "total": 28289, "term": "biden" },
+        { "fy": 2024, "cbpArrested": 25489, "iceArrested": 12232, "total": 37721, "term": "biden" },
+        { "fy": 2025, "cbpArrested": 19699, "iceArrested": 28706, "total": 48404, "term": "term2", "note": "Monthly climbed: Oct 2024 38,712 → Sep 2025 60,317" }
+      ],
+      "pointInTime": [
+        { "date": "2021-01", "value": 14195, "note": "End Term 1, depressed by COVID protocols (TRAC)" },
+        { "date": "2025-02-09", "value": 41169, "source": "TRAC" },
+        { "date": "2026-04-04", "value": 60311, "note": "70.8% (42,722) no criminal conviction", "source": "TRAC Detention Quick Facts" }
+      ],
+      "bookIns": [
+        { "fy": 2017, "value": 323591 }, { "fy": 2018, "value": 396448 },
+        { "fy": 2019, "value": 510854 }, { "fy": 2020, "value": 182869 }, { "fy": 2021, "value": 211450 },
+        { "fy": 2022, "value": 311578 }, { "fy": 2023, "value": 273220 }, { "fy": 2024, "value": 277913 },
+        { "fy": 2025, "value": 310181, "note": "ICE-arrest 222,832; CBP-arrest 87,349 (interior-enforcement shift)" }
+      ],
+      "removals": [
+        { "fy": 2017, "value": 226119 }, { "fy": 2018, "value": 256085 },
+        { "fy": 2019, "value": 267258 }, { "fy": 2020, "value": 185884 }, { "fy": 2021, "value": 59011 },
+        { "fy": 2022, "value": 72177 }, { "fy": 2023, "value": 142580 }, { "fy": 2024, "value": 271484 },
+        { "fy": 2025, "value": 319980, "note": "39,439 had a family-unit identifier. TRAC 'Taking Stock': removals post-Jan 20 2025 ~234,211, only ~7% above FY2024 despite resource surge (throughput bottleneck). MPI est. ~340,000 incl. voluntary departures." }
+      ],
+      "source": { "agency": "ICE FY2024/FY2025 Detention Statistics workbooks / ICE ERO reports / TRAC", "edition": "FY25_detentionStats.xlsx (end-FY2025)", "dataAsOf": "2025-09-30", "url": "https://www.ice.gov/doclib/detention/FY25_detentionStats.xlsx" }
+    },
+
+    "borderCrossings": {
+      "summary": "CBP Southwest Land Border data — the centerpiece. Handles the metric break and the encounters-vs-apprehensions distinction.",
+      "dataIntegrity": {
+        "encountersNotPeople": "Encounters = interactions, not unique individuals. Title 42 re-crossings counted each time (no legal penalty); Title 8 carries penalties for repeat apprehension.",
+        "encountersVsApprehensions": "SW 'total encounters' = USBP apprehensions (between POEs) + OFO inadmissibles (at POEs). Do not conflate. FY2025: 443,671 total SW encounters vs 237,538 USBP apprehensions.",
+        "metricBreak": "FY2017-FY2019 = pure Title 8 apprehensions/inadmissibles. FY2020-FY2023 = blended Title 8 + Title 42. Post-May 11 2023 = Title 8 only.",
+        "title42Window": { "imposed": "2020-03-20", "ended": "2023-05-11" },
+        "recidivism": { "fy2019": 0.07, "fy2020": 0.26, "fy2021": 0.27, "note": "Recidivism jumped due to Title 42 re-crossings — inflates raw encounter counts." },
+        "plottingRule": "Do NOT plot a single naive line across the break. Plot Title 8 and Title 42 as SEPARATE stacked series. Label which metric is plotted."
+      },
+      "swAnnualTitle8vs42": [
+        { "fy": 2017, "title8": 303916, "title42": 0, "total": 303916, "metric": "Title 8 only (USBP SW apprehensions ~303,916)" },
+        { "fy": 2018, "title8": 396579, "title42": 0, "total": 396579, "metric": "Title 8 only" },
+        { "fy": 2019, "title8": 851508, "title42": 0, "total": 851508, "metric": "Title 8 only" },
+        { "fy": 2020, "title8": 253301, "title42": 204787, "total": 458088, "metric": "blended" },
+        { "fy": 2021, "title8": 671160, "title42": 1063526, "total": 1734686, "metric": "blended" },
+        { "fy": 2022, "title8": 1299437, "title42": 1079507, "total": 2378944, "metric": "blended; crossover (T8>T42) Apr 2022" },
+        { "fy": 2023, "title8": 1911289, "title42": 564380, "total": 2475669, "metric": "blended; T42 ended May 11; all-time high total" },
+        { "fy": 2024, "title8": 2135005, "title42": 0, "total": 2135005, "metric": "Title 8 only; -14% vs FY2023" },
+        { "fy": 2025, "title8": 443671, "title42": 0, "total": 443671, "metric": "Title 8 only; SW total encounters. USBP apprehensions 237,538 (lowest since 1970)" }
+      ],
+      "swMonthlyFY2025": [
+        { "month": "2024-10", "total": 106316, "usbp": 56515 }, { "month": "2024-11", "total": 94183, "usbp": 46609 },
+        { "month": "2024-12", "total": 96033, "usbp": 47320 }, { "month": "2025-01", "total": 61445, "usbp": 29105 },
+        { "month": "2025-02", "total": 11710, "usbp": 8349 }, { "month": "2025-03", "total": 11011, "usbp": 7179 },
+        { "month": "2025-04", "total": 12023, "usbp": 8376 }, { "month": "2025-05", "total": 12450, "usbp": 8724 },
+        { "month": "2025-06", "total": 9300, "usbp": 6066 }, { "month": "2025-07", "total": 7822, "usbp": 4592 },
+        { "month": "2025-08", "total": 9731, "usbp": 6317 }, { "month": "2025-09", "total": 11647, "usbp": 8386 }
+      ],
+      "term2Note": "Early FY2026 SW daily-avg apprehensions ~258/day (<11/hour), ~95% below the Feb 2021-Dec 2024 avg of ~5,110/day. Mar 2025 SW encounters collapsed to 11,011 (locked CBP) from 189,359 (Mar 2024).",
+      "source": { "agency": "CBP Nationwide Encounters dataset (machine-readable, 'Title of Authority' column)", "edition": "nationwide-encounters-fy22-fy25-sep-aor.csv", "dataAsOf": "2025-09-30", "url": "https://www.cbp.gov/newsroom/stats/nationwide-encounters" },
+      "corroborationNotes": [
+        "237,538 = USBP SW apprehensions FY2025, confirmed exactly against CBP dataset (NOT total encounters of 443,671).",
+        "Mar 2025 ~11,017 (press release) settled to 11,011 in locked CBP dataset — materially identical."
+      ]
+    }
+  },
+
+  "economicImpact": {
+    "_note": "No single damage number. Each measure carries attribution strength (Strong/Moderate/Weak) + confounders. Evidence is two-directional by design.",
+    "laborSectors": {
+      "summary": "Employment, wages, unfilled jobs in labor-supply-sensitive sectors vs broad economy.",
+      "attributionStrength": "Moderate",
+      "attributionNote": "Moderate for agriculture/construction in 2025 (timing of declines coincides with enforcement; high foreign-born concentration; direct survey evidence). Weak-to-Moderate for hospitality (demand-side tourism + labor-supply both operate).",
+      "confounders": ["General 2025 labor-market cooling (total openings down 885K YoY)", "Business cycle", "BLS benchmark revisions (large 2025 preliminary benchmark)", "Seasonal agriculture", "H-2A AEWR/min-wage changes (distinct policy)", "2025 tariffs", "Government shutdown"],
+      "foreignBornShare": {
+        "overallLaborForce2024": 0.186,
+        "overallWorkers2024": 31400000,
+        "agricultureCropworkers": { "usBorn": 0.32, "naturalized": 0.07, "otherAuthorized": 0.19, "unauthorized": 0.42, "source": "USDA ERS / DOL NAWS 2020-22" },
+        "construction": "Over 1 in 3 foreign-born",
+        "meatpacking": "~45.4% foreign-born (early COVID)",
+        "source": { "agency": "BLS Foreign-Born Workers 2024 / USDA ERS / EPI", "dataAsOf": "2025-05", "url": "https://www.bls.gov/news.release/forbrn.nr0.htm" }
+      },
+      "term2Movements": [
+        { "sector": "Agriculture", "metric": "Employment fell ~155,000 Mar→Jul 2025", "source": "American Immigration Council aggregating BLS CES" },
+        { "sector": "Hospitality/Leisure", "metric": "LF growth slowed to +0.2% YoY Jun 2025 (vs +1.5% Jun 2024); CES -12,000 jobs Nov 2025", "source": "BLS CES & JOLTS 2025" },
+        { "sector": "Construction", "metric": "AGC: 92% of firms can't fill positions; 28% affected by immigration enforcement in past 6mo. NAHB: ~$11B/yr lost to labor shortages", "source": "AGC survey / NAHB / Construction Dive / NPR" },
+        { "sector": "Economy-wide baseline", "metric": "JOLTS total openings 7.1M Nov 2025, down 885,000 YoY", "source": "BLS JOLTS" }
+      ],
+      "term1Note": "No clean sector-level immigration-attributable break widely documented; pre-COVID tightness attributed to general low unemployment. UNAVAILABLE as cleanly separable.",
+      "netMigration2025": { "value": "-295,000 to -10,000", "note": "First net-negative year in 50+ years (down from +2.2M in 2024). Independently documented by Census (Jan 2026) + Brookings/MPI. This is the real, verifiable channel — distinct from DHS's unverified 1.6M self-deport claim.", "source": "US Census Bureau / Brookings / MPI" },
+      "selfDeportClaim": { "dhsClaim": 1600000, "verified": 72000, "note": "DHS '1.6M self-deported' (Aug 2025, later 2.2M) is UNVERIFIED — traces to a CIS inference from CPS data; no exit survey. Only ~72,000 verified via CBP Home app / Project Homecoming (CNN, internal DHS docs Mar 2026). Center for Migration Studies estimates true self-deportations ~200,000. Report as DHS claim only.", "attributionStrength": "Weak/unverifiable" }
+    },
+    "tourism": {
+      "summary": "International arrivals and travel exports (foreign-visitor spending in the US). Fast-responding to travel bans / perceived hostility.",
+      "attributionStrength": "Strong for travel-ban-affected countries; Moderate for broad 2025 decline",
+      "attributionNote": "Strong for ban-affected-country visa/arrival collapses (direct mechanism). Moderate for broad 2025 decline (Canada drop tied substantially to tariff/political tension + currency, not only immigration).",
+      "confounders": ["USD exchange rate (strong dollar early 2025)", "Global travel cycle", "2025 tariff disputes (esp. Canada)", "Prices/inflation (real vs nominal)", "World Cup 2026 anticipation", "COVID-recovery baseline (2019 benchmark)", "Oct 2025 govt shutdown"],
+      "term2": {
+        "arrivals2025": 68287793,
+        "arrivals2025YoY": -0.055,
+        "arrivals2025Vs2019": 0.86,
+        "bySource": { "canada": -0.209, "mexico": 0.064, "centralAmerica": 0.047 },
+        "travelExportsBEA": { "y2024": 213779000000, "y2025": 213174000000, "changePct": -0.003, "note": "BEA travel EXPORTS (foreign visitors in US) essentially FLAT nominal (-0.3%). NOTE: the +$12.9B widely cited is travel IMPORTS (US residents abroad, +7.2%) — opposite-direction flow, not a tourism counter-signal." },
+        "ustaReal": { "spending": 175000000000, "changePct": -0.024, "note": "U.S. Travel Association: inbound spending -2.4% real to ~$175B; 18% below 2019 (inflation-adjusted). Modeled (Tourism Economics), real dollars." },
+        "reconciliation": "BEA nominal flat (-0.3%) + travel-price inflation ≈ USTA's -2.4% real. The two are reconcilable. Honest read: arrivals down 5.5%, spending roughly flat-to-modestly-down — a muted near-null on dollars, clearer decline on headcount.",
+        "source": { "agency": "Commerce/NTTO (arrivals) / BEA (travel exports) / USTA (real spending)", "edition": "BEA FT-900 Dec & Annual 2025 (Feb 19 2026)", "dataAsOf": "2026-02-19", "url": "https://www.bea.gov/news/2026/us-international-trade-goods-and-services-december-and-annual-2025" }
+      },
+      "term1": {
+        "context": "2016 travel spending ~$245B = ~1/3 of US services exports (largest single services export).",
+        "trumpSlump": "2017 NTTO showed ~4% drop Jan-Aug vs 2016, but Commerce suspended/revised data; analysts concluded US lagged global growth rather than absolute slump.",
+        "banAffected": "Immigrant visas to 6 most-affected countries -69.9% FY2016→FY2019; nonimmigrant -84.7%; Middle East tourism ~-25% after first 2017 ban.",
+        "source": { "agency": "American Immigration Council / NTTO / CSMonitor", "dataAsOf": "2025", "url": "https://www.americanimmigrationcouncil.org/report/trump-2025-travel-ban/" }
+      }
+    },
+    "fdi": {
+      "summary": "Inward foreign direct investment. Many drivers besides immigration.",
+      "attributionStrength": "Weak",
+      "attributionNote": "FDI driven by tax policy, interest rates, M&A cycles, sector valuations, tariffs, global capital flows. Immigration at most marginal. The 2024 decline should NOT be attributed to immigration policy (predates Term 2).",
+      "confounders": ["Fed rate path / cost of capital", "2025 tariff regime", "Corporate-tax expectations", "Global M&A slowdown", "Dollar strength", "Sector deal timing"],
+      "newFDI2024": 151000000000,
+      "newFDI2024YoY": -0.142,
+      "newFDI2023": 176000000000,
+      "decadeAvg": 277200000000,
+      "stockEnd2024": 5710000000000,
+      "stockGrowth2024": 0.062,
+      "fy2025": "STILL UNAVAILABLE — BEA 'New FDI 2025' edition scheduled June 2026. Financial-account FDI also delayed by 2025 govt shutdown (latest ITA point: Q2 2025).",
+      "source": { "agency": "BEA", "edition": "New FDI in the US 2024 (rel. Jul 11 2025)", "dataAsOf": "2025-07-11", "url": "https://www.bea.gov/news/2025/new-foreign-direct-investment-united-states-2024" }
+    },
+    "fiscalModeling": {
+      "summary": "Existing published models and realized-effect estimates (cite, do not invent counterfactuals).",
+      "attributionStrength": "Strong (as model/realized estimates) — projections/scenarios, not measured certainties",
+      "confounders": ["Models rest on elasticity assumptions varying across modelers (CBO vs PWBM vs Brookings)", "Separating immigration effects from tariffs, monetary policy, 2025 shutdown"],
+      "models": [
+        { "name": "Brookings (Edelberg, Veuger & Watson) — realized 2025-26 effect", "date": "2026-01-13", "kind": "Realized-flow estimate (most on-point)", "findings": { "netMigration2025": "-295,000 to -10,000 (first net-negative in 50+ yrs)", "gdpGrowth": "Dampened 0.2-0.3pp in 2025; further 0.1-0.3pp in 2026", "breakevenJobs": "Fell to 20,000-50,000 jobs/month late 2025 (could go negative 2026)", "consumerSpending": "Reduced $40B-$60B in 2025; another $10B-$40B in 2026", "inflation": "Effect 'likely small' — immigrants cut both labor supply AND demand (near-null on inflation)" }, "attributionStrength": "Moderate-to-Strong (realized)", "source": "Brookings Jan 2026 update", "url": "https://www.brookings.edu/articles/macroeconomic-implications-of-immigration-flows-in-2025-and-2026-january-2026-update/" },
+        { "name": "CBO — Immigration Surge (2021-2026 inflow)", "date": "2024-07", "kind": "Counterfactual (immigration increase)", "findings": { "nominalGDP": "+$8.9T cumulative 2024-2034; +$1.3T (+3.2%) in 2034", "realGDPGrowth": "+~0.2pp/yr; real GDP ~2% larger in 2034", "revenue": "+$1.2T federal 2024-2034", "deficits": "Net -$0.9T (deficit REDUCTION) over 2024-2034", "laborForce": "+5.2M by 2033", "wages": "Slight downward pressure on real wages" }, "note": "Models an immigration INCREASE — inverse reference for Term 2 restriction.", "attributionStrength": "Strong (structural)", "source": "CBO publication 60569", "url": "https://www.cbo.gov/publication/60569" },
+        { "name": "Penn Wharton Budget Model — Mass Deportation", "date": "2025-07-25", "kind": "Policy scenario", "findings": { "gdp2034": "-1.0% (4-yr scenario); -3.3% (10-yr)", "deficits": "+$270B (4-yr pre-feedback) to ~$987B (10-yr program); tax revenue -$187.4B 2025-2034", "wages": "Average wage eventually -1.7%; high-skill wages fall; AUTHORIZED lower-skilled workers' wages RISE ~5% by 2034 (the positive/null-for-some channel)" }, "attributionStrength": "Weak as realized (assumes far larger removals than verified); Strong as projection", "source": "PWBM Jul 2025", "url": "https://budgetmodel.wharton.upenn.edu/p/2025-07-25-mass-deportation-of-unauthorized-immigrants-fiscal-and-economic-effects/" },
+        { "name": "Peterson Institute (PIIE)", "date": "2025", "kind": "Policy scenario", "findings": "1.3M unauthorized workers removed → real GDP -2.7% over 2025-2028.", "attributionStrength": "Scenario", "url": "https://www.piie.com/" },
+        { "name": "Dallas Fed / SF Fed", "date": "2025", "kind": "Fed research", "findings": "Dallas Fed (Jul 2025): declining immigration weighs on GDP growth with little inflation impact. SF Fed (Nov 2025): immigration and labor-force demographics.", "url": "https://www.dallasfed.org/research/economics/2025/0708" },
+        { "name": "Secure Communities (2008-13) — East & Velasquez et al.", "date": "2023", "kind": "Peer-reviewed (historical enforcement)", "findings": "SC reduced employment of likely-undocumented AND reduced employment + hourly wages of US-born (higher labor costs reduce job creation + lower local consumption).", "source": "Journal of Labor Economics 41(4)", "url": "https://www.journals.uchicago.edu/doi/10.1086/721152" }
+      ]
+    },
+    "proposedTrackingMeasures": {
+      "summary": "DISTINCT from established findings — proposed leading indicators to track impact of falling immigration going forward.",
+      "indicators": [
+        "Sector-specific JOLTS job-openings rates (agriculture, construction, leisure/hospitality, food manufacturing) vs all-industry.",
+        "USDA H-2A certified positions and AEWR trends as proxy for ag labor substitution.",
+        "BLS CES sector employment MoM vs enforcement-operation timing/geography.",
+        "NTTO monthly I-94 arrivals + BEA travel-export dollars (track headcount-vs-dollars divergence).",
+        "Residential construction starts/permits + NAHB labor-shortage index.",
+        "Wage growth in high-foreign-born occupations vs native-dominated (test PWBM 'authorized low-skill wage rise' prediction).",
+        "Census net international migration + ICE detention ADP + EOIR completions as enforcement-intensity covariates.",
+        "CBP Home app verified self-deportation count as a floor on outflow (vs CPS-inferred estimates)."
+      ]
+    }
+  },
+
+  "pushPullFactors": {
+    "_note": "Clickable annotations on the border-crossings timeline. Direction: PUSH_UP increases US-bound migration; PULL = US attracts; SUPPRESS = reduces/deters counted crossings.",
+    "factors": [
+      { "name": "Venezuela collapse", "dateRange": "2015-present; US-bound shift 2021-2024", "direction": "PUSH_UP", "magnitude": "~7.7-7.9M displaced worldwide; ~6.87-6.9M in Latin America/Caribbean", "source": { "agency": "R4V / UNHCR", "dataAsOf": "2025-05", "url": "https://www.r4v.info/en/refugeeandmigrants" } },
+      { "name": "Northern Triangle conditions", "dateRange": "Drought since 2014; sustained 2019-2023", "direction": "PUSH_UP", "magnitude": ">6M food-insecure (2021); 43% of households wanted to emigrate (vs 8% two years prior)", "source": { "agency": "CRS IF11151 / WFP", "url": "https://www.congress.gov/crs-product/IF11151" } },
+      { "name": "Cuba crisis & July 2021 protests", "date": "2021-07-11; Nicaragua visa waiver Nov 2021", "direction": "PUSH_UP", "magnitude": "CBP encounters of Cuban nationals: FY2021 39,303 + FY2022 224,607 + FY2023 200,287 = 464,197 (FY21-23). (Corrected from the widely-cited ~850,000, which is unsupported by CBP encounters data for this window.)", "source": { "agency": "CBP Nationwide Encounters", "dataAsOf": "2023", "url": "https://www.cbp.gov/newsroom/stats/nationwide-encounters" } },
+      { "name": "Haiti instability", "dateRange": "2021-present; acute 2023-2025", "direction": "PUSH_UP", "magnitude": ">1.4M internally displaced; ~5.7M crisis-level hunger (2024)", "source": { "agency": "IOM / IPC / CFR", "url": "https://haiti.iom.int/news/over-14-million-displaced-haiti-gang-violence-pushes-crisis-unprecedented-levels" } },
+      { "name": "Darien Gap surge (transit indicator)", "dateRange": "2021-2023", "direction": "PUSH_UP", "magnitude": "2021: 133,653 → 2022: 248,284 → 2023: 520,085 (record; ~84% Venezuela/Haiti/Ecuador)", "source": { "agency": "Panama gov via CSIS/MPI/UN", "dataAsOf": "2023", "url": "https://www.csis.org/analysis/mind-darien-gap-migration-bottleneck-americas" } },
+      { "name": "Migrant Protection Protocols ('Remain in Mexico')", "date": "2019-01", "direction": "SUPPRESS", "magnitude": "Deterrence: asylum seekers wait in Mexico during proceedings", "source": { "agency": "American Immigration Council / DHS", "url": "https://www.americanimmigrationcouncil.org/research/migrant-protection-protocols" } },
+      { "name": "Title 42 imposition", "date": "2020-03-20", "direction": "SUPPRESS_BUT_INFLATES_COUNT", "magnitude": "Recidivism 7%→27%; ~2.9M expulsions total over lifespan; no penalty for repeat attempts inflated encounter counts", "source": { "agency": "CRS / MPI Title 42 Autopsy", "url": "https://www.migrationpolicy.org/article/title-42-autopsy" } },
+      { "name": "CBP One app launch", "date": "2023-01", "direction": "PULL", "magnitude": "Channeled flows into scheduled POE appointments (out of illegal-crossing count)", "source": { "agency": "American Immigration Council", "url": "https://www.americanimmigrationcouncil.org/fact-sheet/cbp-one-overview/" } },
+      { "name": "CHNV parole programs", "date": "2022-10 (Venezuela); 2023-01-05 (Cuba/Haiti/Nicaragua)", "direction": "PULL", "magnitude": "Up to 30,000/month legal entry with sponsor; diverted from irregular crossing", "source": { "agency": "American Immigration Council / Federal Register", "url": "https://www.americanimmigrationcouncil.org/fact-sheet/biden-administrations-humanitarian-parole-program-cubans-haitians-nicaraguans-and/" } },
+      { "name": "Peak SW encounters", "date": "2023-12", "direction": "OUTCOME_MARKER", "magnitude": "~249,700 SW land-border encounters (~302,034 nationwide) — all-time monthly record", "source": { "agency": "CBP", "url": "https://www.cbp.gov/newsroom/stats/southwest-land-border-encounters" } },
+      { "name": "Title 42 lifting", "date": "2023-05-11", "direction": "RESTORES_PENALTIES", "magnitude": "Recidivism fell; 'gotaways' ~73,500 (Apr 2023) → ~32,800 two months later", "source": { "agency": "MPI / WOLA", "url": "https://www.wola.org/analysis/end-title-42/" } },
+      { "name": "Term 2 deterrence package", "date": "2025-01-20/21 (CBP One shutdown, asylum suspension, MPP reinstated); 2025-03-25 (CHNV terminated)", "direction": "SUPPRESS", "magnitude": "SW encounters collapsed 189,359 (Mar 2024) → 11,011 (Mar 2025), lowest in 3+ years", "source": { "agency": "CRS LSB11265 / CBP", "url": "https://www.congress.gov/crs-product/LSB11265" } },
+      { "name": "Remittances (economic-pull feedback)", "dateRange": "2023-2024", "direction": "PULL", "magnitude": "LAC remittances $156B 2023 (+7.7%); Mexico $66.2B (2023) → ~$68B (2024, +3%)", "source": { "agency": "World Bank Migration & Development Brief 39/40", "dataAsOf": "2024", "url": "https://blogs.worldbank.org/en/peoplemove/in-2024--remittance-flows-to-low--and-middle-income-countries-ar" } }
+    ]
+  },
+
+  "openGaps": [
+    "FY2025 interior administrative-arrest line still pending official release (ICE ERO FY2025 report not yet published; FOIA-based Deportation Data Project shows 217,518 arrests Jan 20-Oct 15 2025, a partial-term window).",
+    "Full-year 2025 BEA new-FDI (edition due June 2026); 2025 financial-account FDI delayed by the 2025 govt shutdown.",
+    "Verified self-deportation count beyond the ~72,000 CBP Home app figure (DHS 1.6M+ remains an unverified CPS-based inference)."
+  ]
+}

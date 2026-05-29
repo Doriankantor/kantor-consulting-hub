@@ -697,5 +697,120 @@ export function initDatabase(): void {
     );
   `)
 
+  // ── Subscription Model board setup ────────────────────────────────────────
+  // Ensure Subscription Model board exists with fixed ID
+  try {
+    db.exec("INSERT OR IGNORE INTO workspace_boards (id,name,position) VALUES ('board-subscription','Subscription Model',1)")
+  } catch {}
+
+  // Add board_id to task_templates if not already there
+  try { db.exec("ALTER TABLE task_templates ADD COLUMN board_id TEXT;") } catch {}
+
+  // Set up Subscription Model columns (replace any existing columns for this board)
+  {
+    const existingSubCols = db.prepare("SELECT COUNT(*) as c FROM workspace_columns WHERE board_id='board-subscription'").get() as { c: number }
+    if (existingSubCols.c === 0) {
+      const subCols = [
+        { id:'sub-col-1',  name:'Search new clients',  pos:0 },
+        { id:'sub-col-2',  name:'Reach out',           pos:1 },
+        { id:'sub-col-3',  name:'Discuss product',     pos:2 },
+        { id:'sub-col-4',  name:'Prepare proposal',    pos:3 },
+        { id:'sub-col-5',  name:'Send proposal',       pos:4 },
+        { id:'sub-col-6',  name:'Follow-up',           pos:5 },
+        { id:'sub-col-7',  name:'Contract negotiation',pos:6 },
+        { id:'sub-col-8',  name:'Onboarding',          pos:7 },
+        { id:'sub-col-9',  name:'Active subscriber',   pos:8 },
+        { id:'sub-col-10', name:'Renewal',             pos:9 },
+      ]
+      const insertCol = db.prepare("INSERT OR IGNORE INTO workspace_columns (id,name,position,color,board_id) VALUES (?,?,?,?,?)")
+      for (const c of subCols) insertCol.run(c.id, c.name, c.pos, 'bg-indigo-500', 'board-subscription')
+    }
+  }
+
+  // Seed Subscription Model board-specific templates
+  const SUB_TEMPLATES = [
+    { id:'tpl-sub-1', name:'Reach out to new client',     days:3,  checklist:'["Research contact background","Draft personalized outreach message","Send initial email","Log contact in Contacts database","Follow up if no response after 5 days"]' },
+    { id:'tpl-sub-2', name:'Discuss product',              days:5,  checklist:'["Schedule introductory call","Prepare talking points and product overview","Conduct meeting","Send follow-up summary email","Note client feedback and objections","Assess fit for subscription service"]' },
+    { id:'tpl-sub-3', name:'Prepare proposal',             days:7,  checklist:'["Define scope of subscription service","Select analysis types to include","Set pricing based on scope","Draft proposal document","Internal review with admin","Send proposal to client"]' },
+    { id:'tpl-sub-4', name:'Send proposal',                days:2,  checklist:'["Final review of proposal document","Personalize cover message","Send to client via email","Log send date in card notes","Schedule follow-up reminder for 5 days"]' },
+    { id:'tpl-sub-5', name:'Follow-up',                    days:7,  checklist:'["Send follow-up email referencing proposal","Schedule call if client is interested","Address any questions or objections","Revise proposal if needed","Confirm next steps"]' },
+    { id:'tpl-sub-6', name:'Contract negotiation',         days:14, checklist:'["Send contract draft","Review client feedback on terms","Agree on delivery schedule","Agree on pricing and payment terms","Final contract signed by both parties","File signed contract in Google Drive"]' },
+    { id:'tpl-sub-7', name:'Onboarding new subscriber',   days:7,  checklist:'["Send welcome email with onboarding info","Set up client access if applicable","Introduce assigned team member","Confirm delivery schedule and formats","Send first deliverable on time","Request feedback after first delivery"]' },
+    { id:'tpl-sub-8', name:'Renewal check-in',            days:14, checklist:'["Review full engagement history","Prepare renewal offer with updated pricing","Schedule renewal discussion call","Send renewal proposal document","Follow up if no response after 7 days","Confirm renewal or log as churned"]' },
+    { id:'tpl-sub-9', name:'Feedback collection',         days:5,  checklist:'["Send structured feedback form to client","Compile and summarize responses","Identify areas for improvement","Log findings in card notes","Share summary with team in comments"]' },
+  ]
+  const insTpl = db.prepare("INSERT OR IGNORE INTO task_templates (id,name,content_type,duration_days,checklist_json,is_builtin,board_id) VALUES (?,?,?,?,?,1,?)")
+  for (const t of SUB_TEMPLATES) insTpl.run(t.id, t.name, 'consulting-engagement', t.days, t.checklist, 'board-subscription')
+
+  // ── Info Pages system ─────────────────────────────────────────────────────
+  try { db.exec("ALTER TABLE workspace_boards ADD COLUMN board_type TEXT DEFAULT 'standard';") } catch {}
+  try { db.exec("ALTER TABLE workspace_boards ADD COLUMN board_config TEXT;") } catch {}
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS info_page_owners (
+      page_id     TEXT NOT NULL,
+      user_id     TEXT NOT NULL,
+      assigned_by TEXT,
+      assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (page_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS info_page_items (
+      id               TEXT PRIMARY KEY,
+      page_id          TEXT NOT NULL,
+      tab              TEXT NOT NULL,
+      sub_type         TEXT,
+      title            TEXT,
+      content_json     TEXT DEFAULT '{}',
+      status           TEXT DEFAULT 'draft',
+      priority         TEXT DEFAULT 'medium',
+      proposed_section TEXT,
+      confidence       TEXT,
+      source_ref       TEXT,
+      analysis_json    TEXT,
+      created_by_id    TEXT,
+      created_by_name  TEXT,
+      created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS info_page_commits (
+      id               TEXT PRIMARY KEY,
+      page_id          TEXT NOT NULL,
+      item_id          TEXT NOT NULL,
+      submitted_by_id  TEXT,
+      submitted_by_name TEXT,
+      submitted_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+      status           TEXT DEFAULT 'pending_owner',
+      reviewed_by_id   TEXT,
+      reviewed_by_name TEXT,
+      reviewed_at      DATETIME,
+      rejection_note   TEXT,
+      admin_approved   INTEGER DEFAULT 0,
+      admin_reviewed_by TEXT,
+      admin_reviewed_at DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS info_page_published (
+      id               TEXT PRIMARY KEY,
+      page_id          TEXT NOT NULL,
+      what_changed     TEXT NOT NULL,
+      date_implemented DATETIME DEFAULT CURRENT_TIMESTAMP,
+      committed_by_id  TEXT,
+      committed_by_name TEXT,
+      approved_by_id   TEXT,
+      approved_by_name TEXT,
+      prompt_used      TEXT,
+      item_ids_json    TEXT DEFAULT '[]',
+      commit_count     INTEGER DEFAULT 0
+    );
+  `)
+
+  // Seed Info Page boards
+  try {
+    db.exec("INSERT OR IGNORE INTO workspace_boards (id,name,position,board_type,board_config) VALUES ('board-info-latam','LATAM Drone Threat',50,'info-page','{\"repo\":\"Doriankantor/contested-skies-monitor\",\"live_url\":\"contestedskies.kantor-consulting.com\",\"keywords\":\"drone proliferation,drone strikes,drone purchases,counter drone,civilian drone use,criminal drone use,weaponized drones,DJI drones,drone warfare,loitering munitions,kamikaze drones,FPV drones,drone swarms,autonomous weapons,UAV,MALE drones,drone jamming,anti-drone systems,drone export controls,drone regulation,drones Latin America,drones Colombia,drones Venezuela,drones Mexico,drones Brazil,cartel drones,narco drones,DJI export restrictions,Iranian drones,Turkish Bayraktar,Chinese drone exports,drone proliferation non-state actors\",\"status\":\"active\"}')")
+    db.exec("INSERT OR IGNORE INTO workspace_boards (id,name,position,board_type,board_config) VALUES ('board-info-trump','Trump Immigration',51,'info-page','{\"repo\":\"\",\"live_url\":\"\",\"keywords\":\"\",\"status\":\"setup-pending\"}')")
+  } catch {}
+
   console.log(`[DB] Initialized at ${dbPath}`)
 }

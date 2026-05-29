@@ -18,6 +18,7 @@ import TeamCalendar from './pages/TeamCalendar'
 import Files        from './pages/Files'
 import Todo         from './pages/Todo'
 import Intelligence from './pages/Intelligence'
+import InfoPages    from './pages/InfoPages'
 import Layout       from './components/Layout'
 import ChatPanel    from './components/ChatPanel'
 
@@ -66,6 +67,7 @@ function AppRoutes() {
           <Route path="/workspace"  element={<Workspace />} />
           <Route path="/files"     element={<Files />} />
           <Route path="/intelligence" element={<Intelligence />} />
+          <Route path="/info-pages"   element={<InfoPages />} />
           <Route path="/contacts"  element={<Contacts />} />
           <Route path="/calendar"  element={<TeamCalendar />} />
           <Route path="/analytics" element={<Analytics />} />

@@ -1,0 +1,42 @@
+Outcome,Study,Migrant group,Measure,Effect,95% CI,Favours
+HbA1c control (achieving glycaemic target),Adekunte 2025,,RR,0.977,0.97–0.984,Worse in migrants
+HbA1c control (achieving glycaemic target),Fosse-Edorh 2014,,OR,2.0,1.2–3.3,Worse in migrants
+HbA1c control (achieving glycaemic target),Kristensen 2007,Lebanese,RR,0.736,0.602–0.9,Worse in migrants
+HbA1c control (achieving glycaemic target),Kristensen 2007,Turkish,RR,0.708,0.606–0.828,Worse in migrants
+HbA1c control (achieving glycaemic target),Strooij 2026,Turkish,OR,0.61,0.57–0.64,Worse in migrants
+HbA1c control (achieving glycaemic target),Strooij 2026,Moroccan,OR,0.67,0.63–0.72,Worse in migrants
+HbA1c control (achieving glycaemic target),Strooij 2026,Surinamese,OR,0.79,0.75–0.84,Worse in migrants
+HbA1c control (achieving glycaemic target),Strooij 2026,European,OR,0.82,0.77–0.86,Worse in migrants
+HbA1c control (achieving glycaemic target),Consolazio 2025,Europe,RR,0.93,0.88–0.99,Worse in migrants
+HbA1c control (achieving glycaemic target),Consolazio 2025,Africa,RR,0.8,0.77–0.84,Worse in migrants
+HbA1c control (achieving glycaemic target),Consolazio 2025,East Asia,RR,0.81,0.78–0.86,Worse in migrants
+HbA1c control (achieving glycaemic target),Consolazio 2025,Other Asia,RR,0.72,0.67–0.77,Worse in migrants
+HbA1c control (achieving glycaemic target),Consolazio 2025,CS America,RR,0.83,0.78–0.83,Worse in migrants
+HbA1c monitoring (received testing),Adekunte 2025,,RR,0.954,0.949–0.958,Worse in migrants
+HbA1c monitoring (received testing),Fosse-Edorh 2014,,RR,0.89,0.76–1.03,Inconclusive
+HbA1c monitoring (received testing),Kristensen 2007,Lebanese,RR,1.036,0.954–1.125,Inconclusive
+HbA1c monitoring (received testing),Kristensen 2007,Turkish,RR,0.988,0.919–1.062,Inconclusive
+HbA1c monitoring (received testing),Strooij 2026,Turkish,OR,1.08,1.01–1.15,Better in migrants
+HbA1c monitoring (received testing),Strooij 2026,Moroccan,OR,1.36,1.27–1.46,Better in migrants
+HbA1c monitoring (received testing),Strooij 2026,Surinamese,OR,1.28,1.21–1.36,Better in migrants
+HbA1c monitoring (received testing),Strooij 2026,European,OR,0.92,0.88–0.97,Worse in migrants
+HbA1c monitoring (received testing),Consolazio 2025,Europe,RR,0.73,0.73–0.86,Worse in migrants
+HbA1c monitoring (received testing),Consolazio 2025,Africa,RR,0.72,0.68–0.77,Worse in migrants
+HbA1c monitoring (received testing),Consolazio 2025,East Asia,RR,0.64,0.6–0.69,Worse in migrants
+HbA1c monitoring (received testing),Consolazio 2025,Other Asia,RR,0.58,0.53–0.63,Worse in migrants
+HbA1c monitoring (received testing),Consolazio 2025,CS America,RR,0.71,0.65–0.78,Worse in migrants
+Retinopathy / eye screening (received),Adekunte 2025,,RR,0.884,not reported,Inconclusive (no CI)
+Retinopathy / eye screening (received),Fosse-Edorh 2014,,RR,0.86,0.75–0.99,Worse in migrants
+Retinopathy / eye screening (received),Kristensen 2007,Lebanese,RR,0.818,0.515–1.299,Inconclusive
+Retinopathy / eye screening (received),Kristensen 2007,Turkish,RR,0.515,0.323–0.821,Worse in migrants
+Retinopathy / eye screening (received),Lovshin 2017,,OR,0.76,0.75–0.77,Worse in migrants
+All-cause mortality  [post-hoc],Hunt 2011,first gen Mexican,HR,1.08,0.59–1.97,Inconclusive
+All-cause mortality  [post-hoc],Tran 2014,,HR,1.42,1.07–1.88,Worse in migrants
+All-cause mortality  [post-hoc],Rawshani 2016,Non Western,HR,0.55,0.48–0.63,Better in migrants
+All-cause mortality  [post-hoc],Rawshani 2016,Low income European,HR,0.76,0.62–0.83,Better in migrants
+Cardiovascular disease / events,Cho 2022,,HR,1.384,1.021–1.881,Worse in migrants
+Cardiovascular disease / events,Fiorini 2020,,RR,0.163,0.1–0.27,Better in migrants
+Cardiovascular disease / events,Enguita-German 2024,male,HR,0.75,0.62–0.9,Better in migrants
+Cardiovascular disease / events,Enguita-German 2024,female,HR,1.07,0.66–1.75,Inconclusive
+Cardiovascular disease / events,Kristensen 2007,Lebanese,RR,1.185,0.868–1.619,Inconclusive
+Cardiovascular disease / events,Kristensen 2007,Turkish,RR,1.222,0.972–1.537,Inconclusive
