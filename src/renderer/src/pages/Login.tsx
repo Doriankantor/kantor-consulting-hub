@@ -141,7 +141,7 @@ export default function Login() {
               <label htmlFor="password"
                 className="block text-[11px] font-semibold uppercase tracking-widest mb-1.5"
                 style={{ color: 'rgba(255,255,255,0.45)' }}>
-                Password
+                Password or access code
               </label>
               <input
                 id="password"
@@ -181,8 +181,8 @@ export default function Login() {
             </button>
           </form>
 
-          <p className="mt-5 text-center text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
-            Access is managed by your administrator.
+          <p className="mt-5 text-center text-xs leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            First time? Enter your email and the access code<br />from your administrator — you'll set a password next.
           </p>
         </div>
 

@@ -67,8 +67,26 @@ export default function Team() {
   const [role,   setRole]   = useState<'member' | 'admin'>('member')
   const [inviting, setInviting] = useState(false)
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  // The access code to share for the most recently invited member.
+  const [generatedCode, setGeneratedCode] = useState<{ email: string; name: string; code: string } | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
 
   useEffect(() => { load() }, [])
+
+  async function copyText(text: string, tag: string) {
+    try { await navigator.clipboard.writeText(text) } catch { /* ignore */ }
+    setCopied(tag)
+    setTimeout(() => setCopied(c => (c === tag ? null : c)), 1800)
+  }
+
+  function shareMessage(name: string, email: string, code: string) {
+    return `Hi ${name || 'there'},\n\nYou've been added to Kantor Consulting Hub. To sign in:\n\n1. Open the app\n2. Email: ${email}\n3. Access code: ${code}\n\nYou'll be asked to set your own password right after.`
+  }
+
+  async function copyMemberCode(member: LocalTeamMember) {
+    const res = await window.api.team.getLoginCode(member.email)
+    if (res?.code) await copyText(res.code, `code-${member.id}`)
+  }
 
   async function load() {
     setLoading(true)
@@ -104,9 +122,13 @@ export default function Team() {
       if (result.error) {
         setMsg({ type: 'err', text: result.error })
       } else {
-        const tempPw = (result as any).tempPassword
-        const pwNote = tempPw ? ` Temp password: ${tempPw}` : ''
-        setMsg({ type: 'ok', text: `Invite sent to ${trimmedEmail}.${pwNote}` })
+        const code = (result as { tempPassword?: string }).tempPassword
+        if (code) {
+          setGeneratedCode({ email: trimmedEmail, name: trimmedName, code })
+          setMsg(null)
+        } else {
+          setMsg({ type: 'ok', text: `Member ${trimmedEmail} added.` })
+        }
         setEmail('')
         setName('')
         setRole('member')
@@ -117,7 +139,6 @@ export default function Team() {
     }
 
     setInviting(false)
-    setTimeout(() => setMsg(null), 6000)
   }
 
   async function handleRemove(member: LocalTeamMember) {
@@ -147,7 +168,8 @@ export default function Team() {
               Invite a team member
             </h2>
             <p className="text-xs text-gray-500 dark:text-white/55 mb-4">
-              They'll receive an email with a temporary password to log in and set their own.
+              Generates an access code you share with them. They sign in with their email + code,
+              then set their own password. Works on any computer — no email required.
               Only <code className="bg-gray-100 dark:bg-white/[0.08] px-1 rounded text-[11px]">@kantor-consulting.com</code> addresses are allowed.
             </p>
 
@@ -190,9 +212,9 @@ export default function Team() {
                   {inviting ? (
                     <span className="flex items-center gap-2">
                       <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Sending…
+                      Generating…
                     </span>
-                  ) : 'Send invite'}
+                  ) : 'Generate code'}
                 </button>
               </div>
             </form>
@@ -216,6 +238,50 @@ export default function Team() {
                   </svg>
                 )}
                 {msg.text}
+              </div>
+            )}
+
+            {/* Generated access code — share with the new member */}
+            {generatedCode && (
+              <div className="mt-4 rounded-xl border border-hub-gold/30 bg-hub-gold/[0.06] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-hub-gold mb-1">
+                      Access code for {generatedCode.name || generatedCode.email}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-white/55">
+                      Send this to {generatedCode.email}. They sign in with their email + this code.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setGeneratedCode(null)}
+                    className="titlebar-no-drag p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-white/80 transition"
+                    title="Dismiss"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                      <path d="M1.5 1.5l9 9M10.5 1.5l-9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <code className="flex-1 px-3 py-2 rounded-lg bg-white dark:bg-black/30 border border-gray-200 dark:border-white/[0.1] font-mono text-base tracking-wider text-gray-900 dark:text-white select-all">
+                    {generatedCode.code}
+                  </code>
+                  <button
+                    onClick={() => copyText(generatedCode.code, 'gen-code')}
+                    className="titlebar-no-drag px-3 py-2 rounded-lg bg-hub-gold hover:bg-hub-gold-light text-white text-xs font-semibold transition shrink-0"
+                  >
+                    {copied === 'gen-code' ? 'Copied ✓' : 'Copy code'}
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => copyText(shareMessage(generatedCode.name, generatedCode.email, generatedCode.code), 'gen-msg')}
+                  className="titlebar-no-drag mt-2 w-full px-3 py-2 rounded-lg bg-gray-100 dark:bg-white/[0.06] hover:bg-gray-200 dark:hover:bg-white/[0.1] text-gray-700 dark:text-white/80 text-xs font-medium transition"
+                >
+                  {copied === 'gen-msg' ? 'Copied ✓' : 'Copy ready-to-send message'}
+                </button>
               </div>
             )}
           </div>
@@ -267,6 +333,15 @@ export default function Team() {
                   <div className="flex items-center gap-2">
                     <StatusBadge status={member.status} />
                     <RoleBadge role={member.role} />
+                    {isAdmin && (
+                      <button
+                        onClick={e => { e.stopPropagation(); copyMemberCode(member) }}
+                        className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2 py-1 rounded-lg text-[10px] font-semibold text-gray-400 dark:text-white/50 hover:text-hub-gold hover:bg-hub-gold/10 transition"
+                        title="Copy this member's access code"
+                      >
+                        {copied === `code-${member.id}` ? 'Copied ✓' : 'Copy code'}
+                      </button>
+                    )}
                     {isAdmin && member.id !== currentId && (
                       <button
                         onClick={e => { e.stopPropagation(); handleRemove(member) }}

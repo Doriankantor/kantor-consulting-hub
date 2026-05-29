@@ -9,7 +9,6 @@ export default function FirstLogin() {
   const [step, setStep] = useState<Step>(1)
 
   // Step 1
-  const [currentPw, setCurrentPw] = useState('')
   const [newPw,     setNewPw]     = useState('')
   const [confirmPw, setConfirmPw] = useState('')
   const [pwError,   setPwError]   = useState('')
@@ -24,7 +23,7 @@ export default function FirstLogin() {
     if (newPw !== confirmPw) { setPwError('Passwords do not match.'); return }
     if (!localUser) return
     setPwLoading(true); setPwError('')
-    const result = await window.api.team.changePassword(localUser.id, currentPw, newPw)
+    const result = await window.api.team.setInitialPassword(localUser.id, newPw)
     if (result.error) { setPwError(result.error); setPwLoading(false); return }
     setPwLoading(false)
     setStep(2)
@@ -81,14 +80,8 @@ export default function FirstLogin() {
                 <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">{pwError}</div>
               )}
               <div>
-                <label className="block text-[10px] font-semibold text-gray-400 dark:text-white/65 uppercase tracking-widest mb-1.5">Temporary password</label>
-                <input type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} autoFocus
-                  placeholder="From your invite email"
-                  className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition" />
-              </div>
-              <div>
                 <label className="block text-[10px] font-semibold text-gray-400 dark:text-white/65 uppercase tracking-widest mb-1.5">New password</label>
-                <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)}
+                <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} autoFocus
                   placeholder="At least 8 characters"
                   className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition" />
               </div>
@@ -99,7 +92,7 @@ export default function FirstLogin() {
                   onKeyDown={e => { if (e.key === 'Enter') handleChangePassword() }}
                   className="titlebar-no-drag w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-white/[0.06] border border-gray-300 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition" />
               </div>
-              <button onClick={handleChangePassword} disabled={pwLoading || !currentPw || !newPw || !confirmPw}
+              <button onClick={handleChangePassword} disabled={pwLoading || !newPw || !confirmPw}
                 className="titlebar-no-drag w-full py-2.5 rounded-xl bg-hub-gold hover:bg-hub-gold-light disabled:opacity-50 text-white font-semibold text-sm transition mt-1">
                 {pwLoading ? 'Saving…' : 'Set password →'}
               </button>

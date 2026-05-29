@@ -403,6 +403,8 @@ interface Window {
       edit:            (p: { id: string; full_name?: string; email?: string; role?: string }) => Promise<{ ok?: boolean; error?: string }>
       heartbeat:       (userId: string)                                                      => Promise<boolean>
       changePassword:  (userId: string, cur: string, next: string)                          => Promise<{ ok?: boolean; error?: string }>
+      setInitialPassword: (userId: string, next: string)                                     => Promise<{ ok?: boolean; error?: string }>
+      getLoginCode:    (email: string)                                                       => Promise<{ code: string }>
       markApiKeySet:   (userId: string)                                                      => Promise<boolean>
       savePreferences: (userId: string, prefs: Record<string, unknown>)                     => Promise<boolean>
     }

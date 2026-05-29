@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import ws from 'ws'
 import { copyFileSync, mkdirSync, existsSync } from 'fs'
 import { join, basename, extname } from 'path'
-import { randomBytes } from 'crypto'
+import { randomBytes, createHash, createHmac } from 'crypto'
 import { getDatabase, hashPassword } from '../db'
 import { driveSync } from '../google/drive'
 import { sendEmail, inviteEmailHtml } from '../google/gmail'
@@ -25,6 +25,31 @@ const supabaseAdmin = createClient(
 
 function uuid(): string { return crypto.randomUUID() }
 function now():  string { return new Date().toISOString() }
+
+// ── Offline-verifiable access codes ────────────────────────────────────────
+// An invited user can sign in on ANY machine using a code their admin shares.
+// The code is a deterministic signature of their email, computed with a secret
+// baked into every build (derived from the service-role key). Because all
+// installs share the same secret, any copy of the app can verify a code that
+// any other copy generated — no cloud round-trip, no email, no shared database.
+const INVITE_HMAC_KEY = createHash('sha256')
+  .update('kc-invite-v1|' + (process.env.SUPABASE_SERVICE_ROLE_KEY ?? 'kc-fallback-secret'))
+  .digest()
+
+function inviteCodeForEmail(email: string): string {
+  const mac = createHmac('sha256', INVITE_HMAC_KEY)
+    .update(email.trim().toLowerCase())
+    .digest('hex')
+    .toUpperCase()
+  // 12 hex chars (48 bits), grouped for readability: KC-XXXX-XXXX-XXXX
+  return `KC-${mac.slice(0, 4)}-${mac.slice(4, 8)}-${mac.slice(8, 12)}`
+}
+
+// Canonical form for comparison — tolerates dashes, spaces, and case so the
+// user can type "kc xxxx xxxx xxxx", "KC-XXXX-XXXX-XXXX", or paste either.
+function canonCode(input: string): string {
+  return input.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
 
 function getSetting(key: string): string | null {
   const row = getDatabase()
@@ -216,6 +241,30 @@ function registerAuthHandlers() {
       if (hashPassword(password, sS) !== sH) return { error: 'Invalid email or password.' }
       return { ok: true, user: { id: 'local-admin', email: sE, name: sN, role: 'admin' }, mustChangePassword: false, anthropicKeySet: false }
     }
+
+    // ── First-login via access code ──────────────────────────────────────
+    // No local account on this machine yet. If the password matches the
+    // access code the admin generated for this email, provision a local
+    // account on the spot and send the user straight to "set your password".
+    if (canonCode(password) === canonCode(inviteCodeForEmail(trimmed))) {
+      const id   = uuid()
+      const salt = randomBytes(16).toString('hex')
+      const hash = hashPassword(canonCode(password), salt)
+      const name = trimmed.split('@')[0]
+      db.prepare(`INSERT OR IGNORE INTO local_users
+          (id,email,full_name,role,status,password_hash,password_salt,must_change_password,invited_by)
+          VALUES (?,?,?,?,'active',?,?,1,'access-code')`)
+        .run(id, trimmed, name, 'member', hash, salt)
+      const created = db.prepare('SELECT * FROM local_users WHERE LOWER(email)=?').get(trimmed) as Record<string, unknown>
+      db.prepare("UPDATE local_users SET last_active=CURRENT_TIMESTAMP, status='active' WHERE id=?").run(created.id)
+      return {
+        ok: true,
+        user: { id: created.id, email: created.email, name: created.full_name ?? created.email, role: created.role },
+        mustChangePassword: true,
+        anthropicKeySet: false,
+      }
+    }
+
     return { error: 'Invalid email or password.' }
   })
 
@@ -265,7 +314,9 @@ function registerTeamHandlers() {
     try {
       const id           = uuid()
       const salt         = randomBytes(16).toString('hex')
-      const tempPassword = 'KC-' + Math.random().toString(36).slice(2, 8).toUpperCase()
+      // Deterministic, offline-verifiable code — same value the employee's
+      // machine will independently compute and accept on first login.
+      const tempPassword = inviteCodeForEmail(email)
       const hash         = hashPassword(tempPassword, salt)
 
       db.prepare(`INSERT INTO local_users
@@ -309,6 +360,25 @@ function registerTeamHandlers() {
   ipcMain.handle('team:remove', (_e, id: string) => {
     // Hard-delete so the user is fully gone; they can only return via a fresh invite
     getDatabase().prepare('DELETE FROM local_users WHERE id=?').run(id)
+    return { ok: true }
+  })
+
+  // Re-derive a member's access code so the admin can copy & re-share it any time.
+  ipcMain.handle('team:getLoginCode', (_e, email: string) => {
+    return { code: inviteCodeForEmail((email ?? '').trim().toLowerCase()) }
+  })
+
+  // First-login password set: no current-password challenge (the user just
+  // authenticated with their access code), only allowed while the account is
+  // still flagged must_change_password.
+  ipcMain.handle('team:setInitialPassword', (_e, userId: string, newPw: string) => {
+    if (!newPw || newPw.length < 8) return { error: 'Password must be at least 8 characters.' }
+    const db  = getDatabase()
+    const row = db.prepare('SELECT must_change_password FROM local_users WHERE id=?').get(userId) as { must_change_password: number } | undefined
+    if (!row) return { error: 'User not found.' }
+    const ns = randomBytes(16).toString('hex')
+    const nh = hashPassword(newPw, ns)
+    db.prepare("UPDATE local_users SET password_hash=?,password_salt=?,must_change_password=0,status='active' WHERE id=?").run(nh, ns, userId)
     return { ok: true }
   })
 

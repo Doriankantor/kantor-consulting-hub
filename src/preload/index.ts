@@ -37,6 +37,8 @@ const api = {
     edit:            (p: { id: string; full_name?: string; email?: string; role?: string }) => ipcRenderer.invoke('team:edit', p),
     heartbeat:       (userId: string)                                                      => ipcRenderer.invoke('team:heartbeat', userId),
     changePassword:  (userId: string, cur: string, next: string)                          => ipcRenderer.invoke('team:changePassword', userId, cur, next),
+    setInitialPassword: (userId: string, next: string)                                     => ipcRenderer.invoke('team:setInitialPassword', userId, next),
+    getLoginCode:    (email: string)                                                       => ipcRenderer.invoke('team:getLoginCode', email),
     markApiKeySet:   (userId: string)                                                      => ipcRenderer.invoke('team:markApiKeySet', userId),
     savePreferences: (userId: string, prefs: Record<string, unknown>)                     => ipcRenderer.invoke('team:savePreferences', userId, prefs),
   },
