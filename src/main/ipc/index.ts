@@ -1977,4 +1977,530 @@ export function registerIpcHandlers(): void {
   registerNotificationSchedulerHandlers()
   startNotificationScheduler()
   startTrashAutoDelete()
+  registerIntelligenceHandlers()
+}
+
+// ── Intelligence auto-refresh (called from main/index.ts after app ready) ──
+export function startIntelligenceAutoRefresh() {
+  const INTERVAL = 6 * 60 * 60 * 1000 // 6 hours
+  setInterval(() => fetchAndStoreNews(), INTERVAL)
+}
+
+export async function triggerInitialNewsFetch() {
+  try { await fetchAndStoreNews() } catch (e) { console.warn('[Intelligence] Initial fetch failed:', e) }
+}
+
+// ── Confidence auto-detection ────────────────────────────────────────────
+const HIGH_CONFIDENCE_SOURCES = [
+  'reuters', 'apnews', 'ap news', 'bbc', 'nytimes', 'new york times',
+  'ft.com', 'financial times', "jane's", 'janes', 'insightcrime',
+  'insight crime', 'infodefensa', 'washingtonpost', 'washington post',
+  'theguardian', 'guardian', 'bloomberg', 'wsj', 'wall street journal',
+  'foreignpolicy', 'foreign policy', 'defenseone', 'defense one',
+  'breakingdefense', 'breaking defense'
+]
+const MEDIUM_CONFIDENCE_SOURCES = [
+  'semana', 'el tiempo', 'zona militar', 'la nacion', 'infobae',
+  'mercopress', 'elpais', 'el pais', 'elespectador', 'el espectador',
+  'larepublica', 'la republica', 'dinero', 'portafolio', 'caracoltv',
+  'rcnradio', 'rcn', 'civiles en red', 'defensa.com', 'infodefensa',
+  'americaeconomia', 'america economia', 'telam', 'agencia efe', 'efe',
+  'dw.com', 'dw', 'france24', 'france 24', 'al jazeera', 'aljazeera',
+  'rferl', 'radio free europe', 'kyivindependent', 'kyiv independent',
+  'themoscowtimes', 'moscow times', 'thedrive', 'the drive',
+  'warisboring', 'war is boring', 'bellingcat', 'bulgarianmilitary',
+  'bulgarian military', 'militarytimes', 'military times',
+  'defensenews', 'defense news', 'aviationweek', 'flightglobal'
+]
+
+function autoDetectConfidence(sourceName: string): 'high' | 'medium' | 'low' {
+  if (!sourceName) return 'low'
+  const lower = sourceName.toLowerCase()
+  if (HIGH_CONFIDENCE_SOURCES.some(s => lower.includes(s))) return 'high'
+  if (MEDIUM_CONFIDENCE_SOURCES.some(s => lower.includes(s))) return 'medium'
+  return 'low'
+}
+
+// ── Auto-detected categories ─────────────────────────────────────────────
+const CATEGORY_RULES: Array<{ keywords: string[]; category: string }> = [
+  { keywords: ['strike', 'attack', 'casualt', 'kill', 'wound', 'injur', 'explosion', 'bomb', 'shot down', 'intercept', 'destroy', 'hit', 'target'], category: 'Incident' },
+  { keywords: ['procure', 'purchase', 'buy', 'acquire', 'contract', 'deal', 'sale', 'order', 'invest', 'budget', 'fund', 'billion', 'million', 'tender'], category: 'Investment & Procurement' },
+  { keywords: ['technolog', 'innovat', 'develop', 'prototype', 'test', 'capabilit', 'sensor', 'ai ', 'autonomo', 'swarm', 'stealth', 'payload', 'range', 'endurance'], category: 'Innovation & Technology' },
+  { keywords: ['regulat', 'policy', 'law', 'legislat', 'ban', 'restrict', 'export control', 'sanction', 'treaty', 'agreement', 'framework', 'standard'], category: 'Policy & Regulation' },
+  { keywords: ['cartel', 'criminal', 'narco', 'traffick', 'gang', 'vnsa', 'non-state', 'terror', 'insurgent', 'rebel', 'militia', 'drug', 'smuggl'], category: 'Criminal & VNSA Activity' },
+  { keywords: ['counter-drone', 'counter drone', 'c-uas', 'anti-drone', 'anti drone', 'intercept', 'jam', 'defeat', 'detect', 'defend'], category: 'Counter-drone / C-UAS' },
+  { keywords: ['military', 'armed force', 'army', 'navy', 'air force', 'deploy', 'operati', 'exercise', 'training', 'unit', 'battalion', 'brigade'], category: 'State Military Activity' },
+  { keywords: ['sanction', 'financ', 'payment', 'transfer', 'fund', 'launder', 'revenue', 'profit', 'illicit', 'dark web', 'crypto', 'bank'], category: 'Finance & Sanctions' },
+  { keywords: ['china', 'chinese', 'iran', 'iranian', 'russia', 'russian', 'turkey', 'turkish', 'export', 'supplier', 'transfer', 'proliferat', 'third-party', 'third party'], category: 'Extra-regional Supplier' },
+]
+
+function autoDetectCategories(text: string): string[] {
+  const lower = (text || '').toLowerCase()
+  const cats: string[] = []
+  for (const rule of CATEGORY_RULES) {
+    if (rule.keywords.some(k => lower.includes(k))) {
+      if (!cats.includes(rule.category)) cats.push(rule.category)
+    }
+  }
+  return cats.slice(0, 3) // max 3 categories
+}
+
+// ── NewsAPI fetch ────────────────────────────────────────────────────────
+const NEWS_QUERIES = [
+  'drone proliferation OR "drone strikes" OR "drone purchases" OR "counter drone" OR "weaponized drones" OR "DJI drones" OR "drone warfare" OR "loitering munitions" OR "FPV drones" OR "drone swarms"',
+  '"autonomous weapons" OR UAV OR "MALE drones" OR "drone jamming" OR "anti-drone systems" OR "drone export" OR "drone regulation" OR "kamikaze drones"',
+  '"drones Latin America" OR "drones Colombia" OR "drones Venezuela" OR "drones Mexico" OR "drones Brazil" OR "cartel drones" OR "narco drones"',
+  '"drones Ukraine" OR "drones Middle East" OR "drones Iran" OR "drones NATO" OR "Iranian drones"',
+  '"DJI export" OR "Turkish Bayraktar" OR "Chinese drone exports" OR "drone proliferation" OR "non-state actors drones"',
+]
+
+async function fetchAndStoreNews(): Promise<number> {
+  const apiKey = process.env.NEWSAPI_KEY
+  if (!apiKey) {
+    console.log('[Intelligence] NEWSAPI_KEY not set, skipping news fetch')
+    return 0
+  }
+  const db = getDatabase()
+  let stored = 0
+  for (const q of NEWS_QUERIES) {
+    try {
+      const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&language=en&sortBy=publishedAt&pageSize=20&apiKey=${apiKey}`
+      const res = await fetch(url)
+      if (!res.ok) {
+        console.warn('[Intelligence] NewsAPI error:', res.status, await res.text())
+        continue
+      }
+      const data = await res.json() as { articles?: Array<{ url: string; title: string; description: string; content: string; source: { name: string }; publishedAt: string; urlToImage: string }> }
+      for (const article of data.articles ?? []) {
+        if (!article.url || !article.title) continue
+        const confidence = autoDetectConfidence(article.source?.name ?? '')
+        const snippet = article.description || article.content?.slice(0, 300) || ''
+        const categories = autoDetectCategories((article.title || '') + ' ' + snippet)
+        try {
+          const { randomUUID } = await import('crypto')
+          db.prepare(`
+            INSERT OR IGNORE INTO intelligence_sources
+              (id, type, title, snippet, url, source_name, published_at, confidence, categories_json, image_url)
+            VALUES (?, 'article', ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            randomUUID(),
+            article.title,
+            snippet,
+            article.url,
+            article.source?.name || '',
+            article.publishedAt,
+            confidence,
+            JSON.stringify(categories),
+            article.urlToImage || null
+          )
+          stored++
+        } catch { /* duplicate URL — skip */ }
+      }
+    } catch (e) {
+      console.warn('[Intelligence] NewsAPI query error:', e)
+    }
+  }
+  console.log(`[Intelligence] Fetched and stored ${stored} new articles`)
+  return stored
+}
+
+// ── Intelligence IPC handlers ────────────────────────────────────────────
+function registerIntelligenceHandlers(): void {
+  const db = () => getDatabase()
+
+  ipcMain.handle('intelligence:getSources', (_e, params: {
+    type?: string; status?: string; confidence?: string;
+    category?: string; search?: string; limit?: number; offset?: number
+  } = {}) => {
+    let sql = 'SELECT * FROM intelligence_sources WHERE 1=1'
+    const args: unknown[] = []
+    if (params.type)       { sql += ' AND type=?';              args.push(params.type) }
+    if (params.status)     { sql += ' AND status=?';            args.push(params.status) }
+    if (params.confidence) { sql += ' AND confidence=?';        args.push(params.confidence) }
+    if (params.category)   { sql += " AND categories_json LIKE ?"; args.push(`%${params.category}%`) }
+    if (params.search)     {
+      sql += ' AND (title LIKE ? OR snippet LIKE ? OR source_name LIKE ? OR content LIKE ?)'
+      const s = `%${params.search}%`
+      args.push(s, s, s, s)
+    }
+    sql += ' ORDER BY added_at DESC, published_at DESC'
+    sql += ` LIMIT ${params.limit ?? 100} OFFSET ${params.offset ?? 0}`
+    return db().prepare(sql).all(...args)
+  })
+
+  ipcMain.handle('intelligence:getUnreviewedCount', () => {
+    const row = db().prepare("SELECT COUNT(*) as c FROM intelligence_sources WHERE status='unreviewed'").get() as { c: number }
+    return row.c
+  })
+
+  ipcMain.handle('intelligence:updateStatus', (_e, id: string, status: string, notes?: string, reviewedById?: string, reviewedByName?: string) => {
+    const now2 = new Date().toISOString()
+    if (status === 'approved') {
+      const row = db().prepare('SELECT categories_json FROM intelligence_sources WHERE id=?').get(id) as { categories_json: string } | undefined
+      const cats: string[] = JSON.parse(row?.categories_json || '[]')
+      let section = 'source-archive'
+      if (cats.includes('Incident')) section = 'incident-feed'
+      else if (cats.includes('Investment & Procurement')) section = 'investment-procurement'
+      else if (cats.includes('Finance & Sanctions')) section = 'finance-nexus'
+      else if (cats.includes('Innovation & Technology') || cats.includes('State Military Activity')) section = 'platforms'
+      db().prepare(`
+        UPDATE intelligence_sources SET status=?, review_notes=?, reviewed_by_id=?, reviewed_by_name=?, reviewed_at=?, queue_section=? WHERE id=?
+      `).run(status, notes ?? null, reviewedById ?? null, reviewedByName ?? null, now2, section, id)
+    } else {
+      db().prepare(`
+        UPDATE intelligence_sources SET status=?, review_notes=?, reviewed_by_id=?, reviewed_by_name=?, reviewed_at=? WHERE id=?
+      `).run(status, notes ?? null, reviewedById ?? null, reviewedByName ?? null, now2, id)
+    }
+    return { ok: true }
+  })
+
+  ipcMain.handle('intelligence:updateConfidence', (_e, id: string, confidence: string) => {
+    db().prepare('UPDATE intelligence_sources SET confidence=?, confidence_override=1 WHERE id=?').run(confidence, id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('intelligence:updateQueueSection', (_e, id: string, section: string) => {
+    db().prepare('UPDATE intelligence_sources SET queue_section=? WHERE id=?').run(section, id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('intelligence:removeFromQueue', (_e, id: string) => {
+    db().prepare("UPDATE intelligence_sources SET status='saved', queue_section=NULL, queued_at=NULL WHERE id=?").run(id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('intelligence:deleteSource', (_e, id: string) => {
+    db().prepare('DELETE FROM intelligence_sources WHERE id=?').run(id)
+    return { ok: true }
+  })
+
+  ipcMain.handle('intelligence:addSocial', (_e, post: {
+    platform: string; handle: string; post_date: string; content: string;
+    location_mentioned?: string; actors_mentioned?: string; url?: string;
+    categories_json?: string; confidence?: string;
+    added_by_id?: string; added_by_name?: string;
+  }) => {
+    const { randomUUID } = require('crypto')
+    const id = randomUUID()
+    const categories = JSON.parse(post.categories_json || '[]')
+    const cats = categories.length ? categories : autoDetectCategories(post.content)
+    db().prepare(`
+      INSERT INTO intelligence_sources
+        (id, type, platform, handle, published_at, content, url, location_mentioned, actors_mentioned,
+         categories_json, confidence, added_by_id, added_by_name)
+      VALUES (?, 'social', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, post.platform, post.handle, post.post_date, post.content,
+           post.url || null, post.location_mentioned || null, post.actors_mentioned || null,
+           JSON.stringify(cats), post.confidence || 'low',
+           post.added_by_id || null, post.added_by_name || null)
+    return { ok: true, id }
+  })
+
+  ipcMain.handle('intelligence:fetchNews', async () => {
+    try {
+      const count = await fetchAndStoreNews()
+      return { ok: true, count }
+    } catch (e: any) {
+      return { ok: false, error: e.message }
+    }
+  })
+
+  ipcMain.handle('intelligence:uploadDocument', async (_e, params: {
+    userId?: string; addedByName?: string
+  }) => {
+    const { dialog: dlg } = await import('electron')
+    const result = await dlg.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'Documents', extensions: ['pdf', 'docx', 'txt'] },
+      ],
+    })
+    if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true }
+
+    const results: Array<{ id: string; file_name: string }> = []
+    for (const filePath of result.filePaths) {
+      try {
+        const { readFileSync } = require('fs')
+        const { basename: bname } = require('path')
+        const { randomUUID } = require('crypto')
+        const fileName = bname(filePath)
+        const ext = fileName.split('.').pop()?.toLowerCase() || ''
+        let textContent = ''
+
+        if (ext === 'txt') {
+          textContent = readFileSync(filePath, 'utf-8').slice(0, 50000)
+        } else if (ext === 'pdf') {
+          try {
+            const pdfParse = require('pdf-parse')
+            const buffer = readFileSync(filePath)
+            const pdfData = await pdfParse(buffer)
+            textContent = pdfData.text?.slice(0, 50000) || ''
+          } catch { textContent = '[PDF text extraction unavailable]' }
+        } else if (ext === 'docx') {
+          try {
+            const mammoth = require('mammoth')
+            const mammothResult = await mammoth.extractRawText({ path: filePath })
+            textContent = mammothResult.value?.slice(0, 50000) || ''
+          } catch { textContent = '[DOCX text extraction unavailable]' }
+        }
+
+        // Run Claude analysis if we have text
+        let analysisJson: string | null = null
+        if (textContent && textContent.length > 50) {
+          try {
+            const userRow = params.userId
+              ? db().prepare("SELECT preferences_json FROM local_users WHERE id=?").get(params.userId) as { preferences_json: string } | undefined
+              : undefined
+            const prefs = userRow?.preferences_json ? JSON.parse(userRow.preferences_json) : {}
+            const globalKey = db().prepare("SELECT value FROM settings WHERE key='anthropic_api_key'").get() as { value: string } | undefined
+            const apiKey = prefs.anthropicApiKey || globalKey?.value
+            if (apiKey) {
+              const AnthropicLib = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk')
+              const client = new AnthropicLib({ apiKey })
+              const msg = await client.messages.create({
+                model: 'claude-opus-4-5',
+                max_tokens: 1024,
+                messages: [{
+                  role: 'user',
+                  content: `Analyze this document and extract structured intelligence. Return ONLY valid JSON with these exact keys:
+{
+  "key_findings": ["finding 1", "finding 2", ...],
+  "named_actors": ["actor 1", ...],
+  "locations": ["location 1", ...],
+  "dates_events": ["date/event 1", ...],
+  "platforms_systems": ["platform 1", ...],
+  "suggested_categories": ["category from: Incident, Investment & Procurement, Innovation & Technology, Policy & Regulation, Criminal & VNSA Activity, Counter-drone / C-UAS, State Military Activity, Finance & Sanctions, Extra-regional Supplier"],
+  "confidence": "high|medium|low",
+  "confidence_reasoning": "brief explanation"
+}
+
+Document:
+${textContent.slice(0, 8000)}`
+                }]
+              })
+              const responseText = msg.content[0]?.type === 'text' ? msg.content[0].text : ''
+              const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+              if (jsonMatch) analysisJson = jsonMatch[0]
+            }
+          } catch (e) {
+            console.warn('[Intelligence] Claude analysis failed:', e)
+          }
+        }
+
+        const analysis = analysisJson ? JSON.parse(analysisJson) : null
+        const { randomUUID: newUUID } = require('crypto')
+        const docId = newUUID()
+        db().prepare(`
+          INSERT INTO intelligence_sources
+            (id, type, title, file_name, local_path, content, analysis_json, categories_json, confidence, added_by_id, added_by_name)
+          VALUES (?, 'document', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          docId,
+          fileName,
+          fileName,
+          filePath,
+          textContent.slice(0, 10000),
+          analysisJson,
+          JSON.stringify(analysis?.suggested_categories || []),
+          analysis?.confidence || 'low',
+          params.userId || null,
+          params.addedByName || null
+        )
+        results.push({ id: docId, file_name: fileName })
+      } catch (e: any) {
+        console.warn('[Intelligence] Upload error for', filePath, e)
+      }
+    }
+    return { ok: true, results }
+  })
+
+  ipcMain.handle('intelligence:getQueue', () => {
+    return db().prepare("SELECT * FROM intelligence_sources WHERE status='approved' ORDER BY queued_at DESC, reviewed_at DESC").all()
+  })
+
+  ipcMain.handle('intelligence:getPushLog', () => {
+    return db().prepare('SELECT * FROM intelligence_push_log ORDER BY pushed_at DESC LIMIT 50').all()
+  })
+
+  ipcMain.handle('intelligence:pushToContestedSkies', async (_e, params: { pushedById: string; pushedByName: string }) => {
+    const token = process.env.GH_TOKEN
+    if (!token) return { ok: false, error: 'GH_TOKEN not configured in .env' }
+
+    const items = db().prepare("SELECT * FROM intelligence_sources WHERE status='approved'").all() as any[]
+    if (!items.length) return { ok: false, error: 'No approved items in publish queue' }
+
+    const REPO = 'Doriankantor/contested-skies-monitor'
+    const FILE = 'index.html'
+    const BASE_URL = `https://api.github.com/repos/${REPO}/contents/${FILE}`
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    }
+
+    let currentContent = '', sha = ''
+    try {
+      const getRes = await fetch(BASE_URL, { headers })
+      if (getRes.status === 401) return { ok: false, error: 'GitHub token invalid or lacks write access to contested-skies-monitor.' }
+      if (!getRes.ok) return { ok: false, error: `GitHub API error: ${getRes.status} ${await getRes.text()}` }
+      const fileData = await getRes.json() as { content: string; sha: string }
+      sha = fileData.sha
+      currentContent = Buffer.from(fileData.content, 'base64').toString('utf-8')
+    } catch (e: any) {
+      return { ok: false, error: `Failed to fetch contested-skies-monitor: ${e.message}` }
+    }
+
+    const now2 = new Date()
+    const dateStr = now2.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    const sections: string[] = []
+    let modified = currentContent
+
+    const bySection: Record<string, any[]> = {}
+    for (const item of items) {
+      const sec = item.queue_section || 'source-archive'
+      if (!bySection[sec]) bySection[sec] = []
+      bySection[sec].push(item)
+    }
+
+    const CONF_COLOR: Record<string, string> = {
+      high: '#22c55e', medium: '#f59e0b', low: '#ef4444'
+    }
+    const CONF_LABEL: Record<string, string> = {
+      high: 'HIGH', medium: 'MED', low: 'LOW'
+    }
+
+    function confBadge(confidence: string): string {
+      const color = CONF_COLOR[confidence] || '#6b7280'
+      const label = CONF_LABEL[confidence] || confidence?.toUpperCase() || 'UNK'
+      return `<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;color:#fff;background:${color}">${label}</span>`
+    }
+
+    if (bySection['incident-feed']?.length) {
+      sections.push('Incident Feed')
+      const html = bySection['incident-feed'].map((item: any) => `
+        <div class="incident-entry" style="border-left:3px solid ${CONF_COLOR[item.confidence]||'#6b7280'};padding:10px 16px;margin-bottom:12px;background:rgba(255,255,255,0.03)">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+            ${confBadge(item.confidence)}
+            <span style="font-size:12px;color:rgba(255,255,255,0.5)">${item.published_at ? new Date(item.published_at).toLocaleDateString() : dateStr}</span>
+          </div>
+          <div style="font-weight:600;color:#fff;margin-bottom:4px">${item.title || 'Incident Report'}</div>
+          <div style="color:rgba(255,255,255,0.7);font-size:13px;line-height:1.5">${item.snippet || item.content?.slice(0,200) || ''}</div>
+          ${item.url ? `<a href="${item.url}" style="font-size:12px;color:#6366f1;text-decoration:none" target="_blank">Source: ${item.source_name || 'View source'} →</a>` : ''}
+        </div>`).join('\n')
+
+      if (modified.includes('<!-- INCIDENT_FEED_START -->')) {
+        modified = modified.replace(
+          /(<!-- INCIDENT_FEED_START -->)([\s\S]*?)(<!-- INCIDENT_FEED_END -->)/,
+          `$1\n${html}\n$3`
+        )
+      } else if (modified.includes('id="incident-feed"') || modified.includes('id="section-02"')) {
+        const marker = modified.includes('id="incident-feed"') ? 'id="incident-feed"' : 'id="section-02"'
+        modified = modified.replace(marker, `${marker} data-intelligence-injected="true"`)
+        const idx = modified.indexOf(marker) + marker.length
+        const tagEnd = modified.indexOf('>', idx) + 1
+        modified = modified.slice(0, tagEnd) + '\n<!-- INCIDENT_FEED_START -->\n' + html + '\n<!-- INCIDENT_FEED_END -->\n' + modified.slice(tagEnd)
+      } else {
+        modified = modified.replace('</body>', `<section id="incident-feed">\n<!-- INCIDENT_FEED_START -->\n${html}\n<!-- INCIDENT_FEED_END -->\n</section>\n</body>`)
+      }
+    }
+
+    if (bySection['source-archive']?.length) {
+      sections.push('Source Archive')
+      const html = bySection['source-archive'].map((item: any) => `
+        <div class="source-entry" style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+            ${confBadge(item.confidence)}
+            <span style="font-size:11px;color:rgba(255,255,255,0.4)">${item.source_name || item.platform || ''}</span>
+            <span style="font-size:11px;color:rgba(255,255,255,0.4)">${item.published_at ? new Date(item.published_at).toLocaleDateString() : dateStr}</span>
+          </div>
+          ${item.url ? `<a href="${item.url}" style="color:#fff;font-weight:500;font-size:14px;text-decoration:none" target="_blank">${item.title || item.content?.slice(0,100) || 'View source'}</a>` : `<span style="color:#fff;font-weight:500;font-size:14px">${item.title || item.content?.slice(0,100) || ''}</span>`}
+          <div style="color:rgba(255,255,255,0.6);font-size:13px;margin-top:4px">${item.snippet || item.content?.slice(0,150) || ''}</div>
+        </div>`).join('\n')
+
+      if (modified.includes('<!-- SOURCE_ARCHIVE_START -->')) {
+        modified = modified.replace(
+          /(<!-- SOURCE_ARCHIVE_START -->)([\s\S]*?)(<!-- SOURCE_ARCHIVE_END -->)/,
+          `$1\n${html}\n$3`
+        )
+      } else {
+        modified = modified.replace('</body>', `<section id="source-archive">\n<!-- SOURCE_ARCHIVE_START -->\n${html}\n<!-- SOURCE_ARCHIVE_END -->\n</section>\n</body>`)
+      }
+    }
+
+    if (bySection['investment-procurement']?.length) {
+      sections.push('Investment & Procurement')
+      const html = bySection['investment-procurement'].map((item: any) => `
+        <div class="procurement-entry" style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+            ${confBadge(item.confidence)}
+            <span style="font-size:11px;color:rgba(255,255,255,0.4)">${item.published_at ? new Date(item.published_at).toLocaleDateString() : dateStr}</span>
+          </div>
+          <div style="color:#fff;font-weight:500;font-size:14px;margin-bottom:4px">${item.title || ''}</div>
+          <div style="color:rgba(255,255,255,0.7);font-size:13px">${item.snippet || item.content?.slice(0,200) || ''}</div>
+          ${item.url ? `<a href="${item.url}" style="font-size:12px;color:#6366f1;text-decoration:none" target="_blank">Source →</a>` : ''}
+        </div>`).join('\n')
+      if (modified.includes('<!-- INVESTMENT_PROCUREMENT_START -->')) {
+        modified = modified.replace(
+          /(<!-- INVESTMENT_PROCUREMENT_START -->)([\s\S]*?)(<!-- INVESTMENT_PROCUREMENT_END -->)/,
+          `$1\n${html}\n$3`
+        )
+      } else {
+        modified = modified.replace('</body>', `<section id="investment-procurement">\n<!-- INVESTMENT_PROCUREMENT_START -->\n${html}\n<!-- INVESTMENT_PROCUREMENT_END -->\n</section>\n</body>`)
+      }
+    }
+
+    if (bySection['finance-nexus']?.length) {
+      sections.push('Finance Nexus')
+      const html = bySection['finance-nexus'].map((item: any) => `
+        <div class="finance-entry" style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08)">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
+            ${confBadge(item.confidence)}
+            <span style="font-size:11px;color:rgba(255,255,255,0.4)">${item.published_at ? new Date(item.published_at).toLocaleDateString() : dateStr}</span>
+          </div>
+          <div style="color:#fff;font-size:14px">${item.title || item.content?.slice(0,150) || ''}</div>
+          ${item.url ? `<a href="${item.url}" style="font-size:12px;color:#6366f1;text-decoration:none" target="_blank">Source →</a>` : ''}
+        </div>`).join('\n')
+      if (modified.includes('<!-- FINANCE_NEXUS_START -->')) {
+        modified = modified.replace(
+          /(<!-- FINANCE_NEXUS_START -->)([\s\S]*?)(<!-- FINANCE_NEXUS_END -->)/,
+          `$1\n${html}\n$3`
+        )
+      } else {
+        modified = modified.replace('</body>', `<section id="finance-nexus">\n<!-- FINANCE_NEXUS_START -->\n${html}\n<!-- FINANCE_NEXUS_END -->\n</section>\n</body>`)
+      }
+    }
+
+    try {
+      const commitMsg = `Intelligence update: ${dateStr} — ${items.length} new item${items.length !== 1 ? 's' : ''}`
+      const pushRes = await fetch(BASE_URL, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          message: commitMsg,
+          content: Buffer.from(modified, 'utf-8').toString('base64'),
+          sha,
+          branch: 'main',
+        }),
+      })
+      if (!pushRes.ok) {
+        const errText = await pushRes.text()
+        if (pushRes.status === 401) return { ok: false, error: 'GitHub token invalid or lacks write access to contested-skies-monitor.' }
+        if (pushRes.status === 409) return { ok: false, error: 'Merge conflict detected — fetch the latest version and retry.' }
+        return { ok: false, error: `GitHub push failed: ${pushRes.status} — ${errText}` }
+      }
+    } catch (e: any) {
+      return { ok: false, error: `Push failed: ${e.message}` }
+    }
+
+    const { randomUUID: pushUUID } = require('crypto')
+    db().prepare(`
+      INSERT INTO intelligence_push_log (id, pushed_by_id, pushed_by_name, items_count, sections_json, success)
+      VALUES (?, ?, ?, ?, ?, 1)
+    `).run(pushUUID(), params.pushedById, params.pushedByName, items.length, JSON.stringify(sections))
+
+    db().prepare("UPDATE intelligence_sources SET status='pushed' WHERE status='approved'").run()
+
+    return { ok: true, count: items.length, sections }
+  })
 }

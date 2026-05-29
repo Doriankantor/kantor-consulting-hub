@@ -224,6 +224,21 @@ const api = {
     get:  (userId: string) => ipcRenderer.invoke('notificationPrefs:get', userId),
     save: (userId: string, prefs: Record<string,unknown>) => ipcRenderer.invoke('notificationPrefs:save', userId, prefs),
   },
+  intelligence: {
+    getSources:           (params?: Record<string, unknown>) => ipcRenderer.invoke('intelligence:getSources', params),
+    getUnreviewedCount:   ()                                 => ipcRenderer.invoke('intelligence:getUnreviewedCount'),
+    updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => ipcRenderer.invoke('intelligence:updateStatus', id, status, notes, byId, byName),
+    updateConfidence:     (id: string, confidence: string)   => ipcRenderer.invoke('intelligence:updateConfidence', id, confidence),
+    updateQueueSection:   (id: string, section: string)      => ipcRenderer.invoke('intelligence:updateQueueSection', id, section),
+    removeFromQueue:      (id: string)                       => ipcRenderer.invoke('intelligence:removeFromQueue', id),
+    deleteSource:         (id: string)                       => ipcRenderer.invoke('intelligence:deleteSource', id),
+    addSocial:            (post: Record<string, unknown>)    => ipcRenderer.invoke('intelligence:addSocial', post),
+    fetchNews:            ()                                 => ipcRenderer.invoke('intelligence:fetchNews'),
+    uploadDocument:       (params: Record<string, unknown>)  => ipcRenderer.invoke('intelligence:uploadDocument', params),
+    getQueue:             ()                                 => ipcRenderer.invoke('intelligence:getQueue'),
+    pushToContestedSkies: (params: Record<string, unknown>)  => ipcRenderer.invoke('intelligence:pushToContestedSkies', params),
+    getPushLog:           ()                                 => ipcRenderer.invoke('intelligence:getPushLog'),
+  },
   updater: {
     onAvailable:    (cb: (info: { version: string; releaseNotes?: string | null }) => void) =>
       ipcRenderer.on('updater:available', (_e, info) => cb(info)),

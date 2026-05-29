@@ -91,6 +91,14 @@ const FilesIcon = () => (
   </svg>
 )
 
+const IntelligenceIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+    <circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" strokeWidth="1.3"/>
+    <circle cx="7.5" cy="7.5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M7.5 1v2M7.5 12v2M1 7.5h2M12 7.5h2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+)
+
 const TrashIcon = () => (
   <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
     <path d="M2.5 4.5h10M6 4.5V3h3v1.5M5 4.5l.5 8h4l.5-8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -271,7 +279,8 @@ export default function Sidebar() {
   const updateAvailable = updateState === 'available' || updateState === 'downloading' || updateState === 'ready'
   const navigate = useNavigate()
   const location = useLocation()
-  const [inboxUnread,  setInboxUnread]  = useState(0)
+  const [inboxUnread,    setInboxUnread]    = useState(0)
+  const [intelUnreviewed, setIntelUnreviewed] = useState(0)
   const [archiveOpen,  setArchiveOpen]  = useState(false)
   const [memberBoardIds, setMemberBoardIds] = useState<string[]>([])
   const [newBoardModal, setNewBoardModal] = useState(false)
@@ -305,6 +314,18 @@ export default function Sidebar() {
     }
   }, [refreshInboxCount])
 
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const count = await window.api.intelligence.getUnreviewedCount()
+        setIntelUnreviewed(count)
+      } catch {}
+    }
+    load()
+    const interval = setInterval(load, 60000)
+    return () => clearInterval(interval)
+  }, [])
+
   // Nav items excluding workspace (rendered separately)
   const navItems: NavItem[] = [
     { to: '/inbox',     label: 'Inbox',     icon: <InboxIcon />,     badge: inboxUnread || undefined },
@@ -313,8 +334,9 @@ export default function Sidebar() {
   ]
 
   const navItemsAfterWorkspace: NavItem[] = [
-    { to: '/files',     label: 'Files',     icon: <FilesIcon /> },
-    { to: '/contacts',  label: 'Contacts',  icon: <ContactsIcon /> },
+    { to: '/files',        label: 'Files',        icon: <FilesIcon /> },
+    { to: '/intelligence', label: 'Intelligence', icon: <IntelligenceIcon />, badge: intelUnreviewed || undefined },
+    { to: '/contacts',     label: 'Contacts',     icon: <ContactsIcon /> },
     { to: '/calendar',  label: 'Calendar',  icon: <CalendarIcon /> },
     ...(isAdmin ? [{ to: '/analytics', label: 'Analytics', icon: <AnalyticsIcon /> }] : []),
     { to: '/team',      label: 'Team',       icon: <TeamIcon /> },

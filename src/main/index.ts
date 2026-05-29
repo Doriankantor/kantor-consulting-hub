@@ -6,7 +6,7 @@ import { tmpdir } from 'os'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { initDatabase, getDatabase } from './db'
-import { registerIpcHandlers } from './ipc'
+import { registerIpcHandlers, startIntelligenceAutoRefresh, triggerInitialNewsFetch } from './ipc'
 
 // Module-level reference so the updater can push events to the window
 let mainWindow: BrowserWindow | null = null
@@ -67,6 +67,10 @@ app.whenReady().then(() => {
   registerIpcHandlers()
 
   createWindow()
+
+  // ── Intelligence: start auto-refresh and trigger initial fetch ─────────
+  startIntelligenceAutoRefresh()
+  setTimeout(() => triggerInitialNewsFetch(), 5000)
 
   // ── Auto-updater (production only) ──────────────────────────────────────
   function saveLastChecked() {

@@ -18,6 +18,8 @@ export default defineConfig(({ mode }) => {
         'process.env.SUPABASE_SERVICE_ROLE_KEY': JSON.stringify(env.SUPABASE_SERVICE_ROLE_KEY),
         'process.env.GOOGLE_CLIENT_ID':          JSON.stringify(env.GOOGLE_CLIENT_ID),
         'process.env.GOOGLE_CLIENT_SECRET':      JSON.stringify(env.GOOGLE_CLIENT_SECRET),
+        'process.env.NEWSAPI_KEY':               JSON.stringify(env.NEWSAPI_KEY),
+        'process.env.GH_TOKEN':                  JSON.stringify(env.GH_TOKEN),
       },
     },
     preload: {

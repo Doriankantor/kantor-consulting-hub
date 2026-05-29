@@ -247,6 +247,52 @@ interface FileRecord {
   column_id: string | null
 }
 
+interface IntelligenceSource {
+  id: string
+  type: 'article' | 'social' | 'document'
+  title: string | null
+  content: string | null
+  url: string | null
+  source_name: string | null
+  published_at: string | null
+  added_at: string
+  added_by_id: string | null
+  added_by_name: string | null
+  status: 'unreviewed' | 'approved' | 'rejected' | 'saved' | 'pushed'
+  confidence: 'high' | 'medium' | 'low' | null
+  confidence_override: number
+  categories_json: string
+  snippet: string | null
+  image_url: string | null
+  platform: string | null
+  handle: string | null
+  location_mentioned: string | null
+  actors_mentioned: string | null
+  file_name: string | null
+  local_path: string | null
+  drive_url: string | null
+  analysis_json: string | null
+  reviewed_by_id: string | null
+  reviewed_by_name: string | null
+  reviewed_at: string | null
+  review_notes: string | null
+  queue_section: string | null
+  queued_at: string | null
+  queued_by_id: string | null
+  queued_by_name: string | null
+}
+
+interface IntelligencePushLog {
+  id: string
+  pushed_at: string
+  pushed_by_id: string
+  pushed_by_name: string | null
+  items_count: number
+  sections_json: string
+  success: number
+  error_message: string | null
+}
+
 interface Window {
   api: {
     auth: {
@@ -495,6 +541,21 @@ interface Window {
       dismiss:      (userId: string, taskId: string) => Promise<{ ok: boolean }>
       getDismissed: (userId: string) => Promise<string[]>
       uncomplete:   (taskId: string) => Promise<{ ok: boolean }>
+    }
+    intelligence: {
+      getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number }) => Promise<IntelligenceSource[]>
+      getUnreviewedCount:   ()                                 => Promise<number>
+      updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => Promise<{ ok: boolean }>
+      updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean }>
+      updateQueueSection:   (id: string, section: string)      => Promise<{ ok: boolean }>
+      removeFromQueue:      (id: string)                       => Promise<{ ok: boolean }>
+      deleteSource:         (id: string)                       => Promise<{ ok: boolean }>
+      addSocial:            (post: Record<string, unknown>)    => Promise<{ ok: boolean; id?: string }>
+      fetchNews:            ()                                 => Promise<{ ok: boolean; count?: number; error?: string }>
+      uploadDocument:       (params: { userId?: string; addedByName?: string }) => Promise<{ ok: boolean; canceled?: boolean; results?: Array<{ id: string; file_name: string }>; error?: string }>
+      getQueue:             ()                                 => Promise<IntelligenceSource[]>
+      pushToContestedSkies: (params: { pushedById: string; pushedByName: string }) => Promise<{ ok: boolean; count?: number; sections?: string[]; error?: string }>
+      getPushLog:           ()                                 => Promise<IntelligencePushLog[]>
     }
   }
 }

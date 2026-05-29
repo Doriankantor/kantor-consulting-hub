@@ -649,5 +649,53 @@ export function initDatabase(): void {
     }
   } catch {}
 
+  // ── Intelligence system ───────────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS intelligence_sources (
+      id                  TEXT PRIMARY KEY,
+      type                TEXT NOT NULL,
+      title               TEXT,
+      content             TEXT,
+      url                 TEXT UNIQUE,
+      source_name         TEXT,
+      published_at        TEXT,
+      added_at            TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      added_by_id         TEXT,
+      added_by_name       TEXT,
+      status              TEXT NOT NULL DEFAULT 'unreviewed',
+      confidence          TEXT,
+      confidence_override INTEGER DEFAULT 0,
+      categories_json     TEXT DEFAULT '[]',
+      snippet             TEXT,
+      image_url           TEXT,
+      platform            TEXT,
+      handle              TEXT,
+      location_mentioned  TEXT,
+      actors_mentioned    TEXT,
+      file_name           TEXT,
+      local_path          TEXT,
+      drive_url           TEXT,
+      analysis_json       TEXT,
+      reviewed_by_id      TEXT,
+      reviewed_by_name    TEXT,
+      reviewed_at         TEXT,
+      review_notes        TEXT,
+      queue_section       TEXT,
+      queued_at           TEXT,
+      queued_by_id        TEXT,
+      queued_by_name      TEXT
+    );
+    CREATE TABLE IF NOT EXISTS intelligence_push_log (
+      id              TEXT PRIMARY KEY,
+      pushed_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      pushed_by_id    TEXT NOT NULL,
+      pushed_by_name  TEXT,
+      items_count     INTEGER NOT NULL DEFAULT 0,
+      sections_json   TEXT DEFAULT '[]',
+      success         INTEGER NOT NULL DEFAULT 1,
+      error_message   TEXT
+    );
+  `)
+
   console.log(`[DB] Initialized at ${dbPath}`)
 }
