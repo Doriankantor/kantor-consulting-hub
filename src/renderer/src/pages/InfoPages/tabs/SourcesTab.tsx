@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 interface Props {
   pageId: string
@@ -12,109 +12,121 @@ const CONF_STYLES: Record<string, string> = {
   low:    'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300',
 }
 
-function matchesKeywords(source: IntelligenceSource, keywords: string[]): boolean {
-  if (!keywords.length) return true
-  const text = [(source.title || ''), (source.snippet || ''), (source.content || ''), (source.source_name || '')].join(' ').toLowerCase()
-  return keywords.some(kw => text.includes(kw.trim().toLowerCase()))
+interface SourceContent {
+  source_id?: string
+  url?: string | null
+  snippet?: string
+  type?: string
+  source_name?: string | null
+  platform?: string | null
+  handle?: string | null
+  categories?: string[]
+  published_at?: string | null
 }
 
-export default function SourcesTab({ pageId, page, localUser }: Props) {
-  const [allSources, setAllSources] = useState<IntelligenceSource[]>([])
-  const [filtered, setFiltered] = useState<IntelligenceSource[]>([])
+function parseContent(raw: string | null | undefined): SourceContent {
+  if (!raw) return {}
+  try { return JSON.parse(raw) as SourceContent } catch { return {} }
+}
+
+export default function SourcesTab({ pageId }: Props) {
+  const [items, setItems] = useState<InfoPageSourceItem[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
-  const [committing, setCommitting] = useState(false)
+  const [sending, setSending] = useState(false)
 
-  const config: InfoPageConfig = page.board_config ? (() => { try { return JSON.parse(page.board_config!) } catch { return {} } })() : {}
-  const keywords = (config.keywords || '').split(',').map(k => k.trim()).filter(Boolean)
+  // Baseline for "new since last visit" — captured once per mount.
+  const seenKey = `kc-infopage-sources-seen-${pageId}`
+  const baselineRef = useRef<number>(0)
+  if (baselineRef.current === 0) {
+    const stored = localStorage.getItem(seenKey)
+    baselineRef.current = stored ? new Date(stored).getTime() : 0
+  }
 
-  const loadSources = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async () => {
     try {
-      const sources = await window.api.intelligence.getSources({ status: 'approved', limit: 200 })
-      setAllSources(sources)
-      setFiltered(sources.filter(s => matchesKeywords(s, keywords)))
-    } catch {} finally {
+      const rows = await window.api.infoPages.getSourceItems(pageId)
+      setItems(rows)
+    } catch { /* ignore */ } finally {
       setLoading(false)
     }
-  }, [pageId, config.keywords])
+  }, [pageId])
 
-  useEffect(() => { loadSources() }, [loadSources])
+  // Initial backfill + load, then poll every 15s (STEP 3: real-time within 30s).
+  useEffect(() => {
+    let cancelled = false
+    const tick = async () => {
+      try { await window.api.infoPages.syncSources(pageId) } catch { /* ignore */ }
+      if (!cancelled) await load()
+    }
+    tick()
+    const interval = setInterval(tick, 15000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      // Mark everything seen as of now when leaving the tab.
+      localStorage.setItem(seenKey, new Date().toISOString())
+    }
+  }, [pageId, load, seenKey])
+
+  const ready = items.filter(i => i.status === 'ready_for_analysis')
+  const inAnalysis = items.filter(i => i.status === 'in_analysis')
+  const newCount = ready.filter(i => new Date(i.created_at).getTime() > baselineRef.current).length
+
+  function isNew(item: InfoPageSourceItem): boolean {
+    return item.status === 'ready_for_analysis' && new Date(item.created_at).getTime() > baselineRef.current
+  }
 
   function toggleSelect(id: string) {
     setSelected(prev => {
       const s = new Set(prev)
-      if (s.has(id)) s.delete(id)
-      else s.add(id)
+      if (s.has(id)) s.delete(id); else s.add(id)
       return s
     })
   }
 
-  function selectAllHighConfidence() {
-    const highIds = filtered.filter(s => s.confidence === 'high').map(s => s.id)
-    setSelected(prev => {
-      const s = new Set(prev)
-      highIds.forEach(id => s.add(id))
-      return s
-    })
+  function selectAllReady() {
+    setSelected(new Set(ready.map(i => i.id)))
   }
 
-  async function handleCommit() {
-    if (!selected.size || !localUser) return
-    setCommitting(true)
+  async function sendToAnalysis(itemIds: string[]) {
+    if (!itemIds.length) return
+    setSending(true)
     try {
-      // Add each selected source as an info_page_item under 'sources' tab, then commit
-      const itemIds: string[] = []
-      for (const sourceId of Array.from(selected)) {
-        const src = allSources.find(s => s.id === sourceId)
-        if (!src) continue
-        const res = await window.api.infoPages.addItem({
-          page_id: pageId,
-          tab: 'sources',
-          sub_type: 'intelligence_source',
-          title: src.title || src.handle || 'Untitled',
-          content_json: JSON.stringify({ source_id: src.id, url: src.url, snippet: src.snippet }),
-          confidence: src.confidence || 'low',
-          source_ref: src.source_name || src.platform || '',
-          created_by_id: localUser.id,
-          created_by_name: localUser.name,
-        })
-        itemIds.push(res.id)
-      }
-      if (itemIds.length) {
-        await window.api.infoPages.commitItems({
-          pageId,
-          itemIds,
-          submittedById: localUser.id,
-          submittedByName: localUser.name,
-        })
-      }
-      setSelected(new Set())
+      await window.api.infoPages.sendSourcesToAnalysis(itemIds)
+      setSelected(prev => {
+        const s = new Set(prev)
+        itemIds.forEach(id => s.delete(id))
+        return s
+      })
+      await load()
     } finally {
-      setCommitting(false)
+      setSending(false)
     }
   }
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="shrink-0 px-4 py-3 border-b border-gray-200 dark:border-white/[0.06] flex items-center justify-between">
-        <div>
+      <div className="shrink-0 px-4 py-3 border-b border-gray-200 dark:border-white/[0.06] flex items-center justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-xs font-semibold text-gray-700 dark:text-white/75">
-            {loading ? 'Loading…' : `${filtered.length} sources matching keywords`}
+            {loading ? 'Loading…' : `${ready.length} source${ready.length !== 1 ? 's' : ''} ready · ${inAnalysis.length} in analysis`}
           </p>
-          {keywords.length > 0 && (
-            <p className="text-[10px] text-gray-400 dark:text-white/30 mt-0.5 truncate max-w-sm">
-              Keywords: {keywords.slice(0, 5).join(', ')}{keywords.length > 5 ? `… +${keywords.length - 5}` : ''}
+          {newCount > 0 && (
+            <p className="text-[10px] text-blue-500 dark:text-blue-400 mt-0.5 font-medium">
+              {newCount} new source{newCount !== 1 ? 's' : ''} since last visit
             </p>
           )}
         </div>
-        <button
-          onClick={selectAllHighConfidence}
-          className="text-xs px-2.5 py-1.5 rounded-lg border border-green-300 dark:border-green-500/30 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-500/10 transition"
-        >
-          Select all high confidence
-        </button>
+        {ready.length > 0 && (
+          <button
+            onClick={selectAllReady}
+            className="shrink-0 text-xs px-2.5 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition"
+          >
+            Select all
+          </button>
+        )}
       </div>
 
       {/* Sources list */}
@@ -124,76 +136,94 @@ export default function SourcesTab({ pageId, page, localUser }: Props) {
             <div className="w-5 h-5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
           </div>
         )}
-        {!loading && filtered.length === 0 && (
+        {!loading && items.length === 0 && (
           <div className="text-center py-8">
-            <p className="text-sm text-gray-400 dark:text-white/30">No approved sources matching your keywords.</p>
-            <p className="text-xs text-gray-400 dark:text-white/20 mt-1">Review and approve sources in the Intelligence tab first.</p>
+            <p className="text-sm text-gray-400 dark:text-white/30">No intelligence sources yet.</p>
+            <p className="text-xs text-gray-400 dark:text-white/20 mt-1">
+              Approved sources matching this page's keywords appear here automatically.
+            </p>
           </div>
         )}
-        {filtered.map(source => (
-          <div
-            key={source.id}
-            onClick={() => toggleSelect(source.id)}
-            className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition ${
-              selected.has(source.id)
-                ? 'border-indigo-300 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/5'
-                : 'border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] hover:border-gray-300 dark:hover:border-white/[0.1]'
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={selected.has(source.id)}
-              onChange={() => toggleSelect(source.id)}
-              onClick={e => e.stopPropagation()}
-              className="mt-0.5 w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500/30 cursor-pointer shrink-0"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                {source.confidence && (
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium uppercase ${CONF_STYLES[source.confidence] || CONF_STYLES.low}`}>
-                    {source.confidence}
-                  </span>
+        {items.map(item => {
+          const content = parseContent(item.content_json)
+          const cats = content.categories || []
+          const origin = content.source_name || content.platform || content.type || 'Source Intelligence'
+          const sel = selected.has(item.id)
+          const analysing = item.status === 'in_analysis'
+          return (
+            <div
+              key={item.id}
+              onClick={() => { if (!analysing) toggleSelect(item.id) }}
+              className={`flex items-start gap-2.5 p-3 rounded-xl border transition ${analysing ? 'opacity-70 cursor-default' : 'cursor-pointer'} ${
+                sel
+                  ? 'border-indigo-300 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/5'
+                  : 'border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] hover:border-gray-300 dark:hover:border-white/[0.1]'
+              }`}
+            >
+              {!analysing ? (
+                <input
+                  type="checkbox"
+                  checked={sel}
+                  onChange={() => toggleSelect(item.id)}
+                  onClick={e => e.stopPropagation()}
+                  className="mt-0.5 w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500/30 cursor-pointer shrink-0"
+                />
+              ) : (
+                <span className="mt-1 text-[9px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 font-medium shrink-0">
+                  In analysis
+                </span>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                  {isNew(item) && <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" title="New" />}
+                  {item.confidence && (
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium uppercase ${CONF_STYLES[item.confidence] || CONF_STYLES.low}`}>
+                      {item.confidence}
+                    </span>
+                  )}
+                  <span className="text-[10px] text-gray-400 dark:text-white/30">{origin}</span>
+                  {content.published_at && (
+                    <span className="text-[10px] text-gray-400 dark:text-white/30">{new Date(content.published_at).toLocaleDateString()}</span>
+                  )}
+                </div>
+                <p className="text-xs font-medium text-gray-800 dark:text-white/85 line-clamp-2">
+                  {item.title || 'Untitled'}
+                </p>
+                {content.snippet && (
+                  <p className="text-[11px] text-gray-500 dark:text-white/40 mt-0.5 line-clamp-2">{content.snippet}</p>
                 )}
-                <span className="text-[10px] text-gray-400 dark:text-white/30">{source.source_name || source.platform || 'Unknown source'}</span>
-                {source.published_at && (
-                  <span className="text-[10px] text-gray-400 dark:text-white/30">{new Date(source.published_at).toLocaleDateString()}</span>
+                <div className="flex items-center gap-1 mt-1 flex-wrap">
+                  <span className="text-[9px] text-gray-400 dark:text-white/25">From: Source Intelligence</span>
+                  {cats.slice(0, 3).map(cat => (
+                    <span key={cat} className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/40">
+                      {cat}
+                    </span>
+                  ))}
+                </div>
+                {!analysing && (
+                  <button
+                    onClick={e => { e.stopPropagation(); sendToAnalysis([item.id]) }}
+                    disabled={sending}
+                    className="mt-2 text-[10px] px-2 py-1 rounded-lg border border-purple-300 dark:border-purple-500/30 text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition disabled:opacity-50"
+                  >
+                    Send to Claude Analysis →
+                  </button>
                 )}
               </div>
-              <p className="text-xs font-medium text-gray-800 dark:text-white/85 line-clamp-2">
-                {source.title || source.handle || 'Untitled'}
-              </p>
-              {source.snippet && (
-                <p className="text-[11px] text-gray-500 dark:text-white/40 mt-0.5 line-clamp-2">{source.snippet}</p>
-              )}
-              {/* Category tags */}
-              {source.categories_json && (() => {
-                try {
-                  const cats: string[] = JSON.parse(source.categories_json)
-                  return cats.length > 0 ? (
-                    <div className="flex gap-1 mt-1 flex-wrap">
-                      {cats.slice(0, 3).map(cat => (
-                        <span key={cat} className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/40">
-                          {cat}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null
-                } catch { return null }
-              })()}
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
-      {/* Commit bar */}
+      {/* Bulk action bar */}
       {selected.size > 0 && (
         <div className="shrink-0 px-4 py-3 border-t border-gray-200 dark:border-white/[0.06] bg-white dark:bg-gray-900">
           <button
-            onClick={handleCommit}
-            disabled={committing}
+            onClick={() => sendToAnalysis(Array.from(selected))}
+            disabled={sending}
             className="w-full px-4 py-2.5 rounded-xl text-sm font-semibold bg-purple-500 hover:bg-purple-600 text-white transition disabled:opacity-50"
           >
-            {committing ? 'Committing…' : `Commit ${selected.size} source${selected.size !== 1 ? 's' : ''} for review`}
+            {sending ? 'Sending…' : `Send ${selected.size} selected to Claude Analysis`}
           </button>
         </div>
       )}

@@ -83,6 +83,7 @@ function AddPageModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name: s
 export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefresh, isAdmin }: Props) {
   const [addModal, setAddModal] = useState(false)
   const [lastCommits, setLastCommits] = useState<Record<string, { date: string; message: string } | null>>({})
+  const [sourceStats, setSourceStats] = useState<Record<string, { newAvailable: number; inAnalysis: number }>>({})
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
 
   useEffect(() => {
@@ -103,6 +104,27 @@ export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefre
       setLastCommits(results)
     }
     if (pages.length) loadCommits()
+  }, [pages])
+
+  // Per-page pipeline counters (sync then read), polled every 20s.
+  useEffect(() => {
+    if (!pages.length) return
+    let cancelled = false
+    async function loadStats() {
+      const results: Record<string, { newAvailable: number; inAnalysis: number }> = {}
+      for (const page of pages) {
+        try {
+          await window.api.infoPages.syncSources(page.id)
+          results[page.id] = await window.api.infoPages.getSourceStats(page.id)
+        } catch {
+          results[page.id] = { newAvailable: 0, inAnalysis: 0 }
+        }
+      }
+      if (!cancelled) setSourceStats(results)
+    }
+    loadStats()
+    const interval = setInterval(loadStats, 20000)
+    return () => { cancelled = true; clearInterval(interval) }
   }, [pages])
 
   async function handleAdd(name: string, config: Record<string,unknown>) {
@@ -155,6 +177,26 @@ export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefre
                       {new Date(lastCommit.date).toLocaleDateString()}
                     </p>
                   )}
+                  {/* Pipeline counters */}
+                  {(() => {
+                    const st = sourceStats[page.id]
+                    if (!st || (!st.newAvailable && !st.inAnalysis)) return null
+                    return (
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        {st.newAvailable > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                            {st.newAvailable} new
+                          </span>
+                        )}
+                        {st.inAnalysis > 0 && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 font-medium">
+                            {st.inAnalysis} in analysis
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
                 {isAdmin && (
                   <button

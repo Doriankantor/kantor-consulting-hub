@@ -14,20 +14,48 @@ const TABS = [
 export default function Intelligence() {
   const [activeTab, setActiveTab] = useState<'news' | 'social' | 'documents' | 'queue'>('news')
   const [queueCount, setQueueCount] = useState(0)
+  const [stats, setStats] = useState<{ pending: number; sentToPages: number }>({ pending: 0, sentToPages: 0 })
+  const [toast, setToast] = useState<string | null>(null)
 
-  const refreshQueueCount = useCallback(async () => {
+  const refreshStats = useCallback(async () => {
+    try {
+      const s = await window.api.intelligence.getPipelineStats()
+      setStats(s)
+    } catch {}
+  }, [])
+
+  const refreshQueueCount = useCallback(async (addedToPages?: string[]) => {
     try {
       const items = await window.api.intelligence.getQueue()
       setQueueCount(items.length)
     } catch {}
-  }, [])
+    refreshStats()
+    // Pipeline toast: surface which Info Pages the source flowed into.
+    if (addedToPages && addedToPages.length) {
+      const [first, ...rest] = addedToPages
+      setToast(rest.length ? `Source added to ${first} +${rest.length} more` : `Source added to ${first}`)
+      setTimeout(() => setToast(null), 3200)
+    }
+  }, [refreshStats])
 
   useEffect(() => {
     refreshQueueCount()
-  }, [refreshQueueCount])
+    const interval = setInterval(refreshStats, 20000)
+    return () => clearInterval(interval)
+  }, [refreshQueueCount, refreshStats])
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden relative">
+      {/* Pipeline toast */}
+      {toast && (
+        <div className="absolute top-4 right-6 z-50 flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-sm font-medium shadow-2xl animate-[fadeIn_0.2s_ease-out]">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-green-400 dark:text-green-600">
+            <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M4.5 7l1.5 1.5L9.5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          {toast}
+        </div>
+      )}
       {/* Header */}
       <div className="shrink-0 px-6 pt-5 pb-0 border-b border-gray-200 dark:border-white/[0.08]">
         <div className="flex items-center justify-between mb-4">
@@ -36,6 +64,17 @@ export default function Intelligence() {
             <p className="text-sm text-gray-500 dark:text-white/50 mt-0.5">
               Monitor, vet, and publish drone intelligence to Contested Skies
             </p>
+          </div>
+          {/* Pipeline counters */}
+          <div className="flex items-center gap-2">
+            <div className="px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-center">
+              <p className="text-base font-bold text-amber-700 dark:text-amber-400 leading-none">{stats.pending}</p>
+              <p className="text-[9px] text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider mt-0.5">pending review</p>
+            </div>
+            <div className="px-3 py-1.5 rounded-lg bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 text-center">
+              <p className="text-base font-bold text-green-700 dark:text-green-400 leading-none">{stats.sentToPages}</p>
+              <p className="text-[9px] text-green-600/70 dark:text-green-400/60 uppercase tracking-wider mt-0.5">sent to info pages</p>
+            </div>
           </div>
         </div>
         {/* Tabs */}

@@ -2178,6 +2178,86 @@ async function fetchAndStoreNews(): Promise<number> {
   return stored
 }
 
+// ── Source Intelligence → Info Pages pipeline helpers ─────────────────────
+// Parse an info-page board_config into a normalized keyword list.
+function keywordsForInfoPage(boardConfig: string | null | undefined): string[] {
+  if (!boardConfig) return []
+  let cfg: Record<string, unknown>
+  try { cfg = JSON.parse(boardConfig) } catch { return [] }
+  const raw = (cfg.keywords as string | undefined) || ''
+  return raw
+    .split(',')
+    .map(k => k.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+// Does an intelligence source match any of an info page's keywords?
+// Returns false when there are no keywords — pages without keywords don't auto-collect.
+function sourceMatchesKeywords(src: Record<string, unknown>, keywords: string[]): boolean {
+  if (!keywords.length) return false
+  const haystack = [
+    src.title, src.snippet, src.content, src.source_name,
+    src.location_mentioned, src.actors_mentioned, src.handle, src.file_name,
+  ].filter(Boolean).join(' ').toLowerCase()
+  if (!haystack) return false
+  return keywords.some(k => haystack.includes(k))
+}
+
+// Insert a 'ready_for_analysis' source item into an info page's Sources tab.
+function insertSourceItemForPage(pageId: string, src: Record<string, any>): string {
+  const id = uuid()
+  let categories: string[] = []
+  try { categories = JSON.parse(src.categories_json || '[]') } catch { /* ignore */ }
+  const content = {
+    source_id: src.id,
+    url: src.url || null,
+    snippet: src.snippet || (src.content ? String(src.content).slice(0, 300) : ''),
+    type: src.type,
+    source_name: src.source_name || src.platform || src.file_name || null,
+    platform: src.platform || null,
+    handle: src.handle || null,
+    categories,
+    published_at: src.published_at || null,
+  }
+  getDatabase().prepare(`
+    INSERT INTO info_page_items
+      (id,page_id,tab,sub_type,title,content_json,status,confidence,source_ref,origin_source_id,created_by_name)
+    VALUES (?,?,'sources','intelligence_source',?,?,'ready_for_analysis',?,?,?,?)
+  `).run(
+    id, pageId,
+    src.title || src.handle || src.file_name || 'Intelligence source',
+    JSON.stringify(content),
+    src.confidence || null,
+    src.url || null,
+    src.id,
+    'Source Intelligence',
+  )
+  return id
+}
+
+// When a source is approved, fan it out into every matching info page's Sources tab.
+// Dedupes by (page_id, origin_source_id) and skips pages where it's already published.
+// Returns the names of the pages it was added to.
+function addApprovedSourceToInfoPages(sourceId: string): string[] {
+  const db = getDatabase()
+  const src = db.prepare('SELECT * FROM intelligence_sources WHERE id=?').get(sourceId) as Record<string, any> | undefined
+  if (!src) return []
+  const pages = db.prepare("SELECT id,name,board_config FROM workspace_boards WHERE board_type='info-page' AND archived=0").all() as Array<{ id: string; name: string; board_config: string | null }>
+  const added: string[] = []
+  for (const page of pages) {
+    const keywords = keywordsForInfoPage(page.board_config)
+    if (!sourceMatchesKeywords(src, keywords)) continue
+    // Skip if already used (published) in this page.
+    if (src.used_in_page && src.used_in_page === page.name) continue
+    // Dedupe: don't add the same source to the same page twice.
+    const exists = db.prepare("SELECT 1 FROM info_page_items WHERE page_id=? AND origin_source_id=?").get(page.id, sourceId)
+    if (exists) continue
+    insertSourceItemForPage(page.id, src)
+    added.push(page.name)
+  }
+  return added
+}
+
 // ── Intelligence IPC handlers ────────────────────────────────────────────
 function registerIntelligenceHandlers(): void {
   const db = () => getDatabase()
@@ -2220,12 +2300,23 @@ function registerIntelligenceHandlers(): void {
       db().prepare(`
         UPDATE intelligence_sources SET status=?, review_notes=?, reviewed_by_id=?, reviewed_by_name=?, reviewed_at=?, queue_section=? WHERE id=?
       `).run(status, notes ?? null, reviewedById ?? null, reviewedByName ?? null, now2, section, id)
+      // Pipeline: fan this approved source out into matching Info Pages' Sources tabs.
+      let addedToPages: string[] = []
+      try { addedToPages = addApprovedSourceToInfoPages(id) } catch (e) { console.warn('[Pipeline] fan-out failed', e) }
+      return { ok: true, addedToPages }
     } else {
       db().prepare(`
         UPDATE intelligence_sources SET status=?, review_notes=?, reviewed_by_id=?, reviewed_by_name=?, reviewed_at=? WHERE id=?
       `).run(status, notes ?? null, reviewedById ?? null, reviewedByName ?? null, now2, id)
     }
     return { ok: true }
+  })
+
+  // Pipeline counters for the Intelligence left/header panel.
+  ipcMain.handle('intelligence:getPipelineStats', () => {
+    const pending = (db().prepare("SELECT COUNT(*) as c FROM intelligence_sources WHERE status='unreviewed'").get() as { c: number }).c
+    const sentToPages = (db().prepare("SELECT COUNT(DISTINCT origin_source_id) as c FROM info_page_items WHERE sub_type='intelligence_source' AND origin_source_id IS NOT NULL").get() as { c: number }).c
+    return { pending, sentToPages }
   })
 
   ipcMain.handle('intelligence:updateConfidence', (_e, id: string, confidence: string) => {
@@ -2755,12 +2846,82 @@ export function registerInfoPageHandlers(): void {
     db().prepare(`INSERT INTO info_page_published (id,page_id,what_changed,committed_by_id,committed_by_name,approved_by_id,approved_by_name,prompt_used,item_ids_json,commit_count) VALUES (?,?,?,?,?,?,?,?,?,?)`)
       .run(randomUUID(), entry.pageId, entry.whatChanged, entry.committedById, entry.committedByName,
            entry.approvedById, entry.approvedByName, entry.promptUsed, JSON.stringify(entry.itemIds), entry.commitCount)
+    // Resolve page name for the feedback loop.
+    const pageRow = db().prepare('SELECT name FROM workspace_boards WHERE id=?').get(entry.pageId) as { name: string } | undefined
+    const pageName = pageRow?.name || entry.pageId
+    const nowIso = new Date().toISOString()
     // Mark items as implemented
     for (const id of entry.itemIds) {
       db().prepare("UPDATE info_page_items SET status='implemented',updated_at=datetime('now') WHERE id=?").run(id)
       db().prepare("UPDATE info_page_commits SET status='implemented' WHERE item_id=?").run(id)
+      // Feedback loop: if this item came from an intelligence source, flag the
+      // source as published so it isn't re-suggested for this page.
+      const item = db().prepare('SELECT origin_source_id FROM info_page_items WHERE id=?').get(id) as { origin_source_id: string | null } | undefined
+      if (item?.origin_source_id) {
+        db().prepare("UPDATE intelligence_sources SET used_in_page=?, used_in_page_at=? WHERE id=?")
+          .run(pageName, nowIso, item.origin_source_id)
+      }
     }
     return { ok: true }
+  })
+
+  // ── Pipeline: Source Intelligence → Sources tab ──────────────────────────
+  // Reconcile all approved intelligence sources matching this page's keywords
+  // into 'ready_for_analysis' source items. Used for backfill + polling sync.
+  ipcMain.handle('infoPages:syncSources', (_e, pageId: string) => {
+    const page = db().prepare("SELECT id,name,board_config FROM workspace_boards WHERE id=?").get(pageId) as { id: string; name: string; board_config: string | null } | undefined
+    if (!page) return { added: 0 }
+    const keywords = keywordsForInfoPage(page.board_config)
+    if (!keywords.length) return { added: 0 }
+    const approved = db().prepare("SELECT * FROM intelligence_sources WHERE status IN ('approved','pushed')").all() as Array<Record<string, any>>
+    let added = 0
+    for (const src of approved) {
+      if (!sourceMatchesKeywords(src, keywords)) continue
+      if (src.used_in_page && src.used_in_page === page.name) continue
+      const exists = db().prepare("SELECT 1 FROM info_page_items WHERE page_id=? AND origin_source_id=?").get(pageId, src.id)
+      if (exists) continue
+      insertSourceItemForPage(pageId, src)
+      added++
+    }
+    return { added }
+  })
+
+  // Source items currently flowing through the Sources tab (ready or in analysis).
+  ipcMain.handle('infoPages:getSourceItems', (_e, pageId: string) => {
+    return db().prepare(`
+      SELECT i.*, s.used_in_page, s.used_in_page_at, s.status AS source_status
+      FROM info_page_items i
+      LEFT JOIN intelligence_sources s ON s.id = i.origin_source_id
+      WHERE i.page_id=? AND i.tab='sources' AND i.sub_type='intelligence_source'
+        AND i.status IN ('ready_for_analysis','in_analysis')
+      ORDER BY i.created_at DESC
+    `).all(pageId)
+  })
+
+  // Move selected source items into Claude Analysis.
+  ipcMain.handle('infoPages:sendSourcesToAnalysis', (_e, itemIds: string[]) => {
+    if (!Array.isArray(itemIds) || !itemIds.length) return { ok: true, count: 0 }
+    const stmt = db().prepare("UPDATE info_page_items SET status='in_analysis',updated_at=datetime('now') WHERE id=? AND status='ready_for_analysis'")
+    let count = 0
+    for (const id of itemIds) { const r = stmt.run(id); count += r.changes }
+    return { ok: true, count }
+  })
+
+  // Counters for the Info Pages left panel.
+  ipcMain.handle('infoPages:getSourceStats', (_e, pageId: string) => {
+    const newAvailable = (db().prepare("SELECT COUNT(*) as c FROM info_page_items WHERE page_id=? AND sub_type='intelligence_source' AND status='ready_for_analysis'").get(pageId) as { c: number }).c
+    const inAnalysis = (db().prepare("SELECT COUNT(*) as c FROM info_page_items WHERE page_id=? AND sub_type='intelligence_source' AND status='in_analysis'").get(pageId) as { c: number }).c
+    return { newAvailable, inAnalysis }
+  })
+
+  // Intelligence sources currently queued for analysis on this page (for ClaudeAnalysisTab).
+  ipcMain.handle('infoPages:getAnalysisSources', (_e, pageId: string) => {
+    return db().prepare(`
+      SELECT s.* FROM intelligence_sources s
+      JOIN info_page_items i ON i.origin_source_id = s.id
+      WHERE i.page_id=? AND i.sub_type='intelligence_source' AND i.status='in_analysis'
+      ORDER BY i.created_at DESC
+    `).all(pageId)
   })
 
   ipcMain.handle('infoPages:analyzeWithClaude', async (_e, params: {

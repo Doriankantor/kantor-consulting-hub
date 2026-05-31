@@ -812,5 +812,12 @@ export function initDatabase(): void {
     db.exec("INSERT OR IGNORE INTO workspace_boards (id,name,position,board_type,board_config) VALUES ('board-info-trump','Trump Immigration',51,'info-page','{\"repo\":\"\",\"live_url\":\"\",\"keywords\":\"\",\"status\":\"setup-pending\"}')")
   } catch {}
 
+  // ── Source Intelligence → Info Pages pipeline ─────────────────────────────
+  // Link an info_page_item back to the intelligence source it was created from.
+  try { db.exec("ALTER TABLE info_page_items ADD COLUMN origin_source_id TEXT;") } catch {}
+  // Feedback loop: mark an intelligence source as published/used in an info page.
+  try { db.exec("ALTER TABLE intelligence_sources ADD COLUMN used_in_page TEXT;") } catch {}
+  try { db.exec("ALTER TABLE intelligence_sources ADD COLUMN used_in_page_at TEXT;") } catch {}
+
   console.log(`[DB] Initialized at ${dbPath}`)
 }

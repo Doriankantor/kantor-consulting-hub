@@ -43,7 +43,7 @@ const STATUS_COLORS: Record<string, string> = {
   pushed:     'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
 }
 
-interface Props { onApprove: () => void }
+interface Props { onApprove: (addedToPages?: string[]) => void }
 
 const EMPTY_FORM = {
   platform: 'X / Twitter',
@@ -120,9 +120,9 @@ export default function SocialTab({ onApprove }: Props) {
   async function handleStatus(id: string, status: string) {
     setPendingStatus(p => ({ ...p, [id]: true }))
     try {
-      await window.api.intelligence.updateStatus(id, status, undefined, localUser?.id, localUser?.name)
+      const res = await window.api.intelligence.updateStatus(id, status, undefined, localUser?.id, localUser?.name)
       await load()
-      if (status === 'approved') onApprove()
+      if (status === 'approved') onApprove(res?.addedToPages)
     } finally {
       setPendingStatus(p => ({ ...p, [id]: false }))
     }

@@ -46,8 +46,12 @@ export default function ClaudeAnalysisTab({ pageId, page, canApprove: _canApprov
     setAnalysisItems([])
     setSelected(new Set())
     try {
-      // Load approved sources from intelligence
-      const sources = await window.api.intelligence.getSources({ status: 'approved', limit: 30 })
+      // Prefer sources explicitly sent to analysis from the Sources tab; fall
+      // back to the global approved pool so analysis still works without a queue.
+      let sources = await window.api.infoPages.getAnalysisSources(pageId)
+      if (!sources.length) {
+        sources = await window.api.intelligence.getSources({ status: 'approved', limit: 30 })
+      }
       // Load manual items for this page
       const manualItems = await window.api.infoPages.getItems(pageId, 'manual')
 

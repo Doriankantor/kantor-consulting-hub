@@ -225,10 +225,19 @@ interface InfoPageItem {
   confidence: string | null
   source_ref: string | null
   analysis_json: string | null
+  origin_source_id?: string | null
   created_by_id: string | null
   created_by_name: string | null
   created_at: string
   updated_at: string
+}
+
+// A source item flowing through the Sources tab (intelligence → info page).
+interface InfoPageSourceItem extends InfoPageItem {
+  origin_source_id: string | null
+  used_in_page: string | null
+  used_in_page_at: string | null
+  source_status: string | null
 }
 
 interface InfoPageCommit {
@@ -353,6 +362,8 @@ interface IntelligenceSource {
   queued_at: string | null
   queued_by_id: string | null
   queued_by_name: string | null
+  used_in_page: string | null
+  used_in_page_at: string | null
 }
 
 interface IntelligencePushLog {
@@ -640,11 +651,16 @@ interface Window {
       logPublished:      (entry: Record<string,unknown>)                       => Promise<{ ok: boolean }>
       analyzeWithClaude: (params: Record<string,unknown>)                      => Promise<{ ok: boolean; items?: Array<{ action: string; section: string; detail: string; confidence: string; source: string; priority: string }>; error?: string }>
       generatePrompt:    (params: Record<string,unknown>)                      => Promise<{ ok: boolean; prompt?: string }>
+      syncSources:          (pageId: string)                                   => Promise<{ added: number }>
+      getSourceItems:       (pageId: string)                                   => Promise<InfoPageSourceItem[]>
+      sendSourcesToAnalysis:(itemIds: string[])                                => Promise<{ ok: boolean; count: number }>
+      getSourceStats:       (pageId: string)                                   => Promise<{ newAvailable: number; inAnalysis: number }>
+      getAnalysisSources:   (pageId: string)                                   => Promise<IntelligenceSource[]>
     }
     intelligence: {
       getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number }) => Promise<IntelligenceSource[]>
       getUnreviewedCount:   ()                                 => Promise<number>
-      updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => Promise<{ ok: boolean }>
+      updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => Promise<{ ok: boolean; addedToPages?: string[] }>
       updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean }>
       updateQueueSection:   (id: string, section: string)      => Promise<{ ok: boolean }>
       removeFromQueue:      (id: string)                       => Promise<{ ok: boolean }>
@@ -655,6 +671,7 @@ interface Window {
       getQueue:             ()                                 => Promise<IntelligenceSource[]>
       pushToContestedSkies: (params: { pushedById: string; pushedByName: string }) => Promise<{ ok: boolean; count?: number; sections?: string[]; error?: string }>
       getPushLog:           ()                                 => Promise<IntelligencePushLog[]>
+      getPipelineStats:     ()                                 => Promise<{ pending: number; sentToPages: number }>
     }
   }
 }

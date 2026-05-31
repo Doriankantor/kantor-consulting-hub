@@ -240,6 +240,7 @@ const api = {
     getQueue:             ()                                 => ipcRenderer.invoke('intelligence:getQueue'),
     pushToContestedSkies: (params: Record<string, unknown>)  => ipcRenderer.invoke('intelligence:pushToContestedSkies', params),
     getPushLog:           ()                                 => ipcRenderer.invoke('intelligence:getPushLog'),
+    getPipelineStats:     ()                                 => ipcRenderer.invoke('intelligence:getPipelineStats'),
   },
   infoPages: {
     list:              ()                                              => ipcRenderer.invoke('infoPages:list'),
@@ -264,6 +265,11 @@ const api = {
     logPublished:      (entry: Record<string,unknown>)                => ipcRenderer.invoke('infoPages:logPublished', entry),
     analyzeWithClaude: (params: Record<string,unknown>)               => ipcRenderer.invoke('infoPages:analyzeWithClaude', params),
     generatePrompt:    (params: Record<string,unknown>)               => ipcRenderer.invoke('infoPages:generatePrompt', params),
+    syncSources:          (pageId: string)                            => ipcRenderer.invoke('infoPages:syncSources', pageId),
+    getSourceItems:       (pageId: string)                            => ipcRenderer.invoke('infoPages:getSourceItems', pageId),
+    sendSourcesToAnalysis:(itemIds: string[])                         => ipcRenderer.invoke('infoPages:sendSourcesToAnalysis', itemIds),
+    getSourceStats:       (pageId: string)                            => ipcRenderer.invoke('infoPages:getSourceStats', pageId),
+    getAnalysisSources:   (pageId: string)                            => ipcRenderer.invoke('infoPages:getAnalysisSources', pageId),
   },
   updater: {
     onAvailable:    (cb: (info: { version: string; releaseNotes?: string | null }) => void) =>

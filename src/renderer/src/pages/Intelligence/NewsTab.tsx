@@ -22,7 +22,7 @@ const ALL_CATEGORIES = [
 ]
 
 interface Props {
-  onApprove: () => void
+  onApprove: (addedToPages?: string[]) => void
 }
 
 export default function NewsTab({ onApprove }: Props) {
@@ -70,12 +70,12 @@ export default function NewsTab({ onApprove }: Props) {
   async function handleStatus(id: string, status: string) {
     setPendingStatus(p => ({ ...p, [id]: true }))
     try {
-      await window.api.intelligence.updateStatus(
+      const res = await window.api.intelligence.updateStatus(
         id, status, undefined,
         localUser?.id, localUser?.name
       )
       await load()
-      if (status === 'approved') onApprove()
+      if (status === 'approved') onApprove(res?.addedToPages)
     } finally {
       setPendingStatus(p => ({ ...p, [id]: false }))
     }
@@ -213,6 +213,13 @@ export default function NewsTab({ onApprove }: Props) {
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${STATUS_COLORS[source.status] || STATUS_COLORS.unreviewed}`}>
                       {source.status}
                     </span>
+                    {/* Published-to-info-page badge (feedback loop) */}
+                    {source.used_in_page && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300"
+                        title={source.used_in_page_at ? `Published ${formatDate(source.used_in_page_at)}` : undefined}>
+                        Published — used in {source.used_in_page}
+                      </span>
+                    )}
                     {/* Source name */}
                     {source.source_name && (
                       <span className="text-xs text-gray-500 dark:text-white/40 font-medium">{source.source_name}</span>
