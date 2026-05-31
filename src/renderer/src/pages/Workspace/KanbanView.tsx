@@ -180,9 +180,16 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
         </span>
       )}
 
-      {/* Client */}
+      {/* Client + organization badge */}
       {task.client && (
-        <p className="text-[11px] text-gray-400 dark:text-white/65 mb-2 truncate">{task.client}</p>
+        <div className="flex items-center gap-1.5 mb-2 min-w-0">
+          <span className="text-[11px] text-gray-500 dark:text-white/70 truncate">{task.client}</span>
+          {task.client_org && (
+            <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-hub-gold/15 text-hub-gold border border-hub-gold/25 truncate max-w-[110px]">
+              {task.client_org}
+            </span>
+          )}
+        </div>
       )}
 
       {/* Due date */}

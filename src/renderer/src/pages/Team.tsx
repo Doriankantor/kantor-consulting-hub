@@ -60,6 +60,8 @@ export default function Team() {
   const [members, setMembers] = useState<LocalTeamMember[]>([])
   const [loading, setLoading]   = useState(true)
   const [profileMemberId, setProfileMemberId] = useState<string | null>(null)
+  // Access codes for members still pending — surfaced inline so the admin can re-share.
+  const [inviteCodes, setInviteCodes] = useState<Record<string, string>>({})
 
   // Invite form
   const [name,   setName]   = useState('')
@@ -93,8 +95,22 @@ export default function Team() {
     try {
       const data = await window.api.team.list()
       setMembers(data)
+      // Pre-fetch access codes for pending members so the admin can re-share them.
+      const pending = data.filter(m => m.status === 'invited')
+      const codeEntries = await Promise.all(
+        pending.map(async m => {
+          try { const r = await window.api.team.getLoginCode(m.email); return [m.id, r?.code ?? ''] as const }
+          catch { return [m.id, ''] as const }
+        })
+      )
+      setInviteCodes(Object.fromEntries(codeEntries.filter(([, c]) => c)))
     } catch {}
     setLoading(false)
+  }
+
+  async function handleMarkActive(member: LocalTeamMember) {
+    await window.api.team.markActive(member.id)
+    setMembers(prev => prev.map(m => m.id === member.id ? { ...m, status: 'active' } : m))
   }
 
   async function handleInvite(e: FormEvent) {
@@ -331,6 +347,21 @@ export default function Team() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {/* Pending member: show access code + a way to confirm them */}
+                    {isAdmin && member.status === 'invited' && inviteCodes[member.id] && (
+                      <code className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 font-mono text-[11px] tracking-wider select-all">
+                        {inviteCodes[member.id]}
+                      </code>
+                    )}
+                    {isAdmin && member.status === 'invited' && (
+                      <button
+                        onClick={e => { e.stopPropagation(); handleMarkActive(member) }}
+                        className="titlebar-no-drag px-2 py-1 rounded-lg text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/10 transition"
+                        title="Mark this member as active"
+                      >
+                        Mark active
+                      </button>
+                    )}
                     <StatusBadge status={member.status} />
                     <RoleBadge role={member.role} />
                     {isAdmin && (

@@ -45,8 +45,9 @@ export interface Task {
   column_id: string
   title: string
   content_type: ContentType
-  client: string | null            // client or target deliverable
-  client_id: string | null         // FK to clients table
+  client: string | null            // client name (contact full_name)
+  client_id: string | null         // FK to contacts table
+  client_org: string | null        // contact organization (for Kanban badge)
   recurrence_json: string | null   // JSON: { type: 'weekly'|'monthly'|'quarterly'|'custom', interval?: number }
   area_of_analysis: string | null  // stores area ID (default or custom)
   assignee_ids: string[]

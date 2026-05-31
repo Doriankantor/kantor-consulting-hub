@@ -343,9 +343,9 @@ export default function Sidebar() {
   ]
 
   const navItemsAfterWorkspace: NavItem[] = [
+    { to: '/info-pages',   label: 'Info Pages',   icon: <InfoPagesIcon /> },
     { to: '/files',        label: 'Files',        icon: <FilesIcon /> },
     { to: '/intelligence', label: 'Intelligence', icon: <IntelligenceIcon />, badge: intelUnreviewed || undefined },
-    { to: '/info-pages',   label: 'Info Pages',   icon: <InfoPagesIcon /> },
     { to: '/contacts',     label: 'Contacts',     icon: <ContactsIcon /> },
     { to: '/calendar',  label: 'Calendar',  icon: <CalendarIcon /> },
     ...(isAdmin ? [{ to: '/analytics', label: 'Analytics', icon: <AnalyticsIcon /> }] : []),

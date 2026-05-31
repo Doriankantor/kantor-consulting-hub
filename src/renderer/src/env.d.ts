@@ -240,6 +240,14 @@ interface InfoPageSourceItem extends InfoPageItem {
   source_status: string | null
 }
 
+interface InfoPageChatMessage {
+  id: string
+  page_id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
 interface InfoPageCommit {
   id: string
   page_id: string
@@ -340,7 +348,7 @@ interface IntelligenceSource {
   added_at: string
   added_by_id: string | null
   added_by_name: string | null
-  status: 'unreviewed' | 'approved' | 'rejected' | 'saved' | 'pushed'
+  status: 'unreviewed' | 'approved' | 'rejected' | 'saved' | 'pushed' | 'imported'
   confidence: 'high' | 'medium' | 'low' | null
   confidence_override: number
   categories_json: string
@@ -408,7 +416,7 @@ interface Window {
       getFeed: () => Promise<Array<{ id: string; task_id: string; actor_name: string; action: string; created_at: string; source: 'activity' | 'comment'; task_title: string | null }>>
     }
     team: {
-      list:            ()                                                                    => Promise<LocalTeamMember[]>
+      list:            (includeAdmin?: boolean)                                              => Promise<LocalTeamMember[]>
       invite:          (p: { email: string; full_name: string; role?: string })             => Promise<{ ok?: boolean; id?: string; tempPassword?: string; emailSent?: boolean; emailError?: string; error?: string }>
       remove:          (id: string)                                                          => Promise<{ ok?: boolean }>
       edit:            (p: { id: string; full_name?: string; email?: string; role?: string }) => Promise<{ ok?: boolean; error?: string }>
@@ -416,6 +424,7 @@ interface Window {
       changePassword:  (userId: string, cur: string, next: string)                          => Promise<{ ok?: boolean; error?: string }>
       setInitialPassword: (userId: string, next: string)                                     => Promise<{ ok?: boolean; error?: string }>
       getLoginCode:    (email: string)                                                       => Promise<{ code: string }>
+      markActive:      (id: string)                                                          => Promise<{ ok?: boolean }>
       markApiKeySet:   (userId: string)                                                      => Promise<boolean>
       savePreferences: (userId: string, prefs: Record<string, unknown>)                     => Promise<boolean>
     }
@@ -656,6 +665,10 @@ interface Window {
       sendSourcesToAnalysis:(itemIds: string[])                                => Promise<{ ok: boolean; count: number }>
       getSourceStats:       (pageId: string)                                   => Promise<{ newAvailable: number; inAnalysis: number }>
       getAnalysisSources:   (pageId: string)                                   => Promise<IntelligenceSource[]>
+      getChat:              (pageId: string)                                   => Promise<InfoPageChatMessage[]>
+      clearChat:            (pageId: string)                                   => Promise<{ ok: boolean }>
+      chat:                 (params: { pageId: string; pageName: string; userId?: string; message: string }) => Promise<{ ok: boolean; reply?: string; error?: string }>
+      summarizeAnalysis:    (params: { pageId: string; pageName: string; userId?: string }) => Promise<{ ok: boolean; summary?: string; recommendations?: Array<{ section: string; action: string; detail: string; confidence: string }>; error?: string }>
     }
     intelligence: {
       getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number }) => Promise<IntelligenceSource[]>
@@ -672,6 +685,9 @@ interface Window {
       pushToContestedSkies: (params: { pushedById: string; pushedByName: string }) => Promise<{ ok: boolean; count?: number; sections?: string[]; error?: string }>
       getPushLog:           ()                                 => Promise<IntelligencePushLog[]>
       getPipelineStats:     ()                                 => Promise<{ pending: number; sentToPages: number }>
+      importFromContestedSkies: (params: { userId?: string; addedByName?: string }) => Promise<{ ok: boolean; imported?: number; total?: number; error?: string }>
+      getImportedCount:     ()                                 => Promise<number>
+      confirmImported:      (params: { confidence?: string; reviewedById?: string; reviewedByName?: string }) => Promise<{ ok: boolean; count: number; addedToPages: string[] }>
     }
   }
 }

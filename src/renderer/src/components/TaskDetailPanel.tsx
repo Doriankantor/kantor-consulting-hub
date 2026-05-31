@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import type {
   Task, ContentType, Priority, AreaOfAnalysis,
   Source, TaskComment, ActivityEntry,
@@ -46,6 +47,265 @@ function fmtShort(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+// ── Contact type badge helper ──────────────────────────────────────────────
+
+function firstContactType(c: Contact): string | null {
+  try {
+    const types = JSON.parse(c.contact_types_json || '[]') as string[]
+    return types.find(Boolean) ?? null
+  } catch { return null }
+}
+
+const CONTACT_TYPE_BADGE: Record<string, string> = {
+  Client:    'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300',
+  Partner:   'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300',
+  Source:    'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300',
+  Prospect:  'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300',
+  Vendor:    'bg-cyan-100 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300',
+}
+function contactTypeBadgeClass(type: string): string {
+  return CONTACT_TYPE_BADGE[type] || 'bg-gray-100 dark:bg-white/[0.08] text-gray-600 dark:text-white/55'
+}
+
+// ── Add Contact modal (inline, so the user never leaves the task panel) ─────
+
+interface AddContactModalProps {
+  initialName?: string
+  createdBy?: string
+  onClose: () => void
+  onCreated: (c: { id: string; full_name: string; organization: string | null }) => void
+}
+
+function AddContactModal({ initialName = '', createdBy, onClose, onCreated }: AddContactModalProps) {
+  const [fullName, setFullName] = useState(initialName)
+  const [organization, setOrganization] = useState('')
+  const [email, setEmail] = useState('')
+  const [type, setType] = useState('Client')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    if (!fullName.trim() || saving) return
+    setSaving(true)
+    try {
+      const res = await window.api.contacts.create({
+        full_name: fullName.trim(),
+        organization: organization.trim() || null,
+        email_primary: email.trim() || null,
+        contact_types: [type],
+        created_by: createdBy ?? null,
+      })
+      if (res?.id) {
+        onCreated({ id: res.id, full_name: fullName.trim(), organization: organization.trim() || null })
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputCls = 'w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40'
+
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white dark:bg-[#1a2233] rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-200 dark:border-white/[0.12]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">Add Contact</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-white/75 transition">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          </button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Full name *</label>
+            <input autoFocus value={fullName} onChange={e => setFullName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSave()} placeholder="e.g. Juan Garcia" className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Organization</label>
+            <input value={organization} onChange={e => setOrganization(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSave()} placeholder="e.g. Financial Intelligence Unit" className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSave()} placeholder="name@example.com" className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Type</label>
+            <select value={type} onChange={e => setType(e.target.value)} className={inputCls}>
+              <option value="Client">Client</option>
+              <option value="Partner">Partner</option>
+              <option value="Source">Source</option>
+              <option value="Prospect">Prospect</option>
+              <option value="Vendor">Vendor</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex gap-2 mt-5">
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl text-sm border border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-white/65 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition">Cancel</button>
+          <button onClick={handleSave} disabled={!fullName.trim() || saving} className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold bg-hub-gold hover:bg-hub-gold-light text-white transition disabled:opacity-50">
+            {saving ? 'Saving…' : 'Save & select'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+// ── Client picker (searchable Contacts typeahead) ───────────────────────────
+
+interface ClientPickerProps {
+  clientId: string | null
+  clientName: string | null
+  clientOrg: string | null
+  createdBy?: string
+  onChange: (sel: { id: string | null; name: string | null; org: string | null }) => void
+}
+
+function ClientPicker({ clientId, clientName, clientOrg, createdBy, onChange }: ClientPickerProps) {
+  const [contacts, setContacts] = useState<Contact[]>([])
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [showAdd, setShowAdd] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  const loadContacts = useCallback(() => {
+    window.api.contacts.list().then(setContacts).catch(() => {})
+  }, [])
+  useEffect(() => { loadContacts() }, [loadContacts])
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [])
+
+  const q = query.trim().toLowerCase()
+  const filtered = q
+    ? contacts.filter(c =>
+        (c.full_name ?? '').toLowerCase().includes(q) ||
+        (c.organization ?? '').toLowerCase().includes(q) ||
+        (c.email_primary ?? '').toLowerCase().includes(q))
+    : contacts
+
+  function selectContact(c: { id: string; full_name: string; organization: string | null }) {
+    onChange({ id: c.id, name: c.full_name, org: c.organization })
+    setOpen(false); setQuery('')
+  }
+  function clear() {
+    onChange({ id: null, name: null, org: null })
+    setOpen(false); setQuery('')
+  }
+
+  return (
+    <div ref={wrapRef} className="relative">
+      {/* Trigger: selected client chip, or search input */}
+      {clientId && !open ? (
+        <div
+          onClick={() => { setOpen(true); setQuery('') }}
+          className="titlebar-no-drag flex items-center justify-between gap-2 w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] cursor-text"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm text-gray-900 dark:text-white font-medium truncate">{clientName || 'Selected'}</span>
+            {clientOrg && (
+              <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-hub-gold/15 text-hub-gold border border-hub-gold/25 truncate max-w-[140px]">{clientOrg}</span>
+            )}
+          </div>
+          <button
+            onClick={e => { e.stopPropagation(); clear() }}
+            title="Clear client"
+            className="shrink-0 p-0.5 rounded text-gray-400 hover:text-red-500 transition"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          </button>
+        </div>
+      ) : (
+        <input
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          placeholder={clientName ? `${clientName}${clientOrg ? ' — ' + clientOrg : ''}` : 'Search contacts…'}
+          className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
+        />
+      )}
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute z-50 mt-1 left-0 right-0 max-h-72 overflow-y-auto rounded-xl bg-white dark:bg-[#1a2233] border border-gray-200 dark:border-white/[0.12] shadow-2xl py-1">
+          {contacts.length === 0 ? (
+            <div className="px-3 py-4 text-center">
+              <p className="text-xs text-gray-500 dark:text-white/55">No contacts yet — add one first</p>
+              <button
+                onClick={() => setShowAdd(true)}
+                className="mt-2 px-3 py-1.5 rounded-lg bg-hub-gold hover:bg-hub-gold-light text-white text-xs font-semibold transition"
+              >
+                Add contact
+              </button>
+            </div>
+          ) : (
+            <>
+              {clientId && (
+                <button
+                  onClick={clear}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-gray-500 dark:text-white/55 hover:bg-gray-50 dark:hover:bg-white/[0.05] transition"
+                >
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                  None (clear selection)
+                </button>
+              )}
+              {filtered.map(c => {
+                const t = firstContactType(c)
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => selectContact({ id: c.id, full_name: c.full_name, organization: c.organization })}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-white/[0.05] transition ${c.id === clientId ? 'bg-hub-gold/[0.08]' : ''}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{c.full_name || 'Unnamed'}</p>
+                      {c.organization && (
+                        <p className="text-[11px] text-gray-500 dark:text-white/45 truncate">{c.organization}</p>
+                      )}
+                    </div>
+                    {t && (
+                      <span className={`shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-medium ${contactTypeBadgeClass(t)}`}>{t}</span>
+                    )}
+                  </button>
+                )
+              })}
+              {filtered.length === 0 && (
+                <p className="px-3 py-3 text-xs text-gray-400 dark:text-white/40 text-center">No matching contacts</p>
+              )}
+              <div className="border-t border-gray-100 dark:border-white/[0.06] mt-1">
+                <button
+                  onClick={() => setShowAdd(true)}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-xs font-medium text-hub-gold hover:bg-hub-gold/[0.08] transition"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                  Add new contact
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {showAdd && (
+        <AddContactModal
+          initialName={query.trim()}
+          createdBy={createdBy}
+          onClose={() => setShowAdd(false)}
+          onCreated={(c) => {
+            setShowAdd(false)
+            loadContacts()
+            selectContact(c)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function TaskDetailPanel() {
@@ -57,12 +317,6 @@ export default function TaskDetailPanel() {
 
   // Editing state — overrides selected task fields until saved
   const [editing, setEditing] = useState<Partial<Task>>({})
-
-  // Client list for dropdown
-  const [clientList, setClientList] = useState<ClientRecord[]>([])
-  useEffect(() => {
-    window.api.clients.list().then(setClientList).catch(() => {})
-  }, [])
 
   // Recurring state
   const [recurringEnabled, setRecurringEnabled] = useState(false)
@@ -602,24 +856,19 @@ export default function TaskDetailPanel() {
                     </select>
                   </div>
 
-                  {/* Client */}
+                  {/* Client — searchable Contacts typeahead */}
                   <div>
                     <SectionLabel title="Client" />
-                    <select
-                      value={field('client_id') ?? ''}
-                      onChange={e => {
-                        const id = e.target.value || null
-                        const name = id ? (clientList.find(c => c.id === id)?.name ?? null) : null
-                        setEditing(prev => ({ ...prev, client_id: id, client: name }))
-                        updateTask(selectedTask.id, { client_id: id, client: name })
+                    <ClientPicker
+                      clientId={field('client_id') ?? null}
+                      clientName={field('client') ?? null}
+                      clientOrg={field('client_org') ?? null}
+                      createdBy={currentUserId}
+                      onChange={sel => {
+                        setEditing(prev => ({ ...prev, client_id: sel.id, client: sel.name, client_org: sel.org }))
+                        updateTask(selectedTask.id, { client_id: sel.id, client: sel.name, client_org: sel.org })
                       }}
-                      className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
-                    >
-                      <option value="">None</option>
-                      {clientList.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+                    />
                   </div>
 
                   {/* Start date */}

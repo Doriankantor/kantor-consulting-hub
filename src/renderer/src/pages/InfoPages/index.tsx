@@ -2,18 +2,18 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import InfoPagesList from './InfoPagesList'
 import InfoPageStatus from './InfoPageStatus'
-import IdeasTab from './tabs/IdeasTab'
 import SourcesTab from './tabs/SourcesTab'
 import ManualInfoTab from './tabs/ManualInfoTab'
 import ClaudeAnalysisTab from './tabs/ClaudeAnalysisTab'
+import DesignNotesTab from './tabs/DesignNotesTab'
 import CommitReviewTab from './tabs/CommitReviewTab'
 import RecentlyPublishedTab from './tabs/RecentlyPublishedTab'
 
 const TABS = [
-  { id: 'ideas',    label: 'Ideas & Planning' },
   { id: 'sources',  label: 'Sources' },
   { id: 'manual',   label: 'Manual Info' },
   { id: 'analysis', label: 'Claude Analysis' },
+  { id: 'design',   label: 'Pre-publish Design Notes' },
   { id: 'review',   label: 'Commit for Review' },
   { id: 'published',label: 'Recently Published' },
 ]
@@ -22,7 +22,7 @@ export default function InfoPages() {
   const { isAdmin, localUser } = useAuth()
   const [pages, setPages] = useState<InfoPage[]>([])
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState('ideas')
+  const [activeTab, setActiveTab] = useState('sources')
   const [isOwner, setIsOwner] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
 
@@ -86,10 +86,10 @@ export default function InfoPages() {
           </div>
 
           <div className="flex-1 overflow-hidden">
-            {activeTab === 'ideas'     && <IdeasTab    pageId={selectedPage.id} canApprove={canApprove} localUser={localUser} />}
             {activeTab === 'sources'   && <SourcesTab  pageId={selectedPage.id} page={selectedPage} localUser={localUser} />}
             {activeTab === 'manual'    && <ManualInfoTab pageId={selectedPage.id} page={selectedPage} localUser={localUser} />}
-            {activeTab === 'analysis'  && <ClaudeAnalysisTab pageId={selectedPage.id} page={selectedPage} canApprove={canApprove} localUser={localUser} />}
+            {activeTab === 'analysis'  && <ClaudeAnalysisTab pageId={selectedPage.id} page={selectedPage} canApprove={canApprove} localUser={localUser} onNavigate={setActiveTab} />}
+            {activeTab === 'design'    && <DesignNotesTab pageId={selectedPage.id} page={selectedPage} localUser={localUser} onNavigate={setActiveTab} />}
             {activeTab === 'review'    && <CommitReviewTab pageId={selectedPage.id} page={selectedPage} canApprove={canApprove} canGeneratePrompt={canGeneratePrompt} onCountChange={setPendingCount} localUser={localUser} isAdmin={isAdmin} />}
             {activeTab === 'published' && <RecentlyPublishedTab pageId={selectedPage.id} />}
           </div>

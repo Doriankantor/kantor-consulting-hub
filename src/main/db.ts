@@ -601,6 +601,38 @@ export function initDatabase(): void {
   // To-Do: completed_at for workspace tasks
   try { db.exec('ALTER TABLE workspace_tasks ADD COLUMN completed_at DATETIME;') } catch {}
 
+  // Client field now pulls from Contacts — store the contact's organization
+  // alongside the name so the Kanban card can show a distinct org badge.
+  try { db.exec('ALTER TABLE workspace_tasks ADD COLUMN client_org TEXT;') } catch {}
+
+  // One-time cleanup: the system admin account (doriankantor@gmail.com) must
+  // never be a task assignee. Strip its id from every task's assignee list
+  // while leaving all other assignees (incl. dk@kantor-consulting.com) intact.
+  try {
+    const adminRow = db.prepare("SELECT id FROM local_users WHERE LOWER(email)='doriankantor@gmail.com'").get() as { id: string } | undefined
+    if (adminRow?.id) {
+      const rows = db.prepare("SELECT id, assignees_json FROM workspace_tasks WHERE assignees_json LIKE ?").all(`%"${adminRow.id}"%`) as { id: string; assignees_json: string }[]
+      const upd = db.prepare('UPDATE workspace_tasks SET assignees_json=? WHERE id=?')
+      for (const r of rows) {
+        try {
+          const ids: string[] = JSON.parse(r.assignees_json || '[]')
+          const filtered = ids.filter(id => id !== adminRow.id)
+          if (filtered.length !== ids.length) upd.run(JSON.stringify(filtered), r.id)
+        } catch { /* skip malformed */ }
+      }
+    }
+  } catch (err) {
+    console.warn('[DB] admin-assignee cleanup warning:', err)
+  }
+
+  // One-time fix: Leonardo set up his account but his local record still shows
+  // "invited". Flip him to active so the Team page reflects reality.
+  try {
+    db.prepare("UPDATE local_users SET status='active', must_change_password=0 WHERE LOWER(email)='leonardocs@kantor-consulting.com' AND status='invited'").run()
+  } catch (err) {
+    console.warn('[DB] leonardo status fix warning:', err)
+  }
+
   // To-Do: dismissed tasks per user
   db.exec(`
     CREATE TABLE IF NOT EXISTS todo_dismissed (
@@ -818,6 +850,17 @@ export function initDatabase(): void {
   // Feedback loop: mark an intelligence source as published/used in an info page.
   try { db.exec("ALTER TABLE intelligence_sources ADD COLUMN used_in_page TEXT;") } catch {}
   try { db.exec("ALTER TABLE intelligence_sources ADD COLUMN used_in_page_at TEXT;") } catch {}
+
+  // Per-Info-Page Claude Analysis chat history (full interactive conversation).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS info_page_chat (
+      id          TEXT PRIMARY KEY,
+      page_id     TEXT NOT NULL,
+      role        TEXT NOT NULL,
+      content     TEXT NOT NULL,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `)
 
   console.log(`[DB] Initialized at ${dbPath}`)
 }

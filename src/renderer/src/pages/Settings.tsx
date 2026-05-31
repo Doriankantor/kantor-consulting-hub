@@ -298,7 +298,8 @@ export default function Settings() {
 
   async function loadTeam() {
     setLoadingTeam(true)
-    const data = await window.api.team.list()
+    // Settings is the one place the system admin account is managed directly.
+    const data = await window.api.team.list(true)
     setMembers(data)
     setLoadingTeam(false)
   }

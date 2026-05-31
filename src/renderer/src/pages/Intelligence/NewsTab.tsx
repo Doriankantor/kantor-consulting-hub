@@ -13,6 +13,11 @@ const STATUS_COLORS: Record<string, string> = {
   rejected:   'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
   saved:      'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
   pushed:     'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
+  imported:   'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400',
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  imported: 'Imported — needs confirmation',
 }
 
 const ALL_CATEGORIES = [
@@ -35,6 +40,13 @@ export default function NewsTab({ onApprove }: Props) {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [search, setSearch] = useState('')
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
+  const [importedCount, setImportedCount] = useState(0)
+  const [importing, setImporting] = useState(false)
+  const [confirmingImported, setConfirmingImported] = useState(false)
+
+  const refreshImportedCount = useCallback(async () => {
+    try { setImportedCount(await window.api.intelligence.getImportedCount()) } catch { /* ignore */ }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -51,7 +63,8 @@ export default function NewsTab({ onApprove }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, confidenceFilter, categoryFilter, search])
+    refreshImportedCount()
+  }, [statusFilter, confidenceFilter, categoryFilter, search, refreshImportedCount])
 
   useEffect(() => { load() }, [load])
 
@@ -64,6 +77,32 @@ export default function NewsTab({ onApprove }: Props) {
       }
     } finally {
       setRefreshing(false)
+    }
+  }
+
+  async function handleImportContestedSkies() {
+    setImporting(true)
+    try {
+      const res = await window.api.intelligence.importFromContestedSkies({ userId: localUser?.id, addedByName: localUser?.name })
+      if (res.ok) await load()
+      else alert(res.error || 'Import failed')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  async function handleConfirmImported() {
+    setConfirmingImported(true)
+    try {
+      const res = await window.api.intelligence.confirmImported({
+        confidence: 'medium',
+        reviewedById: localUser?.id,
+        reviewedByName: localUser?.name,
+      })
+      await load()
+      onApprove(res?.addedToPages)
+    } finally {
+      setConfirmingImported(false)
     }
   }
 
@@ -143,20 +182,52 @@ export default function NewsTab({ onApprove }: Props) {
         <span className="text-xs text-gray-400 dark:text-white/30 ml-1">{sources.length} items</span>
 
         {isAdmin && (
-          <button
-            onClick={handleRefreshNews}
-            disabled={refreshing}
-            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium transition disabled:opacity-50"
-          >
-            {refreshing ? (
-              <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10.5 6A4.5 4.5 0 1 1 6 1.5M10.5 1.5v4h-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            )}
-            {refreshing ? 'Fetching...' : 'Refresh now'}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={handleImportContestedSkies}
+              disabled={importing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-orange-300 dark:border-orange-500/40 text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-500/10 text-xs font-medium transition disabled:opacity-50"
+            >
+              {importing ? (
+                <span className="w-3 h-3 border-2 border-orange-400/30 border-t-orange-500 rounded-full animate-spin" />
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v6M3.5 5L6 7.5 8.5 5M2 9.5h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              )}
+              {importing ? 'Importing…' : 'Import Contested Skies'}
+            </button>
+            <button
+              onClick={handleRefreshNews}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium transition disabled:opacity-50"
+            >
+              {refreshing ? (
+                <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10.5 6A4.5 4.5 0 1 1 6 1.5M10.5 1.5v4h-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              )}
+              {refreshing ? 'Fetching...' : 'Refresh now'}
+            </button>
+          </div>
         )}
       </div>
+
+      {/* Imported-from-Contested-Skies banner */}
+      {importedCount > 0 && (
+        <div className="shrink-0 mx-6 mt-3 px-4 py-3 rounded-xl bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/30 flex items-center justify-between gap-3">
+          <p className="text-xs text-orange-800 dark:text-orange-300">
+            <span className="font-semibold">{importedCount} source{importedCount !== 1 ? 's' : ''} imported from Contested Skies</span> — pending your confirmation. Review and set final confidence before they move to the Info Pages Sources tab.
+          </p>
+          {isAdmin && (
+            <button
+              onClick={handleConfirmImported}
+              disabled={confirmingImported}
+              className="shrink-0 px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold transition disabled:opacity-50"
+            >
+              {confirmingImported ? 'Confirming…' : 'Confirm all as Medium confidence'}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Article list */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
@@ -210,9 +281,15 @@ export default function NewsTab({ onApprove }: Props) {
                       {conf}
                     </span>
                     {/* Status badge */}
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${STATUS_COLORS[source.status] || STATUS_COLORS.unreviewed}`}>
-                      {source.status}
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${source.status === 'imported' ? '' : 'uppercase'} ${STATUS_COLORS[source.status] || STATUS_COLORS.unreviewed}`}>
+                      {STATUS_LABELS[source.status] || source.status}
                     </span>
+                    {/* Origin badge for imported sources */}
+                    {source.added_by_name === 'Imported from Contested Skies' && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/40">
+                        from Contested Skies
+                      </span>
+                    )}
                     {/* Published-to-info-page badge (feedback loop) */}
                     {source.used_in_page && (
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300"

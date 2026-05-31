@@ -1,270 +1,211 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 interface Props {
   pageId: string
   page: InfoPage
   canApprove: boolean
   localUser: { id: string; name: string } | null
+  onNavigate?: (tab: string) => void
 }
 
-interface AnalysisItem {
-  action: string
-  section: string
-  detail: string
-  confidence: string
-  source: string
-  priority: string
-}
-
-const CONF_STYLES: Record<string, string> = {
-  high:   'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300',
-  medium: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300',
-  low:    'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300',
-}
-
-const SECTION_STYLES: Record<string, string> = {
-  'Incident Feed':            'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300',
-  'Platforms & Capabilities': 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300',
-  'Investment & Procurement': 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300',
-  'Finance Nexus':            'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300',
-  'Source Archive':           'bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-white/50',
-  'Statistics':               'bg-teal-100 dark:bg-teal-500/20 text-teal-700 dark:text-teal-300',
-}
-
-export default function ClaudeAnalysisTab({ pageId, page, canApprove: _canApprove, localUser }: Props) {
-  const [analysisItems, setAnalysisItems] = useState<AnalysisItem[]>([])
-  const [selected, setSelected] = useState<Set<number>>(new Set())
-  const [running, setRunning] = useState(false)
+export default function ClaudeAnalysisTab({ pageId, page, localUser, onNavigate }: Props) {
+  const [messages, setMessages] = useState<InfoPageChatMessage[]>([])
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [completing, setCompleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [committing, setCommitting] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const taRef = useRef<HTMLTextAreaElement>(null)
 
   const config: InfoPageConfig = page.board_config ? (() => { try { return JSON.parse(page.board_config!) } catch { return {} } })() : {}
 
-  async function runAnalysis() {
-    setRunning(true)
-    setError(null)
-    setAnalysisItems([])
-    setSelected(new Set())
+  const loadChat = useCallback(async () => {
     try {
-      // Prefer sources explicitly sent to analysis from the Sources tab; fall
-      // back to the global approved pool so analysis still works without a queue.
-      let sources = await window.api.infoPages.getAnalysisSources(pageId)
-      if (!sources.length) {
-        sources = await window.api.intelligence.getSources({ status: 'approved', limit: 30 })
-      }
-      // Load manual items for this page
-      const manualItems = await window.api.infoPages.getItems(pageId, 'manual')
+      const rows = await window.api.infoPages.getChat(pageId)
+      setMessages(rows)
+    } catch { /* ignore */ }
+  }, [pageId])
 
-      const result = await window.api.infoPages.analyzeWithClaude({
-        pageId,
-        pageName: page.name,
-        userId: localUser?.id,
-        sources,
-        manualItems,
+  useEffect(() => { loadChat() }, [loadChat])
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+  }, [messages, sending])
+
+  async function send() {
+    const text = input.trim()
+    if (!text || sending) return
+    setError(null)
+    setSending(true)
+    // Optimistic append of the user's message.
+    setMessages(prev => [...prev, { id: `tmp-${Date.now()}`, page_id: pageId, role: 'user', content: text, created_at: new Date().toISOString() }])
+    setInput('')
+    try {
+      const res = await window.api.infoPages.chat({ pageId, pageName: page.name, userId: localUser?.id, message: text })
+      if (!res.ok) setError(res.error || 'Claude request failed')
+      await loadChat()
+    } catch (e: any) {
+      setError(e.message || 'Unknown error')
+      await loadChat()
+    } finally {
+      setSending(false)
+    }
+  }
+
+  async function clearConversation() {
+    if (!confirm('Clear the entire analysis conversation for this page?')) return
+    try {
+      await window.api.infoPages.clearChat(pageId)
+      setMessages([])
+      setError(null)
+    } catch { /* ignore */ }
+  }
+
+  async function markComplete() {
+    if (!messages.length || completing || !localUser) return
+    setCompleting(true)
+    setError(null)
+    try {
+      const res = await window.api.infoPages.summarizeAnalysis({ pageId, pageName: page.name, userId: localUser.id })
+      if (!res.ok) { setError(res.error || 'Could not summarize analysis'); return }
+      await window.api.infoPages.addItem({
+        page_id: pageId,
+        tab: 'design',
+        sub_type: 'design_notes',
+        title: 'Pre-publish Design Notes',
+        status: 'draft',
+        analysis_json: JSON.stringify({ summary: res.summary || '', recommendations: res.recommendations || [] }),
+        created_by_id: localUser.id,
+        created_by_name: localUser.name,
       })
-
-      if (!result.ok) {
-        setError(result.error || 'Analysis failed')
-      } else {
-        setAnalysisItems(result.items || [])
-      }
+      setToast('Analysis complete — design notes ready')
+      setTimeout(() => { setToast(null); onNavigate?.('design') }, 1200)
     } catch (e: any) {
       setError(e.message || 'Unknown error')
     } finally {
-      setRunning(false)
+      setCompleting(false)
     }
   }
-
-  // Load previous analysis items
-  useEffect(() => {
-    async function loadPrevious() {
-      try {
-        const prev = await window.api.infoPages.getItems(pageId, 'analysis')
-        if (prev.length > 0 && analysisItems.length === 0) {
-          const parsed = prev.map(item => {
-            const c = (() => { try { return JSON.parse(item.analysis_json || '{}') } catch { return {} } })()
-            return c as AnalysisItem
-          }).filter((c: AnalysisItem) => c.action)
-          if (parsed.length > 0) setAnalysisItems(parsed)
-        }
-      } catch {}
-    }
-    loadPrevious()
-  }, [pageId])
-
-  function toggleSelect(i: number) {
-    setSelected(prev => {
-      const s = new Set(prev)
-      if (s.has(i)) s.delete(i)
-      else s.add(i)
-      return s
-    })
-  }
-
-  function selectAllHigh() {
-    const highIdxs = analysisItems
-      .map((item, i) => ({ item, i }))
-      .filter(({ item }) => item.confidence === 'high' || item.priority === 'high')
-      .map(({ i }) => i)
-    setSelected(prev => {
-      const s = new Set(prev)
-      highIdxs.forEach(i => s.add(i))
-      return s
-    })
-  }
-
-  async function handleCommit() {
-    if (!selected.size || !localUser) return
-    setCommitting(true)
-    try {
-      const itemIds: string[] = []
-      for (const idx of Array.from(selected)) {
-        const item = analysisItems[idx]
-        if (!item) continue
-        const res = await window.api.infoPages.addItem({
-          page_id: pageId,
-          tab: 'analysis',
-          sub_type: 'ai_suggestion',
-          title: item.action,
-          proposed_section: item.section,
-          confidence: item.confidence,
-          source_ref: item.source,
-          analysis_json: JSON.stringify(item),
-          priority: item.priority || 'medium',
-          created_by_id: localUser.id,
-          created_by_name: localUser.name,
-        })
-        itemIds.push(res.id)
-      }
-      if (itemIds.length) {
-        await window.api.infoPages.commitItems({
-          pageId,
-          itemIds,
-          submittedById: localUser.id,
-          submittedByName: localUser.name,
-        })
-      }
-      setSelected(new Set())
-    } finally {
-      setCommitting(false)
-    }
-  }
-
-  // Group by section
-  const grouped: Record<string, { item: AnalysisItem; idx: number }[]> = {}
-  analysisItems.forEach((item, idx) => {
-    if (!grouped[item.section]) grouped[item.section] = []
-    grouped[item.section].push({ item, idx })
-  })
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden relative">
+      {toast && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-medium shadow-2xl">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" className="text-green-400 dark:text-green-600">
+            <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M4.5 7l1.5 1.5L9.5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          {toast}
+        </div>
+      )}
+
       {/* Header */}
-      <div className="shrink-0 px-4 py-3 border-b border-gray-200 dark:border-white/[0.06] flex items-center justify-between">
-        <div>
+      <div className="shrink-0 px-4 py-3 border-b border-gray-200 dark:border-white/[0.06] flex items-center justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-xs font-semibold text-gray-700 dark:text-white/75">Claude Analysis</p>
-          {config.live_url && (
-            <p className="text-[10px] text-gray-400 dark:text-white/30">{config.live_url}</p>
-          )}
+          <p className="text-[10px] text-gray-400 dark:text-white/30">
+            Knows this page's sources, manual info{config.live_url ? ' and live page state' : ''}.
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          {analysisItems.length > 0 && (
-            <button onClick={selectAllHigh} className="text-xs px-2.5 py-1.5 rounded-lg border border-green-300 dark:border-green-500/30 text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-500/10 transition">
-              Select all high
-            </button>
-          )}
-          <button
-            onClick={runAnalysis}
-            disabled={running}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-500 hover:bg-indigo-600 text-white transition disabled:opacity-50"
-          >
-            {running ? (
-              <>
-                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Analyzing…
-              </>
-            ) : (
-              <>
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.2"/>
-                  <path d="M4.5 6l1.2 1.2L8 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Analyze with Claude
-              </>
-            )}
+        {messages.length > 0 && (
+          <button onClick={clearConversation}
+            className="shrink-0 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition">
+            Clear conversation
           </button>
-        </div>
+        )}
+      </div>
+
+      {/* Messages */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages.length === 0 && (
+          <div className="text-center py-10">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" className="mx-auto mb-3 text-gray-300 dark:text-white/20">
+              <path d="M4 7a3 3 0 0 1 3-3h18a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H12l-6 5v-5H7a3 3 0 0 1-3-3V7z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
+            </svg>
+            <p className="text-sm text-gray-400 dark:text-white/30">Start a conversation with Claude</p>
+            <p className="text-xs text-gray-400 dark:text-white/20 mt-1 max-w-sm mx-auto">
+              Ask what should change on the page, or paste new findings. Claude already has the sources you sent here, your manual info, and the current live page.
+            </p>
+          </div>
+        )}
+
+        {messages.map(m => (
+          <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] px-3.5 py-2.5 rounded-2xl text-xs whitespace-pre-wrap leading-relaxed ${
+              m.role === 'user'
+                ? 'bg-indigo-500 text-white rounded-br-sm'
+                : 'bg-gray-100 dark:bg-white/[0.06] text-gray-800 dark:text-white/85 rounded-bl-sm'
+            }`}>
+              {m.content}
+            </div>
+          </div>
+        ))}
+
+        {sending && (
+          <div className="flex justify-start">
+            <div className="px-3.5 py-2.5 rounded-2xl rounded-bl-sm bg-gray-100 dark:bg-white/[0.06]">
+              <div className="flex gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-white/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-white/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-white/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Error */}
       {error && (
-        <div className="mx-4 mt-3 px-3 py-2 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-400">
+        <div className="mx-4 mb-2 px-3 py-2 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-xs text-red-700 dark:text-red-400">
           {error}
         </div>
       )}
 
-      {/* Results */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {analysisItems.length === 0 && !running && !error && (
-          <div className="text-center py-8">
-            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" className="mx-auto mb-3 text-gray-300 dark:text-white/20">
-              <circle cx="16" cy="16" r="13" stroke="currentColor" strokeWidth="2"/>
-              <circle cx="16" cy="16" r="6" stroke="currentColor" strokeWidth="2"/>
-              <path d="M16 3v4M16 25v4M3 16h4M25 16h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-            <p className="text-sm text-gray-400 dark:text-white/30">Click "Analyze with Claude" to generate a todo list</p>
-            <p className="text-xs text-gray-400 dark:text-white/20 mt-1">Claude will analyze approved sources and manual info to suggest website updates.</p>
-          </div>
-        )}
-
-        {Object.entries(grouped).map(([section, items]) => (
-          <div key={section}>
-            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30 mb-2">{section}</h4>
-            <div className="space-y-2">
-              {items.map(({ item, idx }) => (
-                <div
-                  key={idx}
-                  onClick={() => toggleSelect(idx)}
-                  className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition ${
-                    selected.has(idx)
-                      ? 'border-indigo-300 dark:border-indigo-500/50 bg-indigo-50 dark:bg-indigo-500/5'
-                      : 'border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] hover:border-gray-300 dark:hover:border-white/[0.1]'
-                  }`}
-                >
-                  <input type="checkbox" checked={selected.has(idx)} onChange={() => toggleSelect(idx)} onClick={e => e.stopPropagation()}
-                    className="mt-0.5 w-3.5 h-3.5 rounded text-indigo-600 focus:ring-indigo-500/30 cursor-pointer shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${SECTION_STYLES[item.section] || SECTION_STYLES['Source Archive']}`}>
-                        {item.section}
-                      </span>
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${CONF_STYLES[item.confidence] || CONF_STYLES.low}`}>
-                        {item.confidence}
-                      </span>
-                    </div>
-                    <p className="text-xs font-semibold text-gray-800 dark:text-white/85">{item.action}</p>
-                    <p className="text-[11px] text-gray-500 dark:text-white/50 mt-0.5">{item.detail}</p>
-                    <p className="text-[10px] text-gray-400 dark:text-white/30 mt-0.5">Source: {item.source}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Commit bar */}
-      {selected.size > 0 && (
-        <div className="shrink-0 px-4 py-3 border-t border-gray-200 dark:border-white/[0.06] bg-white dark:bg-gray-900">
+      {/* Completed analysis bar */}
+      {messages.length > 0 && (
+        <div className="shrink-0 px-4 py-2.5 border-t border-gray-200 dark:border-white/[0.06] bg-gray-50 dark:bg-white/[0.02]">
           <button
-            onClick={handleCommit}
-            disabled={committing}
-            className="w-full px-4 py-2.5 rounded-xl text-sm font-semibold bg-purple-500 hover:bg-purple-600 text-white transition disabled:opacity-50"
+            onClick={markComplete}
+            disabled={completing}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-green-500 hover:bg-green-600 text-white transition disabled:opacity-50"
           >
-            {committing ? 'Committing…' : `Commit ${selected.size} suggestion${selected.size !== 1 ? 's' : ''} for review`}
+            {completing ? (
+              <>
+                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Summarizing…
+              </>
+            ) : (
+              <>
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l2.5 2.5L10 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Mark analysis complete and move to Pre-publish Design Notes
+              </>
+            )}
           </button>
         </div>
       )}
+
+      {/* Composer */}
+      <div className="shrink-0 px-4 py-3 border-t border-gray-200 dark:border-white/[0.06]">
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={taRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+            rows={1}
+            placeholder="Ask Claude about updates to this page…"
+            className="flex-1 px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-white/[0.03] text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 resize-none max-h-32 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+          />
+          <button
+            onClick={send}
+            disabled={!input.trim() || sending}
+            className="shrink-0 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-500 hover:bg-indigo-600 text-white transition disabled:opacity-50"
+          >
+            Send
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

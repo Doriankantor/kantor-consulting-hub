@@ -31,7 +31,7 @@ const api = {
     getFeed: ()               => ipcRenderer.invoke('activity:getFeed'),
   },
   team: {
-    list:            ()                                                                    => ipcRenderer.invoke('team:list'),
+    list:            (includeAdmin?: boolean)                                              => ipcRenderer.invoke('team:list', includeAdmin),
     invite:          (p: { email: string; full_name: string; role?: string })             => ipcRenderer.invoke('team:invite', p),
     remove:          (id: string)                                                          => ipcRenderer.invoke('team:remove', id),
     edit:            (p: { id: string; full_name?: string; email?: string; role?: string }) => ipcRenderer.invoke('team:edit', p),
@@ -39,6 +39,7 @@ const api = {
     changePassword:  (userId: string, cur: string, next: string)                          => ipcRenderer.invoke('team:changePassword', userId, cur, next),
     setInitialPassword: (userId: string, next: string)                                     => ipcRenderer.invoke('team:setInitialPassword', userId, next),
     getLoginCode:    (email: string)                                                       => ipcRenderer.invoke('team:getLoginCode', email),
+    markActive:      (id: string)                                                          => ipcRenderer.invoke('team:markActive', id),
     markApiKeySet:   (userId: string)                                                      => ipcRenderer.invoke('team:markApiKeySet', userId),
     savePreferences: (userId: string, prefs: Record<string, unknown>)                     => ipcRenderer.invoke('team:savePreferences', userId, prefs),
   },
@@ -241,6 +242,9 @@ const api = {
     pushToContestedSkies: (params: Record<string, unknown>)  => ipcRenderer.invoke('intelligence:pushToContestedSkies', params),
     getPushLog:           ()                                 => ipcRenderer.invoke('intelligence:getPushLog'),
     getPipelineStats:     ()                                 => ipcRenderer.invoke('intelligence:getPipelineStats'),
+    importFromContestedSkies: (params: Record<string, unknown>) => ipcRenderer.invoke('intelligence:importFromContestedSkies', params),
+    getImportedCount:     ()                                 => ipcRenderer.invoke('intelligence:getImportedCount'),
+    confirmImported:      (params: Record<string, unknown>)  => ipcRenderer.invoke('intelligence:confirmImported', params),
   },
   infoPages: {
     list:              ()                                              => ipcRenderer.invoke('infoPages:list'),
@@ -270,6 +274,10 @@ const api = {
     sendSourcesToAnalysis:(itemIds: string[])                         => ipcRenderer.invoke('infoPages:sendSourcesToAnalysis', itemIds),
     getSourceStats:       (pageId: string)                            => ipcRenderer.invoke('infoPages:getSourceStats', pageId),
     getAnalysisSources:   (pageId: string)                            => ipcRenderer.invoke('infoPages:getAnalysisSources', pageId),
+    getChat:              (pageId: string)                            => ipcRenderer.invoke('infoPages:getChat', pageId),
+    clearChat:            (pageId: string)                            => ipcRenderer.invoke('infoPages:clearChat', pageId),
+    chat:                 (params: Record<string,unknown>)            => ipcRenderer.invoke('infoPages:chat', params),
+    summarizeAnalysis:    (params: Record<string,unknown>)            => ipcRenderer.invoke('infoPages:summarizeAnalysis', params),
   },
   updater: {
     onAvailable:    (cb: (info: { version: string; releaseNotes?: string | null }) => void) =>

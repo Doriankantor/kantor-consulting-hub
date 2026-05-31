@@ -31,6 +31,19 @@ export default function RecentlyPublishedTab({ pageId }: Props) {
 
   const totalChanges = published.reduce((sum, e) => sum + e.commit_count, 0)
 
+  // "In this update:" summary built from the most recent published batch(es).
+  const latestDate = published.length
+    ? new Date(published[0].date_implemented).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    : ''
+  const latestBatch = published.filter(e =>
+    new Date(e.date_implemented).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) === latestDate
+  )
+  const latestItems = latestBatch.reduce((sum, e) => sum + e.commit_count, 0)
+  const updateSummary = latestBatch
+    .map(e => e.what_changed)
+    .filter(Boolean)
+    .join('; ')
+
   return (
     <div className="h-full overflow-y-auto p-4">
       {loading && (
@@ -48,6 +61,23 @@ export default function RecentlyPublishedTab({ pageId }: Props) {
 
       {!loading && published.length > 0 && (
         <>
+          {/* In this update summary */}
+          <div className="mb-4 p-4 rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-500/10 dark:to-purple-500/10 border border-indigo-100 dark:border-indigo-500/20">
+            <div className="flex items-center gap-2 mb-1.5">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-indigo-500 dark:text-indigo-400">
+                <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.3"/>
+                <path d="M7 4.2v3l1.8 1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+              </svg>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">In this update · {latestDate}</p>
+            </div>
+            <p className="text-sm text-gray-800 dark:text-white/85 leading-relaxed">
+              {updateSummary || `${latestItems} change${latestItems !== 1 ? 's' : ''} published.`}
+            </p>
+            <p className="text-[11px] text-gray-500 dark:text-white/40 mt-1.5">
+              {latestBatch.length} update{latestBatch.length !== 1 ? 's' : ''} · {latestItems} item{latestItems !== 1 ? 's' : ''} changed
+            </p>
+          </div>
+
           <div className="mb-4 flex items-center gap-3">
             <div className="bg-indigo-50 dark:bg-indigo-500/10 rounded-xl px-4 py-2 border border-indigo-100 dark:border-indigo-500/20">
               <p className="text-[10px] text-indigo-500 dark:text-indigo-400 font-medium uppercase tracking-wider">Total Updates</p>

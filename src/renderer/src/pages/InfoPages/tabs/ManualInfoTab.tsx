@@ -148,6 +148,20 @@ export default function ManualInfoTab({ pageId, page: _page, localUser }: Props)
     await load()
   }
 
+  async function sendToAnalysis(ids: string[]) {
+    if (!ids.length) return
+    for (const id of ids) await window.api.infoPages.updateItem(id, { status: 'in_analysis' })
+    await load()
+  }
+
+  async function removeFromAnalysis(id: string) {
+    await window.api.infoPages.updateItem(id, { status: 'draft' })
+    await load()
+  }
+
+  const available = items.filter(i => i.status !== 'in_analysis')
+  const committed = items.filter(i => i.status === 'in_analysis')
+
   const SUB_TABS: { id: SubTab; label: string }[] = [
     { id: 'interviews', label: 'Interviews' },
     { id: 'social',     label: 'Social Media' },
@@ -171,7 +185,15 @@ export default function ManualInfoTab({ pageId, page: _page, localUser }: Props)
             {t.label}
           </button>
         ))}
-        <div className="ml-auto pb-1">
+        <div className="ml-auto pb-1 flex items-center gap-2">
+          {available.length > 0 && (
+            <button
+              onClick={() => sendToAnalysis(available.map(i => i.id))}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium border border-purple-300 dark:border-purple-500/30 text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition"
+            >
+              Send to Claude Analysis
+            </button>
+          )}
           {subTab === 'documents' ? (
             <button
               onClick={handleUploadDocument}
@@ -268,12 +290,12 @@ export default function ManualInfoTab({ pageId, page: _page, localUser }: Props)
 
       {/* Items list */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {items.length === 0 && (
+        {available.length === 0 && committed.length === 0 && (
           <p className="text-xs text-gray-400 dark:text-white/25 text-center py-6">
             No {subTab === 'interviews' ? 'interviews' : subTab === 'social' ? 'social media posts' : 'documents'} yet.
           </p>
         )}
-        {items.map(item => {
+        {available.map(item => {
           const c = (() => { try { return JSON.parse(item.content_json || '{}') } catch { return {} as Record<string,unknown> } })()
           return (
             <div key={item.id} className="p-3 rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02]">
@@ -294,6 +316,12 @@ export default function ManualInfoTab({ pageId, page: _page, localUser }: Props)
                   {subTab === 'social' && c.content && (
                     <p className="text-[11px] text-gray-500 dark:text-white/40 mt-1 line-clamp-3">{String(c.content)}</p>
                   )}
+                  <button
+                    onClick={() => sendToAnalysis([item.id])}
+                    className="mt-2 text-[10px] px-2 py-1 rounded-lg border border-purple-300 dark:border-purple-500/30 text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition"
+                  >
+                    Send to Claude Analysis →
+                  </button>
                 </div>
                 <button onClick={() => handleDelete(item.id)} className="text-gray-300 dark:text-white/20 hover:text-red-500 dark:hover:text-red-400 transition shrink-0">
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2L2 10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
@@ -302,6 +330,30 @@ export default function ManualInfoTab({ pageId, page: _page, localUser }: Props)
             </div>
           )
         })}
+
+        {/* Committed to Claude Analysis */}
+        {committed.length > 0 && (
+          <div className="pt-3 mt-2 border-t border-gray-200 dark:border-white/[0.06]">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-500 dark:text-purple-400/70 mb-2">
+              Committed to Claude Analysis
+            </p>
+            <div className="space-y-2">
+              {committed.map(item => (
+                <div key={item.id} className="p-3 rounded-xl border border-purple-200/60 dark:border-purple-500/20 bg-purple-50/40 dark:bg-purple-500/[0.04]">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-gray-400 dark:text-white/40 line-through truncate">{item.title}</p>
+                    <button
+                      onClick={() => removeFromAnalysis(item.id)}
+                      className="shrink-0 text-[10px] px-2 py-1 rounded-lg border border-gray-200 dark:border-white/[0.1] text-gray-500 dark:text-white/50 hover:bg-white dark:hover:bg-white/[0.06] transition"
+                    >
+                      Remove from analysis
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

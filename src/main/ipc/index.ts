@@ -284,13 +284,18 @@ function registerAuthHandlers() {
 // ── Team ───────────────────────────────────────────────────────────────────
 
 function registerTeamHandlers() {
-  ipcMain.handle('team:list', () =>
+  // The system admin account (doriankantor@gmail.com) is the logged-in owner and
+  // must never surface as a *team member*. By default team:list hides it; the
+  // Settings admin panel passes includeAdmin=true to manage it directly.
+  const ADMIN_EMAIL = 'doriankantor@gmail.com'
+  ipcMain.handle('team:list', (_e, includeAdmin?: boolean) =>
     getDatabase()
       .prepare(`SELECT id,email,full_name,role,status,must_change_password,anthropic_key_set,created_at,last_active
                 FROM local_users
                 WHERE status != 'inactive'
+                ${includeAdmin ? '' : 'AND LOWER(email) != ?'}
                 ORDER BY created_at`)
-      .all()
+      .all(...(includeAdmin ? [] : [ADMIN_EMAIL]))
   )
 
   ipcMain.handle('team:invite', async (_e, params: { email: string; full_name: string; role?: string }) => {
@@ -390,6 +395,13 @@ function registerTeamHandlers() {
     if (params.full_name !== undefined) db.prepare('UPDATE local_users SET full_name=? WHERE id=?').run(params.full_name, params.id)
     if (params.email     !== undefined) db.prepare('UPDATE local_users SET email=? WHERE id=?').run(params.email, params.id)
     if (params.role      !== undefined) db.prepare('UPDATE local_users SET role=? WHERE id=?').run(params.role, params.id)
+    return { ok: true }
+  })
+
+  // Admin can manually confirm an invited member who has already set up their
+  // account on their own machine (local-first: status doesn't sync across installs).
+  ipcMain.handle('team:markActive', (_e, id: string) => {
+    getDatabase().prepare("UPDATE local_users SET status='active', must_change_password=0 WHERE id=?").run(id)
     return { ok: true }
   })
 
@@ -917,7 +929,7 @@ function registerWorkspaceHandlers() {
     const vals: unknown[] = []
     const fields: Record<string, string> = {
       column_id: 'column_id', title: 'title', content_type: 'content_type',
-      client: 'client', client_id: 'client_id', area_of_analysis: 'area_of_analysis',
+      client: 'client', client_id: 'client_id', client_org: 'client_org', area_of_analysis: 'area_of_analysis',
       due_date: 'due_date', start_date: 'start_date', priority: 'priority',
       description: 'description', notes: 'notes', sources_json: 'sources_json',
       position: 'position', recurrence_json: 'recurrence_json',
@@ -1259,7 +1271,8 @@ function registerAnalyticsHandlers() {
       return d >= lastWeekStart && d < weekStart
     })
 
-    const allMembers = db.prepare('SELECT id, full_name, email FROM local_users WHERE status=?').all('active') as any[]
+    // Exclude the system admin account from the team breakdown.
+    const allMembers = db.prepare("SELECT id, full_name, email FROM local_users WHERE status=? AND LOWER(email) != 'doriankantor@gmail.com'").all('active') as any[]
     const memberStats = allMembers.map(m => {
       const assigned = db.prepare(`SELECT COUNT(*) as c FROM workspace_tasks WHERE archived=0 AND assignees_json LIKE ?`).get(`%"${m.id}"%`) as {c:number}
       const completed = db.prepare(`SELECT COUNT(*) as c FROM workspace_tasks WHERE column_id='col-published' AND archived=0 AND assignees_json LIKE ?`).get(`%"${m.id}"%`) as {c:number}
@@ -2235,6 +2248,84 @@ function insertSourceItemForPage(pageId: string, src: Record<string, any>): stri
   return id
 }
 
+// Resolve the Anthropic API key to use: prefer the current user's key, then the
+// global admin key in settings, then fall back to the admin account's stored key.
+function resolveAnthropicKey(userId?: string): string | undefined {
+  const db = getDatabase()
+  const keyForUser = (id?: string): string | undefined => {
+    if (!id) return undefined
+    const row = db.prepare('SELECT preferences_json FROM local_users WHERE id=?').get(id) as { preferences_json: string } | undefined
+    try { return row?.preferences_json ? JSON.parse(row.preferences_json).anthropicApiKey : undefined } catch { return undefined }
+  }
+  const userKey = keyForUser(userId)
+  if (userKey) return userKey
+  const globalKey = (db.prepare("SELECT value FROM settings WHERE key='anthropic_api_key'").get() as { value: string } | undefined)?.value
+  if (globalKey) return globalKey
+  const admin = db.prepare("SELECT id FROM local_users WHERE LOWER(email)='doriankantor@gmail.com'").get() as { id: string } | undefined
+  return keyForUser(admin?.id)
+}
+
+// Build the system prompt for the Claude Analysis chat: page topic/keywords, all
+// Sources-tab sources, all Manual Info, and a text extract of the live page state.
+async function buildAnalysisSystemPrompt(pageId: string, pageName: string): Promise<string> {
+  const db = getDatabase()
+  const pageRow = db.prepare('SELECT board_config FROM workspace_boards WHERE id=?').get(pageId) as { board_config: string | null } | undefined
+  let config: Record<string, any> = {}
+  try { config = pageRow?.board_config ? JSON.parse(pageRow.board_config) : {} } catch { config = {} }
+  const keywords = config.keywords || ''
+
+  const sourceItems = db.prepare("SELECT title, content_json, confidence FROM info_page_items WHERE page_id=? AND tab='sources' AND sub_type='intelligence_source' ORDER BY created_at DESC LIMIT 40").all(pageId) as any[]
+  const sourcesText = sourceItems.map((s, i) => {
+    let c: any = {}; try { c = JSON.parse(s.content_json || '{}') } catch { /* ignore */ }
+    return `[Source ${i + 1}] ${s.title || ''} (${c.source_name || c.platform || 'unknown'}, confidence: ${s.confidence || '?'})\n${c.snippet || ''}`
+  }).join('\n\n')
+
+  // Prefer manual items explicitly committed to analysis; fall back to all of them.
+  let manualItems = db.prepare("SELECT sub_type, title, content_json FROM info_page_items WHERE page_id=? AND tab='manual' AND status='in_analysis' ORDER BY created_at DESC LIMIT 25").all(pageId) as any[]
+  if (!manualItems.length) manualItems = db.prepare("SELECT sub_type, title, content_json FROM info_page_items WHERE page_id=? AND tab='manual' ORDER BY created_at DESC LIMIT 25").all(pageId) as any[]
+  const manualText = manualItems.map((m, i) => {
+    let c: any = {}; try { c = JSON.parse(m.content_json || '{}') } catch { /* ignore */ }
+    const body = c.text || c.content || (Array.isArray(c.key_quotes) ? c.key_quotes.join(', ') : '') || ''
+    return `[Manual ${i + 1}] ${(m.sub_type || 'info').toUpperCase()}: ${m.title || ''}\n${body}`
+  }).join('\n\n')
+
+  let liveState = ''
+  const liveUrl = config.live_url ? (String(config.live_url).startsWith('http') ? config.live_url : `https://${config.live_url}`) : ''
+  if (liveUrl) {
+    try {
+      const res = await fetch(liveUrl, { signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(15000) : undefined })
+      if (res.ok) {
+        let html = await res.text()
+        html = html
+          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+        liveState = html.slice(0, 6000)
+      }
+    } catch { /* ignore live fetch errors */ }
+  }
+
+  return `You are helping update the "${pageName}" intelligence page${liveUrl ? ` (live at ${liveUrl})` : ''}.
+
+Your job is to help the analyst decide what to add, change, or remove on this page based on newly gathered intelligence. Be specific and concrete. When you recommend changes, name the exact section to edit and what the new content should say, and cite which source each recommendation comes from.
+
+PAGE TOPIC / KEYWORDS:
+${keywords || '(none specified)'}
+
+SOURCES READY FOR THIS PAGE:
+${sourcesText || '(none)'}
+
+MANUAL INFORMATION GATHERED:
+${manualText || '(none)'}
+
+CURRENT LIVE PAGE STATE (text extract):
+${liveState || '(could not fetch live page)'}
+
+Help the analyst think through the update. Ask clarifying questions when useful, and propose concrete, sourced changes.`
+}
+
 // When a source is approved, fan it out into every matching info page's Sources tab.
 // Dedupes by (page_id, origin_source_id) and skips pages where it's already published.
 // Returns the names of the pages it was added to.
@@ -2668,6 +2759,85 @@ ${textContent.slice(0, 8000)}`
 
     return { ok: true, count: items.length, sections }
   })
+
+  // ── Part 8: Import the Contested Skies Source Archive (Section 07) ─────────
+  // Fetches the live page, parses its embedded sourceArchive JS data, and imports
+  // each article as a pending-confirmation intelligence source.
+  ipcMain.handle('intelligence:importFromContestedSkies', async (_e, params: {
+    userId?: string; addedByName?: string
+  }) => {
+    try {
+      const res = await fetch('https://contestedskies.kantor-consulting.com', {
+        signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(30000) : undefined,
+      })
+      if (!res.ok) return { ok: false, error: `Failed to fetch Contested Skies (HTTP ${res.status})` }
+      const html = await res.text()
+
+      // Extract each country block: name + its articles array contents.
+      const countryRe = /(\w+):\s*\{\s*name:\s*"([^"]+)",[\s\S]*?articles:\s*\[([\s\S]*?)\]\s*\}/g
+      const articleRe = /\{\s*date:\s*"([^"]*)",\s*pub:\s*"([^"]*)",\s*title:\s*"([^"]*)",\s*url:\s*"([^"]*)",\s*blurb:\s*"([^"]*)"\s*,\s*platformMentioned:\s*(true|false)\s*\}/g
+
+      const insert = db().prepare(`
+        INSERT OR IGNORE INTO intelligence_sources
+          (id, type, title, content, url, source_name, published_at, status, confidence,
+           categories_json, snippet, location_mentioned, added_by_id, added_by_name)
+        VALUES (?, 'article', ?, ?, ?, ?, ?, 'imported', 'medium', ?, ?, ?, ?, ?)
+      `)
+
+      let imported = 0
+      let total = 0
+      let cm: RegExpExecArray | null
+      while ((cm = countryRe.exec(html)) !== null) {
+        const countryName = cm[2]
+        const articlesBlock = cm[3]
+        let am: RegExpExecArray | null
+        articleRe.lastIndex = 0
+        while ((am = articleRe.exec(articlesBlock)) !== null) {
+          total++
+          const [, rawDate, pub, title, url, blurb, platformMentioned] = am
+          const publishedAt = rawDate.replace(/-XX/g, '-01')
+          const cats = autoDetectCategories(`${title} ${blurb}`)
+          if (platformMentioned === 'true' && !cats.includes('Innovation & Technology')) cats.push('Innovation & Technology')
+          const r = insert.run(
+            uuid(), title, blurb, url, pub, publishedAt,
+            JSON.stringify(cats), blurb.slice(0, 300), countryName,
+            params.userId || null, 'Imported from Contested Skies',
+          )
+          if (r.changes > 0) imported++
+        }
+      }
+      return { ok: true, imported, total }
+    } catch (e: any) {
+      return { ok: false, error: e.message }
+    }
+  })
+
+  // Count of sources still pending confirmation from the Contested Skies import.
+  ipcMain.handle('intelligence:getImportedCount', () => {
+    return (db().prepare("SELECT COUNT(*) as c FROM intelligence_sources WHERE status='imported'").get() as { c: number }).c
+  })
+
+  // Bulk-confirm all imported sources at a chosen confidence, approving them so
+  // they flow into the matching Info Pages' Sources tabs.
+  ipcMain.handle('intelligence:confirmImported', (_e, params: {
+    confidence?: string; reviewedById?: string; reviewedByName?: string
+  }) => {
+    const conf = params.confidence || 'medium'
+    const now2 = new Date().toISOString()
+    const rows = db().prepare("SELECT id FROM intelligence_sources WHERE status='imported'").all() as { id: string }[]
+    const addedAll = new Set<string>()
+    const upd = db().prepare(`
+      UPDATE intelligence_sources
+      SET confidence=?, confidence_override=1, status='approved',
+          reviewed_by_id=?, reviewed_by_name=?, reviewed_at=?, queue_section='source-archive'
+      WHERE id=?
+    `)
+    for (const r of rows) {
+      upd.run(conf, params.reviewedById || null, params.reviewedByName || null, now2, r.id)
+      try { addApprovedSourceToInfoPages(r.id).forEach(p => addedAll.add(p)) } catch (e) { console.warn('[Pipeline] confirmImported fan-out failed', e) }
+    }
+    return { ok: true, count: rows.length, addedToPages: [...addedAll] }
+  })
 }
 
 // ── Info Pages ────────────────────────────────────────────────────────────
@@ -2988,6 +3158,87 @@ Return ONLY the JSON array, no other text.`
       const jsonMatch = responseText.match(/\[[\s\S]*\]/)
       const items = jsonMatch ? JSON.parse(jsonMatch[0]) : []
       return { ok: true, items }
+    } catch (e: any) {
+      return { ok: false, error: e.message }
+    }
+  })
+
+  // ── Claude Analysis chat (full interactive conversation per Info Page) ─────
+  ipcMain.handle('infoPages:getChat', (_e, pageId: string) => {
+    return db().prepare('SELECT * FROM info_page_chat WHERE page_id=? ORDER BY created_at ASC, rowid ASC').all(pageId)
+  })
+
+  ipcMain.handle('infoPages:clearChat', (_e, pageId: string) => {
+    db().prepare('DELETE FROM info_page_chat WHERE page_id=?').run(pageId)
+    return { ok: true }
+  })
+
+  ipcMain.handle('infoPages:chat', async (_e, params: {
+    pageId: string; pageName: string; userId?: string; message: string
+  }) => {
+    try {
+      const apiKey = resolveAnthropicKey(params.userId)
+      if (!apiKey) return { ok: false, error: 'No Anthropic API key configured. Add one in Settings.' }
+      const { randomUUID } = require('crypto')
+      // Persist the analyst's message first.
+      db().prepare('INSERT INTO info_page_chat (id,page_id,role,content) VALUES (?,?,?,?)')
+        .run(randomUUID(), params.pageId, 'user', params.message)
+      const history = db().prepare('SELECT role,content FROM info_page_chat WHERE page_id=? ORDER BY created_at ASC, rowid ASC').all(params.pageId) as { role: string; content: string }[]
+      const system = await buildAnalysisSystemPrompt(params.pageId, params.pageName)
+      const AnthropicLib = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk')
+      const client = new AnthropicLib({ apiKey })
+      const msg = await client.messages.create({
+        model: 'claude-opus-4-5',
+        max_tokens: 2048,
+        system,
+        messages: history.map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
+      })
+      const reply = msg.content[0]?.type === 'text' ? msg.content[0].text : ''
+      db().prepare('INSERT INTO info_page_chat (id,page_id,role,content) VALUES (?,?,?,?)')
+        .run(randomUUID(), params.pageId, 'assistant', reply)
+      return { ok: true, reply }
+    } catch (e: any) {
+      return { ok: false, error: e.message }
+    }
+  })
+
+  // Summarize the analysis conversation into a structured set of design
+  // recommendations to pre-populate the Pre-publish Design Notes tab.
+  ipcMain.handle('infoPages:summarizeAnalysis', async (_e, params: {
+    pageId: string; pageName: string; userId?: string
+  }) => {
+    try {
+      const apiKey = resolveAnthropicKey(params.userId)
+      if (!apiKey) return { ok: false, error: 'No Anthropic API key configured.' }
+      const history = db().prepare('SELECT role,content FROM info_page_chat WHERE page_id=? ORDER BY created_at ASC, rowid ASC').all(params.pageId) as { role: string; content: string }[]
+      if (!history.length) return { ok: false, error: 'No conversation to summarize yet.' }
+      const convo = history.map(h => `${h.role === 'assistant' ? 'CLAUDE' : 'ANALYST'}: ${h.content}`).join('\n\n')
+      const AnthropicLib = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk')
+      const client = new AnthropicLib({ apiKey })
+      const msg = await client.messages.create({
+        model: 'claude-opus-4-5',
+        max_tokens: 2048,
+        messages: [{
+          role: 'user',
+          content: `Based on the analysis conversation below about the "${params.pageName}" intelligence page, produce a JSON object summarizing the agreed changes to make to the page. Format ONLY as valid JSON:
+
+{
+  "summary": "1-3 sentence overview of what should change on the page",
+  "recommendations": [
+    { "section": "Section name", "action": "Short imperative change", "detail": "Specific detail of what to add/change", "confidence": "high|medium|low" }
+  ]
+}
+
+CONVERSATION:
+${convo}
+
+Return ONLY the JSON object, no other text.`
+        }]
+      })
+      const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '{}'
+      const m = text.match(/\{[\s\S]*\}/)
+      const parsed = m ? JSON.parse(m[0]) : { summary: '', recommendations: [] }
+      return { ok: true, summary: parsed.summary || '', recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations : [] }
     } catch (e: any) {
       return { ok: false, error: e.message }
     }
