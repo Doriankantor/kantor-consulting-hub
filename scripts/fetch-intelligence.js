@@ -1,12 +1,19 @@
 // ============================================================================
 // Daily Intelligence Fetch — NewsAPI -> Claude categorization -> Supabase
 // ============================================================================
+// STRICT SEARCH STRATEGY: every NewsAPI query combines a drone/UAS/UAV term
+// AND a Latin-American country / region / actor term. We never search a drone
+// term alone or a place alone — always both together (joined with AND). Each
+// listed query is its own API call. After NewsAPI returns results, Claude
+// applies a second strict relevance gate (see lib/categorize.js) and anything
+// scoring below the threshold is discarded.
+//
 // Pipeline (each stage is isolated so one failure never stops the whole run):
-//   1. Fetch drone-related articles from NewsAPI (/v2/everything), es + en,
-//      last 24h, paged, deduped by URL against existing cs_articles.
-//   2. Categorize each new article with Claude Haiku (claude-haiku-4-5).
-//      Keep only relevance_score >= 5. Claude failure -> store 'uncategorized'.
-//   3. Insert categorized/uncategorized articles into cs_articles.
+//   1. Fetch with the strict combined queries (en + es), paged, deduped by URL
+//      against existing cs_articles.
+//   2. Categorize each new article with Claude Haiku + strict relevance gate.
+//      Keep only relevance_score >= RELEVANCE_THRESHOLD. Failure -> 'uncategorized'.
+//   3. Insert kept articles into cs_articles.
 //   4. Log the run into cs_fetch_log.
 //   5. Upsert cs_fetch_status (last_fetch + new_articles_count) for Hub realtime.
 // Supabase failure at any write -> articles dumped to a local JSON backup.
@@ -19,12 +26,15 @@ import { mkdirSync, writeFileSync } from 'fs'
 import fetch from 'node-fetch'
 import WebSocket from 'ws'
 import { createClient } from '@supabase/supabase-js'
-import Anthropic from '@anthropic-ai/sdk'
+import { makeAnthropic, categorize, isRelevant, RELEVANCE_THRESHOLD } from './lib/categorize.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-// Load the repo-root .env for local runs. In GitHub Actions the file is absent
-// and the secrets arrive as real env vars (dotenv never overrides those).
-dotenvConfig({ path: resolve(__dirname, '..', '.env') })
+// Load the repo-root .env for local runs. `override: true` lets the .env win
+// over variables the surrounding shell may export as EMPTY (e.g. some tooling
+// exports a blank ANTHROPIC_API_KEY, which would otherwise shadow the real key).
+// In GitHub Actions the .env file is absent, so this no-ops and the injected
+// secrets (real env vars) are used as-is.
+dotenvConfig({ path: resolve(__dirname, '..', '.env'), override: true })
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const NEWSAPI_KEY = process.env.NEWSAPI_KEY
@@ -32,35 +42,110 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-const CLAUDE_MODEL = 'claude-haiku-4-5'
-const LANGUAGES = ['en', 'es']
 const PAGE_SIZE = 100
-const MAX_PAGES = 5 // safety cap per query/language (NewsAPI dev plan is limited)
-const RELEVANCE_THRESHOLD = 5
+const MAX_PAGES = 2 // strict queries are narrow; rarely more than one page.
+// NewsAPI's free Developer plan serves articles with a ~24h delay and caps usage
+// at 100 requests/day, so a strict "last 24h" window returns nothing. We look
+// back 72h to overlap the delayed-availability zone (and recover a missed run);
+// URL dedup against cs_articles guarantees we never re-insert what we already have.
+const LOOKBACK_HOURS = 72
 
-const KEYWORD_GROUPS = {
-  'drone-operations': [
-    'drone strike', 'drone attack', 'weaponized drone', 'armed drone',
-    'drone warfare', 'loitering munition', 'kamikaze drone', 'FPV drone',
-    'drone swarm', 'drone proliferation', 'criminal drone', 'cartel drone',
-    'narco drone', 'drone bomb', 'drone explosive',
+// ── STRICT QUERY SET ─────────────────────────────────────────────────────────
+// Each entry is { terms: [...], lang }. The query sent to NewsAPI is the terms
+// AND-joined (multi-word / hyphenated terms get quoted for an exact phrase), so
+// EVERY query requires a drone term AND a place/actor term to co-occur.
+const QUERY_GROUPS = {
+  // GROUP 1 — drone incidents in LATAM (attacks, strikes, criminal use)
+  'offensive-incidents': [
+    { terms: ['drone', 'Colombia'],     lang: 'en' },
+    { terms: ['drone', 'Venezuela'],    lang: 'en' },
+    { terms: ['drone', 'Mexico'],       lang: 'en' },
+    { terms: ['drone', 'Brazil'],       lang: 'en' },
+    { terms: ['drone', 'Peru'],         lang: 'en' },
+    { terms: ['drone', 'Ecuador'],      lang: 'en' },
+    { terms: ['drone', 'Bolivia'],      lang: 'en' },
+    { terms: ['drone', 'Argentina'],    lang: 'en' },
+    { terms: ['drone', 'Chile'],        lang: 'en' },
+    { terms: ['drone', 'Guatemala'],    lang: 'en' },
+    { terms: ['drone', 'Honduras'],     lang: 'en' },
+    { terms: ['drone', 'El Salvador'],  lang: 'en' },
+    { terms: ['UAV', 'Colombia'],       lang: 'en' },
+    { terms: ['UAV', 'Venezuela'],      lang: 'en' },
+    { terms: ['UAV', 'Mexico'],         lang: 'en' },
+    { terms: ['dron', 'Colombia'],      lang: 'es' },
+    { terms: ['dron', 'México'],        lang: 'es' },
+    { terms: ['dron', 'Venezuela'],     lang: 'es' },
+    { terms: ['FARC', 'dron'],          lang: 'es' },
+    { terms: ['ELN', 'dron'],           lang: 'es' },
+    { terms: ['CJNG', 'dron'],          lang: 'es' },
+    { terms: ['cartel', 'dron'],        lang: 'es' },
+    { terms: ['narco', 'dron'],         lang: 'es' },
+    { terms: ['FARC', 'drone'],         lang: 'en' },
+    { terms: ['ELN', 'drone'],          lang: 'en' },
+    { terms: ['CJNG', 'drone'],         lang: 'en' },
+    { terms: ['cartel', 'drone'],       lang: 'en' },
+    { terms: ['narco', 'drone'],        lang: 'en' },
   ],
+
+  // GROUP 2 — drone investment in LATAM (military procurement, national programs)
+  'military-investment': [
+    { terms: ['drone', 'military', 'Colombia'],     lang: 'en' },
+    { terms: ['drone', 'military', 'Venezuela'],    lang: 'en' },
+    { terms: ['drone', 'military', 'Brazil'],       lang: 'en' },
+    { terms: ['drone', 'military', 'Mexico'],       lang: 'en' },
+    { terms: ['UAV', 'military', 'Latin America'],  lang: 'en' },
+    { terms: ['drone', 'procurement', 'Latin America'], lang: 'en' },
+    { terms: ['drone', 'investment', 'Latin America'],  lang: 'en' },
+    { terms: ['compra', 'dron', 'militar', 'Colombia'],  lang: 'es' },
+    { terms: ['compra', 'dron', 'militar', 'Venezuela'], lang: 'es' },
+    { terms: ['compra', 'dron', 'militar', 'México'],    lang: 'es' },
+    { terms: ['drone', 'fuerzas armadas', 'Colombia'],   lang: 'es' },
+    { terms: ['drone', 'fuerzas armadas', 'Venezuela'],  lang: 'es' },
+    { terms: ['drone', 'fuerzas armadas', 'México'],     lang: 'es' },
+    { terms: ['drone', 'fuerzas armadas', 'Brasil'],     lang: 'es' },
+    { terms: ['Iranian', 'drone', 'Venezuela'],     lang: 'en' },
+    { terms: ['Iranian', 'drone', 'Latin America'], lang: 'en' },
+  ],
+
+  // GROUP 3 — drone technology in LATAM (new systems, manufacturers, innovations)
+  'new-technology': [
+    { terms: ['drone', 'empresa', 'Colombia'],  lang: 'es' },
+    { terms: ['drone', 'empresa', 'México'],     lang: 'es' },
+    { terms: ['drone', 'empresa', 'Brasil'],     lang: 'es' },
+    { terms: ['drone', 'empresa', 'Argentina'],  lang: 'es' },
+    { terms: ['drone', 'fabricante', 'Colombia'], lang: 'es' },
+    { terms: ['drone', 'fabricante', 'México'],   lang: 'es' },
+    { terms: ['drone', 'fabricante', 'Brasil'],   lang: 'es' },
+    { terms: ['UAS', 'manufacturer', 'Latin America'], lang: 'en' },
+    { terms: ['drone', 'technology', 'Colombia'], lang: 'en' },
+    { terms: ['drone', 'technology', 'Brazil'],   lang: 'en' },
+    { terms: ['drone', 'technology', 'Mexico'],   lang: 'en' },
+    { terms: ['counter-drone', 'Latin America'],  lang: 'en' },
+    { terms: ['anti-drone', 'Latin America'],     lang: 'en' },
+    { terms: ['contra', 'dron', 'Colombia'],      lang: 'es' },
+    { terms: ['contra', 'dron', 'México'],         lang: 'es' },
+    { terms: ['contra', 'dron', 'Brasil'],         lang: 'es' },
+  ],
+
+  // GROUP 4 — counter-drone in LATAM
   'counter-drone': [
-    'counter drone', 'anti-drone', 'drone jamming', 'drone interception',
-    'C-UAS', 'counter-UAS', 'drone defense', 'drone detection',
-  ],
-  'procurement-industry': [
-    'drone purchase', 'UAV procurement', 'drone contract', 'drone manufacturer',
-    'DJI export', 'drone regulation', 'drone export control', 'autonomous weapons',
-  ],
-  'regional': [
-    'drone Colombia', 'drone Venezuela', 'drone Mexico', 'drone Brazil',
-    'drone Latin America', 'drone LATAM', 'drone cartel', 'drone FARC',
-    'drone ELN', 'drone CJNG', 'Iranian drone', 'drone Ukraine Russia',
+    { terms: ['anti-drone', 'Colombia'],   lang: 'en' },
+    { terms: ['anti-drone', 'Venezuela'],  lang: 'en' },
+    { terms: ['anti-drone', 'Mexico'],     lang: 'en' },
+    { terms: ['anti-drone', 'Brazil'],     lang: 'en' },
+    { terms: ['counter-drone', 'Colombia'],  lang: 'en' },
+    { terms: ['counter-drone', 'Venezuela'], lang: 'en' },
+    { terms: ['counter', 'UAS', 'Latin America'], lang: 'en' },
+    { terms: ['C-UAS', 'Colombia'],        lang: 'en' },
+    { terms: ['drone', 'defense', 'Latin America'], lang: 'en' },
+    { terms: ['drone', 'jammer', 'Latin America'],  lang: 'en' },
   ],
 }
 
-const ALL_KEYWORDS = Object.values(KEYWORD_GROUPS).flat()
+// Flat list of human-readable query labels (for cs_fetch_log.keywords_used).
+const ALL_QUERY_LABELS = Object.values(QUERY_GROUPS)
+  .flat()
+  .map((q) => q.terms.join(' + '))
 
 // ── Supabase / Anthropic clients (created defensively) ───────────────────────
 let supabase = null
@@ -75,10 +160,8 @@ if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
   console.warn('[config] SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing — Supabase writes will be backed up locally.')
 }
 
-let anthropic = null
-if (ANTHROPIC_API_KEY) {
-  anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY })
-} else {
+const anthropic = makeAnthropic(ANTHROPIC_API_KEY)
+if (!anthropic) {
   console.warn('[config] ANTHROPIC_API_KEY missing — articles will be stored uncategorized.')
 }
 
@@ -89,15 +172,18 @@ function isoHoursAgo(h) {
   return new Date(Date.now() - h * 3600 * 1000).toISOString()
 }
 
-function buildQuery(phrases) {
-  // NewsAPI OR-combines quoted phrases. Keep under the 500-char q limit.
-  return phrases.map((p) => `"${p}"`).join(' OR ')
+// Build the NewsAPI `q` from a strict term list: AND-join the terms, quoting any
+// multi-word or hyphenated term so it is matched as an exact phrase. This forces
+// every required term (drone AND place/actor) to co-occur in the article.
+function buildQ(terms) {
+  return terms.map((t) => (/[\s-]/.test(t) ? `"${t}"` : t)).join(' AND ')
 }
 
-// STEP 1 — fetch one keyword group in one language, paging through results.
-async function fetchGroup(groupName, phrases, language, errors) {
-  const q = buildQuery(phrases)
-  const from = isoHoursAgo(24)
+// STEP 1 — run ONE strict query (one NewsAPI call, paged defensively).
+async function fetchQuery(groupName, terms, language, errors) {
+  const q = buildQ(terms)
+  const label = terms.join(' + ')
+  const from = isoHoursAgo(LOOKBACK_HOURS)
   const collected = []
   let totalResults = 0
 
@@ -117,7 +203,7 @@ async function fetchGroup(groupName, phrases, language, errors) {
       const body = await res.json().catch(() => ({}))
 
       if (!res.ok || body.status === 'error') {
-        const msg = `NewsAPI [${groupName}/${language}] p${page}: ${res.status} ${body.code || ''} ${body.message || ''}`.trim()
+        const msg = `NewsAPI [${groupName}: ${label}/${language}] p${page}: ${res.status} ${body.code || ''} ${body.message || ''}`.trim()
         console.warn('  ✗', msg)
         errors.push(msg)
         break // stop paging this query; move on to the next
@@ -126,12 +212,14 @@ async function fetchGroup(groupName, phrases, language, errors) {
       totalResults = body.totalResults || 0
       const articles = body.articles || []
       collected.push(...articles)
-      console.log(`  • ${groupName}/${language} p${page}: +${articles.length} (total reported ${totalResults})`)
+      if (articles.length > 0) {
+        console.log(`  • ${groupName} "${label}"/${language} p${page}: +${articles.length} (total ${totalResults})`)
+      }
 
       if (articles.length < PAGE_SIZE || collected.length >= totalResults) break
-      await sleep(250) // be gentle with the API
+      await sleep(200)
     } catch (e) {
-      const msg = `NewsAPI [${groupName}/${language}] p${page} threw: ${e.message}`
+      const msg = `NewsAPI [${groupName}: ${label}/${language}] p${page} threw: ${e.message}`
       console.warn('  ✗', msg)
       errors.push(msg)
       break
@@ -139,55 +227,6 @@ async function fetchGroup(groupName, phrases, language, errors) {
   }
 
   return { articles: collected, totalResults }
-}
-
-// STEP 2 — categorize a single article with Claude. Returns the parsed object
-// or null on any failure (caller then stores the article 'uncategorized').
-async function categorize(article) {
-  if (!anthropic) return null
-
-  const title = article.title || ''
-  const snippet = (article.description || article.content || '').slice(0, 500)
-  const source = article.source?.name || 'Unknown'
-
-  const prompt = `You are categorizing a news article about drones in Latin America for an intelligence database.
-
-Article title: ${title}
-Article snippet: ${snippet}
-Source: ${source}
-
-Respond ONLY with a JSON object, no other text:
-{
-  "primary_category": one of [offensive, defensive, procurement, industry, regulatory, criminal, diplomatic],
-  "sub_category": one of [kinetic_strike, reconnaissance, chemical_payload, prison_drop, smuggling, kamikaze, cuav_deployment, interception, jamming, detection, state_purchase, company_funding, rd_announcement, budget, new_manufacturer, new_platform, tech_development, export_deal, acquisition, new_law, agreement, sanctions, cartel_use, new_actor, tactic_evolution, training, foreign_supplier, state_transfer, extra_regional, general],
-  "confidence_suggestion": one of [high, medium, low],
-  "confidence_reasoning": "brief explanation",
-  "relevance_score": number between 0 and 10,
-  "key_actors": ["list", "of", "actors", "mentioned"],
-  "countries": ["list", "of", "countries", "mentioned"],
-  "summary": "one sentence summary"
-}`
-
-  try {
-    const msg = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }],
-    })
-    const text = (msg.content || [])
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text)
-      .join('')
-      .trim()
-    // Strip ```json fences / extract the first {...} block.
-    const cleaned = text.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
-    const jsonStr = cleaned.startsWith('{') ? cleaned : cleaned.slice(cleaned.indexOf('{'), cleaned.lastIndexOf('}') + 1)
-    const parsed = JSON.parse(jsonStr)
-    return parsed
-  } catch (e) {
-    console.warn(`  ✗ Claude categorization failed for "${title.slice(0, 60)}": ${e.message}`)
-    return null
-  }
 }
 
 // Map a NewsAPI article + Claude categorization to a cs_articles row.
@@ -207,7 +246,8 @@ function buildRow(article, cat) {
   }
 }
 
-// Query existing URLs in cs_articles (chunked) so we only process genuinely new ones.
+// Query existing URLs in cs_articles (chunked) so we only process genuinely new
+// ones — true deduplication: an article already stored is never inserted again.
 async function filterNewUrls(urls) {
   if (!supabase || urls.length === 0) return new Set()
   const existing = new Set()
@@ -240,22 +280,23 @@ function backupLocally(rows, reason) {
 async function main() {
   const startedAt = new Date().toISOString()
   console.log(`\n=== Daily Intelligence Fetch @ ${startedAt} ===`)
+  console.log(`  Strict query set: ${ALL_QUERY_LABELS.length} combined drone+place queries.`)
   if (!NEWSAPI_KEY) console.warn('[config] NEWSAPI_KEY is empty — NewsAPI calls will return 401 and yield 0 articles.')
 
   const errors = []
   let articlesFound = 0
   const rawArticles = []
 
-  // STEP 1 — fetch everything
-  console.log('\n[1/5] Fetching from NewsAPI...')
-  for (const [groupName, phrases] of Object.entries(KEYWORD_GROUPS)) {
-    for (const language of LANGUAGES) {
+  // STEP 1 — run every strict query.
+  console.log('\n[1/5] Fetching from NewsAPI (strict combined queries)...')
+  for (const [groupName, queries] of Object.entries(QUERY_GROUPS)) {
+    for (const { terms, lang } of queries) {
       try {
-        const { articles, totalResults } = await fetchGroup(groupName, phrases, language, errors)
+        const { articles, totalResults } = await fetchQuery(groupName, terms, lang, errors)
         articlesFound += totalResults
         rawArticles.push(...articles)
       } catch (e) {
-        const msg = `fetchGroup ${groupName}/${language} fatal: ${e.message}`
+        const msg = `fetchQuery ${groupName} [${terms.join(' + ')}/${lang}] fatal: ${e.message}`
         console.warn('  ✗', msg)
         errors.push(msg)
       }
@@ -280,25 +321,28 @@ async function main() {
   const fresh = candidates.filter((a) => !existing.has(a.url))
   console.log(`  ${fresh.length} new (not already in cs_articles).`)
 
-  // STEP 2 + filter — categorize each new article.
-  console.log('\n[2/5] Categorizing with Claude...')
+  // STEP 2 — categorize each new article with the strict relevance gate.
+  console.log('\n[2/5] Categorizing with Claude (strict LATAM-drone relevance gate)...')
   const rows = []
   let discardedLowRelevance = 0
   for (const article of fresh) {
-    const cat = await categorize(article)
+    const cat = await categorize(anthropic, {
+      title: article.title,
+      snippet: article.description || article.content || '',
+      source: article.source?.name,
+    })
     if (cat) {
-      const score = Number(cat.relevance_score)
-      if (Number.isFinite(score) && score < RELEVANCE_THRESHOLD) {
+      if (!isRelevant(cat)) {
         discardedLowRelevance++
-        continue // discard per spec (score < 5)
+        continue // gate failed or score < threshold -> not a LATAM-drone article
       }
       rows.push(buildRow(article, cat))
     } else {
-      // Claude failed (or not configured) -> store uncategorized.
+      // Claude failed (or not configured) -> store uncategorized for manual review.
       rows.push(buildRow(article, null))
     }
   }
-  console.log(`  Prepared ${rows.length} row(s); discarded ${discardedLowRelevance} low-relevance.`)
+  console.log(`  Prepared ${rows.length} relevant row(s); discarded ${discardedLowRelevance} as off-topic / low-relevance.`)
 
   // STEP 3 — insert into cs_articles.
   console.log('\n[3/5] Inserting into cs_articles...')
@@ -325,7 +369,7 @@ async function main() {
     }
   }
   const articlesNew = inserted.length
-  console.log(`  Inserted ${articlesNew} new article(s).`)
+  console.log(`  Inserted ${articlesNew} new relevant article(s).`)
 
   const status = errors.length === 0 ? 'success' : 'error'
   const errorMessage = errors.length ? errors.slice(0, 20).join(' | ').slice(0, 4000) : null
@@ -336,7 +380,7 @@ async function main() {
     const { error } = await supabase.from('cs_fetch_log').insert({
       articles_found: articlesFound,
       articles_new: articlesNew,
-      keywords_used: ALL_KEYWORDS,
+      keywords_used: ALL_QUERY_LABELS,
       status,
       error_message: errorMessage,
     })
@@ -354,17 +398,18 @@ async function main() {
     else console.log('  cs_fetch_status updated.')
   }
 
-  // Show the first 3 fetched + categorized articles.
-  const categorizedPreview = inserted.filter((r) => r.status === 'new').slice(0, 3)
+  // Show the first 5 fetched + categorized articles.
+  const categorizedPreview = inserted.filter((r) => r.status === 'new').slice(0, 5)
   if (categorizedPreview.length) {
-    console.log('\n=== First 3 fetched + categorized articles ===')
+    console.log('\n=== First 5 fetched + categorized articles ===')
     for (const r of categorizedPreview) {
       let analysis = {}
       try { analysis = JSON.parse(r.claude_analysis || '{}') } catch { /* ignore */ }
       console.log(`\n• ${r.title}`)
       console.log(`  source: ${r.source_name} | published: ${r.published_at}`)
-      console.log(`  category: ${r.primary_category} / ${r.sub_category} | confidence: ${r.confidence_level}`)
-      console.log(`  relevance: ${analysis.relevance_score ?? 'n/a'} | summary: ${analysis.summary ?? 'n/a'}`)
+      console.log(`  category: ${r.primary_category} | confidence: ${r.confidence_level} | relevance: ${analysis.relevance_score ?? 'n/a'}`)
+      console.log(`  countries: ${(analysis.countries || []).join(', ') || 'n/a'}`)
+      console.log(`  summary: ${analysis.summary ?? 'n/a'}`)
       console.log(`  url: ${r.url}`)
     }
   } else {

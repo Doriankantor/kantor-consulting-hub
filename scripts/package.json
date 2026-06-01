@@ -6,7 +6,9 @@
   "description": "Daily drone-intelligence fetch: NewsAPI -> Claude categorization -> Supabase.",
   "main": "fetch-intelligence.js",
   "scripts": {
-    "fetch": "node fetch-intelligence.js"
+    "fetch": "node fetch-intelligence.js",
+    "cleanup": "node cleanup-irrelevant.js",
+    "cleanup:dry": "node cleanup-irrelevant.js --dry-run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
