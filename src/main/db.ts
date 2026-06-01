@@ -858,6 +858,100 @@ export function initDatabase(): void {
   try { db.exec("ALTER TABLE intelligence_sources ADD COLUMN used_in_page TEXT;") } catch {}
   try { db.exec("ALTER TABLE intelligence_sources ADD COLUMN used_in_page_at TEXT;") } catch {}
 
+  // ── Seed the Contested Skies Source Archive into Source Intelligence ──────────
+  // The sources the live Contested Skies page is built on. FRAMEWORK references
+  // (Kantor + FIU/Santofimio) are FIXED/authoritative — they are NOT graded and
+  // are inserted pre-approved with confidence locked. Journalistic sources are
+  // pre-graded by how solid the outlet is (high = wires / major intl / official /
+  // top think tanks; medium = credible trade / regional / specialized; low =
+  // single-outlet / sensational / advocacy) and inserted as NEW, unreviewed
+  // "articles" the team can re-grade in Intelligence → News before they're pushed
+  // to the live site. All carry queue_section='source-archive' so the existing
+  // pushToContestedSkies renders them into the Source Archive with confidence
+  // badges. Idempotent: INSERT OR IGNORE keyed on the UNIQUE url + a stable id.
+  try {
+    const csArchive: Array<{
+      id: string; date: string; pub: string; title: string; url: string;
+      blurb: string; loc: string; conf: 'high' | 'medium' | 'low'; fixed?: boolean; cats: string[]
+    }> = [
+      // ── FRAMEWORK REFERENCES (fixed / authoritative — not graded) ──
+      { id: 'csa-fw-01', date: '', pub: 'Jack D. Gordon Institute for Public Policy (FIU)', title: 'Contested Skies — Part I', url: 'https://digitalcommons.fiu.edu/record/31523?v=pdf', blurb: `Foundational report on UAS proliferation among violent non-state actors in Latin America.`, loc: 'Framework', conf: 'high', fixed: true, cats: ['Policy & Regulation'] },
+      { id: 'csa-fw-02', date: '', pub: 'Jack D. Gordon Institute for Public Policy (FIU)', title: 'Contested Skies — Part II', url: 'https://digitalcommons.fiu.edu/record/31533?ln=en&v=pdf', blurb: `Companion report extending the Contested Skies framework.`, loc: 'Framework', conf: 'high', fixed: true, cats: ['Policy & Regulation'] },
+      { id: 'csa-fw-03', date: '', pub: 'Kantor Consulting', title: 'Publications portfolio', url: 'https://www.kantor-consulting.com/publications-kc', blurb: `Producer of the monitor.`, loc: 'Framework', conf: 'high', fixed: true, cats: ['Policy & Regulation'] },
+      { id: 'csa-fw-04', date: '', pub: 'Kantor Consulting', title: 'Areas of analysis', url: 'https://www.kantor-consulting.com/areas-of-analysis', blurb: `Editorial context for the monitor.`, loc: 'Framework', conf: 'high', fixed: true, cats: ['Policy & Regulation'] },
+
+      // ── COLOMBIA (Threat: Severe) ──
+      { id: 'csa-co-01', date: '2026-04-05', pub: 'Infobae', title: 'Escuelas de drones: el nuevo campo de batalla del conflicto armado en Colombia', url: 'https://www.infobae.com/colombia/2026/04/05/escuelas-de-drones-el-nuevo-campo-de-batalla-del-conflicto-armado-en-colombia/', blurb: `Clandestine drone schools in Colombian and Venezuelan territory professionalize EMC and ELN unmanned operations. Includes Tibú attack that killed a 12-year-old.`, loc: 'Colombia', conf: 'medium', cats: ['Criminal & VNSA Activity'] },
+      { id: 'csa-co-02', date: '2025-12-19', pub: 'CNN', title: 'Seven Colombian soldiers killed in guerrilla attack with drones and explosives', url: 'https://www.cnn.com/2025/12/19/americas/colombia-eln-guerrilla-drone-attack-military-base-latam-intl', blurb: `ELN attack during a nationwide armed strike kills seven soldiers; Petro announces emergency C-UAS procurement.`, loc: 'Colombia', conf: 'high', cats: ['Incident', 'Counter-drone / C-UAS'] },
+      { id: 'csa-co-03', date: '2025-12-19', pub: 'Colombia One', title: 'Colombia Moves to Acquire Anti-Drone Systems After ELN Attack Kills Six Soldiers', url: 'https://colombiaone.com/2025/12/19/colombia-acquire-anti-drone-systems-after-eln-attack/', blurb: `Defense Minister Pedro Sánchez confirms existing C-UAS is insufficient; presidential announcement of broader acquisition plan.`, loc: 'Colombia', conf: 'medium', cats: ['Counter-drone / C-UAS', 'Investment & Procurement'] },
+      { id: 'csa-co-04', date: '2025-08-29', pub: 'NBC News', title: 'Growing use of deadly drones by Colombian militants terrifies residents', url: 'https://www.nbcnews.com/news/latino/deadly-drones-colombia-militants-terrifies-residents-rcna228009', blurb: `Verified social-media footage shows armed groups using drones for surveillance, intimidation, and bombing campaigns in Catatumbo.`, loc: 'Colombia', conf: 'high', cats: ['Criminal & VNSA Activity'] },
+      { id: 'csa-co-05', date: '2025-08-22', pub: 'Al Jazeera', title: 'At least 18 killed in Colombia in drone attack on helicopter, car bombing', url: 'https://www.aljazeera.com/news/2025/8/22/at-least-18-killed-in-colombia-in-drone-attack-on-helicopter-car-bombing', blurb: `FARC-EMC dissidents down a Black Hawk helicopter via drone over coca-eradication operation in Antioquia; 12 officers killed. Same week as the Cali truck-bomb.`, loc: 'Colombia', conf: 'high', cats: ['Incident'] },
+      { id: 'csa-co-06', date: '2025-08-14', pub: 'The Defense Post', title: 'Three Colombian Soldiers Killed in Guerrilla Drone Attack', url: 'https://thedefensepost.com/2025/08/14/colombia-guerrilla-drone-attack/', blurb: `Navy patrol on the Naya River struck by explosive drone; FARC dissident group under Iván Mordisco blamed.`, loc: 'Colombia', conf: 'medium', cats: ['Incident', 'Criminal & VNSA Activity'] },
+      { id: 'csa-co-07', date: '2025-07-22', pub: 'The City Paper Bogotá', title: `ELN Modifies Drones To Target Colombia's Security Forces`, url: 'https://thecitypaperbogota.com/news/eln-modifies-drones-to-target-colombias-security-forces/', blurb: `2025 government data: 230+ explosive incidents documented, ~670 grenades deployed, many drone-launched. Third Division (Cauca/Nariño) reports highest concentration. Improvised mortar grenades cited.`, loc: 'Colombia', conf: 'medium', cats: ['Criminal & VNSA Activity'] },
+      { id: 'csa-co-08', date: '2025-06-11', pub: 'CSIS', title: 'Illicit Innovation: Latin America Is Not Prepared to Fight Criminal Drones', url: 'https://www.csis.org/analysis/illicit-innovation-latin-america-not-prepared-fight-criminal-drones', blurb: `Henry Ziemer's regional overview placing Colombia's first lethal drone attack (July 2024) in hemispheric context.`, loc: 'Colombia', conf: 'high', cats: ['Policy & Regulation', 'Counter-drone / C-UAS'] },
+      { id: 'csa-co-09', date: '2025-03-05', pub: 'Latin America Reports', title: `Drone attacks increasingly affect civilians in Colombia's conflict`, url: 'https://latinamericareports.com/drone-attacks-increasingly-affect-civilians-in-colombias-conflict/10839/', blurb: `ELN vs Frente 33 air competition in Norte de Santander; Popayán mayor's office temporarily bans private drone use after police station attack.`, loc: 'Colombia', conf: 'medium', cats: ['Incident'] },
+
+      // ── MEXICO (Threat: High) ──
+      { id: 'csa-mx-01', date: '2026-04-07', pub: 'HSToday', title: `Mexico's Escalating Cartel Violence and Expanding Cross-Border Threats`, url: 'https://www.hstoday.us/subject-matter-areas/border-security/mexicos-escalating-cartel-violence-and-expanding-cross-border-threats/', blurb: `October 2025 Tijuana attack on a state government compound housing the attorney general's office, first major urban border-zone offensive UAS use.`, loc: 'Mexico', conf: 'medium', cats: ['Criminal & VNSA Activity'] },
+      { id: 'csa-mx-02', date: '2026-02-25', pub: 'Small Wars Journal / NCITE', title: 'Mapping Weaponized Drone Attacks Attributed to Mexican Drug Cartels', url: 'https://smallwarsjournal.com/2026/02/16/mexican-cartel-drone-attacks-report/', blurb: `NCITE/ACLED dataset: 221 weaponized cartel drone incidents 2021–2025, 77 fatalities. CJNG accounts for ~19% of attributed attacks. Air-dropped grenades, munitions, IEDs.`, loc: 'Mexico', conf: 'high', cats: ['Criminal & VNSA Activity'] },
+      { id: 'csa-mx-03', date: '2026-02-16', pub: 'Cronkite News (ASU)', title: 'Concerns grow as Mexican cartels embrace drones for drug smuggling, attacks on rivals', url: 'https://cronkitenews.azpbs.org/2026/02/14/drones-mexican-cartels-border/', blurb: `CBP discloses 34,682 drone flights detected within 500m of US-Mexico border in FY2025. First confirmed cartel FPV identified as DJI Avata 2 (~$600).`, loc: 'Mexico', conf: 'medium', cats: ['Criminal & VNSA Activity'] },
+      { id: 'csa-mx-04', date: '2025-02-18', pub: 'Small Wars Journal', title: 'Criminal Groups Are Ramping Up Explosives in Mexico', url: 'https://smallwarsjournal.com/2025/02/18/criminal-groups-are-ramping-up-explosives-in-mexico-dr-bunker-of-swj-gives-insights-for-insight-crime/', blurb: `IED seizures grew from 3 in 2020–21 to 1,375 in 2022. Dr. Robert Bunker tracks parallel drone-borne payload normalization.`, loc: 'Mexico', conf: 'high', cats: ['Criminal & VNSA Activity'] },
+      { id: 'csa-mx-05', date: '2024-12-01', pub: 'CBS News', title: `Hometown of notorious cartel leader 'El Chapo' hit by drone attacks, forcing residents to flee`, url: 'https://www.cbsnews.com/news/drug-lord-el-chapo-hometown-hit-by-drone-attacks-residents-flee', blurb: `Badiraguato (Sinaloa) struck by explosive-laden drones; Gov. Rocha confirms displacement. Sinaloa Cartel internal conflict context.`, loc: 'Mexico', conf: 'high', cats: ['Incident', 'Criminal & VNSA Activity'] },
+      { id: 'csa-mx-06', date: '2024-01-08', pub: 'InSight Crime', title: 'Mexico Drone Attacks Spike After CJNG, Familia Michoacana Alliance', url: 'https://insightcrime.org/news/mexico-drone-attacks-spike-after-cjng-familia-michoacana-alliance/', blurb: `CJNG providing increasingly sophisticated drones to LFM under territorial-control alliance; thermal-camera, explosive-release modifications documented.`, loc: 'Mexico', conf: 'high', cats: ['Criminal & VNSA Activity'] },
+      { id: 'csa-mx-07', date: '2024-01-01', pub: 'Fox News', title: 'Deadly cartel drone attack strikes remote Mexican village', url: 'https://foxnews.com/world/deadly-cartel-drone-attack-strikes-remote-mexican-village.amp', blurb: `Guerrero state prosecutor confirms five burned dead in a January 2024 cartel drone-supported attack on a remote community.`, loc: 'Mexico', conf: 'medium', cats: ['Incident'] },
+
+      // ── VENEZUELA (Threat: High) ──
+      { id: 'csa-ve-01', date: '2026-01-01', pub: 'Military Watch Magazine', title: 'Venezuela Deploys Combat Tested Iranian Long Range Strike Drones to Respond to U.S. Military Buildup', url: 'https://militarywatchmagazine.com/article/venezuela-receives-iranian-drones-respond', blurb: `Mohajer-6 deployment in context of US destroyer / Marine deployments to the Caribbean since August 2025.`, loc: 'Venezuela', conf: 'low', cats: ['State Military Activity', 'Extra-regional Supplier'] },
+      { id: 'csa-ve-02', date: '2025-12-31', pub: 'The War Zone', title: 'Iranian Strike-Surveillance Drones Are Now Operating In Venezuela', url: 'https://www.twz.com/news-features/iranian-mohajer-6-drones-now-operating-in-venezuela', blurb: `First unambiguous visual confirmation of Mohajer-6 in Venezuelan Air Force colors at El Libertador Air Base; Qaem munition compatibility noted.`, loc: 'Venezuela', conf: 'high', cats: ['State Military Activity', 'Extra-regional Supplier'] },
+      { id: 'csa-ve-03', date: '2025-12-31', pub: 'Defence Security Asia', title: 'Iranian Mohajer-6 Armed Drone Confirmed in Venezuelan Air Force Service', url: 'https://defencesecurityasia.com/en/iran-mohajer-6-drone-venezuela-air-force-confirmed/', blurb: `Ground support vehicles and routine handling visible in image; assessed as embedded in daily operational cycles, not ceremonial.`, loc: 'Venezuela', conf: 'medium', cats: ['State Military Activity', 'Extra-regional Supplier'] },
+      { id: 'csa-ve-04', date: '2025-12-30', pub: 'U.S. Treasury / OFAC', title: 'Treasury Targets Iran-Venezuela Weapons Trade', url: 'https://home.treasury.gov/news/press-releases/sb0347', blurb: `OFAC sanctions 10 individuals and entities including a Venezuelan company linked to multi-million dollar combat drone sales to Caracas.`, loc: 'Venezuela', conf: 'high', cats: ['Finance & Sanctions', 'Extra-regional Supplier'] },
+      { id: 'csa-ve-05', date: '2025-09-04', pub: 'Iran International', title: 'Iranians control Venezuelan drone facilities as US warships deployed', url: 'https://www.iranintl.com/en/202509044107', blurb: `Iranian specialists still oversee assembly at El Libertador; access blocked for unauthorized Venezuelan staff. CAVIM facilities detailed. Mohajer-2 kits cited.`, loc: 'Venezuela', conf: 'medium', cats: ['State Military Activity', 'Extra-regional Supplier'] },
+      { id: 'csa-ve-06', date: '2025-09-03', pub: 'Army Recognition', title: 'Analysis: How Venezuela uses Iranian drones to boost precision strikes and coastal defenses', url: 'https://www.armyrecognition.com/news/army-news/2025/analysis-discover-how-venezuela-uses-iranian-drones-to-boost-precision-strikes-and-coastal-defenses', blurb: `Two decades of Iran–Venezuela drone cooperation; Mohajer-2/6, Shahed-136 derivative, Qaem munitions detailed.`, loc: 'Venezuela', conf: 'medium', cats: ['State Military Activity', 'Extra-regional Supplier'] },
+      { id: 'csa-ve-07', date: '2025-09-01', pub: 'DroneXL', title: 'Venezuela Prepares For U.S. Attack With Armed Drones', url: 'https://dronexl.co/2025/09/01/venezuela-prepares-for-us-attack-with-drones/', blurb: `Maduro regime UCAV buildup; Miami Herald / InfoDefensa source imagery referenced.`, loc: 'Venezuela', conf: 'low', cats: ['State Military Activity'] },
+
+      // ── BRAZIL (Threat: Moderate) ──
+      { id: 'csa-br-01', date: '2025-07-14', pub: 'DefesaNet', title: 'Sistema Antidron reforça poder de defesa do Exército', url: 'https://www.defesanet.com.br/vant/sistema-antidrone-reforca-poder-de-defesa-do-exercito/', blurb: `Brazilian Army's SCE-0100 publicized as precision RF-jamming neutralization solution integrated with command-and-control under SISFRON.`, loc: 'Brazil', conf: 'medium', cats: ['Counter-drone / C-UAS', 'State Military Activity'] },
+      { id: 'csa-br-02', date: '2025-03-06', pub: 'InSight Crime', title: 'Drones Fuel Criminal Arms Race in Latin America', url: 'https://insightcrime.org/news/drones-fuel-criminal-arms-race-latin-america/', blurb: `Regional roundup including 2014 São José dos Campos and 2019 Rio Grande do Sul prison drone seizures (43 units, ~4 kg narcotics).`, loc: 'Brazil', conf: 'high', cats: ['Criminal & VNSA Activity'] },
+      { id: 'csa-br-03', date: '2024-11-11', pub: 'DroneLife', title: `Brazilian Drone Industry Takes Flight: BIRDS' VEGA UTM Selected for National Airspace Modernization`, url: 'https://dronelife.com/2024/11/11/brazilian-drone-industry-takes-flight-birds-vega-utm-selected-for-national-airspace-modernization-project/', blurb: `DECEA authorizes BIRDS (Speedbird Aero, High Lander, Cando) to use BR-UTM for coordinated BVLOS counter-drone services.`, loc: 'Brazil', conf: 'medium', cats: ['Innovation & Technology', 'Counter-drone / C-UAS'] },
+
+      // ── ARGENTINA (Threat: Low) ──
+      { id: 'csa-ar-01', date: '2025-01-16', pub: 'C-UAS Hub', title: `Argentina's Ministry of Security to acquire classified anti-UAS system`, url: 'https://www.cuashub.com/en/content/argentina-s-ministry-of-security-to-acquire-classified-anti-uas-system/', blurb: `Classified anti-drone procurement driven by smuggling, terrorism, prison-contraband concerns.`, loc: 'Argentina', conf: 'medium', cats: ['Counter-drone / C-UAS', 'Investment & Procurement'] },
+      { id: 'csa-ar-02', date: '2024-07-23', pub: 'Boletín Oficial', title: 'Aviación Civil No Tripulada — Decreto 663/2024', url: 'https://www.boletinoficial.gob.ar/detalleAviso/primera/311129/20240724', blurb: `Milei administration deregulation removing oversight for sub-250g and licensing for sub-25kg drones.`, loc: 'Argentina', conf: 'high', cats: ['Policy & Regulation'] },
+
+      // ── PANAMA (Threat: Moderate) ──
+      { id: 'csa-pa-01', date: '2020-11-26', pub: 'InSight Crime', title: 'Drones Used to Drop Contraband into Panama Prison', url: 'https://insightcrime.org/news/drones-contraband-panama-prison/', blurb: `La Joya seizures of cell phones, narcotics, pistol parts, and 'crispi' (coca-marijuana mix) — 1,587 drones seized across Panamanian prisons cited.`, loc: 'Panama', conf: 'high', cats: ['Criminal & VNSA Activity'] },
+
+      // ── REGIONAL & CROSS-CUTTING (Multi-country) ──
+      { id: 'csa-rg-01', date: '2025-09-15', pub: 'Reuters', title: 'US reinterprets arms control pact to ease military drone exports', url: 'https://www.reuters.com/business/aerospace-defense/us-reinterprets-arms-control-pact-ease-military-drone-exports-2025-09-15/', blurb: `Reclassification of MQ-9 Reaper-class systems as 'aircraft' rather than 'missile systems' for export-control purposes.`, loc: 'Regional', conf: 'high', cats: ['Policy & Regulation', 'Extra-regional Supplier'] },
+      { id: 'csa-rg-02', date: '2025-09-01', pub: 'DroneXL', title: 'Cartels Deploy FPV Drones and Anti-UAS Systems in Criminal Arms Race', url: 'https://dronexl.co/2025/09/01/cartels-deploy-fpv-drones-anti-uas-systems/', blurb: `FPV adoption by both CJNG and Sinaloa cartel; emergence of criminal counter-UAS capability. DJI Avata 2 referenced as documented platform.`, loc: 'Regional', conf: 'low', cats: ['Criminal & VNSA Activity', 'Counter-drone / C-UAS'] },
+      { id: 'csa-rg-03', date: '2025-07-29', pub: 'Intelligence Online', title: 'Ukraine Counterintelligence Investigates Presence of Sicarios on Front Line', url: 'https://www.intelligenceonline.com/government-intelligence/2025/07/29/ukraine-counterintelligence-investigates-presence-of-sicarios-on-front-line,110496139-eve', blurb: `Spanish-speaking volunteers in the International Legion suspected of cartel ties seeking FPV drone training transferable to Latin America.`, loc: 'Regional', conf: 'medium', cats: ['Criminal & VNSA Activity'] },
+      { id: 'csa-rg-04', date: '2025-07-07', pub: 'France 24', title: `Drones: A new weapon for Colombia's guerrillas`, url: 'https://www.france24.com/en/americas/20250707-colombia-drones-armed-conflict-guerrillas-projectiles-human-rights-farc-eln', blurb: `On-the-ground reporting on the diffusion of weaponized drones across FARC dissident and ELN factions.`, loc: 'Regional', conf: 'high', cats: ['Criminal & VNSA Activity'] },
+      { id: 'csa-rg-05', date: '2025-03-03', pub: 'Drone Wars UK', title: 'Armed Drone Proliferation: Continued Exports Leading to Civilian Casualties', url: 'https://dronewars.net/2025/03/03/armed-drone-proliferation-continued-exports-leading-to-civilian-casualties/', blurb: `Global mapping of armed MALE drone proliferation, including Iran→Venezuela transfer in the regional context.`, loc: 'Regional', conf: 'medium', cats: ['Policy & Regulation', 'Extra-regional Supplier'] },
+    ]
+
+    const insertCs = db.prepare(`
+      INSERT OR IGNORE INTO intelligence_sources
+        (id, type, title, content, url, source_name, published_at, status, confidence,
+         confidence_override, categories_json, snippet, location_mentioned, added_by_name, queue_section)
+      VALUES (?, 'article', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'source-archive')
+    `)
+    for (const s of csArchive) {
+      insertCs.run(
+        s.id, s.title, s.blurb, s.url, s.pub,
+        s.date || null,
+        s.fixed ? 'approved' : 'unreviewed',
+        s.conf,
+        s.fixed ? 1 : 0,
+        JSON.stringify(s.cats),
+        s.blurb.slice(0, 300),
+        s.loc,
+        s.fixed ? 'Kantor Framework' : 'Contested Skies Archive',
+      )
+    }
+  } catch (e) {
+    console.warn('[DB] Contested Skies source-archive seed skipped:', e)
+  }
+
   // Per-Info-Page Claude Analysis chat history (full interactive conversation).
   db.exec(`
     CREATE TABLE IF NOT EXISTS info_page_chat (

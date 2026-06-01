@@ -290,6 +290,19 @@ export default function NewsTab({ onApprove }: Props) {
                         from Contested Skies
                       </span>
                     )}
+                    {/* Fixed authoritative framework reference (Kantor / FIU) — not graded */}
+                    {source.added_by_name === 'Kantor Framework' && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300"
+                        title="Fixed authoritative framework reference — not graded">
+                        Framework — fixed
+                      </span>
+                    )}
+                    {/* Source-archive origin badge */}
+                    {source.added_by_name === 'Contested Skies Archive' && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/40">
+                        Source archive
+                      </span>
+                    )}
                     {/* Published-to-info-page badge (feedback loop) */}
                     {source.used_in_page && (
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300"
@@ -339,17 +352,26 @@ export default function NewsTab({ onApprove }: Props) {
 
               {/* Actions */}
               <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
-                {/* Confidence override */}
-                <select
-                  value={source.confidence || 'low'}
-                  onChange={e => handleConfidence(source.id, e.target.value)}
-                  className="px-2 py-1 rounded text-[11px] border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-transparent text-gray-600 dark:text-white/70 focus:outline-none"
-                  title="Override confidence"
-                >
-                  <option value="high">High confidence</option>
-                  <option value="medium">Medium confidence</option>
-                  <option value="low">Low confidence</option>
-                </select>
+                {/* Confidence: fixed for framework refs, gradeable for journalistic sources */}
+                {source.added_by_name === 'Kantor Framework' ? (
+                  <span
+                    className="px-2 py-1 rounded text-[11px] border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 font-medium"
+                    title="Fixed authoritative source — confidence is not graded"
+                  >
+                    Authoritative — fixed
+                  </span>
+                ) : (
+                  <select
+                    value={source.confidence || 'low'}
+                    onChange={e => handleConfidence(source.id, e.target.value)}
+                    className="px-2 py-1 rounded text-[11px] border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-transparent text-gray-600 dark:text-white/70 focus:outline-none"
+                    title="Grade by how solid the source is"
+                  >
+                    <option value="high">High confidence</option>
+                    <option value="medium">Medium confidence</option>
+                    <option value="low">Low confidence</option>
+                  </select>
+                )}
 
                 <div className="flex-1" />
 
