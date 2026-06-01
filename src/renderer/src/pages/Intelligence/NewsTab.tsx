@@ -57,7 +57,10 @@ export default function NewsTab({ onApprove }: Props) {
       if (categoryFilter)   params.category   = categoryFilter
       if (search)           params.search     = search
       const data = await window.api.intelligence.getSources(params)
-      setSources(data)
+      // Framework references (Kantor Consulting + FIU publications) are FIXED
+      // citations, not news. They must never appear in the News Articles feed —
+      // only journalistic sources are listed and graded here.
+      setSources(data.filter((s) => s.added_by_name !== 'Kantor Framework'))
     } catch (e) {
       console.error('[NewsTab] load error:', e)
     } finally {

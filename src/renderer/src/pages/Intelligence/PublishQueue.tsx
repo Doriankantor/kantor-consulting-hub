@@ -46,7 +46,11 @@ export default function PublishQueue({ onPushed }: Props) {
         window.api.intelligence.getQueue(),
         window.api.intelligence.getPushLog(),
       ])
-      setQueue(items)
+      // Framework references (Kantor Consulting + FIU publications) are FIXED
+      // authoritative citations, not news. They are part of the page itself and
+      // must never appear in the Publish Queue — only journalistic sources are
+      // listed and pushed here.
+      setQueue(items.filter(i => i.added_by_name !== 'Kantor Framework'))
       setPushLog(log)
     } catch {}
     setLoading(false)
