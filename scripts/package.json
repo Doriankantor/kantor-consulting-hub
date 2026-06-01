@@ -8,7 +8,8 @@
   "scripts": {
     "fetch": "node fetch-intelligence.js",
     "cleanup": "node cleanup-irrelevant.js",
-    "cleanup:dry": "node cleanup-irrelevant.js --dry-run"
+    "cleanup:dry": "node cleanup-irrelevant.js --dry-run",
+    "diagnose": "node diagnose-gate.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",

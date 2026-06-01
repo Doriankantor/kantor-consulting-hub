@@ -1,0 +1,239 @@
+================================================================================
+CONTESTED SKIES — KEYWORD & FILTER FRAMEWORK
+================================================================================
+Pipeline: NewsAPI fetch -> Claude relevance gate -> Supabase (cs_articles)
+Source files:
+  - scripts/fetch-intelligence.js   (queries + fetch + insert)
+  - scripts/lib/categorize.js       (Claude relevance gate + categories)
+  - scripts/cleanup-irrelevant.js   (reject already-stored off-topic articles)
+Last updated: 2026-06-01
+================================================================================
+
+
+--------------------------------------------------------------------------------
+1. CORE RULE
+--------------------------------------------------------------------------------
+EVERY NewsAPI query MUST combine:
+   (1) a drone / UAS / UAV term   AND
+   (2) a Latin-American country, region, or armed-actor term
+
+No query ever searches a drone term alone or a place term alone — always both,
+joined with AND. Multi-word or hyphenated terms are wrapped in quotes so NewsAPI
+matches them as an exact phrase.
+
+Examples of the actual query string sent to NewsAPI:
+   drone AND Colombia
+   drone AND "El Salvador"
+   FARC AND dron
+   drone AND military AND Colombia
+   compra AND dron AND militar AND México
+   drone AND "fuerzas armadas" AND Brasil
+   "counter-drone" AND "Latin America"
+   "C-UAS" AND Colombia
+   Iranian AND drone AND "Latin America"
+
+
+--------------------------------------------------------------------------------
+2. NEWSAPI FETCH PARAMETERS (per query call)
+--------------------------------------------------------------------------------
+Endpoint     : https://newsapi.org/v2/everything
+q            : strict AND query (drone term AND place/actor term)
+language     : "en" or "es" (set per query — never both for the same query)
+from         : now minus 72 hours        (LOOKBACK_HOURS = 72)
+sortBy       : publishedAt
+pageSize     : 100                        (PAGE_SIZE = 100)
+max pages    : 2                          (MAX_PAGES = 2; breaks early if < 100)
+total queries: 70 separate API calls per run
+
+WHY 72h (not 24h):
+  NewsAPI's free Developer plan serves articles with a ~24h delay, so a strict
+  "last 24h" window returns nothing. 72h overlaps the delayed-availability zone
+  and recovers a missed run. URL de-duplication prevents re-inserting anything
+  already stored, so the wider window never creates duplicates.
+
+QUOTA NOTE:
+  Free Developer plan = 100 requests / 24h. One full run uses 70. Fine for the
+  once-daily schedule; allows roughly one extra manual run per day.
+
+
+--------------------------------------------------------------------------------
+3. THE 70 KEYWORD QUERIES  (grouped)
+--------------------------------------------------------------------------------
+Format below: <drone term> + <place/actor term>  [language]
+
+GROUP 1 — OFFENSIVE / INCIDENTS  (attacks, strikes, criminal use)   [28 queries]
+  drone + Colombia            [en]
+  drone + Venezuela           [en]
+  drone + Mexico              [en]
+  drone + Brazil              [en]
+  drone + Peru                [en]
+  drone + Ecuador             [en]
+  drone + Bolivia             [en]
+  drone + Argentina           [en]
+  drone + Chile               [en]
+  drone + Guatemala           [en]
+  drone + Honduras            [en]
+  drone + El Salvador         [en]
+  UAV + Colombia              [en]
+  UAV + Venezuela             [en]
+  UAV + Mexico                [en]
+  dron + Colombia             [es]
+  dron + México               [es]
+  dron + Venezuela            [es]
+  FARC + dron                 [es]
+  ELN + dron                  [es]
+  CJNG + dron                 [es]
+  cartel + dron               [es]
+  narco + dron                [es]
+  FARC + drone                [en]
+  ELN + drone                 [en]
+  CJNG + drone                [en]
+  cartel + drone              [en]
+  narco + drone               [en]
+
+GROUP 2 — MILITARY INVESTMENT  (state procurement, national programs) [16 queries]
+  drone + military + Colombia          [en]
+  drone + military + Venezuela         [en]
+  drone + military + Brazil            [en]
+  drone + military + Mexico            [en]
+  UAV + military + Latin America       [en]
+  drone + procurement + Latin America  [en]
+  drone + investment + Latin America   [en]
+  compra + dron + militar + Colombia   [es]
+  compra + dron + militar + Venezuela  [es]
+  compra + dron + militar + México     [es]
+  drone + fuerzas armadas + Colombia   [es]
+  drone + fuerzas armadas + Venezuela  [es]
+  drone + fuerzas armadas + México     [es]
+  drone + fuerzas armadas + Brasil     [es]
+  Iranian + drone + Venezuela          [en]
+  Iranian + drone + Latin America      [en]
+
+GROUP 3 — NEW TECHNOLOGY  (manufacturers, systems, innovations)     [16 queries]
+  drone + empresa + Colombia       [es]
+  drone + empresa + México         [es]
+  drone + empresa + Brasil         [es]
+  drone + empresa + Argentina      [es]
+  drone + fabricante + Colombia    [es]
+  drone + fabricante + México      [es]
+  drone + fabricante + Brasil      [es]
+  UAS + manufacturer + Latin America [en]
+  drone + technology + Colombia    [en]
+  drone + technology + Brazil      [en]
+  drone + technology + Mexico      [en]
+  counter-drone + Latin America    [en]
+  anti-drone + Latin America       [en]
+  contra + dron + Colombia         [es]
+  contra + dron + México           [es]
+  contra + dron + Brasil           [es]
+
+GROUP 4 — COUNTER-DRONE  (C-UAS, interception, jamming, defense)    [10 queries]
+  anti-drone + Colombia            [en]
+  anti-drone + Venezuela           [en]
+  anti-drone + Mexico              [en]
+  anti-drone + Brazil              [en]
+  counter-drone + Colombia         [en]
+  counter-drone + Venezuela        [en]
+  counter + UAS + Latin America    [en]
+  C-UAS + Colombia                 [en]
+  drone + defense + Latin America  [en]
+  drone + jammer + Latin America   [en]
+
+
+--------------------------------------------------------------------------------
+4. DE-DUPLICATION
+--------------------------------------------------------------------------------
+  (a) Within a run  — collapse fetched articles by `url`.
+  (b) Against the DB — query existing cs_articles.url (chunked, 100 at a time)
+                       and drop any URL already stored.
+  Result: a URL is never inserted twice.
+
+
+--------------------------------------------------------------------------------
+5. CLAUDE RELEVANCE GATE  (the second, stricter filter)
+--------------------------------------------------------------------------------
+Model: claude-haiku-4-5
+
+For each new (deduped) article, Claude is given the title, snippet, and source,
+and must FIRST answer three yes/no questions BEFORE categorizing:
+
+  Q1. Does the article primarily discuss drones, UAS, or UAV systems?  (yes/no)
+  Q2. Does the article involve at least one Latin American country?    (yes/no)
+  Q3. Is the drone/UAS content the MAIN topic, not a passing mention?  (yes/no)
+
+RULE: If ANY answer is "no", relevance_score is forced to 0.
+      This is hard-enforced in code (lib/categorize.js) — not merely requested
+      of the model — so a "no" on any question cannot be overridden.
+
+Claude returns JSON:
+  {
+    "q1_about_drones":      "yes" | "no",
+    "q2_latam_country":     "yes" | "no",
+    "q3_main_topic":        "yes" | "no",
+    "primary_category":     one of the 8 categories below,
+    "confidence_suggestion":"high" | "medium" | "low",
+    "confidence_reasoning": "...",
+    "relevance_score":      0..10,
+    "key_actors":           [...],
+    "countries":            [...],
+    "summary":              "one sentence"
+  }
+
+
+--------------------------------------------------------------------------------
+6. ALLOWED CATEGORIES  (8 — Latin-American drone activity only)
+--------------------------------------------------------------------------------
+  offensive_use        attacks, strikes, criminal use
+  defensive_systems    C-UAS, interception, jamming
+  military_investment  state procurement, budgets
+  private_investment   company funding, R&D
+  new_technology       new platforms, innovations
+  regulatory           laws, agreements, policy
+  criminal_vnsa        cartel, gang, VNSA activity
+  diplomatic           foreign suppliers, transfers
+
+If an article doesn't fit any of these for LATAM drone activity, its
+relevance_score is pushed below the keep-threshold (treated as off-topic).
+
+
+--------------------------------------------------------------------------------
+7. KEEP / DISCARD THRESHOLD & RESULTING STATUS
+--------------------------------------------------------------------------------
+RELEVANCE_THRESHOLD = 5
+
+  relevance_score >= 5  -> KEEP, insert with status = 'new'
+  relevance_score <  5  -> DISCARD (never inserted)
+  Claude call fails      -> insert with status = 'uncategorized' (manual review;
+                            never silently dropped)
+
+Cleanup pass (cleanup-irrelevant.js) re-checks already-stored rows through the
+SAME gate and marks off-topic ones:
+  status = 'rejected'
+  notes  = 'Rejected: not relevant to LATAM drone topic'
+(Articles already imported into the Hub — imported_to_hub = true — are skipped.)
+
+Article status values overall:
+  new | uncategorized | pending_review | approved | rejected | published
+
+
+--------------------------------------------------------------------------------
+8. TUNING KNOBS  (where to change behavior)
+--------------------------------------------------------------------------------
+  scripts/lib/categorize.js
+    - RELEVANCE_THRESHOLD   (5)  : lower to 4 to surface more borderline items
+    - PRIMARY_CATEGORIES         : add/remove allowed categories
+    - buildPrompt()              : edit the 3-question gate wording
+  scripts/fetch-intelligence.js
+    - QUERY_GROUPS               : add/remove/edit the strict queries
+    - LOOKBACK_HOURS        (72) : widen/narrow the time window
+    - PAGE_SIZE / MAX_PAGES      : paging caps per query
+
+
+--------------------------------------------------------------------------------
+9. LAST LIVE RUN  (2026-06-01)
+--------------------------------------------------------------------------------
+  70 strict queries -> 88 raw -> 24 unique by URL -> 24 new
+  Claude gate: 3 kept, 21 discarded as off-topic / low-relevance
+  Cleanup: 0 deleted (table was empty)
+  Stored in cs_articles: 3 (all status = 'new')
+================================================================================

@@ -82,20 +82,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
-    try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-      if (!error) { await checkSetupNeeded(); return { error: null } }
-    } catch { /* fall through */ }
+    // Main-process handler is now the source of truth: it verifies against the
+    // local cache OR Supabase Auth (whichever knows the password), provisions
+    // the cloud account on first sign-in / access-code, and migrates a
+    // laptop-only password up to the cloud the first time it's seen.
     try {
       const result = await window.api.auth.localSignIn(email, password)
-      if (result.ok && result.user) {
+      if (result?.ok && result.user) {
+        // Best-effort: establish a Supabase Auth SESSION so renderer-side
+        // queries (profiles, realtime) work too. Sign-in succeeds either way.
+        supabase.auth.signInWithPassword({ email, password }).catch(() => {})
         setLocalUser(result.user)
         if (result.mustChangePassword) setMustChangePassword(true)
         await checkSetupNeeded()
         return { error: null }
       }
-      return { error: result.error ?? 'Invalid email or password.' }
-    } catch { return { error: 'Sign-in failed. Please try again.' } }
+      return { error: result?.error ?? 'Invalid email or password.' }
+    } catch {
+      // Main process unreachable — last-ditch direct cloud attempt.
+      try {
+        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        if (!error) { await checkSetupNeeded(); return { error: null } }
+      } catch { /* fall through */ }
+      return { error: 'Sign-in failed. Please try again.' }
+    }
   }
 
   const signOut = async () => {

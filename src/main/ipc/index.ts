@@ -132,6 +132,71 @@ function setSetting(key: string, value: string): void {
     .run(key, value)
 }
 
+// ── Supabase Auth bridge ───────────────────────────────────────────────────
+// Source-of-truth for passwords is now Supabase Auth (cloud). Local SQLite
+// keeps a mirrored hash so the app still functions offline and so the
+// established sign-in code path keeps working, but the cloud value wins.
+//
+// All three helpers are idempotent and fail-open from the caller's POV:
+// if Supabase is unreachable, the local sign-in still succeeds for THIS
+// machine, but the cross-device promise can't be honored until the next
+// successful sync. Callers that REQUIRE the cloud write (set/change password)
+// surface the error to the user.
+
+async function findSupabaseAuthUserId(email: string): Promise<string | null> {
+  const target = email.trim().toLowerCase()
+  for (let page = 1; page <= 10; page++) {
+    try {
+      const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 200 })
+      if (error) return null
+      const users = data?.users ?? []
+      const hit = users.find(u => (u.email ?? '').toLowerCase() === target)
+      if (hit) return hit.id
+      if (users.length < 200) return null
+    } catch { return null }
+  }
+  return null
+}
+
+async function ensureSupabaseAuthUser(email: string, password: string): Promise<{ ok: boolean; created?: boolean; error?: string }> {
+  try {
+    const e = email.trim().toLowerCase()
+    const existingId = await findSupabaseAuthUserId(e)
+    if (existingId) return { ok: true, created: false }
+    const { error } = await supabaseAdmin.auth.admin.createUser({
+      email: e,
+      password,
+      email_confirm: true,
+    })
+    if (error) return { ok: false, error: error.message }
+    return { ok: true, created: true }
+  } catch (e: unknown) {
+    return { ok: false, error: (e as Error)?.message ?? String(e) }
+  }
+}
+
+async function updateSupabaseAuthPassword(email: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const id = await findSupabaseAuthUserId(email)
+    if (!id) {
+      const r = await ensureSupabaseAuthUser(email, newPassword)
+      return r.ok ? { ok: true } : { ok: false, error: r.error }
+    }
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(id, { password: newPassword })
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  } catch (e: unknown) {
+    return { ok: false, error: (e as Error)?.message ?? String(e) }
+  }
+}
+
+async function verifySupabaseAuthPassword(email: string, password: string): Promise<boolean> {
+  try {
+    const { error } = await supabaseAdmin.auth.signInWithPassword({ email: email.trim().toLowerCase(), password })
+    return !error
+  } catch { return false }
+}
+
 // ── Settings ───────────────────────────────────────────────────────────────
 
 function registerSettingsHandlers() {
@@ -279,40 +344,92 @@ function registerActivityHandlers() {
 // ── Auth ───────────────────────────────────────────────────────────────────
 
 function registerAuthHandlers() {
-  ipcMain.handle('auth:localSignIn', (_e, email: string, password: string) => {
+  ipcMain.handle('auth:localSignIn', async (_e, email: string, password: string) => {
     const trimmed = email.trim().toLowerCase()
     if (trimmed !== 'doriankantor@gmail.com' && !trimmed.endsWith('@kantor-consulting.com')) {
       return { error: 'Access restricted to Kantor Consulting team members only.' }
     }
     const db = getDatabase()
     const row = db.prepare('SELECT * FROM local_users WHERE LOWER(email)=?').get(trimmed) as Record<string, unknown> | undefined
+
+    // ── (A) Local row exists ──────────────────────────────────────────────
     if (row) {
       if (row.status === 'inactive') return { error: 'Your account has been deactivated. Contact your administrator.' }
-      if (hashPassword(password, row.password_salt as string) !== (row.password_hash as string)) {
-        return { error: 'Invalid email or password.' }
+
+      const localOk = hashPassword(password, row.password_salt as string) === (row.password_hash as string)
+      if (localOk) {
+        db.prepare("UPDATE local_users SET last_active=CURRENT_TIMESTAMP, status='active' WHERE id=?").run(row.id)
+        // Lazy migration: ensure cloud user exists with this password so the
+        // SAME credentials work on every other device. Fire-and-forget.
+        ensureSupabaseAuthUser(trimmed, password).catch(err =>
+          console.warn('[Auth] ensureSupabaseAuthUser (local-match) failed:', (err as Error)?.message))
+        return {
+          ok: true,
+          user: { id: row.id, email: row.email, name: row.full_name ?? row.email, role: row.role },
+          mustChangePassword: !!(row.must_change_password as number),
+          anthropicKeySet:    !!(row.anthropic_key_set as number),
+        }
       }
-      db.prepare("UPDATE local_users SET last_active=CURRENT_TIMESTAMP, status='active' WHERE id=?").run(row.id)
-      return {
-        ok: true,
-        user: { id: row.id, email: row.email, name: row.full_name ?? row.email, role: row.role },
-        mustChangePassword: !!(row.must_change_password as number),
-        anthropicKeySet:    !!(row.anthropic_key_set as number),
+
+      // Local hash didn't match — try the cloud password (cross-device returning user
+      // whose laptop password was rotated, or who set a new password on another machine).
+      if (await verifySupabaseAuthPassword(trimmed, password)) {
+        const ns = randomBytes(16).toString('hex')
+        const nh = hashPassword(password, ns)
+        db.prepare("UPDATE local_users SET password_hash=?, password_salt=?, must_change_password=0, status='active', last_active=CURRENT_TIMESTAMP WHERE id=?")
+          .run(nh, ns, row.id)
+        return {
+          ok: true,
+          user: { id: row.id, email: row.email, name: row.full_name ?? row.email, role: row.role },
+          mustChangePassword: false,
+          anthropicKeySet:    !!(row.anthropic_key_set as number),
+        }
       }
+      return { error: 'Invalid email or password.' }
     }
-    // Legacy fallback
+
+    // ── (B) Legacy local-admin fallback (doriankantor@gmail.com break-glass) ─
     const sE = getSetting('local_admin_email')
     const sS = getSetting('local_admin_salt')
     const sH = getSetting('local_admin_hash')
     const sN = getSetting('local_admin_name') ?? 'Dorian Kantor'
     if (sE && sS && sH && trimmed === sE.toLowerCase()) {
-      if (hashPassword(password, sS) !== sH) return { error: 'Invalid email or password.' }
+      if (hashPassword(password, sS) !== sH) {
+        // Even the admin gets the cross-device path if cloud verifies.
+        if (await verifySupabaseAuthPassword(trimmed, password)) {
+          return { ok: true, user: { id: 'local-admin', email: sE, name: sN, role: 'admin' }, mustChangePassword: false, anthropicKeySet: false }
+        }
+        return { error: 'Invalid email or password.' }
+      }
+      ensureSupabaseAuthUser(trimmed, password).catch(err =>
+        console.warn('[Auth] ensureSupabaseAuthUser (admin) failed:', (err as Error)?.message))
       return { ok: true, user: { id: 'local-admin', email: sE, name: sN, role: 'admin' }, mustChangePassword: false, anthropicKeySet: false }
     }
 
-    // ── First-login via access code ──────────────────────────────────────
-    // No local account on this machine yet. If the password matches the
-    // access code the admin generated for this email, provision a local
-    // account on the spot and send the user straight to "set your password".
+    // ── (C) No local row — cross-device returning user via Supabase Auth ──
+    // This is the path that was broken before: the user set a password on
+    // Computer A; Computer B never knew about it. Now Supabase Auth is the
+    // shared store, so we verify against it and provision a local mirror.
+    if (await verifySupabaseAuthPassword(trimmed, password)) {
+      const id   = uuid()
+      const salt = randomBytes(16).toString('hex')
+      const hash = hashPassword(password, salt)
+      const name = trimmed.split('@')[0]
+      db.prepare(`INSERT OR IGNORE INTO local_users
+          (id,email,full_name,role,status,password_hash,password_salt,must_change_password,invited_by)
+          VALUES (?,?,?,?,'active',?,?,0,'supabase-auth')`)
+        .run(id, trimmed, name, 'member', hash, salt)
+      const created = db.prepare('SELECT * FROM local_users WHERE LOWER(email)=?').get(trimmed) as Record<string, unknown>
+      db.prepare("UPDATE local_users SET last_active=CURRENT_TIMESTAMP, status='active' WHERE id=?").run(created.id)
+      return {
+        ok: true,
+        user: { id: created.id, email: created.email, name: created.full_name ?? created.email, role: created.role },
+        mustChangePassword: false,
+        anthropicKeySet:    !!(created.anthropic_key_set as number),
+      }
+    }
+
+    // ── (D) First-login via deterministic access code ─────────────────────
     if (canonCode(password) === canonCode(inviteCodeForEmail(trimmed))) {
       const id   = uuid()
       const salt = randomBytes(16).toString('hex')
@@ -324,6 +441,10 @@ function registerAuthHandlers() {
         .run(id, trimmed, name, 'member', hash, salt)
       const created = db.prepare('SELECT * FROM local_users WHERE LOWER(email)=?').get(trimmed) as Record<string, unknown>
       db.prepare("UPDATE local_users SET last_active=CURRENT_TIMESTAMP, status='active' WHERE id=?").run(created.id)
+      // Provision the Supabase Auth account with the access code as the initial
+      // password — the user replaces it via setInitialPassword in the next step.
+      ensureSupabaseAuthUser(trimmed, canonCode(password)).catch(err =>
+        console.warn('[Auth] ensureSupabaseAuthUser (access-code) failed:', (err as Error)?.message))
       return {
         ok: true,
         user: { id: created.id, email: created.email, name: created.full_name ?? created.email, role: created.role },
@@ -398,6 +519,15 @@ function registerTeamHandlers() {
 
       console.log('[Invite] Local record created, id:', id, 'tempPassword:', tempPassword)
 
+      // ── Provision the Supabase Auth account NOW so the invited user can
+      // sign in from any device using their access code; they will replace
+      // it with a real password on first login (team:setInitialPassword).
+      // Fire-and-forget: if Supabase is unreachable the access-code path on
+      // the user's machine will still provision the cloud account lazily.
+      ensureSupabaseAuthUser(email, tempPassword)
+        .then(r => { if (!r.ok) console.warn('[Invite] Supabase Auth provisioning failed:', r.error); else if (r.created) console.log('[Invite] Supabase Auth user created for', email) })
+        .catch(err => console.warn('[Invite] Supabase Auth provisioning threw:', (err as Error)?.message))
+
       // ── Send invite email with temp password ──────────────────────────────
       try {
         const emailResult = await sendEmail(
@@ -442,12 +572,16 @@ function registerTeamHandlers() {
 
   // First-login password set: no current-password challenge (the user just
   // authenticated with their access code), only allowed while the account is
-  // still flagged must_change_password.
-  ipcMain.handle('team:setInitialPassword', (_e, userId: string, newPw: string) => {
+  // still flagged must_change_password. Writes to Supabase Auth (cloud
+  // source-of-truth) FIRST so the password is portable across devices; the
+  // local SQLite row is updated only after the cloud write succeeds.
+  ipcMain.handle('team:setInitialPassword', async (_e, userId: string, newPw: string) => {
     if (!newPw || newPw.length < 8) return { error: 'Password must be at least 8 characters.' }
     const db  = getDatabase()
-    const row = db.prepare('SELECT must_change_password FROM local_users WHERE id=?').get(userId) as { must_change_password: number } | undefined
+    const row = db.prepare('SELECT email, must_change_password FROM local_users WHERE id=?').get(userId) as { email: string; must_change_password: number } | undefined
     if (!row) return { error: 'User not found.' }
+    const cloud = await updateSupabaseAuthPassword(row.email, newPw)
+    if (!cloud.ok) return { error: `Could not save your password. Check your internet connection and try again. (${cloud.error ?? 'unknown error'})` }
     const ns = randomBytes(16).toString('hex')
     const nh = hashPassword(newPw, ns)
     db.prepare("UPDATE local_users SET password_hash=?,password_salt=?,must_change_password=0,status='active' WHERE id=?").run(nh, ns, userId)
@@ -478,11 +612,18 @@ function registerTeamHandlers() {
     getDatabase().prepare('UPDATE local_users SET preferences_json=? WHERE id=?').run(JSON.stringify(prefs), id); return true
   })
 
-  ipcMain.handle('team:changePassword', (_e, userId: string, currentPw: string, newPw: string) => {
+  ipcMain.handle('team:changePassword', async (_e, userId: string, currentPw: string, newPw: string) => {
+    if (!newPw || newPw.length < 8) return { error: 'New password must be at least 8 characters.' }
     const db  = getDatabase()
-    const row = db.prepare('SELECT password_hash,password_salt FROM local_users WHERE id=?').get(userId) as { password_hash: string; password_salt: string } | undefined
+    const row = db.prepare('SELECT email,password_hash,password_salt FROM local_users WHERE id=?').get(userId) as { email: string; password_hash: string; password_salt: string } | undefined
     if (!row) return { error: 'User not found.' }
-    if (hashPassword(currentPw, row.password_salt) !== row.password_hash) return { error: 'Current password is incorrect.' }
+    // Verify current password against either local hash or cloud (whichever wins).
+    const localOk  = hashPassword(currentPw, row.password_salt) === row.password_hash
+    const cloudOk  = localOk ? true : await verifySupabaseAuthPassword(row.email, currentPw)
+    if (!localOk && !cloudOk) return { error: 'Current password is incorrect.' }
+    // Push the new password to Supabase Auth FIRST.
+    const cloud = await updateSupabaseAuthPassword(row.email, newPw)
+    if (!cloud.ok) return { error: `Could not save your password. Check your internet connection and try again. (${cloud.error ?? 'unknown error'})` }
     const ns = randomBytes(16).toString('hex')
     const nh = hashPassword(newPw, ns)
     db.prepare("UPDATE local_users SET password_hash=?,password_salt=?,must_change_password=0,status='active' WHERE id=?").run(nh, ns, userId)
