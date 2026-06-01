@@ -17,18 +17,34 @@ function freshnessColor(dateStr: string | null): string {
   return 'bg-red-500'
 }
 
-function AddPageModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name: string, config: Record<string,unknown>) => Promise<void> }) {
-  const [name, setName] = useState('')
-  const [repo, setRepo] = useState('')
-  const [liveUrl, setLiveUrl] = useState('')
-  const [keywords, setKeywords] = useState('')
+// Shared form for creating or editing an Info Page's link config.
+function PageFormModal({
+  title, submitLabel, initial, onClose, onSubmit,
+}: {
+  title: string
+  submitLabel: string
+  initial: { name: string; repo: string; liveUrl: string; keywords: string; file: string }
+  onClose: () => void
+  onSubmit: (name: string, config: Record<string,unknown>) => Promise<void>
+}) {
+  const [name, setName] = useState(initial.name)
+  const [repo, setRepo] = useState(initial.repo)
+  const [liveUrl, setLiveUrl] = useState(initial.liveUrl)
+  const [keywords, setKeywords] = useState(initial.keywords)
+  const [file, setFile] = useState(initial.file)
   const [saving, setSaving] = useState(false)
 
   async function handleSubmit() {
     if (!name.trim()) return
     setSaving(true)
     try {
-      await onAdd(name.trim(), { repo: repo.trim(), live_url: liveUrl.trim(), keywords: keywords.trim(), status: 'active' })
+      await onSubmit(name.trim(), {
+        repo: repo.trim(),
+        live_url: liveUrl.trim(),
+        keywords: keywords.trim(),
+        file: file.trim(),
+        status: 'active',
+      })
       onClose()
     } finally {
       setSaving(false)
@@ -39,7 +55,7 @@ function AddPageModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name: s
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-200 dark:border-white/[0.12]">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white">New Info Page</h3>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-white/75 transition">
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4 4l10 10M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
           </button>
@@ -54,11 +70,18 @@ function AddPageModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name: s
             <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">GitHub repo (owner/repo)</label>
             <input value={repo} onChange={e => setRepo(e.target.value)} placeholder="e.g. Doriankantor/my-site"
               className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+            <p className="text-[10px] text-gray-400 dark:text-white/30 mt-1">Used for commit-freshness, live page state, and one-click publishing. Needs GH_TOKEN write access.</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Live URL</label>
             <input value={liveUrl} onChange={e => setLiveUrl(e.target.value)} placeholder="e.g. mysite.com"
               className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">HTML file in repo</label>
+            <input value={file} onChange={e => setFile(e.target.value)} placeholder="index.html"
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+            <p className="text-[10px] text-gray-400 dark:text-white/30 mt-1">File that gets updated on publish. Defaults to index.html.</p>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Keywords (comma-separated)</label>
@@ -71,7 +94,7 @@ function AddPageModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name: s
           <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl text-sm border border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-white/65 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition">Cancel</button>
           <button onClick={handleSubmit} disabled={!name.trim() || saving}
             className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-500 hover:bg-indigo-600 text-white transition disabled:opacity-50">
-            {saving ? 'Creating…' : 'Create Page'}
+            {saving ? 'Saving…' : submitLabel}
           </button>
         </div>
       </div>
@@ -82,6 +105,7 @@ function AddPageModal({ onClose, onAdd }: { onClose: () => void; onAdd: (name: s
 
 export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefresh, isAdmin }: Props) {
   const [addModal, setAddModal] = useState(false)
+  const [editPage, setEditPage] = useState<InfoPage | null>(null)
   const [lastCommits, setLastCommits] = useState<Record<string, { date: string; message: string } | null>>({})
   const [sourceStats, setSourceStats] = useState<Record<string, { newAvailable: number; inAnalysis: number }>>({})
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
@@ -129,6 +153,11 @@ export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefre
 
   async function handleAdd(name: string, config: Record<string,unknown>) {
     await window.api.infoPages.create({ name, config })
+    onRefresh()
+  }
+
+  async function handleEdit(pageId: string, name: string, config: Record<string,unknown>) {
+    await window.api.infoPages.updateMeta(pageId, { name, config })
     onRefresh()
   }
 
@@ -216,7 +245,7 @@ export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefre
               {menuOpen === page.id && isAdmin && (
                 <div className="absolute right-2 top-8 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-white/[0.12] rounded-xl shadow-xl py-1 min-w-[140px]">
                   <button
-                    onClick={() => { setMenuOpen(null) }}
+                    onClick={() => { setEditPage(page); setMenuOpen(null) }}
                     className="w-full px-3 py-2 text-xs text-left text-gray-700 dark:text-white/80 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition"
                   >
                     Edit settings
@@ -254,11 +283,33 @@ export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefre
       )}
 
       {addModal && (
-        <AddPageModal
+        <PageFormModal
+          title="New Info Page"
+          submitLabel="Create Page"
+          initial={{ name: '', repo: '', liveUrl: '', keywords: '', file: '' }}
           onClose={() => setAddModal(false)}
-          onAdd={handleAdd}
+          onSubmit={handleAdd}
         />
       )}
+
+      {editPage && (() => {
+        const cfg: InfoPageConfig = editPage.board_config ? (() => { try { return JSON.parse(editPage.board_config!) } catch { return {} } })() : {}
+        return (
+          <PageFormModal
+            title="Edit Info Page"
+            submitLabel="Save Changes"
+            initial={{
+              name: editPage.name,
+              repo: cfg.repo || '',
+              liveUrl: cfg.live_url || '',
+              keywords: cfg.keywords || '',
+              file: cfg.file || '',
+            }}
+            onClose={() => setEditPage(null)}
+            onSubmit={(name, config) => handleEdit(editPage.id, name, config)}
+          />
+        )
+      })()}
     </div>
   )
 }

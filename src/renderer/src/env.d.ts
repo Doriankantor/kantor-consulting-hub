@@ -209,6 +209,8 @@ interface InfoPageConfig {
   repo?: string
   live_url?: string
   keywords?: string
+  file?: string
+  branch?: string
   status?: 'active' | 'setup-pending'
 }
 
@@ -641,6 +643,7 @@ interface Window {
       list:              ()                                                    => Promise<InfoPage[]>
       getConfig:         (pageId: string)                                      => Promise<InfoPageConfig>
       saveConfig:        (pageId: string, config: Record<string,unknown>)      => Promise<{ ok: boolean }>
+      updateMeta:        (pageId: string, meta: { name?: string; config?: Record<string,unknown> }) => Promise<{ ok: boolean }>
       create:            (params: { name: string; config: Record<string,unknown> }) => Promise<{ ok: boolean; id: string }>
       delete:            (pageId: string)                                      => Promise<{ ok: boolean }>
       getLastCommit:     (repo: string)                                        => Promise<{ date: string; message: string } | null>
@@ -658,6 +661,7 @@ interface Window {
       adminReviewCommit: (commitId: string, action: 'approve'|'reject', params: Record<string,unknown>) => Promise<{ ok: boolean }>
       getPublished:      (pageId: string)                                      => Promise<InfoPagePublished[]>
       logPublished:      (entry: Record<string,unknown>)                       => Promise<{ ok: boolean }>
+      publishToRepo:     (params: { pageId: string; pushedById: string; pushedByName: string; whatChanged?: string }) => Promise<{ ok: boolean; count?: number; repo?: string; url?: string; error?: string }>
       analyzeWithClaude: (params: Record<string,unknown>)                      => Promise<{ ok: boolean; items?: Array<{ action: string; section: string; detail: string; confidence: string; source: string; priority: string }>; error?: string }>
       generatePrompt:    (params: Record<string,unknown>)                      => Promise<{ ok: boolean; prompt?: string }>
       syncSources:          (pageId: string)                                   => Promise<{ added: number }>

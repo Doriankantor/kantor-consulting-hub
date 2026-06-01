@@ -37,6 +37,10 @@ export default function CommitReviewTab({ pageId, page, canApprove, canGenerateP
   const [copied, setCopied] = useState(false)
   const [markingImplemented, setMarkingImplemented] = useState(false)
   const [whatChanged, setWhatChanged] = useState('')
+  const [publishing, setPublishing] = useState(false)
+  const [publishMsg, setPublishMsg] = useState<{ ok: boolean; text: string; url?: string } | null>(null)
+
+  const config: InfoPageConfig = page.board_config ? (() => { try { return JSON.parse(page.board_config!) } catch { return {} } })() : {}
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -126,6 +130,31 @@ export default function CommitReviewTab({ pageId, page, canApprove, canGenerateP
     }
   }
 
+  async function handlePublishToRepo() {
+    if (!localUser || !config.repo) return
+    setPublishing(true)
+    setPublishMsg(null)
+    try {
+      const res = await window.api.infoPages.publishToRepo({
+        pageId,
+        pushedById: localUser.id,
+        pushedByName: localUser.name,
+        whatChanged: whatChanged || undefined,
+      })
+      if (res.ok) {
+        setPublishMsg({ ok: true, text: `Published ${res.count} item${res.count !== 1 ? 's' : ''} to ${res.repo}.`, url: res.url })
+        setWhatChanged('')
+        await load()
+      } else {
+        setPublishMsg({ ok: false, text: res.error || 'Publish failed' })
+      }
+    } catch (e: any) {
+      setPublishMsg({ ok: false, text: e.message || 'Publish failed' })
+    } finally {
+      setPublishing(false)
+    }
+  }
+
   async function copyPrompt() {
     await navigator.clipboard.writeText(promptText)
     setCopied(true)
@@ -208,17 +237,59 @@ export default function CommitReviewTab({ pageId, page, canApprove, canGenerateP
             ))}
           </div>
 
+          {/* Describe the change (used for both publish paths + history). */}
+          <input
+            value={whatChanged}
+            onChange={e => setWhatChanged(e.target.value)}
+            placeholder="What changed? (shown in history)"
+            className="w-full mb-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.03] text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+          />
+
+          {/* One-click publish to the page's linked repo. */}
+          {config.repo ? (
+            <button
+              onClick={handlePublishToRepo}
+              disabled={publishing}
+              className="w-full mb-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500 hover:bg-emerald-600 text-white transition disabled:opacity-50"
+            >
+              {publishing ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Publishing to {config.repo}…
+                </>
+              ) : (
+                <>
+                  <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 9.5V2.5M7 2.5L4 5.5M7 2.5l3 3M2.5 10.5h9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Publish {adminApproved.length} item{adminApproved.length !== 1 ? 's' : ''} to {config.repo}
+                </>
+              )}
+            </button>
+          ) : (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-2">
+              This page isn't linked to a GitHub repo yet — add one via Edit settings to enable one-click publishing.
+            </p>
+          )}
+
+          {publishMsg && (
+            <div className={`mb-2 px-3 py-2 rounded-xl text-xs ${publishMsg.ok ? 'bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400' : 'bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400'}`}>
+              {publishMsg.text}
+              {publishMsg.ok && publishMsg.url && (
+                <> <a href={publishMsg.url} target="_blank" rel="noreferrer" className="underline">View commit →</a></>
+              )}
+            </div>
+          )}
+
           <button
             onClick={handleGeneratePrompt}
             disabled={generatingPrompt}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-indigo-500 hover:bg-indigo-600 text-white transition disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-white/65 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition disabled:opacity-50"
           >
             {generatingPrompt ? (
               <>
-                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <div className="w-3.5 h-3.5 border-2 border-gray-400/30 border-t-gray-500 rounded-full animate-spin" />
                 Generating…
               </>
-            ) : 'Generate Claude Code prompt'}
+            ) : 'Or: generate a Claude Code prompt instead'}
           </button>
 
           {promptText && (
@@ -228,12 +299,6 @@ export default function CommitReviewTab({ pageId, page, canApprove, canGenerateP
                 value={promptText}
                 rows={10}
                 className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-gray-50 dark:bg-white/[0.03] text-xs text-gray-700 dark:text-white/80 font-mono resize-none focus:outline-none"
-              />
-              <input
-                value={whatChanged}
-                onChange={e => setWhatChanged(e.target.value)}
-                placeholder="What changed? (shown in history)"
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.03] text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/25 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
               />
               <div className="flex gap-2">
                 <button

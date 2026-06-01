@@ -2859,6 +2859,17 @@ export function registerInfoPageHandlers(): void {
     return { ok: true }
   })
 
+  // Edit an existing page's name and/or link config (repo, live_url, keywords, file…) in one call.
+  ipcMain.handle('infoPages:updateMeta', (_e, pageId: string, meta: { name?: string; config?: Record<string, unknown> }) => {
+    if (typeof meta?.name === 'string' && meta.name.trim()) {
+      db().prepare("UPDATE workspace_boards SET name=?,updated_at=datetime('now') WHERE id=?").run(meta.name.trim(), pageId)
+    }
+    if (meta?.config) {
+      db().prepare("UPDATE workspace_boards SET board_config=?,updated_at=datetime('now') WHERE id=?").run(JSON.stringify(meta.config), pageId)
+    }
+    return { ok: true }
+  })
+
   ipcMain.handle('infoPages:create', (_e, params: { name: string; config: Record<string, unknown> }) => {
     const { randomUUID } = require('crypto')
     const id = randomUUID()
@@ -3033,6 +3044,129 @@ export function registerInfoPageHandlers(): void {
       }
     }
     return { ok: true }
+  })
+
+  // Publish a page's admin-approved commits to its OWN linked GitHub repo.
+  // Generic version of the Contested Skies push — works for any linked Info Page.
+  ipcMain.handle('infoPages:publishToRepo', async (_e, params: {
+    pageId: string; pushedById: string; pushedByName: string; whatChanged?: string
+  }) => {
+    const token = process.env.GH_TOKEN
+    if (!token) return { ok: false, error: 'GH_TOKEN not configured in .env' }
+
+    const page = db().prepare('SELECT id,name,board_config FROM workspace_boards WHERE id=?').get(params.pageId) as { id: string; name: string; board_config: string | null } | undefined
+    if (!page) return { ok: false, error: 'Page not found' }
+    let config: any = {}
+    try { config = page.board_config ? JSON.parse(page.board_config) : {} } catch { config = {} }
+    const repo = String(config.repo || '').trim()
+    if (!repo) return { ok: false, error: 'This page is not linked to a GitHub repo. Add one in Edit settings.' }
+    const file = String(config.file || 'index.html').trim()
+    const branch = String(config.branch || 'main').trim()
+
+    // Gather this page's admin-approved commits.
+    const commits = db().prepare(`
+      SELECT ipc.id AS commit_id, ipc.item_id, ipi.title, ipi.proposed_section, ipi.confidence, ipi.analysis_json, ipi.content_json
+      FROM info_page_commits ipc LEFT JOIN info_page_items ipi ON ipi.id=ipc.item_id
+      WHERE ipc.page_id=? AND ipc.status='admin_approved'
+    `).all(params.pageId) as any[]
+    if (!commits.length) return { ok: false, error: 'No admin-approved items to publish for this page.' }
+
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${token}`,
+      'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    }
+    const BASE_URL = `https://api.github.com/repos/${repo}/contents/${file}`
+
+    let currentContent = '', sha = ''
+    try {
+      const getRes = await fetch(`${BASE_URL}?ref=${encodeURIComponent(branch)}`, { headers })
+      if (getRes.status === 401) return { ok: false, error: `GitHub token invalid or lacks write access to ${repo}.` }
+      if (getRes.status === 404) return { ok: false, error: `File "${file}" not found in ${repo} (branch ${branch}).` }
+      if (!getRes.ok) return { ok: false, error: `GitHub API error: ${getRes.status} ${await getRes.text()}` }
+      const fileData = await getRes.json() as { content: string; sha: string }
+      sha = fileData.sha
+      currentContent = Buffer.from(fileData.content, 'base64').toString('utf-8')
+    } catch (e: any) {
+      return { ok: false, error: `Failed to fetch ${repo}/${file}: ${e.message}` }
+    }
+
+    // Build the update block from the approved commits.
+    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    const CONF_COLOR: Record<string,string> = { high:'#22c55e', medium:'#f59e0b', low:'#ef4444' }
+    const CONF_LABEL: Record<string,string> = { high:'HIGH', medium:'MED', low:'LOW' }
+    function confBadge(c: string): string {
+      const color = CONF_COLOR[c] || '#6b7280'
+      const label = CONF_LABEL[c] || (c || '').toUpperCase() || 'UNK'
+      return `<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;color:#fff;background:${color}">${label}</span>`
+    }
+    const entries = commits.map(c => {
+      let analysis: any = {}; try { analysis = c.analysis_json ? JSON.parse(c.analysis_json) : {} } catch {}
+      let content: any = {}; try { content = c.content_json ? JSON.parse(c.content_json) : {} } catch {}
+      const title = c.title || analysis.action || 'Update'
+      const section = c.proposed_section || analysis.section || ''
+      const detail = analysis.detail || content.detail || content.text || ''
+      const source = analysis.source || content.url || ''
+      return `
+        <div class="hub-entry" style="border-left:3px solid ${CONF_COLOR[c.confidence]||'#6b7280'};padding:10px 16px;margin-bottom:12px;background:rgba(0,0,0,0.03)">
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+            ${confBadge(c.confidence)}
+            ${section ? `<span style="font-size:11px;color:#888">${section}</span>` : ''}
+            <span style="font-size:11px;color:#888">${dateStr}</span>
+          </div>
+          <div style="font-weight:600;margin-bottom:4px">${title}</div>
+          ${detail ? `<div style="font-size:13px;line-height:1.5;color:#444">${detail}</div>` : ''}
+          ${source ? `<a href="${source}" target="_blank" style="font-size:12px;color:#6366f1;text-decoration:none">Source →</a>` : ''}
+        </div>`
+    }).join('\n')
+
+    const block = `<!-- HUB_UPDATE ${dateStr} -->\n${entries}`
+    let modified = currentContent
+    if (modified.includes('<!-- HUB_UPDATE_START -->')) {
+      modified = modified.replace(/(<!-- HUB_UPDATE_START -->)([\s\S]*?)(<!-- HUB_UPDATE_END -->)/, `$1\n${block}\n$3`)
+    } else if (modified.includes('</body>')) {
+      modified = modified.replace('</body>', `<section id="hub-intelligence-update">\n<!-- HUB_UPDATE_START -->\n${block}\n<!-- HUB_UPDATE_END -->\n</section>\n</body>`)
+    } else {
+      modified = modified + `\n<!-- HUB_UPDATE_START -->\n${block}\n<!-- HUB_UPDATE_END -->\n`
+    }
+
+    // Write back to the repo.
+    let htmlUrl = ''
+    try {
+      const commitMsg = `Intelligence update: ${dateStr} — ${commits.length} item${commits.length !== 1 ? 's' : ''} (${page.name})`
+      const pushRes = await fetch(BASE_URL, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ message: commitMsg, content: Buffer.from(modified, 'utf-8').toString('base64'), sha, branch }),
+      })
+      if (!pushRes.ok) {
+        const errText = await pushRes.text()
+        if (pushRes.status === 401) return { ok: false, error: `GitHub token lacks write access to ${repo}.` }
+        if (pushRes.status === 409) return { ok: false, error: 'Merge conflict — the file changed upstream. Retry.' }
+        return { ok: false, error: `GitHub push failed: ${pushRes.status} — ${errText}` }
+      }
+      const pushData = await pushRes.json().catch(() => ({})) as any
+      htmlUrl = pushData?.commit?.html_url || ''
+    } catch (e: any) {
+      return { ok: false, error: `Push failed: ${e.message}` }
+    }
+
+    // Record history, mark items implemented, and close the source feedback loop.
+    const { randomUUID } = require('crypto')
+    const itemIds = commits.map(c => c.item_id).filter(Boolean)
+    const whatChanged = params.whatChanged || `${commits.length} item${commits.length !== 1 ? 's' : ''} published to ${repo}`
+    db().prepare(`INSERT INTO info_page_published (id,page_id,what_changed,committed_by_id,committed_by_name,approved_by_id,approved_by_name,prompt_used,item_ids_json,commit_count) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+      .run(randomUUID(), params.pageId, whatChanged, params.pushedById, params.pushedByName, params.pushedById, params.pushedByName, `Auto-published to ${repo}/${file}`, JSON.stringify(itemIds), commits.length)
+    const nowIso = new Date().toISOString()
+    for (const id of itemIds) {
+      db().prepare("UPDATE info_page_items SET status='implemented',updated_at=datetime('now') WHERE id=?").run(id)
+      db().prepare("UPDATE info_page_commits SET status='implemented' WHERE item_id=?").run(id)
+      const item = db().prepare('SELECT origin_source_id FROM info_page_items WHERE id=?').get(id) as { origin_source_id: string | null } | undefined
+      if (item?.origin_source_id) {
+        db().prepare("UPDATE intelligence_sources SET used_in_page=?, used_in_page_at=? WHERE id=?").run(page.name, nowIso, item.origin_source_id)
+      }
+    }
+    return { ok: true, count: commits.length, repo, url: htmlUrl }
   })
 
   // ── Pipeline: Source Intelligence → Sources tab ──────────────────────────
