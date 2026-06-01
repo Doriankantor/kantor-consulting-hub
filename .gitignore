@@ -1,6 +1,8 @@
 node_modules
 dist
 out
+# iCloud .nosync directories (excluded from iCloud sync, never commit)
+*.nosync
 .DS_Store
 *.log
 .env

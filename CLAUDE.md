@@ -1,5 +1,15 @@
 # Kantor Consulting Hub — Claude Instructions
 
+## Project location
+The project lives in iCloud Drive and syncs automatically across all Apple devices:
+`~/Library/Mobile Documents/com~apple~CloudDocs/newsroom-pm`
+
+On a new device, run `bash setup-new-device.sh` once after iCloud syncs the folder.
+This creates the local `.nosync` directories and runs `npm install`.
+
+`node_modules`, `dist`, and `out` are symlinks to `*.nosync` folders — iCloud skips
+those automatically. Never move or delete the symlinks.
+
 ## Project
 Electron 31 + React 18 + TypeScript + Tailwind CSS desktop app.
 Local SQLite via better-sqlite3. IPC: `ipcMain.handle` → preload → `window.api.*`.

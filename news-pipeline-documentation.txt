@@ -1,0 +1,1060 @@
+================================================================================
+KANTOR CONSULTING HUB — NEWS ARTICLE PULL PIPELINE
+Complete technical documentation for AI-assisted improvement
+Generated: 2026-06-01
+App version at time of writing: v1.1.17
+================================================================================
+
+TABLE OF CONTENTS
+─────────────────
+1.  Overview — what the pipeline does end-to-end
+2.  Environment & credentials
+3.  NewsAPI fetch — queries, parameters, deduplication
+4.  Confidence auto-detection — source reputation scoring
+5.  Category auto-detection — keyword-to-category mapping
+6.  SQLite storage — intelligence_sources table schema
+7.  Status lifecycle — unreviewed → approved/rejected/saved/pushed
+8.  Queue section auto-assignment on approval
+9.  Info Page routing — pipeline gate and keyword matching
+10. Learning loop — verdict mirror to Supabase cs_articles
+11. Contested Skies import — secondary ingestion path
+12. Document upload — Claude AI analysis path
+13. Social media posts — manual ingestion path
+14. Publish to live site — GitHub injection
+15. What currently works well
+16. Known gaps and improvement opportunities
+17. Full source code excerpts for AI reference
+
+
+================================================================================
+1. OVERVIEW — WHAT THE PIPELINE DOES END-TO-END
+================================================================================
+
+The pipeline is a human-in-the-loop intelligence review system built into an
+Electron desktop app. Its purpose is to surface news about drone proliferation
+in Latin America, allow a small team of analysts to quickly approve or reject
+articles, and automatically route approved articles to the LATAM Drone Threat
+Info Page where they become research inputs for a live public intelligence page
+(contestedskies.kantor-consulting.com).
+
+HIGH-LEVEL FLOW:
+────────────────
+  [NewsAPI] → fetchAndStoreNews()
+       ↓
+  intelligence_sources table (SQLite, status='unreviewed')
+       ↓
+  Intelligence → News Articles tab (UI review)
+       ↓ approve/reject/save
+  [if approved] → auto-assign queue_section
+               → addApprovedSourceToInfoPages() → LATAM Drone Threat Sources tab
+               → pushVerdictToSupabase() → cs_articles (learning loop)
+       ↓
+  [if approved + pushed] → pushToContestedSkies() → GitHub API → live site HTML
+
+SECONDARY INGESTION PATHS:
+  - Manual "Import Contested Skies" button (parses live site HTML)
+  - Document upload (PDF/DOCX/TXT → Claude analysis)
+  - Social media posts (manual form entry)
+
+The pipeline currently covers ONE project: LATAM Drone Threat.
+The Trump Immigration Info Page exists as a research page but is NOT wired
+into the automated article-pull routing (pipeline:false in its board_config).
+
+
+================================================================================
+2. ENVIRONMENT & CREDENTIALS
+================================================================================
+
+All credentials are in /newsroom-pm/.env. The file is gitignored.
+The main process reads them via process.env.* (injected at build time by
+electron.vite.config.ts using Vite's define mechanism with MAIN_VITE_ prefix).
+
+Key env vars for the pipeline:
+
+  NEWSAPI_KEY=<key>
+    Free or paid key from newsapi.org.
+    The free plan allows 100 requests/day, returns up to 100 articles per query.
+    The pipeline runs 5 queries per fetch, so uses 5 requests per manual refresh.
+    NOTE: Free NewsAPI accounts only return articles up to 1 month old.
+    NOTE: Free plan also restricts to a subset of sources.
+
+  MAIN_VITE_SUPABASE_URL=https://iatcafrpkpvyaekoxuao.supabase.co
+    Used for the learning loop (verdict write-back to cs_articles table).
+
+  MAIN_VITE_SUPABASE_SERVICE_ROLE_KEY=<service role JWT>
+    Admin-level Supabase access. Used to write verdicts to cs_articles.
+    Also used for team auth management.
+    WARNING: Never expose this key in the renderer process or in logs.
+
+  GH_TOKEN=<personal access token>
+    GitHub PAT with repo write access to Doriankantor/contested-skies-monitor.
+    Used only for the "Push to Contested Skies" action.
+    NOT used for the fetch pipeline.
+
+The Supabase admin client is initialized once at module load in ipc/index.ts:
+
+  const supabaseAdmin = createClient(
+    process.env.SUPABASE_URL ?? '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+    { auth: { autoRefreshToken: false, persistSession: false },
+      realtime: { transport: ws } }
+  )
+
+
+================================================================================
+3. NEWSAPI FETCH — QUERIES, PARAMETERS, DEDUPLICATION
+================================================================================
+
+TRIGGER:
+  The fetch is entirely MANUAL. There is no automatic scheduled fetch built
+  into the Electron app. A user must click "Refresh now" in the News Articles
+  tab. There is no cron job, no background timer, no daily scheduled pull.
+
+IPC HANDLER:
+  ipcMain.handle('intelligence:fetchNews') → calls fetchAndStoreNews()
+
+FUNCTION: fetchAndStoreNews() in src/main/ipc/index.ts
+
+API ENDPOINT:
+  https://newsapi.org/v2/everything
+  Parameters per query:
+    q=<encoded query string>
+    language=en
+    sortBy=publishedAt
+    pageSize=20
+    apiKey=<NEWSAPI_KEY>
+
+THE 5 QUERIES (run sequentially, one HTTP request each):
+
+  Query 1 (Core drone threat terminology):
+    drone proliferation OR "drone strikes" OR "drone purchases" OR
+    "counter drone" OR "weaponized drones" OR "DJI drones" OR
+    "drone warfare" OR "loitering munitions" OR "FPV drones" OR "drone swarms"
+
+  Query 2 (Military/defense terminology):
+    "autonomous weapons" OR UAV OR "MALE drones" OR "drone jamming" OR
+    "anti-drone systems" OR "drone export" OR "drone regulation" OR
+    "kamikaze drones"
+
+  Query 3 (Latin America specific):
+    "drones Latin America" OR "drones Colombia" OR "drones Venezuela" OR
+    "drones Mexico" OR "drones Brazil" OR "cartel drones" OR "narco drones"
+
+  Query 4 (Global hot spots for context):
+    "drones Ukraine" OR "drones Middle East" OR "drones Iran" OR
+    "drones NATO" OR "Iranian drones"
+
+  Query 5 (Suppliers and export control):
+    "DJI export" OR "Turkish Bayraktar" OR "Chinese drone exports" OR
+    "drone proliferation" OR "non-state actors drones"
+
+ARTICLES PER FETCH:
+  Up to 20 articles × 5 queries = 100 articles per fetch cycle.
+  In practice fewer due to duplicates across queries and source limits.
+
+WHAT IS STORED PER ARTICLE:
+  - id: UUID (generated fresh each insert)
+  - type: 'article' (hardcoded)
+  - title: article.title
+  - snippet: article.description OR article.content.slice(0, 300)
+  - url: article.url (UNIQUE constraint — primary deduplication key)
+  - source_name: article.source.name
+  - published_at: article.publishedAt (ISO timestamp from NewsAPI)
+  - confidence: autoDetectConfidence(article.source.name) → 'high'|'medium'|'low'
+  - categories_json: JSON.stringify(autoDetectCategories(title + ' ' + snippet))
+  - image_url: article.urlToImage OR null
+  - status: 'unreviewed' (always, on insert)
+  - added_at: CURRENT_TIMESTAMP (SQLite default)
+
+WHAT IS NOT STORED:
+  - article.content (only .description and first 300 chars of content used for snippet)
+  - author
+  - Full content text (NewsAPI truncates content to ~200 chars on free plan anyway)
+
+DEDUPLICATION:
+  The url column has a UNIQUE constraint.
+  The INSERT statement uses INSERT OR IGNORE, so duplicate URLs silently skip.
+  If a URL was previously imported from Contested Skies import with a different
+  URL format, it may not deduplicate correctly (different URL = different row).
+
+ERROR HANDLING:
+  - If NEWSAPI_KEY is missing: logs and returns 0, no error shown to user
+  - If a query fails (network, API error): logs warning, continues to next query
+  - If insert fails (duplicate URL): catches silently, continues
+
+
+================================================================================
+4. CONFIDENCE AUTO-DETECTION — SOURCE REPUTATION SCORING
+================================================================================
+
+FUNCTION: autoDetectConfidence(sourceName: string): 'high' | 'medium' | 'low'
+
+Logic: simple substring match against two curated lists.
+The match is case-insensitive. If sourceName matches nothing, returns 'low'.
+
+HIGH CONFIDENCE SOURCES (returns 'high'):
+  reuters, apnews, ap news, bbc, nytimes, new york times,
+  ft.com, financial times, jane's, janes, insightcrime,
+  insight crime, infodefensa, washingtonpost, washington post,
+  theguardian, guardian, bloomberg, wsj, wall street journal,
+  foreignpolicy, foreign policy, defenseone, defense one,
+  breakingdefense, breaking defense
+
+MEDIUM CONFIDENCE SOURCES (returns 'medium'):
+  semana, el tiempo, zona militar, la nacion, infobae,
+  mercopress, elpais, el pais, elespectador, el espectador,
+  larepublica, la republica, dinero, portafolio, caracoltv,
+  rcnradio, rcn, civiles en red, defensa.com, infodefensa,
+  americaeconomia, america economia, telam, agencia efe, efe,
+  dw.com, dw, france24, france 24, al jazeera, aljazeera,
+  rferl, radio free europe, kyivindependent, kyiv independent,
+  themoscowtimes, moscow times, thedrive, the drive,
+  warisboring, war is boring, bellingcat, bulgarianmilitary,
+  bulgarian military, militarytimes, military times,
+  defensenews, defense news, aviationweek, flightglobal
+
+LOW CONFIDENCE (default): any source not in either list.
+
+OVERRIDE:
+  A user can manually change the confidence in the UI (select dropdown on each card).
+  When manually changed, confidence_override=1 is written to SQLite.
+  The pipeline respects manual overrides — they are not re-computed on next fetch.
+
+NOTE: confidence_override is checked in the DB but the current fetch code always
+re-runs autoDetectConfidence and inserts the computed value on new articles.
+For existing articles (already inserted), confidence is not re-computed unless
+the user manually overrides it.
+
+
+================================================================================
+5. CATEGORY AUTO-DETECTION — KEYWORD-TO-CATEGORY MAPPING
+================================================================================
+
+FUNCTION: autoDetectCategories(text: string): string[]
+
+Input: concatenation of title + ' ' + snippet (for news articles).
+Output: array of 0–3 category strings from the fixed taxonomy below.
+
+All matching is case-insensitive substring matching.
+A maximum of 3 categories are returned (slice(0,3)).
+All matching categories are included, not just the first match.
+
+CATEGORY RULES (in order — each rule checked independently):
+
+  "Incident"
+    Keywords: strike, attack, casualt, kill, wound, injur, explosion, bomb,
+              shot down, intercept, destroy, hit, target
+
+  "Investment & Procurement"
+    Keywords: procure, purchase, buy, acquire, contract, deal, sale, order,
+              invest, budget, fund, billion, million, tender
+
+  "Innovation & Technology"
+    Keywords: technolog, innovat, develop, prototype, test, capabilit, sensor,
+              ai , autonomo, swarm, stealth, payload, range, endurance
+
+  "Policy & Regulation"
+    Keywords: regulat, policy, law, legislat, ban, restrict, export control,
+              sanction, treaty, agreement, framework, standard
+
+  "Criminal & VNSA Activity"
+    Keywords: cartel, criminal, narco, traffick, gang, vnsa, non-state, terror,
+              insurgent, rebel, militia, drug, smuggl
+
+  "Counter-drone / C-UAS"
+    Keywords: counter-drone, counter drone, c-uas, anti-drone, anti drone,
+              intercept, jam, defeat, detect, defend
+
+  "State Military Activity"
+    Keywords: military, armed force, army, navy, air force, deploy, operati,
+              exercise, training, unit, battalion, brigade
+
+  "Finance & Sanctions"
+    Keywords: sanction, financ, payment, transfer, fund, launder, revenue,
+              profit, illicit, dark web, crypto, bank
+
+  "Extra-regional Supplier"
+    Keywords: china, chinese, iran, iranian, russia, russian, turkey, turkish,
+              export, supplier, transfer, proliferat, third-party, third party
+
+TAXONOMY (full list of valid category strings):
+  - Incident
+  - Investment & Procurement
+  - Innovation & Technology
+  - Policy & Regulation
+  - Criminal & VNSA Activity
+  - Counter-drone / C-UAS
+  - State Military Activity
+  - Finance & Sanctions
+  - Extra-regional Supplier
+
+KNOWN ISSUES WITH CATEGORY DETECTION:
+  - "intercept" appears in both Incident and Counter-drone/C-UAS rules.
+    An article about interception will get BOTH categories.
+  - "sanction" appears in both Policy & Regulation and Finance & Sanctions rules.
+  - "fund" appears in both Investment & Procurement and Finance & Sanctions.
+  - "export" appears in both Policy & Regulation and Extra-regional Supplier.
+  - Truncation to 3 categories means lower-priority matches are dropped when
+    articles are genuinely multi-category, which is common for major events.
+  - Keyword fragments like "ai " (with trailing space) are fragile — will miss
+    "AI-powered" or "AI." at end of sentence.
+  - No geographic focus — a generic article about "Chinese drone exports" to
+    Africa would be categorized the same as one about Latin America.
+
+
+================================================================================
+6. SQLITE STORAGE — intelligence_sources TABLE SCHEMA
+================================================================================
+
+Table: intelligence_sources
+Primary storage for all intelligence items (articles, social posts, documents).
+
+COLUMNS:
+  id                  TEXT  PRIMARY KEY — UUID
+  type                TEXT  NOT NULL — 'article' | 'social' | 'document'
+  title               TEXT  — headline or filename
+  content             TEXT  — full text body (documents up to 10,000 chars)
+  url                 TEXT  UNIQUE — article URL or social post URL
+  source_name         TEXT  — publication name (e.g. "Reuters", "BBC News")
+  published_at        TEXT  — ISO 8601 timestamp from source
+  added_at            TEXT  NOT NULL DEFAULT CURRENT_TIMESTAMP
+  added_by_id         TEXT  — user UUID of who added it
+  added_by_name       TEXT  — display name (e.g. "Imported from Contested Skies",
+                              "Kantor Framework", or actual user name)
+  status              TEXT  NOT NULL DEFAULT 'unreviewed'
+                            — 'unreviewed' | 'approved' | 'rejected' | 'saved'
+                              | 'pushed' | 'imported'
+  confidence          TEXT  — 'high' | 'medium' | 'low'
+  confidence_override INTEGER DEFAULT 0 — 1 if manually set by a reviewer
+  categories_json     TEXT  DEFAULT '[]' — JSON array of category strings
+  snippet             TEXT  — short excerpt shown in the UI card
+  image_url           TEXT  — article thumbnail from NewsAPI
+  platform            TEXT  — for social posts: 'X / Twitter', 'Telegram', etc.
+  handle              TEXT  — for social posts: @username or channel name
+  location_mentioned  TEXT  — geographic tag (free text)
+  actors_mentioned    TEXT  — named actors (free text)
+  file_name           TEXT  — for documents: original filename
+  local_path          TEXT  — for documents: path on user's machine
+  drive_url           TEXT  — Google Drive URL (if synced, currently unused here)
+  analysis_json       TEXT  — for documents: Claude's JSON analysis output
+  reviewed_by_id      TEXT  — UUID of reviewer
+  reviewed_by_name    TEXT  — display name of reviewer
+  reviewed_at         TEXT  — ISO timestamp of review action
+  review_notes        TEXT  — free-text notes (currently not used in UI)
+  queue_section       TEXT  — which section of Contested Skies to inject into:
+                              'incident-feed' | 'investment-procurement' |
+                              'finance-nexus' | 'platforms' | 'source-archive'
+  queued_at           TEXT  — timestamp when moved to queue (currently unused)
+  queued_by_id        TEXT  — (currently unused)
+  queued_by_name      TEXT  — (currently unused)
+  used_in_page        TEXT  — name of Info Page where this was published (feedback)
+  used_in_page_at     TEXT  — timestamp of that publication (feedback)
+
+INDEXES:
+  url is UNIQUE (implicit index). No additional explicit indexes.
+  Queries filter on: type, status, confidence, categories_json (LIKE), title/snippet/source_name/content (LIKE).
+  With large datasets (1000+ rows), the LIKE queries will degrade without indexes.
+
+DEFAULT QUERY ORDER:
+  ORDER BY added_at DESC, published_at DESC
+  LIMIT 100, OFFSET 0 (default pagination — no infinite scroll)
+
+
+================================================================================
+7. STATUS LIFECYCLE
+================================================================================
+
+  unreviewed → [reviewer clicks Approve]  → approved
+  unreviewed → [reviewer clicks Reject]   → rejected
+  unreviewed → [reviewer clicks Save]     → saved
+  approved   → [reviewer clicks Reject]   → rejected
+  rejected   → [reviewer clicks Approve]  → approved
+  saved      → [reviewer clicks Approve]  → approved
+  saved      → [reviewer clicks Reject]   → rejected
+  approved   → [admin pushes to site]     → pushed
+  imported   → [admin confirms batch]     → approved (bulk, all at once)
+
+STATUS MEANINGS:
+  unreviewed  — new, not yet actioned. Shows in "pending review" counter.
+  imported    — came via Contested Skies import, needs confirmation before routing.
+  saved       — reviewer flagged for later. Not approved, not rejected.
+  approved    — vetted. Auto-routed to Info Page Sources tab. In publish queue.
+  rejected    — discarded from pipeline. Still in DB, not shown by default.
+  pushed      — approved AND pushed to live Contested Skies HTML. Final state.
+
+NOTE: There is no "un-approve" button. To change an approved article back,
+a reviewer must click Reject. This transitions it to rejected, removing it
+from the publish queue.
+
+NOTE: "saved" → "approved" path requires clicking Approve again. The Save
+button only appears on unreviewed items (not on saved items, not on approved
+items). So a saved item currently cannot be re-actioned without using filters.
+
+
+================================================================================
+8. QUEUE SECTION AUTO-ASSIGNMENT ON APPROVAL
+================================================================================
+
+When an article is approved, the system auto-assigns a queue_section based
+on its categories. This determines which HTML section of contestedskies.
+kantor-consulting.com the article will be injected into when pushed.
+
+LOGIC (priority order — first match wins):
+
+  if categories includes "Incident"                           → 'incident-feed'
+  else if categories includes "Investment & Procurement"      → 'investment-procurement'
+  else if categories includes "Finance & Sanctions"           → 'finance-nexus'
+  else if categories includes "Innovation & Technology"
+       OR categories includes "State Military Activity"       → 'platforms'
+  else                                                        → 'source-archive' (default)
+
+QUEUE SECTIONS ON THE LIVE SITE:
+  incident-feed          → Section 02: Incident Feed
+  investment-procurement → Section 03: Investment & Procurement Signals
+  finance-nexus          → Section 05: Finance Nexus (if it exists)
+  platforms              → Section 04: Platforms (drone systems)
+  source-archive         → Section 07: Source Archive
+
+A user can manually override the queue_section via the Publish Queue tab UI
+(select dropdown per item) before pushing.
+
+ISSUE: Multi-category articles lock into one section based on priority.
+An article tagged as both "Incident" AND "Investment & Procurement" always
+goes to incident-feed, even if it's primarily a procurement story.
+
+
+================================================================================
+9. INFO PAGE ROUTING — PIPELINE GATE AND KEYWORD MATCHING
+================================================================================
+
+FUNCTION: addApprovedSourceToInfoPages(sourceId: string): string[]
+Called immediately after an article is approved (inside intelligence:updateStatus).
+Returns array of page names the article was added to (shown in the toast).
+
+STEP 1 — PIPELINE GATE:
+  Query all active info-page boards from workspace_boards:
+    SELECT id, name, board_config FROM workspace_boards
+    WHERE board_type='info-page' AND archived=0
+
+  For each board, parse board_config JSON.
+  Only process boards where board_config.pipeline === true.
+
+  Currently:
+    board-info-latam (LATAM Drone Threat): pipeline: true  ← articles route here
+    board-info-trump (Trump Immigration):  pipeline: false ← excluded from routing
+
+STEP 2 — KEYWORD MATCHING:
+  Extract the board's keywords from board_config.keywords (comma-separated string).
+  Normalize to lowercase array.
+
+  LATAM Drone Threat keywords:
+    drone proliferation, drone strikes, drone purchases, counter drone,
+    civilian drone use, criminal drone use, weaponized drones, DJI drones,
+    drone warfare, loitering munitions, kamikaze drones, FPV drones,
+    drone swarms, autonomous weapons, UAV, MALE drones, drone jamming,
+    anti-drone systems, drone export controls, drone regulation,
+    drones Latin America, drones Colombia, drones Venezuela, drones Mexico,
+    drones Brazil, cartel drones, narco drones, DJI export restrictions,
+    Iranian drones, Turkish Bayraktar, Chinese drone exports,
+    drone proliferation non-state actors
+
+  Matching: haystack = title + snippet + content + source_name +
+                       location_mentioned + actors_mentioned + handle + file_name
+  All joined, lowercased. Returns true if ANY keyword is a substring of haystack.
+  This is a simple substring match — no stemming, no fuzzy, no word boundaries.
+
+STEP 3 — DEDUPLICATION:
+  Skip if source.used_in_page === page.name (already published in this page).
+  Skip if info_page_items already has a row with same (page_id, origin_source_id).
+
+STEP 4 — INSERT:
+  If passes all checks: insertSourceItemForPage(pageId, src)
+  Creates a row in info_page_items with:
+    tab: 'sources'
+    sub_type: 'intelligence_source'
+    status: 'ready_for_analysis'
+    confidence: inherited from intelligence_sources
+    content_json: { source_id, url, snippet, type, source_name, platform,
+                    handle, categories, published_at }
+    origin_source_id: the intelligence_sources.id
+
+BOARD CONFIG STRUCTURE (workspace_boards.board_config JSON):
+  {
+    "repo": "Doriankantor/contested-skies-monitor",
+    "live_url": "contestedskies.kantor-consulting.com",
+    "keywords": "drone proliferation, drone strikes, ...",
+    "status": "active",
+    "pipeline": true
+  }
+
+PIPELINE FLAG:
+  Set by a DB migration that runs every app startup (idempotent).
+  Also included in the INSERT OR IGNORE for fresh installs.
+  Can be manually toggled by admin in Info Page settings UI.
+
+
+================================================================================
+10. LEARNING LOOP — VERDICT MIRROR TO SUPABASE cs_articles
+================================================================================
+
+PURPOSE:
+  The Supabase cs_articles table is the shared data layer between the desktop
+  app (where humans review articles) and any future automated pipeline
+  (e.g. a GitHub Actions script that fetches news daily using a Claude relevance
+  gate). By mirroring approve/reject verdicts to cs_articles, the automated
+  pipeline can use human decisions as training signal to calibrate its relevance
+  scoring over time.
+
+HOW IT WORKS:
+  After every approve or reject action (intelligence:updateStatus):
+    1. Retrieve the article's URL from intelligence_sources.
+    2. Call pushVerdictToSupabase(url, status, reviewerName) — async, fire-and-forget.
+    3. This does: supabaseAdmin.from('cs_articles').update({ status: 'approved'|'rejected', ... }).eq('url', url)
+    4. The URL is the join key. If cs_articles has a row with the same URL, it gets updated.
+
+  For bulk actions (confirmImported):
+    Uses pushVerdictsToSupabase(urls[], status, reviewerName) — chunks into groups
+    of 100, does IN-clause UPDATE.
+
+  For approved articles, also stores:
+    approved_by: reviewer name
+    approved_at: ISO timestamp
+
+ONE-TIME BACKFILL:
+  On first app launch after the feature was added, a deferred job runs (after 8s)
+  that reads ALL existing approved/rejected rows from intelligence_sources and
+  pushes them all to cs_articles in bulk.
+  Guarded by settings flag 'cs_decisions_backfilled_v1' = 'done'.
+  Runs once per installation, never again.
+
+FAIL-OPEN DESIGN:
+  Network errors, Supabase errors, and timeouts are all caught and logged as
+  warnings. They never block or error the review action. The reviewer experience
+  is unaffected if Supabase is unavailable.
+
+cs_articles TABLE STRUCTURE (Supabase):
+  The table is in Supabase (not SQLite). Structure assumed:
+    url: TEXT (primary key / unique)
+    status: TEXT ('approved' | 'rejected' | null/unset)
+    approved_by: TEXT
+    approved_at: TIMESTAMP
+  Exact schema not defined in the app codebase — managed separately in Supabase.
+
+CURRENT LIMITATION:
+  The learning loop only WRITES verdicts to Supabase. There is no mechanism in
+  the app to READ back from cs_articles — it is a one-way push. The app does
+  not check cs_articles to avoid re-importing already-seen articles.
+  There is no automated fetcher using cs_articles yet in the app.
+
+
+================================================================================
+11. CONTESTED SKIES IMPORT — SECONDARY INGESTION PATH
+================================================================================
+
+TRIGGER: Admin clicks "Import Contested Skies" button in News Articles tab.
+
+IPC HANDLER: intelligence:importFromContestedSkies
+
+WHAT IT DOES:
+  Fetches the live HTML of https://contestedskies.kantor-consulting.com.
+  Parses the embedded JavaScript sourceArchive data structure (not JSON — actual
+  JS object literal) using two RegExp passes:
+    countryRe: extracts per-country blocks (countryKey, countryName, articlesBlock)
+    articleRe: extracts article objects { date, pub, title, url, blurb, platformMentioned }
+
+  For each article found:
+    - Uses autoDetectCategories(title + ' ' + blurb) for categories
+    - If platformMentioned === true AND 'Innovation & Technology' not already in
+      categories → adds 'Innovation & Technology'
+    - Inserts with status='imported', confidence='medium'
+    - location_mentioned = countryName (from the JS country block)
+    - added_by_name = 'Imported from Contested Skies'
+    - Uses INSERT OR IGNORE on URL — deduplicates against existing rows
+
+RESULT:
+  Returns { ok, imported, total } — count of new vs already-known articles.
+  A banner appears in the News Articles tab showing count of 'imported' items.
+
+CONFIRM IMPORTED (batch approval):
+  Admin clicks "Confirm all as Medium confidence" on the banner.
+  intelligence:confirmImported handler:
+    - Finds all status='imported' rows
+    - Bulk-updates them to: status='approved', confidence='medium', confidence_override=1,
+      queue_section='source-archive'
+    - Calls addApprovedSourceToInfoPages() for each one
+    - Pushes bulk verdicts to Supabase learning loop
+
+PROBLEM WITH THIS PATH:
+  The RegExp parser is fragile. It matches the current JS object literal format
+  of the live Contested Skies page. If the page structure changes, the parser
+  breaks silently (0 articles imported). There is no validation that the import
+  actually found anything before declaring success.
+
+FRAMEWORK REFERENCES (special case):
+  Some rows in intelligence_sources have added_by_name='Kantor Framework'.
+  These are FIU and Kantor Consulting publications — NOT news articles.
+  The NewsTab filters them out: data.filter(s => s.added_by_name !== 'Kantor Framework')
+  They appear in the DB (seeded in db.ts) but never in the News Articles list.
+  They are pre-approved with a special "Authoritative — fixed" badge.
+
+
+================================================================================
+12. DOCUMENT UPLOAD — CLAUDE AI ANALYSIS PATH
+================================================================================
+
+TRIGGER: User clicks "Upload Documents" in the Documents tab.
+         Opens a native file picker (multi-select: PDF, DOCX, TXT).
+
+IPC HANDLER: intelligence:uploadDocument
+
+TEXT EXTRACTION:
+  TXT:  readFileSync(..., 'utf-8').slice(0, 50000)
+  PDF:  pdf-parse npm package. Returns pdfData.text.slice(0, 50000)
+  DOCX: mammoth npm package. Returns mammothResult.value.slice(0, 50000)
+
+CLAUDE ANALYSIS (if text length > 50 chars AND Anthropic API key configured):
+  Model: claude-opus-4-5
+  Max tokens: 1024
+  Prompt: Requests structured JSON extraction with these fields:
+    - key_findings: string[]
+    - named_actors: string[]
+    - locations: string[]
+    - dates_events: string[]
+    - platforms_systems: string[]
+    - suggested_categories: string[] (from the 9-category taxonomy)
+    - confidence: 'high' | 'medium' | 'low'
+    - confidence_reasoning: string
+
+  Input text is truncated to 8000 chars for the prompt (even if up to 50000 was extracted).
+
+  Response parsed: regex match for {...} to extract JSON from Claude's output.
+  analysis_json stored as TEXT in intelligence_sources.
+  categories set from analysis.suggested_categories (or [] if no analysis).
+  confidence set from analysis.confidence (or 'low' if no analysis).
+
+Anthropic API key resolution (in order of preference):
+  1. Current user's personal key (from local_users.preferences_json.anthropicApiKey)
+  2. Global admin key (from settings table, key='anthropic_api_key')
+  3. Admin account's personal key (doriankantor@gmail.com)
+
+WHAT IS STORED:
+  type: 'document'
+  title: filename
+  file_name: filename
+  local_path: full path on disk
+  content: text.slice(0, 10000) (truncated for storage)
+  analysis_json: Claude's JSON output (full)
+  categories_json: from analysis.suggested_categories
+  confidence: from analysis.confidence OR 'low'
+
+
+================================================================================
+13. SOCIAL MEDIA POSTS — MANUAL INGESTION PATH
+================================================================================
+
+Users manually enter social media post details via a form in the Social Media tab.
+No automated scraping or monitoring of social platforms.
+
+FIELDS:
+  platform: 'X / Twitter' | 'Telegram' | 'LinkedIn' | 'Facebook' | 'Instagram' | 'Other'
+  handle: @username or channel name (required)
+  post_date: date picker (required)
+  content: post text (required, used for category detection)
+  location_mentioned: free text (optional)
+  actors_mentioned: free text (optional)
+  url: link to original post (optional)
+  confidence: 'high' | 'medium' | 'low' (manual selection, defaults to 'low')
+  categories: multi-select from taxonomy (if none selected, autoDetectCategories runs on content)
+
+IPC HANDLER: intelligence:addSocial
+Stored with: type='social', status='unreviewed'
+
+No automated feed monitoring, no API integrations with social platforms.
+
+
+================================================================================
+14. PUBLISH TO LIVE SITE — GITHUB INJECTION
+================================================================================
+
+TRIGGER: Admin clicks "Push to Contested Skies" in Publish Queue tab.
+
+IPC HANDLER: intelligence:pushToContestedSkies
+
+WHAT IT DOES:
+  1. Gets GH_TOKEN from process.env.GH_TOKEN
+  2. Fetches all status='approved' items from intelligence_sources
+  3. Downloads current index.html from GitHub (GET /repos/Doriankantor/contested-skies-monitor/contents/index.html)
+  4. For each item, generates HTML and injects it into the appropriate section marker:
+       <!-- SECTION-02-INJECT --> for incident-feed
+       <!-- SECTION-03-INJECT --> for investment-procurement
+       etc.
+  5. Commits the modified HTML back to GitHub (PUT with base64 content + SHA)
+  6. Updates all pushed items to status='pushed' in SQLite
+  7. Writes a row to intelligence_push_log
+
+The HTML generated per item is embedded in the pushToContestedSkies handler
+(not shown in full here — it builds <article> elements matching the live site's CSS).
+
+FAILURE MODES:
+  - GH_TOKEN not set: returns error immediately
+  - GitHub returns 401: returns "token invalid or lacks write access"
+  - No approved items: returns error
+  - Network failure during push: partial push possible if some items were committed
+
+
+================================================================================
+15. WHAT CURRENTLY WORKS WELL
+================================================================================
+
+1. DEDUPLICATION IS SOLID
+   URL-based UNIQUE constraint means running "Refresh now" 10 times never creates
+   duplicate rows. The INSERT OR IGNORE pattern is correct.
+
+2. CONFIDENCE GRADING IS USEFUL
+   The source list covers the most relevant publications for this domain. High/medium
+   confidence articles are immediately recognizable.
+
+3. CATEGORY DETECTION COVERS THE DOMAIN
+   The 9 categories match the actual intelligence taxonomy used on the live site.
+   Auto-detection catches the majority of correctly-categorized drone stories.
+
+4. PIPELINE IS GATED CORRECTLY (as of v1.1.17)
+   The pipeline:true flag means only the LATAM Drone Threat board receives articles.
+   No routing leakage to unrelated projects.
+
+5. LEARNING LOOP IS FIRE-AND-FORGET
+   Supabase unavailability never blocks a review action. This is correct design.
+
+6. SCROLL POSITION PRESERVED (as of v1.1.17)
+   Status changes update items in-place without re-fetching the whole list.
+
+
+================================================================================
+16. KNOWN GAPS AND IMPROVEMENT OPPORTUNITIES
+================================================================================
+
+A. NO AUTOMATED SCHEDULED FETCH
+   The most significant gap. Users must manually click "Refresh now" to get new
+   articles. There is no cron job, no background timer, no daily pull.
+
+   IMPROVEMENT: Add a background timer in the main process that calls
+   fetchAndStoreNews() automatically on a schedule (e.g. every 6 hours while the
+   app is open). Could be implemented with setInterval in main process, deferred
+   by 2 minutes after startup to not slow login. Push a notification when new
+   articles arrive.
+
+   Alternative: GitHub Actions workflow that hits NewsAPI and writes directly to
+   the Supabase cs_articles table, then the app syncs from Supabase. This would
+   work even when the app is closed.
+
+B. NEWS API HAS NO GEOGRAPHIC FILTER
+   NewsAPI does not support geographic filtering. Many fetched articles are about
+   drones in Ukraine, Middle East, or other regions that are out of scope.
+   Currently all geographic filtering is done by the user manually rejecting
+   off-topic articles.
+
+   IMPROVEMENT: Add a post-fetch geographic relevance filter. Could be:
+   - Simple: reject articles whose title+snippet contain no LATAM country names
+   - Advanced: Claude relevance gate — send title+snippet to Claude and ask
+     "Is this article relevant to drone proliferation in Latin America? yes/no"
+     Use Claude haiku for speed/cost. Cache decisions by URL hash.
+
+C. CATEGORY DETECTION HAS KEYWORD CONFLICTS
+   "intercept" triggers both Incident AND Counter-drone/C-UAS.
+   "fund" triggers both Investment & Procurement AND Finance & Sanctions.
+   "export" triggers both Policy & Regulation AND Extra-regional Supplier.
+   This causes many articles to get 2–3 categories when only 1 is correct.
+
+   IMPROVEMENT: Weight categories by keyword specificity, or use Claude to assign
+   the single most-relevant category rather than keyword matching.
+
+D. 3-CATEGORY CAP DROPS VALID TAGS
+   Multi-faceted articles (e.g., an incident involving Chinese-made drones and
+   C-UAS response) would correctly have 4 categories but gets truncated to 3.
+   The truncation is arbitrary (first 3 matched in rule order).
+
+   IMPROVEMENT: Raise the cap to 4 or 5. The UI handles variable numbers of
+   category badges fine.
+
+E. NO CONTENT BEYOND SNIPPET
+   NewsAPI free plan truncates article.content to ~200 chars and the app only
+   uses article.description (snippet) for category/confidence detection.
+   Full article content is not available.
+
+   IMPROVEMENT: Use a web scraper (e.g. Readability, or a headless fetch + HTML
+   parsing) to retrieve the full article text when a user opens an article card.
+   Store full text in content column. Run richer category/confidence analysis on
+   full text. Respect robots.txt and rate limits.
+
+F. NO RELEVANCE SCORING
+   All articles arrive with the same priority. A frontpage Reuters article about
+   a major LATAM drone incident is displayed alongside a low-quality blog post
+   mentioning UAVs in passing. Users must manually sort through all of them.
+
+   IMPROVEMENT: Add a relevance score (0–100) computed on insert.
+   Factors: confidence (source quality) × category match count × LATAM keyword
+   match in title. Sort the default view by relevance descending.
+   Or: send title+snippet to Claude haiku with a short system prompt defining
+   the editorial focus, ask for a 0–10 relevance rating, store as relevance_score.
+   Pre-filter: only show articles with relevance_score ≥ 5 by default.
+
+G. NO PERSISTENCE ACROSS FILTER CHANGES
+   When a user changes the status/confidence/category filter, the full list
+   reloads with setLoading(true), which still resets scroll position.
+   Only per-item status changes (approve/reject/save) now preserve scroll.
+
+   IMPROVEMENT: Keep the in-place update approach but also apply it when
+   filters change — use CSS visibility/opacity to hide non-matching items
+   instead of unmounting and remounting them.
+
+H. NEWSAPI FREE PLAN LIMITS
+   100 requests/day (5 queries per refresh = 20 refreshes/day max).
+   Articles older than 1 month not available.
+   Limited source coverage on free plan.
+
+   IMPROVEMENT: Upgrade to paid NewsAPI plan, or supplement with additional
+   free sources: GDELT, MediaStack, GNews, or direct RSS feeds from key
+   publications (Reuters, Jane's, InSight Crime have RSS).
+
+I. NO DUPLICATE DETECTION ACROSS TOPICS
+   The same story may appear in multiple query results (e.g., both Query 1 and
+   Query 3 might return the same Reuters article about cartel drones in Mexico).
+   This is handled correctly by the UNIQUE constraint on URL.
+   But articles that are syndicated (same content, different URLs) create duplicates.
+
+   IMPROVEMENT: Content-based deduplication using a hash of the title, or
+   fuzzy title matching (Levenshtein distance < threshold).
+
+J. APPROVED ARTICLES HAVE NO EXPIRATION
+   Approved articles sit in the queue indefinitely until pushed. There is no
+   staleness indicator or auto-expiry.
+
+   IMPROVEMENT: Add a visual "staleness" indicator for approved articles older
+   than 14 days. Consider auto-archiving (move to 'saved') after 30 days.
+
+K. NO SEARCH IN PUBLISH QUEUE TAB
+   The Publish Queue tab shows all approved articles but has no search/filter.
+   With many items queued, finding a specific one is difficult.
+
+   IMPROVEMENT: Add search and sort controls to PublishQueue.tsx.
+
+L. TOPIC EXPANSION NOT STRUCTURED
+   If the user wants to add new drone-related search topics (e.g., "Houthi drones"
+   or "drone surveillance border"), they must manually edit NEWS_QUERIES in
+   ipc/index.ts. There is no UI for managing search queries.
+
+   IMPROVEMENT: Move NEWS_QUERIES to a configurable field in the LATAM Drone Threat
+   board_config (alongside keywords). Expose an admin UI to edit them.
+   Separate "fetch queries" (what to search for) from "routing keywords" (what goes
+   to this page).
+
+M. LEARNING LOOP IS WRITE-ONLY FROM APP SIDE
+   Human verdicts are pushed to Supabase cs_articles but never read back.
+   There is no mechanism to import articles from cs_articles into the app,
+   and no feedback on whether the learning signal is actually improving anything.
+
+   IMPROVEMENT: Add a "sync from Supabase" button that reads recent cs_articles
+   rows and imports them. Show a count of how many verdicts have been logged in
+   cs_articles. If a future automated pipeline exists, show stats on its
+   accuracy vs. human decisions.
+
+
+================================================================================
+17. FULL SOURCE CODE EXCERPTS FOR AI REFERENCE
+================================================================================
+
+--- FILE: src/main/ipc/index.ts (lines 1–4, Supabase client init) ---
+
+import { ipcMain, app, dialog, shell } from 'electron'
+import { createClient } from '@supabase/supabase-js'
+import ws from 'ws'
+import { getDatabase, hashPassword } from '../db'
+
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL ?? '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+  { auth: { autoRefreshToken: false, persistSession: false },
+    realtime: { transport: ws } }
+)
+
+
+--- FILE: src/main/ipc/index.ts (Learning loop helpers) ---
+
+function verdictToCsStatus(status: string): 'approved' | 'rejected' | null {
+  return status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : null
+}
+
+async function pushVerdictToSupabase(url, status, reviewerName): Promise<void> {
+  const csStatus = verdictToCsStatus(status)
+  if (!url || !csStatus) return
+  try {
+    const patch = { status: csStatus }
+    if (csStatus === 'approved') {
+      patch.approved_by = reviewerName ?? null
+      patch.approved_at = new Date().toISOString()
+    }
+    const { error } = await supabaseAdmin.from('cs_articles').update(patch).eq('url', url)
+    if (error) console.warn('[Learning] cs_articles verdict write-back failed:', error.message)
+  } catch (e) {
+    console.warn('[Learning] cs_articles verdict write-back threw:', e?.message)
+  }
+}
+
+
+--- FILE: src/main/ipc/index.ts (Confidence detection) ---
+
+const HIGH_CONFIDENCE_SOURCES = [
+  'reuters', 'apnews', 'ap news', 'bbc', 'nytimes', 'new york times',
+  'ft.com', 'financial times', "jane's", 'janes', 'insightcrime',
+  'insight crime', 'infodefensa', 'washingtonpost', 'washington post',
+  'theguardian', 'guardian', 'bloomberg', 'wsj', 'wall street journal',
+  'foreignpolicy', 'foreign policy', 'defenseone', 'defense one',
+  'breakingdefense', 'breaking defense'
+]
+const MEDIUM_CONFIDENCE_SOURCES = [
+  'semana', 'el tiempo', 'zona militar', 'la nacion', 'infobae',
+  'mercopress', 'elpais', 'el pais', 'elespectador', 'el espectador',
+  'larepublica', 'la republica', 'dinero', 'portafolio', 'caracoltv',
+  'rcnradio', 'rcn', 'civiles en red', 'defensa.com', 'infodefensa',
+  'americaeconomia', 'america economia', 'telam', 'agencia efe', 'efe',
+  'dw.com', 'dw', 'france24', 'france 24', 'al jazeera', 'aljazeera',
+  'rferl', 'radio free europe', 'kyivindependent', 'kyiv independent',
+  'themoscowtimes', 'moscow times', 'thedrive', 'the drive',
+  'warisboring', 'war is boring', 'bellingcat', 'bulgarianmilitary',
+  'bulgarian military', 'militarytimes', 'military times',
+  'defensenews', 'defense news', 'aviationweek', 'flightglobal'
+]
+
+function autoDetectConfidence(sourceName) {
+  const lower = (sourceName || '').toLowerCase()
+  if (HIGH_CONFIDENCE_SOURCES.some(s => lower.includes(s))) return 'high'
+  if (MEDIUM_CONFIDENCE_SOURCES.some(s => lower.includes(s))) return 'medium'
+  return 'low'
+}
+
+
+--- FILE: src/main/ipc/index.ts (Category detection) ---
+
+const CATEGORY_RULES = [
+  { keywords: ['strike','attack','casualt','kill','wound','injur','explosion','bomb','shot down','intercept','destroy','hit','target'], category: 'Incident' },
+  { keywords: ['procure','purchase','buy','acquire','contract','deal','sale','order','invest','budget','fund','billion','million','tender'], category: 'Investment & Procurement' },
+  { keywords: ['technolog','innovat','develop','prototype','test','capabilit','sensor','ai ','autonomo','swarm','stealth','payload','range','endurance'], category: 'Innovation & Technology' },
+  { keywords: ['regulat','policy','law','legislat','ban','restrict','export control','sanction','treaty','agreement','framework','standard'], category: 'Policy & Regulation' },
+  { keywords: ['cartel','criminal','narco','traffick','gang','vnsa','non-state','terror','insurgent','rebel','militia','drug','smuggl'], category: 'Criminal & VNSA Activity' },
+  { keywords: ['counter-drone','counter drone','c-uas','anti-drone','anti drone','intercept','jam','defeat','detect','defend'], category: 'Counter-drone / C-UAS' },
+  { keywords: ['military','armed force','army','navy','air force','deploy','operati','exercise','training','unit','battalion','brigade'], category: 'State Military Activity' },
+  { keywords: ['sanction','financ','payment','transfer','fund','launder','revenue','profit','illicit','dark web','crypto','bank'], category: 'Finance & Sanctions' },
+  { keywords: ['china','chinese','iran','iranian','russia','russian','turkey','turkish','export','supplier','transfer','proliferat','third-party','third party'], category: 'Extra-regional Supplier' },
+]
+
+function autoDetectCategories(text) {
+  const lower = (text || '').toLowerCase()
+  const cats = []
+  for (const rule of CATEGORY_RULES) {
+    if (rule.keywords.some(k => lower.includes(k))) {
+      if (!cats.includes(rule.category)) cats.push(rule.category)
+    }
+  }
+  return cats.slice(0, 3) // max 3 categories
+}
+
+
+--- FILE: src/main/ipc/index.ts (NewsAPI fetch) ---
+
+const NEWS_QUERIES = [
+  'drone proliferation OR "drone strikes" OR "drone purchases" OR "counter drone" OR "weaponized drones" OR "DJI drones" OR "drone warfare" OR "loitering munitions" OR "FPV drones" OR "drone swarms"',
+  '"autonomous weapons" OR UAV OR "MALE drones" OR "drone jamming" OR "anti-drone systems" OR "drone export" OR "drone regulation" OR "kamikaze drones"',
+  '"drones Latin America" OR "drones Colombia" OR "drones Venezuela" OR "drones Mexico" OR "drones Brazil" OR "cartel drones" OR "narco drones"',
+  '"drones Ukraine" OR "drones Middle East" OR "drones Iran" OR "drones NATO" OR "Iranian drones"',
+  '"DJI export" OR "Turkish Bayraktar" OR "Chinese drone exports" OR "drone proliferation" OR "non-state actors drones"',
+]
+
+async function fetchAndStoreNews(): Promise<number> {
+  const apiKey = process.env.NEWSAPI_KEY
+  if (!apiKey) { console.log('[Intelligence] NEWSAPI_KEY not set'); return 0 }
+  const db = getDatabase()
+  let stored = 0
+  for (const q of NEWS_QUERIES) {
+    try {
+      const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&language=en&sortBy=publishedAt&pageSize=20&apiKey=${apiKey}`
+      const res = await fetch(url)
+      if (!res.ok) { console.warn('[Intelligence] NewsAPI error:', res.status); continue }
+      const data = await res.json()
+      for (const article of data.articles ?? []) {
+        if (!article.url || !article.title) continue
+        const confidence = autoDetectConfidence(article.source?.name ?? '')
+        const snippet = article.description || article.content?.slice(0, 300) || ''
+        const categories = autoDetectCategories((article.title || '') + ' ' + snippet)
+        try {
+          db.prepare(`
+            INSERT OR IGNORE INTO intelligence_sources
+              (id, type, title, snippet, url, source_name, published_at, confidence, categories_json, image_url)
+            VALUES (?, 'article', ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(crypto.randomUUID(), article.title, snippet, article.url,
+                 article.source?.name || '', article.publishedAt, confidence,
+                 JSON.stringify(categories), article.urlToImage || null)
+          stored++
+        } catch { /* duplicate URL */ }
+      }
+    } catch (e) { console.warn('[Intelligence] NewsAPI query error:', e) }
+  }
+  return stored
+}
+
+
+--- FILE: src/main/ipc/index.ts (Routing function) ---
+
+function addApprovedSourceToInfoPages(sourceId) {
+  const db = getDatabase()
+  const src = db.prepare('SELECT * FROM intelligence_sources WHERE id=?').get(sourceId)
+  if (!src) return []
+  const pages = db.prepare(
+    "SELECT id,name,board_config FROM workspace_boards WHERE board_type='info-page' AND archived=0"
+  ).all()
+  const added = []
+  for (const page of pages) {
+    let cfg = {}
+    try { cfg = page.board_config ? JSON.parse(page.board_config) : {} } catch {}
+    if (cfg.pipeline !== true) continue  // ← only pipeline-enabled boards
+    const keywords = keywordsForInfoPage(page.board_config)
+    if (!sourceMatchesKeywords(src, keywords)) continue
+    if (src.used_in_page && src.used_in_page === page.name) continue
+    const exists = db.prepare("SELECT 1 FROM info_page_items WHERE page_id=? AND origin_source_id=?").get(page.id, sourceId)
+    if (exists) continue
+    insertSourceItemForPage(page.id, src)
+    added.push(page.name)
+  }
+  return added
+}
+
+
+--- FILE: src/main/ipc/index.ts (intelligence:updateStatus handler) ---
+
+ipcMain.handle('intelligence:updateStatus', (_e, id, status, notes, reviewedById, reviewedByName) => {
+  const meta = db().prepare('SELECT url FROM intelligence_sources WHERE id=?').get(id)
+  if (status === 'approved') {
+    const row = db().prepare('SELECT categories_json FROM intelligence_sources WHERE id=?').get(id)
+    const cats = JSON.parse(row?.categories_json || '[]')
+    let section = 'source-archive'
+    if (cats.includes('Incident')) section = 'incident-feed'
+    else if (cats.includes('Investment & Procurement')) section = 'investment-procurement'
+    else if (cats.includes('Finance & Sanctions')) section = 'finance-nexus'
+    else if (cats.includes('Innovation & Technology') || cats.includes('State Military Activity')) section = 'platforms'
+    db().prepare('UPDATE intelligence_sources SET status=?, review_notes=?, reviewed_by_id=?, reviewed_by_name=?, reviewed_at=?, queue_section=? WHERE id=?')
+      .run(status, notes ?? null, reviewedById ?? null, reviewedByName ?? null, new Date().toISOString(), section, id)
+    let addedToPages = []
+    try { addedToPages = addApprovedSourceToInfoPages(id) } catch (e) { console.warn('[Pipeline] fan-out failed', e) }
+    void pushVerdictToSupabase(meta?.url, status, reviewedByName)
+    return { ok: true, addedToPages }
+  } else {
+    db().prepare('UPDATE intelligence_sources SET status=?, review_notes=?, reviewed_by_id=?, reviewed_by_name=?, reviewed_at=? WHERE id=?')
+      .run(status, notes ?? null, reviewedById ?? null, reviewedByName ?? null, new Date().toISOString(), id)
+  }
+  void pushVerdictToSupabase(meta?.url, status, reviewedByName)
+  return { ok: true }
+})
+
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================
