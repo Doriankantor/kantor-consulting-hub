@@ -841,7 +841,14 @@ export function initDatabase(): void {
   // Seed Info Page boards
   try {
     db.exec("INSERT OR IGNORE INTO workspace_boards (id,name,position,board_type,board_config) VALUES ('board-info-latam','LATAM Drone Threat',50,'info-page','{\"repo\":\"Doriankantor/contested-skies-monitor\",\"live_url\":\"contestedskies.kantor-consulting.com\",\"keywords\":\"drone proliferation,drone strikes,drone purchases,counter drone,civilian drone use,criminal drone use,weaponized drones,DJI drones,drone warfare,loitering munitions,kamikaze drones,FPV drones,drone swarms,autonomous weapons,UAV,MALE drones,drone jamming,anti-drone systems,drone export controls,drone regulation,drones Latin America,drones Colombia,drones Venezuela,drones Mexico,drones Brazil,cartel drones,narco drones,DJI export restrictions,Iranian drones,Turkish Bayraktar,Chinese drone exports,drone proliferation non-state actors\",\"status\":\"active\"}')")
-    db.exec("INSERT OR IGNORE INTO workspace_boards (id,name,position,board_type,board_config) VALUES ('board-info-trump','Trump Immigration',51,'info-page','{\"repo\":\"\",\"live_url\":\"\",\"keywords\":\"\",\"status\":\"setup-pending\"}')")
+    db.exec("INSERT OR IGNORE INTO workspace_boards (id,name,position,board_type,board_config) VALUES ('board-info-trump','Trump Immigration',51,'info-page','{\"repo\":\"Doriankantor/Trump-immigration\",\"live_url\":\"\",\"keywords\":\"trump immigration,immigration policy,mass deportation,deportation,ICE raids,ICE,border security,border wall,asylum,refugees,migrants,visa policy,H-1B,green card,DACA,birthright citizenship,immigration enforcement,CBP,Title 42,sanctuary cities,immigration courts,undocumented immigrants,work permits,travel ban,immigrant detention,migrant caravan\",\"file\":\"index.html\",\"status\":\"active\"}')")
+  } catch {}
+
+  // Link the Trump Immigration page to its GitHub repo on existing installs that
+  // were seeded before the repo existed. Only runs while the page is still
+  // unlinked (empty repo) so it never overwrites a manual Edit settings change.
+  try {
+    db.exec("UPDATE workspace_boards SET board_config='{\"repo\":\"Doriankantor/Trump-immigration\",\"live_url\":\"\",\"keywords\":\"trump immigration,immigration policy,mass deportation,deportation,ICE raids,ICE,border security,border wall,asylum,refugees,migrants,visa policy,H-1B,green card,DACA,birthright citizenship,immigration enforcement,CBP,Title 42,sanctuary cities,immigration courts,undocumented immigrants,work permits,travel ban,immigrant detention,migrant caravan\",\"file\":\"index.html\",\"status\":\"active\"}', updated_at=datetime('now') WHERE id='board-info-trump' AND board_config LIKE '%\"repo\":\"\"%'")
   } catch {}
 
   // ── Source Intelligence → Info Pages pipeline ─────────────────────────────
