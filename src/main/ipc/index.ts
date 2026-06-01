@@ -23,6 +23,73 @@ const supabaseAdmin = createClient(
   }
 )
 
+// ── Learning loop: mirror review verdicts up to Supabase cs_articles ─────────
+// The daily GitHub-Actions fetcher (scripts/) reads cs_articles to calibrate its
+// Claude relevance gate (few-shot examples + per-source/category weighting). The
+// app records approve/reject in LOCAL SQLite (intelligence_sources), so we mirror
+// those verdicts up to cs_articles.status — matched by the article URL, which is
+// the shared join key between the website-imported rows and the pipeline rows.
+// Fire-and-forget and FAIL-OPEN: a Supabase/network error must NEVER block or
+// break a review action. Only 'approved' / 'rejected' are learning signals.
+function verdictToCsStatus(status: string): 'approved' | 'rejected' | null {
+  return status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : null
+}
+
+async function pushVerdictToSupabase(url: string | null | undefined, status: string, reviewerName?: string | null): Promise<void> {
+  const csStatus = verdictToCsStatus(status)
+  if (!url || !csStatus) return
+  try {
+    const patch: Record<string, unknown> = { status: csStatus }
+    if (csStatus === 'approved') {
+      patch.approved_by = reviewerName ?? null
+      patch.approved_at = new Date().toISOString()
+    }
+    const { error } = await supabaseAdmin.from('cs_articles').update(patch).eq('url', url)
+    if (error) console.warn('[Learning] cs_articles verdict write-back failed:', error.message)
+  } catch (e) {
+    console.warn('[Learning] cs_articles verdict write-back threw:', (e as Error)?.message)
+  }
+}
+
+// Bulk variant (confirmImported / backfill): one chunked UPDATE per verdict class.
+async function pushVerdictsToSupabase(urls: Array<string | null | undefined>, status: string, reviewerName?: string | null): Promise<void> {
+  const csStatus = verdictToCsStatus(status)
+  const clean = urls.filter((u): u is string => typeof u === 'string' && u.length > 0)
+  if (!csStatus || clean.length === 0) return
+  try {
+    const patch: Record<string, unknown> = { status: csStatus }
+    if (csStatus === 'approved') {
+      patch.approved_by = reviewerName ?? null
+      patch.approved_at = new Date().toISOString()
+    }
+    const CHUNK = 100
+    for (let i = 0; i < clean.length; i += CHUNK) {
+      const chunk = clean.slice(i, i + CHUNK)
+      const { error } = await supabaseAdmin.from('cs_articles').update(patch).in('url', chunk)
+      if (error) console.warn('[Learning] cs_articles bulk write-back failed:', error.message)
+    }
+  } catch (e) {
+    console.warn('[Learning] cs_articles bulk write-back threw:', (e as Error)?.message)
+  }
+}
+
+// One-time backfill: push EXISTING local approve/reject verdicts up to cs_articles
+// so the gate has training signal immediately instead of waiting for new reviews.
+// Idempotent (UPDATE-by-URL) and guarded by a settings flag so it runs once.
+async function backfillDecisionsToSupabase(): Promise<void> {
+  try {
+    const db = getDatabase()
+    const approved = (db.prepare("SELECT url FROM intelligence_sources WHERE status='approved' AND url IS NOT NULL").all() as { url: string }[]).map((r) => r.url)
+    const rejected = (db.prepare("SELECT url FROM intelligence_sources WHERE status='rejected' AND url IS NOT NULL").all() as { url: string }[]).map((r) => r.url)
+    await pushVerdictsToSupabase(approved, 'approved', 'Backfill')
+    await pushVerdictsToSupabase(rejected, 'rejected')
+    setSetting('cs_decisions_backfilled_v1', 'done')
+    console.log(`[Learning] Backfilled ${approved.length} approved + ${rejected.length} rejected verdict(s) to cs_articles.`)
+  } catch (e) {
+    console.warn('[Learning] backfill failed:', (e as Error)?.message)
+  }
+}
+
 function uuid(): string { return crypto.randomUUID() }
 function now():  string { return new Date().toISOString() }
 
@@ -2353,6 +2420,17 @@ function addApprovedSourceToInfoPages(sourceId: string): string[] {
 function registerIntelligenceHandlers(): void {
   const db = () => getDatabase()
 
+  // One-time learning backfill: mirror EXISTING local approve/reject verdicts up
+  // to Supabase cs_articles so the gate has training signal immediately. Guarded
+  // by a settings flag (runs once), deferred so it never blocks app startup.
+  try {
+    if (getSetting('cs_decisions_backfilled_v1') !== 'done') {
+      setTimeout(() => { void backfillDecisionsToSupabase() }, 8000)
+    }
+  } catch (e) {
+    console.warn('[Learning] backfill guard check failed:', (e as Error)?.message)
+  }
+
   ipcMain.handle('intelligence:getSources', (_e, params: {
     type?: string; status?: string; confidence?: string;
     category?: string; search?: string; limit?: number; offset?: number
@@ -2380,6 +2458,8 @@ function registerIntelligenceHandlers(): void {
 
   ipcMain.handle('intelligence:updateStatus', (_e, id: string, status: string, notes?: string, reviewedById?: string, reviewedByName?: string) => {
     const now2 = new Date().toISOString()
+    // The article URL is the join key for mirroring this verdict to cs_articles.
+    const meta = db().prepare('SELECT url FROM intelligence_sources WHERE id=?').get(id) as { url?: string } | undefined
     if (status === 'approved') {
       const row = db().prepare('SELECT categories_json FROM intelligence_sources WHERE id=?').get(id) as { categories_json: string } | undefined
       const cats: string[] = JSON.parse(row?.categories_json || '[]')
@@ -2394,12 +2474,16 @@ function registerIntelligenceHandlers(): void {
       // Pipeline: fan this approved source out into matching Info Pages' Sources tabs.
       let addedToPages: string[] = []
       try { addedToPages = addApprovedSourceToInfoPages(id) } catch (e) { console.warn('[Pipeline] fan-out failed', e) }
+      // Learning loop: mirror the verdict up to Supabase (fire-and-forget).
+      void pushVerdictToSupabase(meta?.url, status, reviewedByName)
       return { ok: true, addedToPages }
     } else {
       db().prepare(`
         UPDATE intelligence_sources SET status=?, review_notes=?, reviewed_by_id=?, reviewed_by_name=?, reviewed_at=? WHERE id=?
       `).run(status, notes ?? null, reviewedById ?? null, reviewedByName ?? null, now2, id)
     }
+    // Learning loop: mirror approve/reject up to Supabase (fire-and-forget).
+    void pushVerdictToSupabase(meta?.url, status, reviewedByName)
     return { ok: true }
   })
 
@@ -2824,7 +2908,7 @@ ${textContent.slice(0, 8000)}`
   }) => {
     const conf = params.confidence || 'medium'
     const now2 = new Date().toISOString()
-    const rows = db().prepare("SELECT id FROM intelligence_sources WHERE status='imported'").all() as { id: string }[]
+    const rows = db().prepare("SELECT id, url FROM intelligence_sources WHERE status='imported'").all() as { id: string; url?: string }[]
     const addedAll = new Set<string>()
     const upd = db().prepare(`
       UPDATE intelligence_sources
@@ -2836,6 +2920,8 @@ ${textContent.slice(0, 8000)}`
       upd.run(conf, params.reviewedById || null, params.reviewedByName || null, now2, r.id)
       try { addApprovedSourceToInfoPages(r.id).forEach(p => addedAll.add(p)) } catch (e) { console.warn('[Pipeline] confirmImported fan-out failed', e) }
     }
+    // Learning loop: mirror this bulk approval up to Supabase (fire-and-forget).
+    void pushVerdictsToSupabase(rows.map((r) => r.url), 'approved', params.reviewedByName)
     return { ok: true, count: rows.length, addedToPages: [...addedAll] }
   })
 }

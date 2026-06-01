@@ -31,6 +31,7 @@ import WebSocket from 'ws'
 import { createClient } from '@supabase/supabase-js'
 import { makeAnthropic, categorize, isRelevant, RELEVANCE_THRESHOLD } from './lib/categorize.js'
 import { fetchAllGdelt, buildGdeltQueries } from './lib/gdelt-fetch.js'
+import { fetchCalibration } from './lib/learning.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 // Load the repo-root .env for local runs. `override: true` lets the .env win
@@ -371,14 +372,24 @@ async function main() {
 
   // STEP 2 — categorize each new article with the strict relevance gate.
   console.log('\n[2/5] Categorizing with Claude (strict LATAM-drone relevance gate)...')
+  // Learning loop: pull the editor's past approve/reject verdicts ONCE and feed
+  // them to the gate as few-shot examples + source/category score weighting.
+  const calibration = await fetchCalibration(supabase)
+  if (calibration.hasData) {
+    console.log(`  Calibrated from ${calibration.counts.approved} approved + ${calibration.counts.rejected} rejected past verdict(s).`)
+  } else {
+    console.log('  No human verdict history yet — gate runs un-calibrated (baseline).')
+  }
   const rows = []
   let discardedLowRelevance = 0
+  let learningAdjusted = 0
   for (const article of fresh) {
     const cat = await categorize(anthropic, {
       title: article.title,
       snippet: article.content_snippet || article.title || '',
       source: article.source_name,
-    })
+    }, calibration)
+    if (cat?.learning_note) learningAdjusted++
     if (cat) {
       if (!isRelevant(cat)) {
         discardedLowRelevance++
@@ -471,6 +482,13 @@ async function main() {
     for (const [cat, n] of catEntries) console.log(`       ${cat}: ${n}`)
   } else {
     console.log('       (none kept this run)')
+  }
+
+  // Learning loop summary: how much human feedback shaped this run.
+  if (calibration.hasData) {
+    console.log(`  6b. Learning: calibrated from ${calibration.counts.approved} approved + ${calibration.counts.rejected} rejected verdict(s); score nudged on ${learningAdjusted} article(s) this run.`)
+  } else {
+    console.log('  6b. Learning: no human verdict history yet (baseline gate).')
   }
 
   // 7. First 8 kept articles.

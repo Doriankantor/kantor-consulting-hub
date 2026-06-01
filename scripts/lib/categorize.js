@@ -12,6 +12,7 @@
 // ============================================================================
 
 import Anthropic from '@anthropic-ai/sdk'
+import { applyLearning } from './learning.js'
 
 export const CLAUDE_MODEL = 'claude-haiku-4-5'
 export const RELEVANCE_THRESHOLD = 5
@@ -32,14 +33,16 @@ export function makeAnthropic(apiKey) {
   return apiKey ? new Anthropic({ apiKey }) : null
 }
 
-// Build the strict categorization prompt for a single article.
-export function buildPrompt({ title, snippet, source }) {
+// Build the strict categorization prompt for a single article. `calibrationBlock`
+// is an optional human-feedback guidance string (from lib/learning.js); when
+// omitted the prompt is byte-identical to the un-calibrated baseline.
+export function buildPrompt({ title, snippet, source, calibrationBlock }) {
   return `You are categorizing a news article for a Latin America drone/UAS intelligence database.
 
 Article title: ${title || ''}
 Article snippet: ${snippet || ''}
 Source: ${source || 'Unknown'}
-
+${calibrationBlock || ''}
 First determine if this article is ACTUALLY about drones, UAS, or UAV systems in Latin America.
 
 Answer these questions:
@@ -80,9 +83,16 @@ Respond ONLY with a JSON object, no other text:
 // any API/parse failure (callers decide what to do with null). The strict gate is
 // enforced here too: if Claude answered "no" to any of the three questions, the
 // relevance_score is forced to 0 regardless of what the model wrote.
-export async function categorize(anthropic, { title, snippet, source }) {
+//
+// `calibration` (optional, from lib/learning.js) adds human-feedback learning:
+// few-shot examples are injected into the prompt, and a conservative score nudge
+// is applied AFTER the hard gate but BEFORE the category allow-list cap, so a
+// learned boost can never resurrect a gate failure or sneak in an invalid
+// category. When `calibration` is omitted the behavior is the un-calibrated
+// baseline (this is the path cleanup-irrelevant.js uses).
+export async function categorize(anthropic, { title, snippet, source }, calibration) {
   if (!anthropic) return null
-  const prompt = buildPrompt({ title, snippet, source })
+  const prompt = buildPrompt({ title, snippet, source, calibrationBlock: calibration?.block })
   try {
     const msg = await anthropic.messages.create({
       model: CLAUDE_MODEL,
@@ -107,6 +117,15 @@ export async function categorize(anthropic, { title, snippet, source }) {
       String(parsed.q2_latam_country).toLowerCase() === 'no' ||
       String(parsed.q3_main_topic).toLowerCase() === 'no'
     if (gateFailed) parsed.relevance_score = 0
+
+    // Human-feedback nudge (only when calibration data exists and the article
+    // already cleared the hard gate). Applied BEFORE the allow-list cap below so
+    // a learned boost can never push an invalid category over the threshold.
+    if (calibration?.hasData) {
+      const { score, note } = applyLearning(parsed, { source }, calibration)
+      parsed.relevance_score = score
+      if (note) parsed.learning_note = note
+    }
 
     // Reject categories that aren't in our allow-list.
     if (parsed.primary_category && !PRIMARY_CATEGORIES.includes(parsed.primary_category)) {
