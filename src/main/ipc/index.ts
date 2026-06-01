@@ -2598,6 +2598,9 @@ Help the analyst think through the update. Ask clarifying questions when useful,
 }
 
 // When a source is approved, fan it out into every matching info page's Sources tab.
+// Only routes to pages that have "pipeline": true in their board_config — this ensures
+// all pulled drone articles go exclusively to LATAM Drone Threat and never to
+// unrelated pages (e.g. Trump Immigration) even if keywords overlap.
 // Dedupes by (page_id, origin_source_id) and skips pages where it's already published.
 // Returns the names of the pages it was added to.
 function addApprovedSourceToInfoPages(sourceId: string): string[] {
@@ -2607,6 +2610,10 @@ function addApprovedSourceToInfoPages(sourceId: string): string[] {
   const pages = db.prepare("SELECT id,name,board_config FROM workspace_boards WHERE board_type='info-page' AND archived=0").all() as Array<{ id: string; name: string; board_config: string | null }>
   const added: string[] = []
   for (const page of pages) {
+    // Only route to pages explicitly opted into the automated pipeline.
+    let cfg: Record<string, unknown> = {}
+    try { cfg = page.board_config ? JSON.parse(page.board_config) : {} } catch { cfg = {} }
+    if (cfg.pipeline !== true) continue
     const keywords = keywordsForInfoPage(page.board_config)
     if (!sourceMatchesKeywords(src, keywords)) continue
     // Skip if already used (published) in this page.

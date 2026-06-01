@@ -840,8 +840,8 @@ export function initDatabase(): void {
 
   // Seed Info Page boards
   try {
-    db.exec("INSERT OR IGNORE INTO workspace_boards (id,name,position,board_type,board_config) VALUES ('board-info-latam','LATAM Drone Threat',50,'info-page','{\"repo\":\"Doriankantor/contested-skies-monitor\",\"live_url\":\"contestedskies.kantor-consulting.com\",\"keywords\":\"drone proliferation,drone strikes,drone purchases,counter drone,civilian drone use,criminal drone use,weaponized drones,DJI drones,drone warfare,loitering munitions,kamikaze drones,FPV drones,drone swarms,autonomous weapons,UAV,MALE drones,drone jamming,anti-drone systems,drone export controls,drone regulation,drones Latin America,drones Colombia,drones Venezuela,drones Mexico,drones Brazil,cartel drones,narco drones,DJI export restrictions,Iranian drones,Turkish Bayraktar,Chinese drone exports,drone proliferation non-state actors\",\"status\":\"active\"}')")
-    db.exec("INSERT OR IGNORE INTO workspace_boards (id,name,position,board_type,board_config) VALUES ('board-info-trump','Trump Immigration',51,'info-page','{\"repo\":\"Doriankantor/Trump-immigration\",\"live_url\":\"\",\"keywords\":\"trump immigration,immigration policy,mass deportation,deportation,ICE raids,ICE,border security,border wall,asylum,refugees,migrants,visa policy,H-1B,green card,DACA,birthright citizenship,immigration enforcement,CBP,Title 42,sanctuary cities,immigration courts,undocumented immigrants,work permits,travel ban,immigrant detention,migrant caravan\",\"file\":\"index.html\",\"status\":\"active\"}')")
+    db.exec("INSERT OR IGNORE INTO workspace_boards (id,name,position,board_type,board_config) VALUES ('board-info-latam','LATAM Drone Threat',50,'info-page','{\"repo\":\"Doriankantor/contested-skies-monitor\",\"live_url\":\"contestedskies.kantor-consulting.com\",\"keywords\":\"drone proliferation,drone strikes,drone purchases,counter drone,civilian drone use,criminal drone use,weaponized drones,DJI drones,drone warfare,loitering munitions,kamikaze drones,FPV drones,drone swarms,autonomous weapons,UAV,MALE drones,drone jamming,anti-drone systems,drone export controls,drone regulation,drones Latin America,drones Colombia,drones Venezuela,drones Mexico,drones Brazil,cartel drones,narco drones,DJI export restrictions,Iranian drones,Turkish Bayraktar,Chinese drone exports,drone proliferation non-state actors\",\"status\":\"active\",\"pipeline\":true}')")
+    db.exec("INSERT OR IGNORE INTO workspace_boards (id,name,position,board_type,board_config) VALUES ('board-info-trump','Trump Immigration',51,'info-page','{\"repo\":\"Doriankantor/Trump-immigration\",\"live_url\":\"\",\"keywords\":\"trump immigration,immigration policy,mass deportation,deportation,ICE raids,ICE,border security,border wall,asylum,refugees,migrants,visa policy,H-1B,green card,DACA,birthright citizenship,immigration enforcement,CBP,Title 42,sanctuary cities,immigration courts,undocumented immigrants,work permits,travel ban,immigrant detention,migrant caravan\",\"file\":\"index.html\",\"status\":\"active\",\"pipeline\":false}')")
   } catch {}
 
   // Link the Trump Immigration page to its GitHub repo on existing installs that
@@ -849,6 +849,26 @@ export function initDatabase(): void {
   // unlinked (empty repo) so it never overwrites a manual Edit settings change.
   try {
     db.exec("UPDATE workspace_boards SET board_config='{\"repo\":\"Doriankantor/Trump-immigration\",\"live_url\":\"\",\"keywords\":\"trump immigration,immigration policy,mass deportation,deportation,ICE raids,ICE,border security,border wall,asylum,refugees,migrants,visa policy,H-1B,green card,DACA,birthright citizenship,immigration enforcement,CBP,Title 42,sanctuary cities,immigration courts,undocumented immigrants,work permits,travel ban,immigrant detention,migrant caravan\",\"file\":\"index.html\",\"status\":\"active\"}', updated_at=datetime('now') WHERE id='board-info-trump' AND board_config LIKE '%\"repo\":\"\"%'")
+  } catch {}
+
+  // Pipeline routing fix: ensure LATAM Drone Threat is the ONLY automated
+  // article-pull destination. Runs on every startup but only writes when the
+  // pipeline flag is missing or wrong — safe to run repeatedly.
+  try {
+    const pipelineRows = db.prepare(
+      "SELECT id, board_config FROM workspace_boards WHERE id IN ('board-info-latam','board-info-trump')"
+    ).all() as { id: string; board_config: string }[]
+    for (const row of pipelineRows) {
+      let cfg: Record<string, unknown> = {}
+      try { cfg = JSON.parse(row.board_config || '{}') } catch { cfg = {} }
+      const wantPipeline = row.id === 'board-info-latam'
+      if (cfg.pipeline !== wantPipeline) {
+        cfg.pipeline = wantPipeline
+        db.prepare(
+          "UPDATE workspace_boards SET board_config=?, updated_at=datetime('now') WHERE id=?"
+        ).run(JSON.stringify(cfg), row.id)
+      }
+    }
   } catch {}
 
   // ── Source Intelligence → Info Pages pipeline ─────────────────────────────

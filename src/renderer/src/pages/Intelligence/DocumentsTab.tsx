@@ -24,6 +24,7 @@ export default function DocumentsTab({ onApprove }: Props) {
   const [uploading, setUploading] = useState(false)
   const [expandedAnalysis, setExpandedAnalysis] = useState<Record<string, boolean>>({})
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
+  const [fadingIds, setFadingIds] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -55,8 +56,10 @@ export default function DocumentsTab({ onApprove }: Props) {
     setPendingStatus(p => ({ ...p, [id]: true }))
     try {
       const res = await window.api.intelligence.updateStatus(id, status, undefined, localUser?.id, localUser?.name)
-      await load()
+      // Update badge in-place — preserves scroll position
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: status as any } : d))
       if (status === 'approved') onApprove(res?.addedToPages)
+      else onApprove()
     } finally {
       setPendingStatus(p => ({ ...p, [id]: false }))
     }
@@ -158,8 +161,9 @@ export default function DocumentsTab({ onApprove }: Props) {
           const isExpanded = expandedAnalysis[doc.id]
           const isPending = pendingStatus[doc.id]
 
+          const isFading = fadingIds.has(doc.id)
           return (
-            <div key={doc.id} className="bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4">
+            <div key={doc.id} className={`bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4 transition-all duration-300 ${isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
               {/* Header */}
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center shrink-0">

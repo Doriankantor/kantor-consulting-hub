@@ -65,6 +65,7 @@ export default function SocialTab({ onApprove }: Props) {
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
+  const [fadingIds, setFadingIds] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -121,8 +122,12 @@ export default function SocialTab({ onApprove }: Props) {
     setPendingStatus(p => ({ ...p, [id]: true }))
     try {
       const res = await window.api.intelligence.updateStatus(id, status, undefined, localUser?.id, localUser?.name)
-      await load()
+      // Update badge in-place — preserves scroll position
+      setPosts(prev => prev.map(p => p.id === id ? { ...p, status: status as any } : p))
+      // Social tab has no status filter, so no fade-out needed — badge just updates in place.
+      // If a filter is ever added, add fade logic here similarly to NewsTab.
       if (status === 'approved') onApprove(res?.addedToPages)
+      else onApprove()
     } finally {
       setPendingStatus(p => ({ ...p, [id]: false }))
     }
@@ -293,8 +298,9 @@ export default function SocialTab({ onApprove }: Props) {
           const PlatformIcon = PLATFORM_ICONS[post.platform || '']
           const isPending = pendingStatus[post.id]
 
+          const isFading = fadingIds.has(post.id)
           return (
-            <div key={post.id} className="bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4">
+            <div key={post.id} className={`bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4 transition-all duration-300 ${isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
               <div className="flex items-start gap-2 mb-2">
                 <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center shrink-0 text-indigo-600 dark:text-indigo-400">
                   {PlatformIcon || <span className="text-[10px] font-bold">{(post.platform || 'S')[0]}</span>}

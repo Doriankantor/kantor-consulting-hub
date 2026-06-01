@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 
 const CONFIDENCE_COLORS = {
@@ -40,6 +40,8 @@ export default function NewsTab({ onApprove }: Props) {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [search, setSearch] = useState('')
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
+  const [fadingIds, setFadingIds] = useState<Set<string>>(new Set())
+  const scrollRef = useRef<HTMLDivElement>(null)
   const [importedCount, setImportedCount] = useState(0)
   const [importing, setImporting] = useState(false)
   const [confirmingImported, setConfirmingImported] = useState(false)
@@ -116,8 +118,18 @@ export default function NewsTab({ onApprove }: Props) {
         id, status, undefined,
         localUser?.id, localUser?.name
       )
-      await load()
+      // Update badge in-place — do NOT call load() so scroll position is preserved
+      setSources(prev => prev.map(s => s.id === id ? { ...s, status: status as any } : s))
+      // If a status filter is active and the item no longer matches, fade it out
+      if (statusFilter && status !== statusFilter) {
+        setFadingIds(f => new Set([...f, id]))
+        setTimeout(() => {
+          setSources(curr => curr.filter(s => s.id !== id))
+          setFadingIds(f => { const n = new Set(f); n.delete(id); return n })
+        }, 350)
+      }
       if (status === 'approved') onApprove(res?.addedToPages)
+      else onApprove() // keep pending-review counter current
     } finally {
       setPendingStatus(p => ({ ...p, [id]: false }))
     }
@@ -233,7 +245,7 @@ export default function NewsTab({ onApprove }: Props) {
       )}
 
       {/* Article list */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
         {loading && (
           <div className="flex items-center justify-center py-16">
             <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
@@ -262,10 +274,11 @@ export default function NewsTab({ onApprove }: Props) {
           const cats: string[] = (() => { try { return JSON.parse(source.categories_json || '[]') } catch { return [] } })()
           const isPending = pendingStatus[source.id]
 
+          const isFading = fadingIds.has(source.id)
           return (
             <div
               key={source.id}
-              className="bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4 hover:border-gray-300 dark:hover:border-white/[0.12] transition"
+              className={`bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4 hover:border-gray-300 dark:hover:border-white/[0.12] transition-all duration-300 ${isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
             >
               <div className="flex items-start gap-3">
                 {source.image_url && (
