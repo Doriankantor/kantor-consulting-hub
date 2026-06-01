@@ -392,6 +392,7 @@ interface Window {
     auth: {
       localSignIn:         (email: string, password: string) => Promise<{ ok?: boolean; user?: LocalAuthUser; error?: string; mustChangePassword?: boolean; anthropicKeySet?: boolean }>
       changeLocalPassword: (current: string, next: string)  => Promise<{ ok?: boolean; error?: string }>
+      syncAllToSupabase:   ()                                => Promise<{ ok: boolean; created: number; existing: number; failed: number; total: number }>
     }
     settings: {
       get:    (key: string) => Promise<string | null>

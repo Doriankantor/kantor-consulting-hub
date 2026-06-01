@@ -5,6 +5,7 @@ const api = {
   auth: {
     localSignIn:         (email: string, password: string) => ipcRenderer.invoke('auth:localSignIn', email, password),
     changeLocalPassword: (current: string, next: string)   => ipcRenderer.invoke('auth:changeLocalPassword', current, next),
+    syncAllToSupabase:   ()                                => ipcRenderer.invoke('auth:syncAllToSupabase'),
   },
   settings: {
     get:    (key: string)              => ipcRenderer.invoke('settings:get', key),

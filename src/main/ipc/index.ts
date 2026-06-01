@@ -197,6 +197,34 @@ async function verifySupabaseAuthPassword(email: string, password: string): Prom
   } catch { return false }
 }
 
+// One-time migration: provision a Supabase Auth user for every local team
+// member that doesn't already have one, using their deterministic access code
+// as the initial password. Idempotent — users that already exist in cloud are
+// left untouched. Runs on the admin's machine on startup (the admin's local
+// DB is the canonical team roster).
+async function provisionAllLocalUsersInSupabase(): Promise<{ created: number; existing: number; failed: number; total: number }> {
+  let created = 0, existing = 0, failed = 0
+  try {
+    const db = getDatabase()
+    const rows = db.prepare("SELECT email FROM local_users WHERE status != 'inactive'").all() as { email: string }[]
+    for (const r of rows) {
+      const code = inviteCodeForEmail(r.email)
+      const res = await ensureSupabaseAuthUser(r.email, code)
+      if (!res.ok) {
+        failed++
+        console.warn('[Auth migration] provisioning failed for', r.email, ':', res.error)
+      } else if (res.created) created++
+      else existing++
+    }
+    console.log(`[Auth migration] ${created} created, ${existing} already in cloud, ${failed} failed (of ${rows.length}).`)
+    setSetting('cs_auth_provisioned_v1', 'done')
+    return { created, existing, failed, total: rows.length }
+  } catch (e) {
+    console.warn('[Auth migration] crashed:', (e as Error)?.message)
+    return { created, existing, failed, total: 0 }
+  }
+}
+
 // ── Settings ───────────────────────────────────────────────────────────────
 
 function registerSettingsHandlers() {
@@ -359,10 +387,22 @@ function registerAuthHandlers() {
       const localOk = hashPassword(password, row.password_salt as string) === (row.password_hash as string)
       if (localOk) {
         db.prepare("UPDATE local_users SET last_active=CURRENT_TIMESTAMP, status='active' WHERE id=?").run(row.id)
-        // Lazy migration: ensure cloud user exists with this password so the
-        // SAME credentials work on every other device. Fire-and-forget.
-        ensureSupabaseAuthUser(trimmed, password).catch(err =>
-          console.warn('[Auth] ensureSupabaseAuthUser (local-match) failed:', (err as Error)?.message))
+        // Lazy sync: ensure cloud user exists; if it does but with a DIFFERENT
+        // password (e.g. the access code from the startup migration), push
+        // this just-verified password up so it works on every other device too.
+        ;(async () => {
+          try {
+            const ensure = await ensureSupabaseAuthUser(trimmed, password)
+            if (ensure.ok && !ensure.created) {
+              const cloudOk = await verifySupabaseAuthPassword(trimmed, password)
+              if (!cloudOk) {
+                const upd = await updateSupabaseAuthPassword(trimmed, password)
+                if (!upd.ok) console.warn('[Auth] cloud password sync failed:', upd.error)
+                else console.log('[Auth] pushed local password to cloud for', trimmed)
+              }
+            }
+          } catch (err) { console.warn('[Auth] cloud sync threw:', (err as Error)?.message) }
+        })()
         return {
           ok: true,
           user: { id: row.id, email: row.email, name: row.full_name ?? row.email, role: row.role },
@@ -410,21 +450,25 @@ function registerAuthHandlers() {
     // This is the path that was broken before: the user set a password on
     // Computer A; Computer B never knew about it. Now Supabase Auth is the
     // shared store, so we verify against it and provision a local mirror.
+    // If the password used IS the deterministic access code, treat this as
+    // first-login on this device (force "Set your password") so the user
+    // doesn't keep using a stable derived code as a real password.
     if (await verifySupabaseAuthPassword(trimmed, password)) {
+      const isAccessCode = canonCode(password) === canonCode(inviteCodeForEmail(trimmed))
       const id   = uuid()
       const salt = randomBytes(16).toString('hex')
       const hash = hashPassword(password, salt)
       const name = trimmed.split('@')[0]
       db.prepare(`INSERT OR IGNORE INTO local_users
           (id,email,full_name,role,status,password_hash,password_salt,must_change_password,invited_by)
-          VALUES (?,?,?,?,'active',?,?,0,'supabase-auth')`)
-        .run(id, trimmed, name, 'member', hash, salt)
+          VALUES (?,?,?,?,'active',?,?,?,'supabase-auth')`)
+        .run(id, trimmed, name, 'member', hash, salt, isAccessCode ? 1 : 0)
       const created = db.prepare('SELECT * FROM local_users WHERE LOWER(email)=?').get(trimmed) as Record<string, unknown>
       db.prepare("UPDATE local_users SET last_active=CURRENT_TIMESTAMP, status='active' WHERE id=?").run(created.id)
       return {
         ok: true,
         user: { id: created.id, email: created.email, name: created.full_name ?? created.email, role: created.role },
-        mustChangePassword: false,
+        mustChangePassword: isAccessCode,
         anthropicKeySet:    !!(created.anthropic_key_set as number),
       }
     }
@@ -467,6 +511,25 @@ function registerAuthHandlers() {
     setSetting('local_admin_hash', nh)
     return { ok: true }
   })
+
+  // Admin-triggered manual re-run of the team migration. Idempotent.
+  ipcMain.handle('auth:syncAllToSupabase', async () => {
+    const r = await provisionAllLocalUsersInSupabase()
+    return { ok: true, ...r }
+  })
+
+  // One-time startup migration. Provisions a Supabase Auth user for every
+  // local team member (using their deterministic access code as the initial
+  // password) so they can sign in from any device. Guarded by a settings
+  // flag so it runs exactly once per install. Deferred so it never blocks
+  // app startup; if Supabase is unreachable, runs again on next launch.
+  try {
+    if (getSetting('cs_auth_provisioned_v1') !== 'done') {
+      setTimeout(() => { void provisionAllLocalUsersInSupabase() }, 8000)
+    }
+  } catch (e) {
+    console.warn('[Auth migration] guard check failed:', (e as Error)?.message)
+  }
 }
 
 // ── Team ───────────────────────────────────────────────────────────────────
