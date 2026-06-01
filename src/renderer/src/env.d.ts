@@ -374,6 +374,16 @@ interface IntelligenceSource {
   queued_by_name: string | null
   used_in_page: string | null
   used_in_page_at: string | null
+  // ── Source Intelligence review extensions (gate proposals + tagging) ──
+  relevance_score: number | null
+  relevance_type: 'in-region' | 'supply-side' | 'precedent' | 'escalation-signal' | 'none' | null
+  region: string | null
+  geography: string | null
+  geography_confirmed: number          // 0 = AI proposal, 1 = human-confirmed
+  gate_processed: number               // 0 = not yet gated, 1 = gated
+  gate_reasoning: string | null
+  disposition_tags: string | null      // JSON array
+  thematic_tags: string | null         // JSON array
 }
 
 interface IntelligencePushLog {
@@ -680,6 +690,11 @@ interface Window {
       getUnreviewedCount:   ()                                 => Promise<number>
       updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => Promise<{ ok: boolean; addedToPages?: string[] }>
       updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean }>
+      updateGeography:      (id: string, geography: string)    => Promise<{ ok: boolean }>
+      getKnownTags:         (type: string)                     => Promise<string[]>
+      createTag:            (name: string, type: string)       => Promise<{ ok: boolean; name: string }>
+      setArticleTags:       (id: string, type: string, tags: string[]) => Promise<{ ok: boolean; tags: string[] }>
+      logDecision:          (payload: { articleId: string; action: string; aiProposed?: unknown; humanFinal?: unknown; reason?: string | null }) => Promise<{ ok: boolean }>
       updateQueueSection:   (id: string, section: string)      => Promise<{ ok: boolean }>
       removeFromQueue:      (id: string)                       => Promise<{ ok: boolean }>
       deleteSource:         (id: string)                       => Promise<{ ok: boolean }>

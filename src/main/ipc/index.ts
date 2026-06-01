@@ -2412,15 +2412,137 @@ const NEWS_QUERIES = [
   '"DJI export" OR "Turkish Bayraktar" OR "Chinese drone exports" OR "drone proliferation" OR "non-state actors drones"',
 ]
 
-async function fetchAndStoreNews(): Promise<number> {
-  const apiKey = process.env.NEWSAPI_KEY
+// ── In-app relevance gate (Phase 2) ───────────────────────────────────────
+// Editorial gate for the Colombia-focused LATAM drone monitor. Proposes, per
+// article, a Colombia-relevance score (0-10), a relevance_type, and a best-guess
+// geography. This is the LOCAL counterpart to the scripts/ + Supabase cs_articles
+// gate (which it does NOT touch or duplicate): it scores rows in the local
+// intelligence_sources table that the review card reads. Cost-controlled and
+// FAIL-OPEN: any error leaves the row unscored (gate_processed stays 0) so it
+// is retried next pass, and it NEVER throws into the fetch path.
+const GATE_MODEL = 'claude-haiku-4-5'
+const GATE_MAX_PER_RUN = 25 // cost cap: classify at most N unscored rows per pass
+const GATE_TYPES = ['in-region', 'supply-side', 'precedent', 'escalation-signal', 'none'] as const
+type GateRelevanceType = typeof GATE_TYPES[number]
+interface GateResult {
+  relevance_score: number
+  relevance_type: GateRelevanceType
+  geography: string | null
+  region: string | null
+  reasoning: string | null
+}
+
+// The global Anthropic key (same source the document-analysis path uses).
+function getGlobalAnthropicKey(): string | null {
+  try {
+    const row = getDatabase().prepare("SELECT value FROM settings WHERE key='anthropic_api_key'").get() as { value: string } | undefined
+    return row?.value || process.env.ANTHROPIC_API_KEY || null
+  } catch { return process.env.ANTHROPIC_API_KEY || null }
+}
+
+const GATE_SYSTEM_PROMPT = `You classify drone/UAS news for a Colombia-focused security consultancy. An article matters if it is (a) in-region LATAM, (b) supply-side (a supplier/transfer/training that could reach LATAM), (c) a precedent (a policy/legal/operational development elsewhere that is a model or warning for Colombia, e.g. foreign policing powers vs. Colombian counterparts), or (d) an escalation-signal (a drone-conflict dynamic that could foreshadow LATAM escalation). Score 0-10 for Colombia relevance. Work in Spanish or English. Return ONLY JSON.`
+
+// Classify a single article. Returns null on ANY failure (fail-open).
+async function gateClassifyArticle(
+  article: { title?: string | null; snippet?: string | null; source?: string | null },
+  apiKey: string
+): Promise<GateResult | null> {
+  try {
+    const AnthropicLib = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk')
+    const client = new AnthropicLib({ apiKey })
+    const msg = await client.messages.create({
+      model: GATE_MODEL,
+      max_tokens: 300,
+      system: GATE_SYSTEM_PROMPT,
+      messages: [{
+        role: 'user',
+        content: `Classify this article. Return ONLY JSON with exactly these keys:
+{
+  "relevance_score": <integer 0-10 for Colombia relevance>,
+  "relevance_type": "in-region | supply-side | precedent | escalation-signal | none",
+  "geography": "<primary country or region of the article, your best guess>",
+  "reasoning": "<one short sentence>"
+}
+
+Title: ${article.title || ''}
+Snippet: ${article.snippet || ''}
+Source: ${article.source || 'Unknown'}`,
+      }],
+    })
+    const text = msg.content?.[0]?.type === 'text' ? msg.content[0].text : ''
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) return null
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+    let score = Number(parsed.relevance_score)
+    if (!Number.isFinite(score)) score = 0
+    score = Math.max(0, Math.min(10, Math.round(score)))
+    let rtype = String(parsed.relevance_type ?? 'none').toLowerCase().trim()
+    if (!(GATE_TYPES as readonly string[]).includes(rtype)) rtype = 'none'
+    const geography = parsed.geography ? String(parsed.geography).slice(0, 120) : null
+    const reasoning = parsed.reasoning ? String(parsed.reasoning).slice(0, 500) : null
+    return { relevance_score: score, relevance_type: rtype as GateRelevanceType, geography, region: geography, reasoning }
+  } catch (e) {
+    console.warn('[Gate] classify failed (fail-open):', (e as Error)?.message)
+    return null
+  }
+}
+
+// Score a capped batch of articles that haven't been through the gate yet.
+// Writes proposals with geography_confirmed left at 0 (AI proposal). A geography
+// the human already confirmed (geography_confirmed=1) is never overwritten.
+// FAIL-OPEN per row; never throws.
+async function classifyUnscoredArticles(limit = GATE_MAX_PER_RUN): Promise<number> {
+  const apiKey = getGlobalAnthropicKey()
   if (!apiKey) {
-    console.log('[Intelligence] NEWSAPI_KEY not set, skipping news fetch')
+    console.log('[Gate] No Anthropic API key set — skipping relevance gate (fail-open).')
     return 0
   }
   const db = getDatabase()
+  let rows: Array<{ id: string; title: string | null; snippet: string | null; content: string | null; source_name: string | null }> = []
+  try {
+    rows = db.prepare(`
+      SELECT id, title, snippet, content, source_name
+      FROM intelligence_sources
+      WHERE type='article'
+        AND (gate_processed IS NULL OR gate_processed=0)
+        AND COALESCE(added_by_name,'') != 'Kantor Framework'
+      ORDER BY added_at DESC
+      LIMIT ?
+    `).all(limit) as typeof rows
+  } catch (e) {
+    console.warn('[Gate] could not load unscored rows:', (e as Error)?.message)
+    return 0
+  }
+  let scored = 0
+  for (const row of rows) {
+    const result = await gateClassifyArticle(
+      { title: row.title, snippet: row.snippet || row.content?.slice(0, 300) || '', source: row.source_name },
+      apiKey
+    )
+    if (!result) continue // FAIL-OPEN: leave unscored, retried next pass
+    try {
+      db.prepare(`
+        UPDATE intelligence_sources
+        SET relevance_score=?, relevance_type=?, gate_reasoning=?, gate_processed=1,
+            geography = CASE WHEN COALESCE(geography_confirmed,0)=1 THEN geography ELSE ? END,
+            region    = CASE WHEN COALESCE(geography_confirmed,0)=1 THEN region    ELSE ? END
+        WHERE id=?
+      `).run(result.relevance_score, result.relevance_type, result.reasoning, result.geography, result.region, row.id)
+      scored++
+    } catch (e) {
+      console.warn('[Gate] could not persist score for', row.id, (e as Error)?.message)
+    }
+  }
+  if (scored) console.log(`[Gate] Scored ${scored} article(s) for Colombia relevance.`)
+  return scored
+}
+
+async function fetchAndStoreNews(): Promise<number> {
+  const apiKey = process.env.NEWSAPI_KEY
+  const db = getDatabase()
   let stored = 0
-  for (const q of NEWS_QUERIES) {
+  if (!apiKey) console.log('[Intelligence] NEWSAPI_KEY not set, skipping news fetch')
+  if (apiKey) for (const q of NEWS_QUERIES) {
     try {
       const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&language=en&sortBy=publishedAt&pageSize=20&apiKey=${apiKey}`
       const res = await fetch(url)
@@ -2458,7 +2580,10 @@ async function fetchAndStoreNews(): Promise<number> {
       console.warn('[Intelligence] NewsAPI query error:', e)
     }
   }
-  console.log(`[Intelligence] Fetched and stored ${stored} new articles`)
+  if (apiKey) console.log(`[Intelligence] Fetched and stored ${stored} new articles`)
+  // Relevance gate (Phase 2): score any articles not yet through the gate.
+  // Cost-capped + FAIL-OPEN — never throws, so it can't break the fetch.
+  try { await classifyUnscoredArticles() } catch (e) { console.warn('[Gate] pass failed:', (e as Error)?.message) }
   return stored
 }
 
@@ -2708,6 +2833,76 @@ function registerIntelligenceHandlers(): void {
   ipcMain.handle('intelligence:updateConfidence', (_e, id: string, confidence: string) => {
     db().prepare('UPDATE intelligence_sources SET confidence=?, confidence_override=1 WHERE id=?').run(confidence, id)
     return { ok: true }
+  })
+
+  // Phase 3: confirm or correct the AI-proposed geography. Either action marks
+  // the geography human-confirmed (geography_confirmed=1) so the gate won't
+  // overwrite it on future passes.
+  ipcMain.handle('intelligence:updateGeography', (_e, id: string, geography: string) => {
+    const geo = (geography ?? '').trim()
+    db().prepare('UPDATE intelligence_sources SET geography=?, geography_confirmed=1 WHERE id=?')
+      .run(geo || null, id)
+    return { ok: true }
+  })
+
+  // ── Phase 4: disposition + thematic tag registry & per-article tagging ───────
+  // Normalize a free-text tag: trim, lowercase, collapse whitespace → hyphens.
+  function normalizeTag(name: string): string {
+    return (name ?? '').trim().toLowerCase().replace(/\s+/g, '-')
+  }
+
+  // Return all registered tags of a type ('disposition' | 'thematic'), A→Z.
+  ipcMain.handle('intelligence:getKnownTags', (_e, type: string) => {
+    const t = type === 'disposition' ? 'disposition' : 'thematic'
+    const rows = db().prepare(
+      'SELECT name FROM known_tags WHERE type=? ORDER BY name COLLATE NOCASE ASC'
+    ).all(t) as { name: string }[]
+    return rows.map(r => r.name)
+  })
+
+  // Create (or upsert) a tag in the registry; returns the normalized name.
+  ipcMain.handle('intelligence:createTag', (_e, name: string, type: string) => {
+    const t = type === 'disposition' ? 'disposition' : 'thematic'
+    const norm = normalizeTag(name)
+    if (!norm) return { ok: false, name: '' }
+    db().prepare(
+      'INSERT OR IGNORE INTO known_tags (name, type, created_at) VALUES (?, ?, ?)'
+    ).run(norm, t, new Date().toISOString())
+    return { ok: true, name: norm }
+  })
+
+  // Replace an article's tag set for one type. Tags are normalized + de-duped,
+  // and the row is updated immediately (no Approve needed).
+  ipcMain.handle('intelligence:setArticleTags', (_e, id: string, type: string, tags: string[]) => {
+    const col = type === 'disposition' ? 'disposition_tags' : 'thematic_tags'
+    const clean = Array.from(new Set((tags || []).map(normalizeTag).filter(Boolean)))
+    db().prepare(`UPDATE intelligence_sources SET ${col}=? WHERE id=?`)
+      .run(JSON.stringify(clean), id)
+    return { ok: true, tags: clean }
+  })
+
+  // ── Phase 5: capture-only decision log ──────────────────────────────────────
+  // Records one row per Approve/Reject/Save(correct) with the AI proposal and the
+  // human-final snapshot. Wrapped so a logging failure never blocks the action.
+  ipcMain.handle('intelligence:logDecision', (_e, payload: {
+    articleId: string; action: string; aiProposed?: unknown; humanFinal?: unknown; reason?: string | null
+  }) => {
+    try {
+      db().prepare(
+        'INSERT INTO intelligence_decisions (article_id, action, ai_proposed, human_final, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(
+        payload.articleId,
+        payload.action,
+        payload.aiProposed != null ? JSON.stringify(payload.aiProposed) : null,
+        payload.humanFinal != null ? JSON.stringify(payload.humanFinal) : null,
+        payload.reason ?? null,
+        new Date().toISOString()
+      )
+      return { ok: true }
+    } catch (e) {
+      console.warn('[intelligence] logDecision failed:', e)
+      return { ok: false }
+    }
   })
 
   ipcMain.handle('intelligence:updateQueueSection', (_e, id: string, section: string) => {

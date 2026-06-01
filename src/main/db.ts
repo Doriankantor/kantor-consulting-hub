@@ -729,6 +729,64 @@ export function initDatabase(): void {
     );
   `)
 
+  // ── Source Intelligence review extensions (gate proposals + tagging) ──────
+  // NOTE: relevance_score / region / gate_processed / gate_reasoning / geography
+  // were expected to already exist on intelligence_sources but did not — the
+  // Claude relevance gate that produced those lives in scripts/ and writes to
+  // Supabase cs_articles, NOT this local table. We add them here (idempotent,
+  // ADD-IF-MISSING) so the in-app gate (gateClassifyArticle) can populate them
+  // and the review card can show + human-confirm them. Never duplicated.
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN relevance_score INTEGER;') } catch {}
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN region TEXT;') } catch {}
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN geography TEXT;') } catch {}
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN geography_confirmed INTEGER DEFAULT 0;') } catch {}
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN gate_processed INTEGER DEFAULT 0;') } catch {}
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN gate_reasoning TEXT;') } catch {}
+  // relevance_type: in-region | supply-side | precedent | escalation-signal | none
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN relevance_type TEXT;') } catch {}
+  // disposition_tags / thematic_tags: JSON arrays, same pattern as categories_json
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN disposition_tags TEXT;') } catch {}
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN thematic_tags TEXT;') } catch {}
+
+  // Known-tags registry (controlled-but-growable vocabularies). The (name,type)
+  // unique index prevents storing the same tag twice / near-duplicates.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS known_tags (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT NOT NULL,
+      type       TEXT NOT NULL CHECK (type IN ('disposition','thematic')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_known_tags_name_type ON known_tags(name, type);
+  `)
+
+  // Seed the registry once (only if empty). Seeds are inserted verbatim; only
+  // NEW user-created tags get normalized (trim / lowercase / spaces→hyphens).
+  {
+    const tagCount = (db.prepare('SELECT COUNT(*) as c FROM known_tags').get() as { c: number }).c
+    if (tagCount === 0) {
+      const seedTag = db.prepare('INSERT OR IGNORE INTO known_tags (name, type) VALUES (?, ?)')
+      const seedDisposition = ['contested-skies', 'client-advisory', 'latam-brief', 'comparative-analysis', 'internal-only']
+      const seedThematic = ['BANOT-parallel', 'cartel-drones', 'chinese-supplier', 'counter-uas-procurement', 'technology-transfer']
+      for (const n of seedDisposition) seedTag.run(n, 'disposition')
+      for (const n of seedThematic) seedTag.run(n, 'thematic')
+    }
+  }
+
+  // Decision log — capture-only corpus for a later learning step. NOTHING reads
+  // it yet. One row per Approve / Reject / Save(correct) review action.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS intelligence_decisions (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      article_id  TEXT,
+      action      TEXT,
+      ai_proposed TEXT,
+      human_final TEXT,
+      reason      TEXT,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `)
+
   // ── Subscription Model board setup ────────────────────────────────────────
   // Ensure Subscription Model board exists with fixed ID
   try {

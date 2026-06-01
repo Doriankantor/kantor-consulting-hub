@@ -1,0 +1,240 @@
+═══════════════════════════════════════════════════════════════════════════════
+  KANTOR CONSULTING HUB — PROJECT SUMMARY
+  Generated: 2026-06-02
+  Current version: v1.1.18   |   130 commits   |   ~27,400 lines of TS/TSX
+  Repo: github.com/Doriankantor/kantor-consulting-hub
+═══════════════════════════════════════════════════════════════════════════════
+
+───────────────────────────────────────────────────────────────────────────────
+1. WHAT THE APP IS
+───────────────────────────────────────────────────────────────────────────────
+"Project management for journalists and analysts." A cross-platform desktop app
+(macOS + Windows) that combines:
+  • A Kanban/list/timeline/calendar project workspace (Trello-style boards)
+  • Team collaboration: inbox, chat, @mentions, notifications, assignments
+  • A CRM (clients + contacts) and analytics dashboard
+  • Google integration: Calendar sync, Drive backup/browser, Gmail invites
+  • A "Source Intelligence" + "Info Pages" pipeline that auto-pulls news, runs
+    it through a Claude relevance gate, and one-click publishes to GitHub repos
+  • Per-user accounts with Supabase Auth, admin roles, and a built-in auto-updater
+
+Built originally for a "Contested Skies" (drone / LATAM) news-monitoring use case,
+plus a "Trump Immigration" visual project, with reusable pipelines for future ones.
+
+───────────────────────────────────────────────────────────────────────────────
+2. TECH STACK
+───────────────────────────────────────────────────────────────────────────────
+  Runtime / shell    Electron 31 (universal macOS Intel+ARM, Windows x64 NSIS)
+  UI                 React 18 + TypeScript 5 + Tailwind CSS 3
+  Build              electron-vite 2 + Vite 5 + electron-builder 24
+  Local data         SQLite via better-sqlite3 11 (native, rebuilt per platform)
+  Drag & drop        @dnd-kit (core/sortable/modifiers/utilities)
+  Rich text          TipTap 3 (StarterKit + Placeholder)
+  Auth / cloud sync  Supabase (supabase-js 2) — Auth + service-role admin
+  Google APIs        googleapis 172 (Calendar, Drive, Gmail OAuth loopback)
+  AI                 @anthropic-ai/sdk 0.98 (Claude — per-user API keys)
+  Email              nodemailer 8 (Gmail temp-password invites)
+  Doc parsing        mammoth (.docx), pdf-parse (.pdf) for source uploads
+  Updates            electron-updater 6 + custom Terminal-script installer
+  Routing            react-router-dom 6 (HashRouter)
+
+───────────────────────────────────────────────────────────────────────────────
+3. ARCHITECTURE
+───────────────────────────────────────────────────────────────────────────────
+  Electron three-process model:
+    • Main process    src/main/index.ts        app lifecycle, window, updater
+                      src/main/db.ts            SQLite schema + migrations (987 ln)
+                      src/main/ipc/index.ts     201 IPC handlers (3,731 ln)
+                      src/main/google/drive.ts  DriveSync class (hub OAuth backup)
+                      src/main/google/userGoogle.ts  per-user Google OAuth
+                      src/main/google/gmail.ts  invite emails
+    • Preload         src/preload/index.ts      exposes window.api.* (320 ln)
+    • Renderer        src/renderer/src/...      React app (pages + components)
+
+  Data flow:   React → window.api.* (preload) → ipcMain.handle → SQLite/Supabase/Google
+  Local DB is the source of truth; Supabase handles cross-device auth + Drive
+  handles backup. Env vars use the MAIN_VITE_ prefix (Supabase URL/key, Google
+  client id/secret).
+
+  Renderer contexts:
+    AuthContext        login state, roles, first-login flow
+    WorkspaceContext   boards/tasks state + local SQLite persistence
+    ThemeContext       light/dark + theme presets
+    UpdateContext      auto-update checks, banner, 8h interval / 24h dismiss
+
+───────────────────────────────────────────────────────────────────────────────
+4. FEATURE AREAS (renderer routes)
+───────────────────────────────────────────────────────────────────────────────
+  /dashboard     Latest Changes feed, clickable items, auto-clearing badge
+  /inbox         Notifications + @mentions → click jumps to card w/ flash highlight
+  /todo          Personal to-dos + calendar-derived tasks, past-meeting filtering
+  /workspace     Boards with 4 views: Kanban, List, Timeline, Calendar
+                 board-scoped columns, labels, checklists, attachments, comments,
+                 task templates, recurring tasks, board-members checklist
+  /files         Google Drive folder browser + file-type icons
+  /intelligence  Source Intelligence pipeline:
+                   - News tab (GDELT DOC 2.0 primary / NewsAPI behind flag)
+                   - Social tab (manual social-media entry)
+                   - Documents tab (upload .pdf/.docx → Claude analysis)
+                   - Publish Queue (Claude relevance gate → push to GitHub)
+  /info-pages    Editorial pipeline per page: Ideas, Sources, Manual Info,
+                 Claude Analysis, Commit/Review, Recently Published, Design Notes,
+                 plus a Claude chat panel; links to external repos & one-click publish
+  /contacts      Contact CRM: interactions, task links, contact-based client field
+  /calendar      Team calendar with Google sync (timezone-corrected, recurring events)
+  /analytics     Completion metrics, task analytics
+  /team          Admin team panel: members, roles, invites, profile panel
+  /settings      Per-user Claude API key, Updates section, Google connections
+  /trash         Soft-delete recovery
+  /login,/setup,/first-login   onboarding, offline access-code login, admin bootstrap
+
+───────────────────────────────────────────────────────────────────────────────
+5. DATABASE (SQLite — 39 tables)
+───────────────────────────────────────────────────────────────────────────────
+  Projects/boards : projects, areas, workspace_boards, workspace_columns,
+                    workspace_tasks, tasks, board_members
+  Task detail     : task_comments, task_labels, labels, task_checklists,
+                    task_checklist_items, task_attachments, task_activity,
+                    task_templates
+  People          : local_users, contacts, contact_interactions,
+                    contact_task_links, clients, client_contacts
+  Collaboration   : chat_messages, notifications, notification_prefs
+  Personal        : personal_todos, todo_dismissed
+  Calendar        : calendar_events, user_google_tokens
+  Intelligence    : intelligence_sources (+ relevance_score, region, geography,
+                    gate_processed, gate_reasoning, relevance_type,
+                    disposition_tags, thematic_tags), intelligence_push_log,
+                    known_tags, intelligence_decisions
+  Info Pages      : info_page_items, info_page_sources(*), info_page_chat,
+                    info_page_commits, info_page_published, info_page_owners
+  Files / sync    : documents, drive_sync_queue, settings, trash
+
+───────────────────────────────────────────────────────────────────────────────
+6. IPC SURFACE (201 handlers, by domain)
+───────────────────────────────────────────────────────────────────────────────
+  infoPages 33 · intelligence 17 · team 11 · workspace 10 · contacts 10 ·
+  drive 9 · boards 9 · clients 7 · userGoogle 6 · trash 6 · boardMembers 6 ·
+  todo 5 · personalTodo 5 · notifications 5 · calendar 5 · attachments 5 ·
+  templates 4 · settings 4 · labels 4 · comments 4 · claude 4 · checklistItems 4 ·
+  areas 4 · checklists 3 · auth 3 · activity 3 · taskLabels 2 · projects 2 ·
+  notificationPrefs 2 · chat 2 · app 2 · analytics 2 · tasks 1 · files 1 · dialog 1
+
+───────────────────────────────────────────────────────────────────────────────
+7. INTELLIGENCE PIPELINE (automated, outside the app)
+───────────────────────────────────────────────────────────────────────────────
+  scripts/fetch-intelligence.js   daily fetch (527 ln) run via GitHub Actions
+  scripts/lib/gdelt-fetch.js      GDELT DOC 2.0 fetcher (primary source)
+  scripts/lib/categorize.js       tagging/categorization
+  scripts/lib/learning.js         learning loop — gate improves from approve/reject
+  scripts/diagnose-gate.js        gate diagnostics
+  scripts/cleanup-irrelevant.js   prune off-topic results
+  scripts/KEYWORD_FILTER_FRAMEWORK.txt  drone + LATAM keyword strategy
+  .github/workflows/daily-intelligence.yml   scheduled daily pull
+  .github/workflows/build-windows.yml        Windows NSIS build + release upload
+
+───────────────────────────────────────────────────────────────────────────────
+8. BUILD, RELEASE & DISTRIBUTION
+───────────────────────────────────────────────────────────────────────────────
+  npm run dev          electron-vite dev (hot reload)
+  npm run build        compile only (no package)
+  npm run make:mac     build universal macOS DMG locally
+  npm run release      build + publish mac (dmg+zip, universal) AND win (nsis x64)
+                       to GitHub Releases, then prune old local artifacts
+  publish.command      double-click release from Finder
+  install.sh           one-command install that bypasses macOS Gatekeeper
+
+  Auto-update: electron-updater checks GitHub Releases every 8h; downloaded
+  updates strip the macOS quarantine flag and install via a Terminal .command
+  script (friendlier than the silent electron-updater install). Manual "Check
+  for updates" is visible to all users; banner can be dismissed for 24h.
+
+  iCloud setup: project lives in iCloud Drive. node_modules/dist/out are symlinks
+  to *.nosync folders so iCloud skips them. Run `bash setup-new-device.sh` once
+  on a new Mac after iCloud syncs the folder.
+
+───────────────────────────────────────────────────────────────────────────────
+9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-06-01)
+───────────────────────────────────────────────────────────────────────────────
+  FOUNDATION (v0 → v1.0, May 25)
+    • Initial Kantor Consulting Hub baseline
+    • Login restriction, Google Drive backup, admin team panel, first-login flow
+    • Per-user Claude API key management
+    • macOS DMG packaging, dark mode, custom areas, keyboard shortcuts
+    • Labels, checklists, persisted attachments, card meta, comments
+    • Inbox, Team Chat, notification bell, @mentions, deadline warnings
+    • Inbox navigation: click notification → open card at section w/ flash
+    • Kanban scroll fix + persist workspace data to local SQLite
+    • Clients DB, analytics dashboard, task templates, recurring tasks
+    • Full visual redesign: gradient shell, glass sidebar, lifted cards, themes
+    • Custom KC serif-monogram app icon; full light/dark color consistency
+
+  v1.0.x (May 26–28) — INTEGRATIONS & UPDATER
+    • Contacts page, login redesign, team invite fix, auto-update banner
+    • Google Calendar sync, recurring events, meeting links, external attendees
+    • Personal Google account + Drive folder browser + file-type icons
+    • Full update system (UpdateContext, manual check, Settings section, badge)
+    • Apple Silicon universal binary; Google OAuth loopback flow
+    • To-Do page, calendar Google sync, analytics completions, admin board modal
+    • Full calendar sync, board-members checklist, personal todos, notifications
+    • Auto-update hardening: strip quarantine, Terminal-script installer
+    • Board-scoped columns, template-picker portal fix, auto-edit new stage
+    • Google Calendar timezone fix (UTC → local); diagnostic error surfacing
+    • Friendlier update banner; one-command Gatekeeper-bypass installer
+    • CLAUDE.md: auto-publish after every implementation session
+
+  v1.1.x (May 28–Jun 1) — INTELLIGENCE & INFO PAGES
+    • Windows build target: NSIS installer, icon.ico, GitHub Actions workflow
+    • Source Intelligence system: NewsAPI auto-pull, social entry, doc upload +
+      Claude analysis, publish queue, GitHub push to contested-skies-monitor
+    • Subscription Model board with columns/templates
+    • Info Pages system: ideas, sources, manual info, Claude analysis,
+      commit/review/publish workflow
+    • F-1 student visa chart; ADP/H-2A data gaps filled in immigration study
+    • Offline access-code login (sign in on any computer)
+    • Admin account separation, contact-based client field, Info Pages restructure
+      with Claude chat, Contested Skies import
+    • Link external visual projects to Info Pages + one-click publish to any repo
+    • Link Trump Immigration Info Page to Doriankantor/Trump-immigration repo
+    • Seed Contested Skies source archive into Source Intelligence
+    • Daily intelligence fetch pipeline (GitHub Actions + script)
+    • Hide fixed framework references from News feed and Publish Queue
+    • Rewrite NewsAPI strategy: strict drone+LATAM queries with Claude relevance gate
+    • GDELT DOC 2.0 added as primary fetcher; NewsAPI kept behind a flag
+    • Learning loop: gate improves from approve/reject decisions
+    • Supabase Auth: password storage routed through it so logins work across
+      devices; proactively migrate every team member
+    • Windows NSIS installer included in every release build
+    • Fix Intelligence page: scroll position, project routing, single drone pipeline
+    • Migrate project to iCloud Drive; setup-new-device script + .nosync pattern
+
+  v1.1.18 (Jun 2) — INTELLIGENCE REVIEW ENHANCEMENTS
+    • In-app relevance gate (gateClassifyArticle): Claude Haiku scores each new
+      article 0-10 for Colombia relevance, assigns a relevance_type
+      (in-region/supply-side/precedent/escalation-signal/none), and extracts
+      geography — runs up to 25 articles per fetch pass, fail-open
+    • New DB columns on intelligence_sources: relevance_score, relevance_type,
+      region, geography, geography_confirmed, gate_processed, gate_reasoning,
+      disposition_tags, thematic_tags
+    • known_tags table: controlled vocabulary for disposition + thematic tags,
+      seeded with Contested Skies defaults; user can add new tags inline
+    • intelligence_decisions table: capture-only log of approve/reject/correct
+      actions for future gate learning
+    • TagPicker component in NewsTab: autocomplete chip-based tag editor with
+      + create affordance for new tags, relevance-score colored badge, relevance
+      type labels displayed on each review card
+
+───────────────────────────────────────────────────────────────────────────────
+10. KEY FILES (quick reference)
+───────────────────────────────────────────────────────────────────────────────
+  src/main/db.ts               SQLite schema + migrations
+  src/main/ipc/index.ts        all 201 IPC handlers
+  src/preload/index.ts         window.api.* bridge
+  src/renderer/src/env.d.ts    TypeScript types for window.api
+  src/renderer/src/App.tsx     routes
+  src/main/google/drive.ts     DriveSync (hub OAuth backup)
+  src/main/google/userGoogle.ts per-user Google OAuth
+  scripts/fetch-intelligence.js daily intelligence fetch
+  electron-builder.yml         packaging/publish config
+  setup-new-device.sh          iCloud new-device bootstrap
+  CLAUDE.md                    project + publish-workflow instructions
+═══════════════════════════════════════════════════════════════════════════════
