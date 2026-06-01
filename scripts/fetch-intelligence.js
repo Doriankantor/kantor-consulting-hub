@@ -1,20 +1,23 @@
 // ============================================================================
-// Daily Intelligence Fetch — NewsAPI -> Claude categorization -> Supabase
+// Daily Intelligence Fetch — GDELT DOC 2.0 -> Claude categorization -> Supabase
 // ============================================================================
-// STRICT SEARCH STRATEGY: every NewsAPI query combines a drone/UAS/UAV term
-// AND a Latin-American country / region / actor term. We never search a drone
-// term alone or a place alone — always both together (joined with AND). Each
-// listed query is its own API call. After NewsAPI returns results, Claude
-// applies a second strict relevance gate (see lib/categorize.js) and anything
-// scoring below the threshold is discarded.
+// PRIMARY SOURCE: GDELT DOC 2.0 (keyless, no quota, full-body search + native
+// FIPS source-country filter). See lib/gdelt-fetch.js for the 21-query strategy
+// (17 LATAM countries × a drone OR-group + 4 actor/supplier theme queries).
+//
+// NewsAPI is retained behind the USE_NEWSAPI flag (default false) so it can be
+// re-enabled later; its strict combined-query code below is dormant when off.
+//
+// The Claude relevance gate, the 8 categories, the URL de-duplication and the
+// Supabase storage are all UNCHANGED — only the fetch layer differs by source.
 //
 // Pipeline (each stage is isolated so one failure never stops the whole run):
-//   1. Fetch with the strict combined queries (en + es), paged, deduped by URL
-//      against existing cs_articles.
+//   1. Fetch from GDELT (or NewsAPI if the flag is on); normalize to a common
+//      shape; dedup by URL within the run and against existing cs_articles.
 //   2. Categorize each new article with Claude Haiku + strict relevance gate.
 //      Keep only relevance_score >= RELEVANCE_THRESHOLD. Failure -> 'uncategorized'.
 //   3. Insert kept articles into cs_articles.
-//   4. Log the run into cs_fetch_log.
+//   4. Log the run into cs_fetch_log (source tagged in keywords_used).
 //   5. Upsert cs_fetch_status (last_fetch + new_articles_count) for Hub realtime.
 // Supabase failure at any write -> articles dumped to a local JSON backup.
 // ============================================================================
@@ -27,6 +30,7 @@ import fetch from 'node-fetch'
 import WebSocket from 'ws'
 import { createClient } from '@supabase/supabase-js'
 import { makeAnthropic, categorize, isRelevant, RELEVANCE_THRESHOLD } from './lib/categorize.js'
+import { fetchAllGdelt, buildGdeltQueries } from './lib/gdelt-fetch.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 // Load the repo-root .env for local runs. `override: true` lets the .env win
@@ -37,6 +41,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 dotenvConfig({ path: resolve(__dirname, '..', '.env'), override: true })
 
 // ── Config ──────────────────────────────────────────────────────────────────
+// Source switch: GDELT is the primary fetcher. Flip to true to fall back to the
+// legacy NewsAPI strategy (kept intact below). Env override: USE_NEWSAPI=true.
+const USE_NEWSAPI = process.env.USE_NEWSAPI === 'true'
+
 const NEWSAPI_KEY = process.env.NEWSAPI_KEY
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
 const SUPABASE_URL = process.env.SUPABASE_URL
@@ -179,7 +187,8 @@ function buildQ(terms) {
   return terms.map((t) => (/[\s-]/.test(t) ? `"${t}"` : t)).join(' AND ')
 }
 
-// STEP 1 — run ONE strict query (one NewsAPI call, paged defensively).
+// LEGACY (NewsAPI) — run ONE strict query (one NewsAPI call, paged defensively).
+// Only used when USE_NEWSAPI is true; dormant otherwise.
 async function fetchQuery(groupName, terms, language, errors) {
   const q = buildQ(terms)
   const label = terms.join(' + ')
@@ -229,14 +238,32 @@ async function fetchQuery(groupName, terms, language, errors) {
   return { articles: collected, totalResults }
 }
 
-// Map a NewsAPI article + Claude categorization to a cs_articles row.
+// Normalize a raw NewsAPI article into the common pipeline shape. (Legacy path.)
+function normalizeNewsApiArticle(a, queryLabel) {
+  return {
+    url: a.url || null,
+    title: a.title || null,
+    source_name: a.source?.name || null,
+    published_at: a.publishedAt || null,
+    content_snippet: (a.description || a.content || '').slice(0, 500) || null,
+    language: null,
+    image_url: a.urlToImage || null,
+    source_country: null,
+    found_by_query: queryLabel,
+  }
+}
+
+// Map a NORMALIZED article + Claude categorization to a cs_articles row.
+// Note: image_url / source_country are intentionally NOT written — cs_articles
+// has no such columns (an unknown column would make the insert fail). GDELT has
+// no body snippet, so content_snippet falls back to the title.
 function buildRow(article, cat) {
   return {
     title: article.title || null,
     url: article.url || null,
-    source_name: article.source?.name || null,
-    published_at: article.publishedAt || null,
-    content_snippet: (article.description || article.content || '').slice(0, 500) || null,
+    source_name: article.source_name || null,
+    published_at: article.published_at || null,
+    content_snippet: (article.content_snippet || article.title || '').slice(0, 500) || null,
     primary_category: cat?.primary_category || null,
     sub_category: cat?.sub_category || null,
     confidence_level: cat?.confidence_suggestion || 'unrated',
@@ -279,28 +306,49 @@ function backupLocally(rows, reason) {
 // ── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
   const startedAt = new Date().toISOString()
+  const SOURCE = USE_NEWSAPI ? 'newsapi' : 'gdelt'
   console.log(`\n=== Daily Intelligence Fetch @ ${startedAt} ===`)
-  console.log(`  Strict query set: ${ALL_QUERY_LABELS.length} combined drone+place queries.`)
-  if (!NEWSAPI_KEY) console.warn('[config] NEWSAPI_KEY is empty — NewsAPI calls will return 401 and yield 0 articles.')
+  console.log(`  Primary source: ${SOURCE.toUpperCase()}`)
 
   const errors = []
   let articlesFound = 0
   const rawArticles = []
+  let keywordsUsed = []
 
-  // STEP 1 — run every strict query.
-  console.log('\n[1/5] Fetching from NewsAPI (strict combined queries)...')
-  for (const [groupName, queries] of Object.entries(QUERY_GROUPS)) {
-    for (const { terms, lang } of queries) {
-      try {
-        const { articles, totalResults } = await fetchQuery(groupName, terms, lang, errors)
-        articlesFound += totalResults
-        rawArticles.push(...articles)
-      } catch (e) {
-        const msg = `fetchQuery ${groupName} [${terms.join(' + ')}/${lang}] fatal: ${e.message}`
-        console.warn('  ✗', msg)
-        errors.push(msg)
+  // STEP 1 — fetch from the active source and normalize to a common shape.
+  if (USE_NEWSAPI) {
+    // ── LEGACY NewsAPI path (dormant unless USE_NEWSAPI=true) ────────────────
+    console.log(`\n[1/5] Fetching from NewsAPI (${ALL_QUERY_LABELS.length} strict combined queries)...`)
+    if (!NEWSAPI_KEY) console.warn('[config] NEWSAPI_KEY is empty — NewsAPI calls will return 401 and yield 0 articles.')
+    for (const [groupName, queries] of Object.entries(QUERY_GROUPS)) {
+      for (const { terms, lang } of queries) {
+        try {
+          const { articles, totalResults } = await fetchQuery(groupName, terms, lang, errors)
+          articlesFound += totalResults
+          rawArticles.push(...articles.map((a) => normalizeNewsApiArticle(a, terms.join(' + '))))
+        } catch (e) {
+          const msg = `fetchQuery ${groupName} [${terms.join(' + ')}/${lang}] fatal: ${e.message}`
+          console.warn('  ✗', msg)
+          errors.push(msg)
+        }
       }
     }
+    keywordsUsed = ['source:newsapi', ...ALL_QUERY_LABELS]
+  } else {
+    // ── PRIMARY GDELT path ───────────────────────────────────────────────────
+    const queryCount = buildGdeltQueries().length
+    console.log(`\n[1/5] Fetching from GDELT DOC 2.0 (${queryCount} queries: 4 country batches covering 17 countries + 4 theme)...`)
+    const { articles, perQuery, errors: gErrors } = await fetchAllGdelt({
+      onProgress: ({ index, total, label, count, error }) => {
+        if (error) console.warn(`  ✗ [${index}/${total}] ${label}: ${error}`)
+        else if (count > 0) console.log(`  • [${index}/${total}] ${label}: +${count}`)
+        else console.log(`  · [${index}/${total}] ${label}: 0`)
+      },
+    })
+    rawArticles.push(...articles)
+    articlesFound = articles.length // GDELT has no totalResults; count raw articles
+    errors.push(...gErrors)
+    keywordsUsed = ['source:gdelt', ...perQuery.map((p) => p.label)]
   }
 
   // Dedup within this run by URL.
@@ -328,8 +376,8 @@ async function main() {
   for (const article of fresh) {
     const cat = await categorize(anthropic, {
       title: article.title,
-      snippet: article.description || article.content || '',
-      source: article.source?.name,
+      snippet: article.content_snippet || article.title || '',
+      source: article.source_name,
     })
     if (cat) {
       if (!isRelevant(cat)) {
@@ -380,12 +428,12 @@ async function main() {
     const { error } = await supabase.from('cs_fetch_log').insert({
       articles_found: articlesFound,
       articles_new: articlesNew,
-      keywords_used: ALL_QUERY_LABELS,
+      keywords_used: keywordsUsed, // first element tags the source (e.g. 'source:gdelt')
       status,
       error_message: errorMessage,
     })
     if (error) console.warn('  ✗ cs_fetch_log insert failed:', error.message)
-    else console.log(`  Logged: found=${articlesFound}, new=${articlesNew}, status=${status}`)
+    else console.log(`  Logged: source=${SOURCE}, found=${articlesFound}, new=${articlesNew}, status=${status}`)
   }
 
   // STEP 5 — notify (single-row status table for Hub realtime).
@@ -398,25 +446,59 @@ async function main() {
     else console.log('  cs_fetch_status updated.')
   }
 
-  // Show the first 5 fetched + categorized articles.
-  const categorizedPreview = inserted.filter((r) => r.status === 'new').slice(0, 5)
-  if (categorizedPreview.length) {
-    console.log('\n=== First 5 fetched + categorized articles ===')
-    for (const r of categorizedPreview) {
-      let analysis = {}
-      try { analysis = JSON.parse(r.claude_analysis || '{}') } catch { /* ignore */ }
-      console.log(`\n• ${r.title}`)
-      console.log(`  source: ${r.source_name} | published: ${r.published_at}`)
-      console.log(`  category: ${r.primary_category} | confidence: ${r.confidence_level} | relevance: ${analysis.relevance_score ?? 'n/a'}`)
-      console.log(`  countries: ${(analysis.countries || []).join(', ') || 'n/a'}`)
-      console.log(`  summary: ${analysis.summary ?? 'n/a'}`)
-      console.log(`  url: ${r.url}`)
-    }
-  } else {
-    console.log('\n(No categorized articles to preview this run.)')
+  // ── REPORT ──────────────────────────────────────────────────────────────
+  const keptByGate = rows.filter((r) => r.status === 'new').length
+  const uncategorized = rows.filter((r) => r.status === 'uncategorized').length
+  const newRows = inserted.filter((r) => r.status === 'new')
+
+  // Breakdown of kept articles by primary_category.
+  const byCategory = {}
+  for (const r of newRows) {
+    const k = r.primary_category || '(none)'
+    byCategory[k] = (byCategory[k] || 0) + 1
   }
 
-  console.log(`\n=== Done. found=${articlesFound} new=${articlesNew} status=${status} errors=${errors.length} ===\n`)
+  console.log(`\n=== ${SOURCE.toUpperCase()} FETCH REPORT ===`)
+  console.log(`  1. Raw articles fetched (across all queries): ${rawArticles.length}`)
+  console.log(`  2. Unique after URL dedup:                    ${candidates.length}`)
+  console.log(`  3. New (not already in cs_articles):          ${fresh.length}`)
+  console.log(`  4. Kept by Claude gate (score >= ${RELEVANCE_THRESHOLD}):          ${keptByGate}`)
+  console.log(`  5. Discarded by gate (off-topic / low score): ${discardedLowRelevance}`)
+  if (uncategorized) console.log(`     (+ ${uncategorized} stored 'uncategorized' — Claude eval failed)`)
+  console.log('  6. Kept by primary_category:')
+  const catEntries = Object.entries(byCategory).sort((a, b) => b[1] - a[1])
+  if (catEntries.length) {
+    for (const [cat, n] of catEntries) console.log(`       ${cat}: ${n}`)
+  } else {
+    console.log('       (none kept this run)')
+  }
+
+  // 7. First 8 kept articles.
+  console.log('\n  7. First 8 kept articles:')
+  const preview = newRows.slice(0, 8)
+  if (preview.length) {
+    for (const r of preview) {
+      let analysis = {}
+      try { analysis = JSON.parse(r.claude_analysis || '{}') } catch { /* ignore */ }
+      const countries = (analysis.countries || []).join(', ') || 'n/a'
+      console.log(`\n   • ${r.title}`)
+      console.log(`     source: ${r.source_name} | country: ${countries}`)
+      console.log(`     category: ${r.primary_category} | confidence: ${r.confidence_level} | relevance: ${analysis.relevance_score ?? 'n/a'}`)
+      console.log(`     url: ${r.url}`)
+    }
+  } else {
+    console.log('     (no kept articles to preview this run)')
+  }
+
+  // Comparison to the previous NewsAPI run (88 raw -> 3 kept).
+  const PREV_NEWSAPI = { raw: 88, kept: 3 }
+  const prevRate = ((PREV_NEWSAPI.kept / PREV_NEWSAPI.raw) * 100).toFixed(1)
+  const thisRate = rawArticles.length ? ((keptByGate / rawArticles.length) * 100).toFixed(1) : '0.0'
+  console.log('\n=== HIT-RATE COMPARISON ===')
+  console.log(`  Previous NewsAPI run: ${PREV_NEWSAPI.raw} raw -> ${PREV_NEWSAPI.kept} kept (${prevRate}% pass)`)
+  console.log(`  This ${SOURCE.toUpperCase()} run:        ${rawArticles.length} raw -> ${keptByGate} kept (${thisRate}% pass)`)
+
+  console.log(`\n=== Done. source=${SOURCE} found=${articlesFound} new=${articlesNew} status=${status} errors=${errors.length} ===\n`)
 }
 
 main().catch((e) => {
