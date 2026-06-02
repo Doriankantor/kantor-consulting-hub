@@ -2881,6 +2881,14 @@ function registerIntelligenceHandlers(): void {
     return { ok: true, name: norm }
   })
 
+  // Admin: remove a tag from the registry. Existing article chips are preserved
+  // (articles keep their stored JSON) but the tag won't appear in autocomplete.
+  ipcMain.handle('intelligence:deleteTag', (_e, name: string, type: string) => {
+    const t = type === 'disposition' ? 'disposition' : 'thematic'
+    db().prepare('DELETE FROM known_tags WHERE name=? AND type=?').run(name, t)
+    return { ok: true }
+  })
+
   // Replace an article's tag set for one type. Tags are normalized + de-duped,
   // and the row is updated immediately (no Approve needed).
   ipcMain.handle('intelligence:setArticleTags', (_e, id: string, type: string, tags: string[]) => {

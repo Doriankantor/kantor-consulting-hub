@@ -236,6 +236,7 @@ const api = {
     updateGeography:      (id: string, geography: string)    => ipcRenderer.invoke('intelligence:updateGeography', id, geography),
     getKnownTags:         (type: string)                     => ipcRenderer.invoke('intelligence:getKnownTags', type),
     createTag:            (name: string, type: string)       => ipcRenderer.invoke('intelligence:createTag', name, type),
+    deleteTag:            (name: string, type: string)       => ipcRenderer.invoke('intelligence:deleteTag', name, type),
     setArticleTags:       (id: string, type: string, tags: string[]) => ipcRenderer.invoke('intelligence:setArticleTags', id, type, tags),
     logDecision:          (payload: Record<string, unknown>)        => ipcRenderer.invoke('intelligence:logDecision', payload),
     updateQueueSection:   (id: string, section: string)      => ipcRenderer.invoke('intelligence:updateQueueSection', id, section),

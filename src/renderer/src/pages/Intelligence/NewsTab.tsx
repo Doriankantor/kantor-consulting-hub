@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '../../contexts/AuthContext'
 
 const CONFIDENCE_COLORS = {
@@ -53,14 +54,19 @@ function readTags(raw: string | null): string[] {
 }
 
 // ── TagPicker ──────────────────────────────────────────────────────────────────
-// Phase 2 fixes:
-// • Solid opaque background + z-[100] so panel sits above all card content.
-// • onMouseDown (not onClick) on rows — prevents the outside-click mousedown
-//   handler from closing the panel before the click fires.
-// • Clicking an existing row adds the tag and KEEPS the panel open (multi-select).
-// • forceOpen: when the parent bumps it to true the panel opens immediately
-//   (used by the Phase 4 gate to auto-open when Approve is blocked).
-function TagPicker({ label, value, known, chipClass, onAdd, onRemove, onCreate, forceOpen }: {
+// Portal-based dropdown — rendered at document.body root so it escapes any card
+// stacking context (cards have `transition-all` which creates a new stacking
+// context, trapping z-index and causing the panel to render under later cards).
+//
+// Key design decisions:
+// • createPortal to document.body — panel is NEVER a child of the card DOM tree.
+// • position:fixed computed from trigger's getBoundingClientRect — no clipping.
+// • Solid bg-white/dark:bg-gray-900 on BOTH the panel AND every individual row,
+//   so no card content can bleed through any row.
+// • onMouseDown + e.preventDefault() on rows beats the outside-mousedown handler.
+// • Panel stays open after row pick (multi-select); closes on outside click/Escape.
+// • forceOpen: parent sets to true to auto-open the panel (used by approval gate).
+function TagPicker({ label, value, known, chipClass, onAdd, onRemove, onCreate, onDelete, isAdmin, forceOpen }: {
   label: string
   value: string[]
   known: string[]
@@ -68,33 +74,113 @@ function TagPicker({ label, value, known, chipClass, onAdd, onRemove, onCreate, 
   onAdd: (tag: string) => void
   onRemove: (tag: string) => void
   onCreate: (name: string) => void
+  onDelete?: (tag: string) => void
+  isAdmin?: boolean
   forceOpen?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const wrapRef = useRef<HTMLDivElement>(null)
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
   const norm = normalizeTagClient(query)
   const available = known.filter(t => !value.includes(t))
   const matches = norm ? available.filter(t => t.includes(norm)) : available
   const exactExists = known.includes(norm)
 
+  // Compute panel position from the trigger button, then open.
+  function openPanel() {
+    if (triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect()
+      setPanelPos({ top: r.bottom + 4, left: r.left })
+    }
+    setOpen(true)
+  }
+
   // Phase 4: parent can force the panel open (e.g., on gate block).
   useEffect(() => {
-    if (forceOpen) setOpen(true)
+    if (forceOpen) openPanel()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forceOpen])
 
+  // Close on outside mousedown — must check BOTH the trigger area and the portal panel.
   useEffect(() => {
     function onDoc(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false); setQuery('')
-      }
+      const target = e.target as Node
+      const inTrigger = triggerRef.current?.contains(target)
+      const inPanel   = panelRef.current?.contains(target)
+      if (!inTrigger && !inPanel) { setOpen(false); setQuery('') }
     }
     if (open) document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [open])
 
+  const panel = open ? createPortal(
+    <div
+      ref={panelRef}
+      style={{ position: 'fixed', top: panelPos.top, left: panelPos.left, zIndex: 9999 }}
+      className="w-56 max-h-60 overflow-auto rounded-lg border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-gray-900 shadow-xl p-1"
+    >
+      <input
+        autoFocus
+        value={query}
+        onChange={e => setQuery(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && norm) {
+            if (known.includes(norm)) { onAdd(norm); setQuery('') }
+            else { onCreate(norm); setQuery(''); setOpen(false) }
+          }
+          if (e.key === 'Escape') { setOpen(false); setQuery('') }
+        }}
+        placeholder="Search or create…"
+        className="w-full px-2 py-1 rounded text-[11px] border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-gray-900 text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 mb-1"
+      />
+      {/* Each row: solid bg on the whole row so no card content bleeds through.
+          Admin gets a trash icon on the right to delete the tag from the registry. */}
+      {matches.map(t => (
+        <div
+          key={t}
+          className="flex items-center rounded bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 group"
+        >
+          <button
+            onMouseDown={e => { e.preventDefault(); onAdd(t) }}
+            className="flex-1 text-left px-2 py-1 text-[11px] text-gray-700 dark:text-white/80 cursor-pointer"
+          >
+            {t}
+          </button>
+          {isAdmin && onDelete && (
+            <button
+              onMouseDown={e => { e.preventDefault(); e.stopPropagation(); onDelete(t) }}
+              className="mr-1 p-0.5 rounded opacity-0 group-hover:opacity-60 hover:!opacity-100 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30"
+              title={`Delete "${t}" from registry`}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M1.5 2.5h7M4 2.5V1.5h2v1M3.5 2.5l.5 6h3l.5-6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          )}
+        </div>
+      ))}
+      {norm && !exactExists && (
+        <button
+          onMouseDown={e => { e.preventDefault(); onCreate(norm); setQuery(''); setOpen(false) }}
+          className="block w-full text-left px-2 py-1 rounded text-[11px] font-medium bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 cursor-pointer"
+        >
+          + create &quot;{norm}&quot;
+        </button>
+      )}
+      {matches.length === 0 && !norm && (
+        <p className="px-2 py-1 text-[11px] bg-white dark:bg-gray-900 text-gray-400 dark:text-white/30">
+          No tags yet — type to create one
+        </p>
+      )}
+    </div>,
+    document.body
+  ) : null
+
   return (
-    <div className="relative" ref={wrapRef}>
+    <div>
       <div className="flex items-center gap-1 flex-wrap">
         <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30 mr-0.5">{label}</span>
         {value.map(tag => (
@@ -110,55 +196,15 @@ function TagPicker({ label, value, known, chipClass, onAdd, onRemove, onCreate, 
           </span>
         ))}
         <button
-          onClick={() => setOpen(o => !o)}
+          ref={triggerRef}
+          onClick={() => open ? (setOpen(false)) : openPanel()}
           className="px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-400 dark:text-white/30 border border-dashed border-gray-300 dark:border-white/[0.15] hover:text-gray-600 dark:hover:text-white/60"
           title={`Add ${label.toLowerCase()} tag`}
         >
           + tag
         </button>
       </div>
-
-      {open && (
-        // Phase 2: solid bg-white / dark:bg-gray-900, z-[100] above all card layers.
-        <div className="absolute z-[100] mt-1 w-56 max-h-60 overflow-auto rounded-lg border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-gray-900 shadow-xl p-1">
-          <input
-            autoFocus
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && norm) {
-                if (known.includes(norm)) { onAdd(norm); setQuery('') }
-                else { onCreate(norm); setQuery(''); setOpen(false) }
-              }
-              if (e.key === 'Escape') { setOpen(false); setQuery('') }
-            }}
-            placeholder="Search or create…"
-            className="w-full px-2 py-1 rounded text-[11px] border border-gray-200 dark:border-white/[0.12] bg-transparent text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 mb-1"
-          />
-          {/* Phase 2: onMouseDown + preventDefault so click isn't stolen by outside-mousedown handler.
-              Panel stays OPEN after adding a tag (multi-select). */}
-          {matches.map(t => (
-            <button
-              key={t}
-              onMouseDown={e => { e.preventDefault(); onAdd(t) }}
-              className="block w-full text-left px-2 py-1 rounded text-[11px] text-gray-700 dark:text-white/80 hover:bg-gray-100 dark:hover:bg-white/[0.08] cursor-pointer"
-            >
-              {t}
-            </button>
-          ))}
-          {norm && !exactExists && (
-            <button
-              onMouseDown={e => { e.preventDefault(); onCreate(norm); setQuery(''); setOpen(false) }}
-              className="block w-full text-left px-2 py-1 rounded text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 cursor-pointer"
-            >
-              + create &quot;{norm}&quot;
-            </button>
-          )}
-          {matches.length === 0 && !norm && (
-            <p className="px-2 py-1 text-[11px] text-gray-400 dark:text-white/30">No tags yet — type to create one</p>
-          )}
-        </div>
-      )}
+      {panel}
     </div>
   )
 }
@@ -383,6 +429,16 @@ export default function NewsTab({ onApprove }: Props) {
       setKnownThematic(prev => prev.includes(res.name) ? prev : [...prev, res.name].sort((a, b) => a.localeCompare(b)))
       if (!current.includes(res.name)) await handleSetTags(id, type, [...current, res.name])
     } catch (e) { console.warn('[NewsTab] createTag failed:', e) }
+  }
+
+  // Admin: delete a tag from the known_tags registry. Existing article chips are
+  // kept (articles retain their stored JSON) but the tag leaves the autocomplete.
+  async function handleDeleteTag(type: 'thematic', name: string) {
+    if (!confirm(`Delete tag "${name}" from the registry? Articles that already use it will keep it as a chip.`)) return
+    try {
+      await window.api.intelligence.deleteTag(name, type)
+      setKnownThematic(prev => prev.filter(t => t !== name))
+    } catch (e) { console.warn('[NewsTab] deleteTag failed:', e) }
   }
 
   async function handleDelete(id: string) {
@@ -740,7 +796,7 @@ export default function NewsTab({ onApprove }: Props) {
                       )}
                     </div>
 
-                    {/* TOPIC tag picker (thematic) — unchanged, Phase 2 fixes applied via TagPicker. */}
+                    {/* TOPIC tag picker (thematic) — portal-based, admin can delete from registry. */}
                     <TagPicker
                       label="Topic"
                       value={themaTags}
@@ -757,6 +813,8 @@ export default function NewsTab({ onApprove }: Props) {
                       }}
                       onRemove={tag => handleSetTags(source.id, 'thematic', themaTags.filter(t => t !== tag))}
                       onCreate={name => handleCreateTag(source.id, 'thematic', themaTags, name)}
+                      onDelete={isAdmin ? tag => handleDeleteTag('thematic', tag) : undefined}
+                      isAdmin={isAdmin}
                       forceOpen={forceOpenTopicId === source.id}
                     />
                   </div>

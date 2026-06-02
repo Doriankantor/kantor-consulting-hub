@@ -693,6 +693,7 @@ interface Window {
       updateGeography:      (id: string, geography: string)    => Promise<{ ok: boolean }>
       getKnownTags:         (type: string)                     => Promise<string[]>
       createTag:            (name: string, type: string)       => Promise<{ ok: boolean; name: string }>
+      deleteTag:            (name: string, type: string)       => Promise<{ ok: boolean }>
       setArticleTags:       (id: string, type: string, tags: string[]) => Promise<{ ok: boolean; tags: string[] }>
       logDecision:          (payload: { articleId: string; action: string; aiProposed?: unknown; humanFinal?: unknown; reason?: string | null }) => Promise<{ ok: boolean }>
       updateQueueSection:   (id: string, section: string)      => Promise<{ ok: boolean }>
