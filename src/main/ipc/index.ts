@@ -377,12 +377,24 @@ function registerAuthHandlers() {
     if (trimmed !== 'doriankantor@gmail.com' && !trimmed.endsWith('@kantor-consulting.com')) {
       return { error: 'Access restricted to Kantor Consulting team members only.' }
     }
+    // The system admin must always resolve to role 'admin' on every device. On a
+    // fresh machine (no local row, no local_admin bootstrap) the cross-device
+    // path (C) below would otherwise provision the admin as 'member', which makes
+    // the Workspace board-access guard bounce them to the dashboard.
+    const isAdminEmail = trimmed === 'doriankantor@gmail.com'
     const db = getDatabase()
     const row = db.prepare('SELECT * FROM local_users WHERE LOWER(email)=?').get(trimmed) as Record<string, unknown> | undefined
 
     // ── (A) Local row exists ──────────────────────────────────────────────
     if (row) {
       if (row.status === 'inactive') return { error: 'Your account has been deactivated. Contact your administrator.' }
+
+      // Heal a mis-provisioned admin row (e.g. created as 'member' by path C on a
+      // prior fresh-device sign-in) so backend board-access checks see admin too.
+      if (isAdminEmail && row.role !== 'admin') {
+        db.prepare("UPDATE local_users SET role='admin' WHERE id=?").run(row.id)
+        row.role = 'admin'
+      }
 
       const localOk = hashPassword(password, row.password_salt as string) === (row.password_hash as string)
       if (localOk) {
@@ -462,7 +474,7 @@ function registerAuthHandlers() {
       db.prepare(`INSERT OR IGNORE INTO local_users
           (id,email,full_name,role,status,password_hash,password_salt,must_change_password,invited_by)
           VALUES (?,?,?,?,'active',?,?,?,'supabase-auth')`)
-        .run(id, trimmed, name, 'member', hash, salt, isAccessCode ? 1 : 0)
+        .run(id, trimmed, name, isAdminEmail ? 'admin' : 'member', hash, salt, isAccessCode ? 1 : 0)
       const created = db.prepare('SELECT * FROM local_users WHERE LOWER(email)=?').get(trimmed) as Record<string, unknown>
       db.prepare("UPDATE local_users SET last_active=CURRENT_TIMESTAMP, status='active' WHERE id=?").run(created.id)
       return {
@@ -482,7 +494,7 @@ function registerAuthHandlers() {
       db.prepare(`INSERT OR IGNORE INTO local_users
           (id,email,full_name,role,status,password_hash,password_salt,must_change_password,invited_by)
           VALUES (?,?,?,?,'active',?,?,1,'access-code')`)
-        .run(id, trimmed, name, 'member', hash, salt)
+        .run(id, trimmed, name, isAdminEmail ? 'admin' : 'member', hash, salt)
       const created = db.prepare('SELECT * FROM local_users WHERE LOWER(email)=?').get(trimmed) as Record<string, unknown>
       db.prepare("UPDATE local_users SET last_active=CURRENT_TIMESTAMP, status='active' WHERE id=?").run(created.id)
       // Provision the Supabase Auth account with the access code as the initial

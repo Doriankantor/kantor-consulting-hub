@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useAuth } from '../../contexts/AuthContext'
+import { ADMIN_EMAIL } from '../../supabase/client'
 import KanbanView from './KanbanView'
 import TimelineView from './TimelineView'
 import ListView from './ListView'
@@ -187,7 +188,11 @@ export default function Workspace() {
   } = useWorkspace()
   const { localUser } = useAuth()
   const navigate = useNavigate()
-  const isAdmin = localUser?.role === 'admin'
+  // Match AuthContext's admin definition (email OR role). The admin email must
+  // always count as admin even if a device provisioned its local_users row with
+  // role 'member' (cross-device sign-in) — otherwise the board-access guard
+  // below bounces the admin off Workspace to the dashboard.
+  const isAdmin = localUser?.role === 'admin' || localUser?.email === ADMIN_EMAIL
 
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')

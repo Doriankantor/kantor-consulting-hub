@@ -674,7 +674,14 @@ export function initDatabase(): void {
   // (guards against accidental role downgrade or DB inconsistency)
   try {
     db.exec("UPDATE local_users SET role='admin' WHERE id='local-admin'")
-    // Also ensure the configured admin email has admin role, whatever its id
+    // The hardcoded system admin email must always be admin on EVERY device.
+    // Cross-device sign-in (auth:localSignIn path C) provisions a fresh-device
+    // row as 'member', and the local_admin_email setting doesn't exist on a
+    // device that wasn't the bootstrap machine — so heal it unconditionally,
+    // independent of that setting. This stops the Workspace tab bouncing the
+    // admin to the dashboard on a newly set-up machine.
+    db.exec("UPDATE local_users SET role='admin' WHERE LOWER(email)='doriankantor@gmail.com' AND role != 'admin'")
+    // Also honor a configured admin email if one is stored locally.
     const adminEmailRow = db.prepare("SELECT value FROM settings WHERE key='local_admin_email'").get() as { value: string } | undefined
     if (adminEmailRow?.value) {
       db.prepare("UPDATE local_users SET role='admin' WHERE LOWER(email)=?").run(adminEmailRow.value.toLowerCase())

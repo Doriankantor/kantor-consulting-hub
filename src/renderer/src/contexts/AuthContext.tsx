@@ -51,17 +51,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch { setNeedsSetup(false) }
   }, [])
 
-  const fetchProfile = useCallback(async (userId: string) => {
-    try {
-      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
-      if (!error && data) setProfile(data as Profile)
-      else setProfile(null)
-    } catch { setProfile(null) }
-  }, [])
-
-  const refreshProfile = useCallback(async () => {
-    if (user) await fetchProfile(user.id)
-  }, [user, fetchProfile])
+  // NOTE: profile/team identity lives in LOCAL SQLite (local_users), not a
+  // Supabase "profiles" table — that table doesn't exist in the configured
+  // project, so the old query 404'd on every auth event (and re-fired on each
+  // token refresh). Display name falls back to localUser?.name in Header.
+  // Supabase AUTH (sessions / signInWithPassword) is kept intact below.
+  const refreshProfile = useCallback(async () => { /* no-op: profile data is local */ }, [])
 
   useEffect(() => {
     let mounted = true
@@ -69,13 +64,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!mounted) return
       setSession(session); setUser(session?.user ?? null)
-      if (session?.user) { fetchProfile(session.user.id); checkSetupNeeded() }
+      if (session?.user) { checkSetupNeeded() }
       if (!localUser) setLoading(false)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!mounted) return
       setSession(session); setUser(session?.user ?? null)
-      if (session?.user) { fetchProfile(session.user.id); checkSetupNeeded() }
+      if (session?.user) { checkSetupNeeded() }
       else setProfile(null)
     })
     return () => { mounted = false; subscription.unsubscribe() }

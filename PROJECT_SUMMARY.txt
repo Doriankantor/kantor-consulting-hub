@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v1.1.24   |   140 commits   |   ~28,350 lines of TS/TSX
+  Current version: v1.1.25   |   142 commits   |   ~28,330 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -319,6 +319,31 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       intelligence:pushToContestedSkies handler remain intact but unreachable
       from Intelligence, to be wired downstream of Info Pages (admin-only,
       never automatic) in a later build.
+
+  v1.1.25 (Jun 2) — WORKSPACE TAB BOUNCE FIX (ADMIN ROLE ON FRESH DEVICE)
+    • Root cause: on a freshly set-up device the admin (doriankantor@gmail.com)
+      has no local_users row and no local_admin bootstrap (settings are local,
+      don't sync), so auth:localSignIn path C provisioned the admin as
+      role='member'. Workspace's role-based isAdmin was then false, the board
+      access guard (Workspace/index.tsx) denied access and navigate('/dashboard')
+      fired — the tab flashed then bounced. Laptop worked because it had the
+      admin bootstrap. NOT caused by the Supabase profiles 404 (Workspace reads
+      only localUser; profile is unused there).
+    • Fix 1 (renderer): Workspace isAdmin now matches AuthContext —
+      role==='admin' OR email===ADMIN_EMAIL — so the admin email always counts
+      as admin, fixing even an already-cached role='member' session (no re-login).
+    • Fix 2 (main): auth:localSignIn forces role='admin' for the admin email on
+      provision (paths C/D) and heals an existing mis-provisioned row (path A).
+    • Fix 3 (db): unconditional one-time heal — UPDATE local_users SET
+      role='admin' WHERE email='doriankantor@gmail.com', independent of the
+      local_admin_email setting (which is absent on non-bootstrap devices).
+    • Cleanup: removed the vestigial Supabase profiles query from AuthContext
+      (table doesn't exist in the configured project → 404 on every auth event +
+      token refresh). Supabase Auth (sessions/signInWithPassword) kept intact;
+      refreshProfile is now a no-op; display name falls back to localUser?.name.
+    • Safety: team:list hides admin by EMAIL, so role='admin' does not surface
+      the admin as a team member; no profile row is created/seeded for anyone;
+      non-admin members with no boards still route to the dashboard (unchanged).
 
 ───────────────────────────────────────────────────────────────────────────────
 10. KEY FILES (quick reference)
