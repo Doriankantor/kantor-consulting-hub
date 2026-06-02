@@ -10,18 +10,34 @@ import { getDatabase } from '../db'
 // tasks are not yet migrated). contacts:get and clients:get therefore do a two-
 // step read: cloud for contacts/interactions/links, local for task data.
 //
-// contacts:delete still writes to the LOCAL trash table (trash not migrated).
+// Deletion is a SHARED SOFT-DELETE: a deleted contact gets deleted_at/deleted_by
+// set (cloud), leaves the active list for everyone, and shows in the team-wide
+// Trash. Any member can soft-delete/restore; only the admin can permanently
+// delete (admin check enforced in the main process — see permanentDeleteContact).
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONTACTS
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Active contacts only (deleted_at IS NULL). Trashed rows live in listTrashedContacts.
 export async function listContacts(): Promise<Record<string, unknown>[]> {
   const { data, error } = await cloud
     .from('contacts')
     .select('*')
+    .is('deleted_at', null)
     .order('full_name', { ascending: true })
   if (error) throw new Error(`contacts list failed: ${error.message}`)
+  return (data ?? []) as Record<string, unknown>[]
+}
+
+// Shared trash: every trashed contact (deleted_at IS NOT NULL), team-wide.
+export async function listTrashedContacts(): Promise<Record<string, unknown>[]> {
+  const { data, error } = await cloud
+    .from('contacts')
+    .select('*')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false })
+  if (error) throw new Error(`contacts trash list failed: ${error.message}`)
   return (data ?? []) as Record<string, unknown>[]
 }
 
@@ -120,11 +136,42 @@ export async function updateContact(id: string, data: Record<string, unknown>): 
   return { ok: true }
 }
 
-// Delete: removes from cloud (CASCADE handles interactions + task_links).
-// Caller is responsible for inserting into local trash BEFORE calling this.
-export async function deleteContact(id: string): Promise<{ ok: boolean }> {
+// SHARED SOFT-DELETE TRASH (Stage 2, category 2 — trash). Deleting a contact
+// sets deleted_at/deleted_by so it drops out of the active list for everyone and
+// appears in the shared Trash. Any authenticated member may soft-delete or
+// restore; only the admin may permanently delete (enforced in the main process —
+// the service-role key bypasses RLS, so the gate lives here, not only in SQL).
+
+// Soft-delete: move a contact to the shared trash. Any team member.
+export async function softDeleteContact(id: string, deletedBy: string | null): Promise<{ ok: boolean }> {
+  const { error } = await cloud
+    .from('contacts')
+    .update({ deleted_at: new Date().toISOString(), deleted_by: deletedBy ?? null })
+    .eq('id', id)
+  if (error) throw new Error(`contacts soft-delete failed: ${error.message}`)
+  return { ok: true }
+}
+
+// Restore: clear the trash markers so the contact returns to the active list.
+// Any team member.
+export async function restoreContact(id: string): Promise<{ ok: boolean }> {
+  const { error } = await cloud
+    .from('contacts')
+    .update({ deleted_at: null, deleted_by: null })
+    .eq('id', id)
+  if (error) throw new Error(`contacts restore failed: ${error.message}`)
+  return { ok: true }
+}
+
+// Permanent delete: hard DELETE from cloud (CASCADE handles interactions +
+// task_links). ADMIN ONLY — the requesting user's email is verified here in the
+// main process before the delete is issued (RLS cannot gate the service-role key).
+export async function permanentDeleteContact(id: string, requestEmail: string): Promise<{ ok: boolean; reason?: string }> {
+  if ((requestEmail ?? '').toLowerCase() !== CLOUD_ADMIN) {
+    return { ok: false, reason: 'Only the admin can permanently delete contacts.' }
+  }
   const { error } = await cloud.from('contacts').delete().eq('id', id)
-  if (error) throw new Error(`contacts delete failed: ${error.message}`)
+  if (error) throw new Error(`contacts permanent delete failed: ${error.message}`)
   return { ok: true }
 }
 

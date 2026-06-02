@@ -11,7 +11,8 @@ import { sendEmail, inviteEmailHtml } from '../google/gmail'
 import { connectUserGoogle, getUserGoogleStatus, disconnectUserGoogle, getUserCalendars, getUserCalendarEvents, diagnoseUserGoogle } from '../google/userGoogle'
 import { listChatMessages, sendChatMessage, seedChatToCloud } from '../cloud/chat'
 import {
-  listContacts, getContact, createContact, updateContact, deleteContact,
+  listContacts, listTrashedContacts, getContact, createContact, updateContact,
+  softDeleteContact, restoreContact, permanentDeleteContact,
   addInteraction, updateInteraction, deleteInteraction, linkTask, unlinkTask,
   listClients, getClient, createClientRecord, updateClient, deleteClient,
   addClientContact, deleteClientContact, seedContactsToCloud,
@@ -1301,25 +1302,18 @@ function registerClientsHandlers() {
 
 function registerContactsHandlers() {
   // Contacts — CLOUD-SOURCED (Stage 2, category 2). Channel names unchanged.
-  // Exception: contacts:delete still inserts into LOCAL trash (trash not migrated
-  // yet) before deleting from cloud (cloud CASCADE handles interactions+links).
+  // SHARED SOFT-DELETE TRASH: deleting a contact moves it to the cloud trash
+  // (deleted_at set) so it leaves the active list for everyone and appears in the
+  // shared Trash view. Any member can soft-delete/restore; only the admin can
+  // permanently delete — the admin email is verified in the main process below.
   ipcMain.handle('contacts:list', () => listContacts())
+  ipcMain.handle('contacts:listTrash', () => listTrashedContacts())
   ipcMain.handle('contacts:get', (_e, id: string) => getContact(id))
   ipcMain.handle('contacts:create', (_e, data: Record<string, unknown>) => createContact(data))
   ipcMain.handle('contacts:update', (_e, id: string, data: Record<string, unknown>) => updateContact(id, data))
-  ipcMain.handle('contacts:delete', async (_e, id: string, deletedById?: string, deletedByName?: string) => {
-    // Preserve the contact in local trash before removing from cloud
-    try {
-      const existing = await getContact(id)
-      if (existing.contact) {
-        getDatabase().prepare(`INSERT INTO trash (id,item_type,item_id,item_name,item_data_json,deleted_by_id,deleted_by_name,expires_at)
-          VALUES (?,?,?,?,?,?,?,datetime('now','+30 days'))`)
-          .run(uuid(), 'contact', id, String(existing.contact.full_name ?? id),
-               JSON.stringify(existing.contact), deletedById ?? null, deletedByName ?? null)
-      }
-    } catch { /* trash insert failure must not block the delete */ }
-    return deleteContact(id)
-  })
+  ipcMain.handle('contacts:softDelete', (_e, id: string, deletedById?: string) => softDeleteContact(id, deletedById ?? null))
+  ipcMain.handle('contacts:restore', (_e, id: string) => restoreContact(id))
+  ipcMain.handle('contacts:permanentDelete', (_e, id: string, requestEmail: string) => permanentDeleteContact(id, requestEmail))
   ipcMain.handle('contacts:addInteraction', (_e, data: Record<string, unknown>) => addInteraction(data))
   ipcMain.handle('contacts:updateInteraction', (_e, id: string, data: Record<string, unknown>) => updateInteraction(id, data))
   ipcMain.handle('contacts:deleteInteraction', (_e, id: string) => deleteInteraction(id))

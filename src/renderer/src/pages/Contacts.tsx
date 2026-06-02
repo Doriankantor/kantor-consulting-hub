@@ -410,6 +410,9 @@ function ContactDetail({
   const [notesValue, setNotesValue] = useState('')
   const [notesDirty, setNotesDirty] = useState(false)
 
+  // Soft-delete error (graceful failure — inline, no crash)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -487,9 +490,14 @@ function ContactDetail({
 
   async function handleDelete() {
     if (!contact) return
-    if (!confirm(`Delete ${contact.full_name}? This cannot be undone.`)) return
-    await window.api.contacts.delete(contact.id)
-    onDeleted()
+    if (!confirm(`Move ${contact.full_name} to Trash? Any team member can restore it from Trash.`)) return
+    setDeleteError(null)
+    try {
+      await window.api.contacts.softDelete(contact.id, localUser?.id ?? undefined)
+      onDeleted()
+    } catch (e: any) {
+      setDeleteError(`Couldn't move to Trash — ${e?.message ?? 'network error'}`)
+    }
   }
 
   async function handleToggleFlag(field: 'confidential' | 'do_not_contact', value: number) {
@@ -661,16 +669,19 @@ function ContactDetail({
                   className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.12] text-gray-600 dark:text-white/75 text-xs font-medium transition">
                   Edit
                 </button>
-                {isAdmin && (
-                  <button onClick={handleDelete}
-                    className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 text-xs font-medium transition">
-                    Delete
-                  </button>
-                )}
+                <button onClick={handleDelete} title="Move to Trash"
+                  className="titlebar-no-drag px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 text-xs font-medium transition">
+                  Delete
+                </button>
               </>
             )}
           </div>
         </div>
+        {deleteError && (
+          <div className="mt-3 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/25 text-[11px] text-red-600 dark:text-red-400">
+            {deleteError}
+          </div>
+        )}
       </div>
 
       {/* Scrollable content */}
@@ -1146,6 +1157,12 @@ export default function Contacts() {
   const [teamMembers, setTeamMembers] = useState<LocalTeamMember[]>([])
   const [areas, setAreas] = useState<Area[]>([])
 
+  // Shared trash view (team-wide soft-deleted contacts)
+  const [view, setView] = useState<'active' | 'trash'>('active')
+  const [trashed, setTrashed] = useState<Contact[]>([])
+  const [trashLoading, setTrashLoading] = useState(false)
+  const [trashError, setTrashError] = useState<string | null>(null)
+
   // Filters & sort
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('')
@@ -1176,11 +1193,53 @@ export default function Contacts() {
     setLoading(false)
   }, [isAdmin, localUser])
 
+  const loadTrash = useCallback(async () => {
+    setTrashLoading(true)
+    try {
+      const data = await window.api.contacts.listTrash()
+      setTrashError(null)
+      setTrashed(data)
+    } catch (e: any) {
+      setTrashError(`Couldn't reach the server — Trash may be out of date. (${e?.message ?? 'network error'})`)
+    }
+    setTrashLoading(false)
+  }, [])
+
   useEffect(() => {
     loadContacts()
     window.api.team.list().then(setTeamMembers).catch(() => {})
     window.api.areas.list().then(setAreas).catch(() => {})
   }, [loadContacts])
+
+  useEffect(() => {
+    if (view === 'trash') loadTrash()
+  }, [view, loadTrash])
+
+  async function handleRestore(id: string) {
+    setTrashError(null)
+    try {
+      await window.api.contacts.restore(id)
+      await loadTrash()
+      await loadContacts()
+    } catch (e: any) {
+      setTrashError(`Couldn't restore — ${e?.message ?? 'network error'}`)
+    }
+  }
+
+  async function handlePermanentDelete(id: string, name: string) {
+    if (!confirm(`Permanently delete ${name}? This cannot be undone.`)) return
+    setTrashError(null)
+    try {
+      const res = await window.api.contacts.permanentDelete(id, localUser?.email ?? '')
+      if (res && res.ok === false) {
+        setTrashError(res.reason ?? 'Permanent delete failed.')
+        return
+      }
+      await loadTrash()
+    } catch (e: any) {
+      setTrashError(`Couldn't permanently delete — ${e?.message ?? 'network error'}`)
+    }
+  }
 
   const filtered = useMemo(() => {
     let list = contacts
@@ -1223,22 +1282,47 @@ export default function Contacts() {
         <div className="px-4 pt-5 pb-3 border-b border-gray-100 dark:border-white/[0.06]">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold text-gray-900 dark:text-white">Contacts</h1>
+              <h1 className="text-base font-bold text-gray-900 dark:text-white">{view === 'trash' ? 'Trash' : 'Contacts'}</h1>
               <span className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-white/65 text-[10px] font-semibold">
-                {contacts.length}
+                {view === 'trash' ? trashed.length : contacts.length}
               </span>
             </div>
-            <button
-              onClick={() => setShowAdd(true)}
-              className="titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-hub-gold/15 hover:bg-hub-gold/25 border border-hub-gold/30 text-hub-gold text-xs font-semibold transition"
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-              Add Contact
-            </button>
+            {view === 'active' ? (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setView('trash')}
+                  title="View Trash"
+                  className="titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.06] hover:bg-gray-200 dark:hover:bg-white/[0.1] text-gray-500 dark:text-white/65 text-xs font-semibold transition"
+                >
+                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                    <path d="M1.5 2.5h8M3.5 2.5V1.5h4v1M4 4v4M7 4v4M2.5 2.5l.5 7h5l.5-7" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Trash
+                </button>
+                <button
+                  onClick={() => setShowAdd(true)}
+                  className="titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-hub-gold/15 hover:bg-hub-gold/25 border border-hub-gold/30 text-hub-gold text-xs font-semibold transition"
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                    <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                  Add Contact
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setView('active'); loadContacts() }}
+                className="titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.06] hover:bg-gray-200 dark:hover:bg-white/[0.1] text-gray-500 dark:text-white/65 text-xs font-semibold transition"
+              >
+                <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                  <path d="M6.5 2L3 5.5 6.5 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Contacts
+              </button>
+            )}
           </div>
 
+          {view === 'active' && (<>
           {/* Search */}
           <div className="relative mb-2.5">
             <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-white/50" width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -1276,16 +1360,77 @@ export default function Contacts() {
             className="titlebar-no-drag mt-2.5 w-full px-2 py-1.5 rounded-lg bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.07] text-gray-600 dark:text-white/65 text-xs focus:outline-none cursor-pointer">
             {SORT_OPTIONS.map(s => <option key={s.value} value={s.value}>Sort: {s.label}</option>)}
           </select>
+          </>)}
         </div>
 
         {/* Cloud connection error — do NOT silently show stale data */}
-        {cloudError && (
+        {view === 'active' && cloudError && (
           <div className="mx-3 mt-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/25 text-[11px] text-red-600 dark:text-red-400">
             {cloudError}
           </div>
         )}
+        {view === 'trash' && trashError && (
+          <div className="mx-3 mt-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/25 text-[11px] text-red-600 dark:text-red-400">
+            {trashError}
+          </div>
+        )}
 
-        {/* Contact list */}
+        {/* Trash list */}
+        {view === 'trash' ? (
+          <div className="flex-1 overflow-y-auto">
+            {trashLoading ? (
+              <div className="flex items-center justify-center h-24">
+                <div className="w-5 h-5 border-2 border-hub-gold/20 border-t-hub-gold rounded-full animate-spin" />
+              </div>
+            ) : trashed.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-32 text-gray-400 dark:text-white/50">
+                <p className="text-sm">Trash is empty</p>
+              </div>
+            ) : (
+              <div className="p-2 space-y-1">
+                {trashed.map(c => {
+                  const deletedByMember = teamMembers.find(m => m.id === c.deleted_by)
+                  return (
+                    <div key={c.id} className="px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.07]">
+                      <div className="flex items-start gap-2.5">
+                        <Avatar name={c.full_name} size="sm" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold truncate leading-snug text-gray-900 dark:text-white">{c.full_name}</p>
+                          {(c.job_title || c.organization) && (
+                            <p className="text-[11px] text-gray-500 dark:text-white/55 truncate leading-tight mt-0.5">
+                              {[c.job_title, c.organization].filter(Boolean).join(' · ')}
+                            </p>
+                          )}
+                          <p className="text-[10px] text-gray-400 dark:text-white/45 mt-1">
+                            Deleted{deletedByMember ? ` by ${deletedByMember.full_name ?? deletedByMember.email}` : ''}
+                            {c.deleted_at ? ` · ${formatDate(c.deleted_at.slice(0, 10))}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <button
+                          onClick={() => handleRestore(c.id)}
+                          className="titlebar-no-drag flex-1 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold transition"
+                        >
+                          Restore
+                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => handlePermanentDelete(c.id, c.full_name)}
+                            className="titlebar-no-drag flex-1 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 text-xs font-semibold transition"
+                          >
+                            Delete permanently
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+        /* Contact list */
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center h-24">
@@ -1342,11 +1487,12 @@ export default function Contacts() {
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* ── Right Panel ────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {selectedId ? (
+        {view === 'active' && selectedId ? (
           <ContactDetail
             key={selectedId}
             contactId={selectedId}
@@ -1355,6 +1501,17 @@ export default function Contacts() {
             onDeleted={() => { setSelectedId(null); loadContacts() }}
             onUpdated={updated => setContacts(prev => prev.map(c => c.id === updated.id ? updated : c))}
           />
+        ) : view === 'trash' ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-400 dark:text-white/50">
+            <svg width="44" height="44" viewBox="0 0 44 44" fill="none" className="mb-3 opacity-25">
+              <path d="M6 11h32M15 11V7h14v4M12 11l2 28h16l2-28M18 17v16M26 17v16" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <p className="text-sm font-medium">Shared Trash</p>
+            <p className="text-xs mt-1 opacity-75 text-center max-w-xs px-6">
+              Deleted contacts appear here for the whole team. Anyone can restore;
+              only an admin can delete permanently.
+            </p>
+          </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-gray-400 dark:text-white/50">
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none" className="mb-3 opacity-25">

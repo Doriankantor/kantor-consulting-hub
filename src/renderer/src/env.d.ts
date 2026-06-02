@@ -166,6 +166,8 @@ interface Contact {
   created_by: string | null
   created_at: string
   updated_at: string
+  deleted_at: string | null
+  deleted_by: string | null
 }
 
 interface ContactInteraction {
@@ -612,10 +614,13 @@ interface Window {
     }
     contacts: {
       list:              ()                                              => Promise<Contact[]>
+      listTrash:         ()                                              => Promise<Contact[]>
       get:               (id: string)                                   => Promise<{ contact: Contact; interactions: ContactInteraction[]; tasks: WorkspaceTaskSummary[] }>
       create:            (data: Record<string, unknown>)                => Promise<{ ok?: boolean; id?: string }>
       update:            (id: string, data: Record<string, unknown>)    => Promise<{ ok?: boolean }>
-      delete:            (id: string, deletedById?: string, deletedByName?: string) => Promise<{ ok?: boolean }>
+      softDelete:        (id: string, deletedById?: string)             => Promise<{ ok?: boolean }>
+      restore:           (id: string)                                   => Promise<{ ok?: boolean }>
+      permanentDelete:   (id: string, requestEmail: string)             => Promise<{ ok?: boolean; reason?: string }>
       addInteraction:    (data: Record<string, unknown>)                => Promise<{ ok?: boolean; id?: string }>
       updateInteraction: (id: string, data: Record<string, unknown>)    => Promise<{ ok?: boolean }>
       deleteInteraction: (id: string)                                   => Promise<{ ok?: boolean }>

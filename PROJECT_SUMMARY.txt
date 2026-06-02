@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v1.1.28   |   148 commits   |   ~29,100 lines of TS/TSX
+  Current version: v1.1.29   |   150 commits   |   ~29,300 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -411,6 +411,35 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       back to stale local data; no crash.
     * NOTE: the five cloud tables + RLS must be created via the provided SQL
       in the Supabase SQL editor before the seed button works.
+
+  v1.1.29 (Jun 2) -- CONTACTS SHARED SOFT-DELETE TRASH
+    * Deleting a contact is now a SHARED SOFT-DELETE: the cloud contacts row gets
+      deleted_at/deleted_by set instead of being destroyed, so it leaves the
+      active list for the whole team and appears in a team-wide Trash. Any team
+      member can delete-to-trash and restore; only the admin
+      (doriankantor@gmail.com) can permanently delete.
+    * Two new nullable columns on the cloud contacts table: deleted_at timestamptz,
+      deleted_by text (the local_users id who trashed it), + a deleted_at index.
+      Must be added once via ALTER TABLE in the Supabase SQL editor.
+    * RLS unchanged in shape and sufficient as-is: authenticated SELECT (all rows,
+      active + trashed) and authenticated UPDATE already cover soft-delete AND
+      restore (both are UPDATEs). NO authenticated/anon DELETE policy -> hard
+      delete is service-role-only (main process).
+    * Admin-only permanent delete is enforced IN THE MAIN PROCESS
+      (permanentDeleteContact verifies the requesting email === CLOUD_ADMIN before
+      issuing the hard DELETE) -- not only in SQL, because the service-role key
+      bypasses RLS. Cloud CASCADE clears interactions + task_links on hard delete.
+    * cloud/contacts.ts: listContacts now filters deleted_at IS NULL; added
+      listTrashedContacts, softDeleteContact, restoreContact, permanentDeleteContact
+      (removed the old hard-delete deleteContact + its local-trash write).
+    * IPC: contacts:delete replaced by contacts:listTrash / softDelete / restore /
+      permanentDelete (+ preload + env.d.ts types; deleted_at/deleted_by added to
+      the Contact interface).
+    * Contacts page: Delete now soft-deletes and is visible to ALL members (was
+      admin-only); new Trash view toggle in the left panel lists trashed contacts
+      with per-row Restore (everyone) and Delete permanently (admin only). Inline
+      cloud-error banners on delete/restore/purge failure; no crash, no stale-local
+      fallback. Clients are NOT trashable in this build (contacts only).
 
 ---
   v1.1.27 hotfix note: v1.1.26 app launch crash (Node.js 20 / WebSocket) is
