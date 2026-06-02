@@ -9,6 +9,7 @@ import { getDatabase, hashPassword } from '../db'
 import { driveSync } from '../google/drive'
 import { sendEmail, inviteEmailHtml } from '../google/gmail'
 import { connectUserGoogle, getUserGoogleStatus, disconnectUserGoogle, getUserCalendars, getUserCalendarEvents, diagnoseUserGoogle } from '../google/userGoogle'
+import { listChatMessages, sendChatMessage, seedChatToCloud } from '../cloud/chat'
 
 // ── Supabase admin client (service role) ──────────────────────────────────
 // process.env.SUPABASE_URL and process.env.SUPABASE_SERVICE_ROLE_KEY are
@@ -1045,15 +1046,15 @@ function registerNotificationHandlers() {
 // ── Chat ───────────────────────────────────────────────────────────────────
 
 function registerChatHandlers() {
-  ipcMain.handle('chat:getMessages', (_e, limit: number = 100) =>
-    getDatabase().prepare('SELECT * FROM chat_messages ORDER BY created_at DESC LIMIT ?').all(limit).reverse()
-  )
-  ipcMain.handle('chat:send', (_e, msg: { author_id: string; author_name: string; content: string }) => {
-    const id = uuid()
-    const entry = { id, created_at: now(), ...msg }
-    getDatabase().prepare(`INSERT INTO chat_messages (id,author_id,author_name,content,created_at) VALUES (@id,@author_id,@author_name,@content,@created_at)`).run(entry)
-    return entry
-  })
+  // Team chat is CLOUD-SOURCED (Stage 2, category 1). The IPC channel names are
+  // unchanged; only the implementation moved from local SQLite to the cloud
+  // (renderer → IPC → main → Supabase). Errors propagate so the UI can show a
+  // readable "couldn't reach the server" message rather than falling back to
+  // stale local data.
+  ipcMain.handle('chat:getMessages', (_e, limit: number = 100) => listChatMessages(limit))
+  ipcMain.handle('chat:send', (_e, msg: { author_id: string; author_name: string; content: string }) => sendChatMessage(msg))
+  // Admin-only, one-time, idempotent seed of this machine's local chat history.
+  ipcMain.handle('chat:seedToCloud', (_e, requestEmail: string) => seedChatToCloud(requestEmail))
 }
 
 // ── Comment edit ───────────────────────────────────────────────────────────

@@ -551,6 +551,7 @@ interface Window {
     chat: {
       getMessages: (limit?: number) => Promise<ChatMessage[]>
       send:        (msg: { author_id: string; author_name: string; content: string }) => Promise<ChatMessage>
+      seedToCloud: (requestEmail: string) => Promise<{ ok: boolean; uploaded: number; reason?: string }>
     }
     dialog: {
       openFile: () => Promise<{ canceled: boolean; filePaths: string[] }>

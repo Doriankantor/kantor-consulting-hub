@@ -46,6 +46,50 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`px-1.5 py-0.5 rounded-full text-[10px] border ${cls}`}>{status}</span>
 }
 
+// Admin-only, one-time trigger to seed THIS machine's local chat history to the
+// cloud (Stage 2, category 1). Guarded server-side: admin-only + no-op if the
+// cloud table already has rows, so it can never duplicate or run from another
+// machine's stray local data. Never auto-runs.
+function ChatCloudSeedSection({ adminEmail }: { adminEmail: string }) {
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+  async function run() {
+    setRunning(true); setResult(null)
+    try {
+      const r = await window.api.chat.seedToCloud(adminEmail)
+      const text = r.ok
+        ? (r.uploaded > 0 ? `Uploaded ${r.uploaded} message${r.uploaded !== 1 ? 's' : ''} to the cloud.` : (r.reason || 'Nothing to upload.'))
+        : (r.reason || 'Seed failed.')
+      setResult({ ok: r.ok, text })
+    } catch (e: any) {
+      setResult({ ok: false, text: `Couldn’t reach the server: ${e?.message || 'unknown error'}` })
+    } finally { setRunning(false) }
+  }
+  return (
+    <Section title="Cloud migration (admin)">
+      <div className="px-5 py-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-gray-900 dark:text-white">Seed team chat to cloud (one-time)</p>
+            <p className="text-[11px] text-gray-400 dark:text-white/50 mt-1 leading-relaxed max-w-md">
+              Uploads this machine’s existing chat history to the cloud once — the founding dataset.
+              No-ops if the cloud already has messages, so it’s safe to click again and can’t run from
+              another machine. Local messages are kept as a backup.
+            </p>
+          </div>
+          <button onClick={run} disabled={running}
+            className="titlebar-no-drag px-3 py-1.5 rounded-lg text-xs font-medium bg-hub-blue hover:bg-hub-blue/80 disabled:opacity-50 text-white transition shrink-0">
+            {running ? 'Seeding…' : 'Seed chat'}
+          </button>
+        </div>
+        {result && (
+          <p className={`mt-2 text-xs ${result.ok ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>{result.text}</p>
+        )}
+      </div>
+    </Section>
+  )
+}
+
 function fmtActive(ts: string | null): string {
   if (!ts) return 'Never'
   const diffH = (Date.now() - new Date(ts).getTime()) / 3_600_000
@@ -1001,6 +1045,9 @@ export default function Settings() {
             </div>
           </Section>
         )}
+
+        {/* Cloud migration (admin only) — one-time chat seed */}
+        {isAdmin && <ChatCloudSeedSection adminEmail={localUser?.email ?? user?.email ?? ''} />}
 
         {/* Team Management (admin only) */}
         {isAdmin && (

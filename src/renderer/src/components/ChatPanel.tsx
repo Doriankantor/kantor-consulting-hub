@@ -28,6 +28,7 @@ export default function ChatPanel() {
   const [messages, setMessages]   = useState<ChatMessage[]>([])
   const [input, setInput]         = useState('')
   const [unread, setUnread]       = useState(0)
+  const [connError, setConnError] = useState<string | null>(null)
   const lastSeenRef               = useRef<string | null>(null)
   const messagesEndRef            = useRef<HTMLDivElement>(null)
   const inputRef                  = useRef<HTMLTextAreaElement>(null)
@@ -35,6 +36,7 @@ export default function ChatPanel() {
   const loadMessages = useCallback(async () => {
     try {
       const data = await window.api.chat.getMessages(50)
+      setConnError(null)
       setMessages(data)
       if (!open && data.length > 0) {
         const newest = data[data.length - 1]
@@ -48,7 +50,10 @@ export default function ChatPanel() {
           if (fromOthers > 0) setUnread(prev => prev + fromOthers)
         }
       }
-    } catch {}
+    } catch {
+      // Cloud unreachable — surface inline; do NOT fall back to stale local data.
+      setConnError('Couldn’t reach the server — chat may be out of date.')
+    }
   }, [open, userId])
 
   useEffect(() => {
@@ -86,10 +91,15 @@ export default function ChatPanel() {
     setInput('')
     try {
       const msg = await window.api.chat.send({ author_id: userId, author_name: userName, content: text })
+      setConnError(null)
       setMessages(prev => [...prev, msg])
       lastSeenRef.current = msg.id
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 30)
-    } catch {}
+    } catch {
+      // Send failed — restore the text and tell the user; nothing was persisted.
+      setInput(text)
+      setConnError('Couldn’t reach the server — message not sent.')
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -156,6 +166,13 @@ export default function ChatPanel() {
             })}
             <div ref={messagesEndRef} />
           </div>
+
+          {/* Connection error (cloud unreachable) — never a silent local fallback */}
+          {connError && (
+            <div className="shrink-0 mx-3 mb-1 px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/25 text-[11px] text-red-600 dark:text-red-400">
+              {connError}
+            </div>
+          )}
 
           {/* Input */}
           <div className="flex items-end gap-2 px-3 pb-3 pt-2 border-t border-gray-100 dark:border-white/[0.06] shrink-0">

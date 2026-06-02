@@ -118,6 +118,7 @@ const api = {
   chat: {
     getMessages: (limit?: number) => ipcRenderer.invoke('chat:getMessages', limit ?? 100),
     send:        (msg: { author_id: string; author_name: string; content: string }) => ipcRenderer.invoke('chat:send', msg),
+    seedToCloud: (requestEmail: string) => ipcRenderer.invoke('chat:seedToCloud', requestEmail),
   },
   dialog: {
     openFile: () => ipcRenderer.invoke('dialog:openFile'),

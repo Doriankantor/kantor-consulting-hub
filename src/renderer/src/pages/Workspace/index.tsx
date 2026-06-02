@@ -1,6 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { ADMIN_EMAIL } from '../../supabase/client'
@@ -187,7 +186,6 @@ export default function Workspace() {
     createBoard, setActiveBoardId, archivedBoards, restoreBoard, restoreTask,
   } = useWorkspace()
   const { localUser } = useAuth()
-  const navigate = useNavigate()
   // Match AuthContext's admin definition (email OR role). The admin email must
   // always count as admin even if a device provisioned its local_users row with
   // role 'member' (cross-device sign-in) — otherwise the board-access guard
@@ -203,16 +201,28 @@ export default function Workspace() {
     if (!activeBoard || isAdmin) { setAccessDenied(false); return }
     const userId = localUser?.id ?? 'local-admin'
     window.api.boardMembers.check(activeBoard.id, userId).then(({ hasAccess }) => {
-      if (!hasAccess) {
+      if (hasAccess) { setAccessDenied(false); return }
+      // No access to the active board — try to switch to any board this user CAN see.
+      window.api.boardMembers.listForUser(userId).then(ids => {
+        if (ids.length > 0) { setActiveBoardId(ids[0]); setAccessDenied(false) }
+        else {
+          // Zero accessible boards on THIS machine. Board memberships live in
+          // local SQLite and do NOT sync across devices, so a member set up on
+          // another machine can legitimately have no memberships here. Show an
+          // inline state and STAY on Workspace — never silently bounce to the
+          // dashboard (which previously hid the real reason).
+          console.warn('[Workspace] No accessible boards for user', userId,
+            '— board_members rows are absent on this device (they are local-only and do not sync). Showing inline access state instead of redirecting.')
+          setAccessDenied(true)
+        }
+      }).catch(err => {
+        console.error('[Workspace] boardMembers.listForUser failed:', err)
         setAccessDenied(true)
-        window.api.boardMembers.listForUser(userId).then(ids => {
-          if (ids.length > 0) { setActiveBoardId(ids[0]); setAccessDenied(false) }
-          else navigate('/dashboard')
-        }).catch(() => navigate('/dashboard'))
-      } else {
-        setAccessDenied(false)
-      }
-    }).catch(() => setAccessDenied(false))
+      })
+    }).catch(err => {
+      console.error('[Workspace] boardMembers.check failed:', err)
+      setAccessDenied(false)
+    })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeBoard?.id, isAdmin])
 
@@ -588,10 +598,13 @@ export default function Workspace() {
       {/* View content */}
       <div className="flex-1 overflow-hidden">
         {accessDenied ? (
-          <div className="flex-1 flex items-center justify-center h-full">
-            <div className="text-center">
-              <p className="text-lg font-semibold text-gray-900 dark:text-white">Access denied</p>
-              <p className="text-sm text-gray-400 dark:text-white/50 mt-1">You are not a member of this board.</p>
+          <div className="flex-1 flex items-center justify-center h-full p-6">
+            <div className="text-center max-w-md">
+              <p className="text-lg font-semibold text-gray-900 dark:text-white">No boards available on this device</p>
+              <p className="text-sm text-gray-400 dark:text-white/50 mt-1">
+                You don’t have access to any boards on this machine yet. Board memberships are
+                stored locally and don’t sync between devices — ask an admin to add you to a board here.
+              </p>
             </div>
           </div>
         ) : (

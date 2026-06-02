@@ -20,6 +20,7 @@ import Todo         from './pages/Todo'
 import Intelligence from './pages/Intelligence'
 import InfoPages    from './pages/InfoPages'
 import Layout       from './components/Layout'
+import ErrorBoundary from './components/ErrorBoundary'
 import ChatPanel    from './components/ChatPanel'
 
 function Loader() {
@@ -64,7 +65,7 @@ function AppRoutes() {
           <Route path="/inbox"     element={<Inbox />} />
           <Route path="/todo"      element={<Todo />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/workspace"  element={<Workspace />} />
+          <Route path="/workspace"  element={<ErrorBoundary label="Workspace"><Workspace /></ErrorBoundary>} />
           <Route path="/files"     element={<Files />} />
           <Route path="/intelligence" element={<Intelligence />} />
           <Route path="/info-pages"   element={<InfoPages />} />
