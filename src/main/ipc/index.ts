@@ -2830,6 +2830,16 @@ function registerIntelligenceHandlers(): void {
     return { pending, sentToPages }
   })
 
+  // Phase 3: live queue counts for the News Articles filter bar.
+  ipcMain.handle('intelligence:getStatusCounts', () => {
+    const rows = db().prepare(
+      "SELECT status, COUNT(*) as c FROM intelligence_sources WHERE type='article' GROUP BY status"
+    ).all() as { status: string; c: number }[]
+    const m: Record<string, number> = {}
+    for (const r of rows) m[r.status] = r.c
+    return { unreviewed: m['unreviewed'] ?? 0, approved: m['approved'] ?? 0, rejected: m['rejected'] ?? 0 }
+  })
+
   ipcMain.handle('intelligence:updateConfidence', (_e, id: string, confidence: string) => {
     db().prepare('UPDATE intelligence_sources SET confidence=?, confidence_override=1 WHERE id=?').run(confidence, id)
     return { ok: true }

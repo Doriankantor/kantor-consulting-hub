@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v1.1.18   |   130 commits   |   ~27,400 lines of TS/TSX
+  Current version: v1.1.19   |   131 commits   |   ~27,550 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -222,6 +222,22 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
     • TagPicker component in NewsTab: autocomplete chip-based tag editor with
       + create affordance for new tags, relevance-score colored badge, relevance
       type labels displayed on each review card
+
+  v1.1.19 (Jun 2) — INTELLIGENCE REVIEW UI REFINEMENTS
+    • DISPOSITION replaced by PROJECT selector: dropdown sourced from info-page
+      boards (workspace_boards WHERE board_type='info-page'), stored in
+      disposition_tags column as JSON array, defaults to first project
+      (LATAM drone monitor / Contested Skies)
+    • TagPicker (TOPIC) fixed: solid opaque bg-white/dark:bg-gray-900 panel,
+      z-[100], onMouseDown to beat outside-click race, panel stays open for
+      multi-select after each row pick
+    • News Articles default filter: 'unreviewed' — Approve/Reject fades item
+      out of queue with 350ms animation; scroll position preserved
+    • Three live count badges in filter bar: Pending / Approved / Rejected;
+      decrement optimistically on action via new intelligence:getStatusCounts IPC
+    • Approve hard-gated: requires project + topic tag; dimmed button with
+      tooltip, inline error naming exactly what's missing, TOPIC picker
+      auto-opens when gate blocks; Reject and Save remain ungated
 
 ───────────────────────────────────────────────────────────────────────────────
 10. KEY FILES (quick reference)

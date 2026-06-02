@@ -248,6 +248,7 @@ const api = {
     pushToContestedSkies: (params: Record<string, unknown>)  => ipcRenderer.invoke('intelligence:pushToContestedSkies', params),
     getPushLog:           ()                                 => ipcRenderer.invoke('intelligence:getPushLog'),
     getPipelineStats:     ()                                 => ipcRenderer.invoke('intelligence:getPipelineStats'),
+    getStatusCounts:      ()                                 => ipcRenderer.invoke('intelligence:getStatusCounts'),
     importFromContestedSkies: (params: Record<string, unknown>) => ipcRenderer.invoke('intelligence:importFromContestedSkies', params),
     getImportedCount:     ()                                 => ipcRenderer.invoke('intelligence:getImportedCount'),
     confirmImported:      (params: Record<string, unknown>)  => ipcRenderer.invoke('intelligence:confirmImported', params),

@@ -43,8 +43,7 @@ function relevanceBadge(score: number | null): { label: string; cls: string } {
   return { label: String(score), cls: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' }
 }
 
-// Mirror the backend tag normalization for live previews (trim, lowercase,
-// spaces→hyphens). The backend re-normalizes authoritatively.
+// Mirror the backend tag normalization for live previews (trim, lowercase, spaces→hyphens).
 function normalizeTagClient(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, '-')
 }
@@ -53,9 +52,15 @@ function readTags(raw: string | null): string[] {
   try { const a = JSON.parse(raw || '[]'); return Array.isArray(a) ? a : [] } catch { return [] }
 }
 
-// A removable-chip tag picker with autocomplete from a known-tags registry and
-// an explicit "+ create" affordance for new tags.
-function TagPicker({ label, value, known, chipClass, onAdd, onRemove, onCreate }: {
+// ── TagPicker ──────────────────────────────────────────────────────────────────
+// Phase 2 fixes:
+// • Solid opaque background + z-[100] so panel sits above all card content.
+// • onMouseDown (not onClick) on rows — prevents the outside-click mousedown
+//   handler from closing the panel before the click fires.
+// • Clicking an existing row adds the tag and KEEPS the panel open (multi-select).
+// • forceOpen: when the parent bumps it to true the panel opens immediately
+//   (used by the Phase 4 gate to auto-open when Approve is blocked).
+function TagPicker({ label, value, known, chipClass, onAdd, onRemove, onCreate, forceOpen }: {
   label: string
   value: string[]
   known: string[]
@@ -63,6 +68,7 @@ function TagPicker({ label, value, known, chipClass, onAdd, onRemove, onCreate }
   onAdd: (tag: string) => void
   onRemove: (tag: string) => void
   onCreate: (name: string) => void
+  forceOpen?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -72,9 +78,16 @@ function TagPicker({ label, value, known, chipClass, onAdd, onRemove, onCreate }
   const matches = norm ? available.filter(t => t.includes(norm)) : available
   const exactExists = known.includes(norm)
 
+  // Phase 4: parent can force the panel open (e.g., on gate block).
+  useEffect(() => {
+    if (forceOpen) setOpen(true)
+  }, [forceOpen])
+
   useEffect(() => {
     function onDoc(e: MouseEvent) {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) { setOpen(false); setQuery('') }
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false); setQuery('')
+      }
     }
     if (open) document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
@@ -87,7 +100,11 @@ function TagPicker({ label, value, known, chipClass, onAdd, onRemove, onCreate }
         {value.map(tag => (
           <span key={tag} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${chipClass}`}>
             {tag}
-            <button onClick={() => onRemove(tag)} className="opacity-50 hover:opacity-100" title="Remove tag">
+            <button
+              onMouseDown={e => { e.preventDefault(); onRemove(tag) }}
+              className="opacity-50 hover:opacity-100"
+              title="Remove tag"
+            >
               <svg width="8" height="8" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
             </button>
           </span>
@@ -100,35 +117,39 @@ function TagPicker({ label, value, known, chipClass, onAdd, onRemove, onCreate }
           + tag
         </button>
       </div>
+
       {open && (
-        <div className="absolute z-20 mt-1 w-56 max-h-60 overflow-auto rounded-lg border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-gray-800 shadow-lg p-1">
+        // Phase 2: solid bg-white / dark:bg-gray-900, z-[100] above all card layers.
+        <div className="absolute z-[100] mt-1 w-56 max-h-60 overflow-auto rounded-lg border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-gray-900 shadow-xl p-1">
           <input
             autoFocus
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter' && norm) {
-                if (known.includes(norm)) onAdd(norm); else onCreate(norm)
-                setQuery(''); setOpen(false)
+                if (known.includes(norm)) { onAdd(norm); setQuery('') }
+                else { onCreate(norm); setQuery(''); setOpen(false) }
               }
               if (e.key === 'Escape') { setOpen(false); setQuery('') }
             }}
             placeholder="Search or create…"
             className="w-full px-2 py-1 rounded text-[11px] border border-gray-200 dark:border-white/[0.12] bg-transparent text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 mb-1"
           />
+          {/* Phase 2: onMouseDown + preventDefault so click isn't stolen by outside-mousedown handler.
+              Panel stays OPEN after adding a tag (multi-select). */}
           {matches.map(t => (
             <button
               key={t}
-              onClick={() => { onAdd(t); setQuery(''); setOpen(false) }}
-              className="block w-full text-left px-2 py-1 rounded text-[11px] text-gray-700 dark:text-white/80 hover:bg-gray-100 dark:hover:bg-white/[0.06]"
+              onMouseDown={e => { e.preventDefault(); onAdd(t) }}
+              className="block w-full text-left px-2 py-1 rounded text-[11px] text-gray-700 dark:text-white/80 hover:bg-gray-100 dark:hover:bg-white/[0.08] cursor-pointer"
             >
               {t}
             </button>
           ))}
           {norm && !exactExists && (
             <button
-              onClick={() => { onCreate(norm); setQuery(''); setOpen(false) }}
-              className="block w-full text-left px-2 py-1 rounded text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
+              onMouseDown={e => { e.preventDefault(); onCreate(norm); setQuery(''); setOpen(false) }}
+              className="block w-full text-left px-2 py-1 rounded text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 cursor-pointer"
             >
               + create &quot;{norm}&quot;
             </button>
@@ -151,7 +172,8 @@ export default function NewsTab({ onApprove }: Props) {
   const [sources, setSources] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [statusFilter, setStatusFilter] = useState('')
+  // Phase 3: default to 'unreviewed' so the queue shows only items needing action.
+  const [statusFilter, setStatusFilter] = useState('unreviewed')
   const [confidenceFilter, setConfidenceFilter] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [minRelevance, setMinRelevance] = useState(0)
@@ -159,7 +181,14 @@ export default function NewsTab({ onApprove }: Props) {
   const [geoEdit, setGeoEdit] = useState<{ id: string; value: string } | null>(null)
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
   const [fadingIds, setFadingIds] = useState<Set<string>>(new Set())
-  const [knownDisposition, setKnownDisposition] = useState<string[]>([])
+  // Phase 1: project list sourced from info-page boards (replaces disposition tag registry).
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([])
+  // Phase 3: live count badges (Pending / Approved / Rejected).
+  const [statusCounts, setStatusCounts] = useState({ unreviewed: 0, approved: 0, rejected: 0 })
+  // Phase 4: gate error state per article + force-open topic picker.
+  const [gateError, setGateError] = useState<Record<string, { missingProject: boolean; missingTopic: boolean }>>({})
+  const [forceOpenTopicId, setForceOpenTopicId] = useState<string | null>(null)
+  // Topic tag registry (thematic — the only picker that stays).
   const [knownThematic, setKnownThematic] = useState<string[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const [importedCount, setImportedCount] = useState(0)
@@ -168,6 +197,14 @@ export default function NewsTab({ onApprove }: Props) {
 
   const refreshImportedCount = useCallback(async () => {
     try { setImportedCount(await window.api.intelligence.getImportedCount()) } catch { /* ignore */ }
+  }, [])
+
+  // Phase 3: refresh the three live count badges.
+  const refreshStatusCounts = useCallback(async () => {
+    try {
+      const c = await window.api.intelligence.getStatusCounts()
+      setStatusCounts(c)
+    } catch { /* ignore */ }
   }, [])
 
   const load = useCallback(async () => {
@@ -180,8 +217,7 @@ export default function NewsTab({ onApprove }: Props) {
       if (search)           params.search     = search
       const data = await window.api.intelligence.getSources(params)
       // Framework references (Kantor Consulting + FIU publications) are FIXED
-      // citations, not news. They must never appear in the News Articles feed —
-      // only journalistic sources are listed and graded here.
+      // citations, not news — they must never appear in the News Articles feed.
       setSources(data.filter((s) => s.added_by_name !== 'Kantor Framework'))
     } catch (e) {
       console.error('[NewsTab] load error:', e)
@@ -189,19 +225,21 @@ export default function NewsTab({ onApprove }: Props) {
       setLoading(false)
     }
     refreshImportedCount()
-  }, [statusFilter, confidenceFilter, categoryFilter, search, refreshImportedCount])
+    refreshStatusCounts()
+  }, [statusFilter, confidenceFilter, categoryFilter, search, refreshImportedCount, refreshStatusCounts])
 
   useEffect(() => { load() }, [load])
 
-  // Load the disposition + thematic tag registries once on mount.
+  // Phase 1: load projects from existing info-page boards.
+  // Phase 2 (thematic): load known topic tag registry.
   useEffect(() => {
     (async () => {
       try {
-        const [d, t] = await Promise.all([
-          window.api.intelligence.getKnownTags('disposition'),
-          window.api.intelligence.getKnownTags('thematic'),
-        ])
-        setKnownDisposition(d || [])
+        const boards = await window.api.infoPages.list()
+        setProjects((boards as Array<{ id: string; name: string }>).map(b => ({ id: b.id, name: b.name })))
+      } catch (e) { console.warn('[NewsTab] projects load failed:', e) }
+      try {
+        const t = await window.api.intelligence.getKnownTags('thematic')
         setKnownThematic(t || [])
       } catch (e) { console.warn('[NewsTab] known-tags load failed:', e) }
     })()
@@ -211,9 +249,7 @@ export default function NewsTab({ onApprove }: Props) {
     setRefreshing(true)
     try {
       const result = await window.api.intelligence.fetchNews()
-      if (result.ok) {
-        await load()
-      }
+      if (result.ok) { await load() }
     } finally {
       setRefreshing(false)
     }
@@ -247,8 +283,7 @@ export default function NewsTab({ onApprove }: Props) {
 
   async function handleStatus(id: string, status: string) {
     setPendingStatus(p => ({ ...p, [id]: true }))
-    // Snapshot the article BEFORE the status write so the decision log captures
-    // the AI proposal alongside the human-final state. (Phase 5, capture-only.)
+    // Snapshot BEFORE write for decision log (Phase 5).
     const snap = sources.find(s => s.id === id)
     try {
       const res = await window.api.intelligence.updateStatus(
@@ -281,9 +316,15 @@ export default function NewsTab({ onApprove }: Props) {
           })
         } catch (e) { console.warn('[NewsTab] logDecision failed:', e) }
       }
-      // Update badge in-place — do NOT call load() so scroll position is preserved
+      // Update badge in-place — do NOT call load() so scroll position is preserved.
       setSources(prev => prev.map(s => s.id === id ? { ...s, status: status as any } : s))
-      // If a status filter is active and the item no longer matches, fade it out
+      // Phase 3: optimistic count update for Approve / Reject.
+      if (status === 'approved') {
+        setStatusCounts(prev => ({ ...prev, unreviewed: Math.max(0, prev.unreviewed - 1), approved: prev.approved + 1 }))
+      } else if (status === 'rejected') {
+        setStatusCounts(prev => ({ ...prev, unreviewed: Math.max(0, prev.unreviewed - 1), rejected: prev.rejected + 1 }))
+      }
+      // Phase 3: when viewing the unreviewed queue (default), fade approved/rejected out.
       if (statusFilter && status !== statusFilter) {
         setFadingIds(f => new Set([...f, id]))
         setTimeout(() => {
@@ -292,7 +333,7 @@ export default function NewsTab({ onApprove }: Props) {
         }, 350)
       }
       if (status === 'approved') onApprove(res?.addedToPages)
-      else onApprove() // keep pending-review counter current
+      else onApprove()
     } finally {
       setPendingStatus(p => ({ ...p, [id]: false }))
     }
@@ -303,9 +344,7 @@ export default function NewsTab({ onApprove }: Props) {
     setSources(prev => prev.map(s => s.id === id ? { ...s, confidence: confidence as any, confidence_override: 1 } : s))
   }
 
-  // Human confirms / corrects the gate's proposed geography. Once saved, the row
-  // is marked geography_confirmed=1 so the "AI" marker disappears and the gate
-  // will never overwrite it on a later classification pass.
+  // Confirm / correct the gate's proposed geography.
   async function handleGeography(id: string, geography: string) {
     const value = geography.trim()
     await window.api.intelligence.updateGeography(id, value)
@@ -315,7 +354,7 @@ export default function NewsTab({ onApprove }: Props) {
     setGeoEdit(null)
   }
 
-  // Phase 4: write a tag set for one type (disposition|thematic) immediately.
+  // Write a tag set for one type (thematic) immediately — no Approve needed.
   async function handleSetTags(id: string, type: 'disposition' | 'thematic', tags: string[]) {
     const col = type === 'disposition' ? 'disposition_tags' : 'thematic_tags'
     try {
@@ -325,13 +364,23 @@ export default function NewsTab({ onApprove }: Props) {
     } catch (e) { console.warn('[NewsTab] setArticleTags failed:', e) }
   }
 
+  // Phase 1: Project selector change — immediately persist to disposition_tags.
+  async function handleProjectSelect(id: string, projectName: string) {
+    await handleSetTags(id, 'disposition', projectName ? [projectName] : [])
+    // Clear any gate error for this article since project requirement is now met.
+    setGateError(prev => {
+      const n = { ...prev }
+      if (n[id]) n[id] = { ...n[id], missingProject: false }
+      return n
+    })
+  }
+
   // Create a new registry tag, refresh the local registry, then attach it.
-  async function handleCreateTag(id: string, type: 'disposition' | 'thematic', current: string[], name: string) {
+  async function handleCreateTag(id: string, type: 'thematic', current: string[], name: string) {
     try {
       const res = await window.api.intelligence.createTag(name, type)
       if (!res?.ok || !res.name) return
-      const setKnown = type === 'disposition' ? setKnownDisposition : setKnownThematic
-      setKnown(prev => prev.includes(res.name) ? prev : [...prev, res.name].sort((a, b) => a.localeCompare(b)))
+      setKnownThematic(prev => prev.includes(res.name) ? prev : [...prev, res.name].sort((a, b) => a.localeCompare(b)))
       if (!current.includes(res.name)) await handleSetTags(id, type, [...current, res.name])
     } catch (e) { console.warn('[NewsTab] createTag failed:', e) }
   }
@@ -348,8 +397,7 @@ export default function NewsTab({ onApprove }: Props) {
     catch { return dateStr }
   }
 
-  // Client-side minimum-relevance filter + default ordering:
-  // relevance_score DESC (NULL last), then published_at DESC.
+  // Client-side minimum-relevance filter + sort: relevance_score DESC (NULL last), then published_at DESC.
   const visible = useMemo(() => {
     const filtered = minRelevance > 0
       ? sources.filter(s => (s.relevance_score ?? -1) >= minRelevance)
@@ -417,7 +465,18 @@ export default function NewsTab({ onApprove }: Props) {
           <option value={7}>Relevance ≥ 7</option>
         </select>
 
-        <span className="text-xs text-gray-400 dark:text-white/30 ml-1">{visible.length} items</span>
+        {/* Phase 3: three live count badges — Pending / Approved / Rejected. */}
+        <div className="flex items-center gap-1.5 ml-1">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300">
+            {statusCounts.unreviewed} pending
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-300">
+            {statusCounts.approved} approved
+          </span>
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300">
+            {statusCounts.rejected} rejected
+          </span>
+        </div>
 
         {isAdmin && (
           <div className="ml-auto flex items-center gap-2">
@@ -482,7 +541,9 @@ export default function NewsTab({ onApprove }: Props) {
                 <path d="M3 5h14M3 10h14M3 15h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               </svg>
             </div>
-            <p className="text-sm font-medium text-gray-500 dark:text-white/40">No articles found</p>
+            <p className="text-sm font-medium text-gray-500 dark:text-white/40">
+              {statusFilter === 'unreviewed' ? 'Queue is empty' : 'No articles found'}
+            </p>
             <p className="text-xs text-gray-400 dark:text-white/25 mt-1">
               {statusFilter || confidenceFilter || categoryFilter || search || minRelevance > 0
                 ? 'Try adjusting your filters'
@@ -498,8 +559,25 @@ export default function NewsTab({ onApprove }: Props) {
           const dispoTags = readTags(source.disposition_tags)
           const themaTags = readTags(source.thematic_tags)
           const isPending = pendingStatus[source.id]
-
           const isFading = fadingIds.has(source.id)
+
+          // Phase 1: compute effective project (stored or first-project default).
+          const defaultProject = projects[0]?.name ?? ''
+          const projectSel = dispoTags[0] || defaultProject
+
+          // Phase 4: gate — Approve requires at least one project AND one topic tag.
+          const canApprove = projectSel !== '' && themaTags.length > 0
+          const gateErr = gateError[source.id]
+
+          // Phase 4: tooltip explaining what's missing.
+          const gateTooltip = !canApprove
+            ? (projectSel === '' && themaTags.length === 0
+                ? 'Select a project and add a topic tag to approve'
+                : projectSel === ''
+                ? 'Select a project to approve'
+                : 'Add a topic tag to approve')
+            : undefined
+
           return (
             <div
               key={source.id}
@@ -521,7 +599,7 @@ export default function NewsTab({ onApprove }: Props) {
                       <span className={`w-1.5 h-1.5 rounded-full ${confStyle.dot}`} />
                       {conf}
                     </span>
-                    {/* Relevance-score badge (gate's 0-10 Colombia relevance) */}
+                    {/* Relevance-score badge */}
                     {(() => {
                       const rb = relevanceBadge(source.relevance_score)
                       return (
@@ -533,7 +611,7 @@ export default function NewsTab({ onApprove }: Props) {
                         </span>
                       )
                     })()}
-                    {/* Relevance-type badge (gate's proposed classification) */}
+                    {/* Relevance-type badge */}
                     {source.relevance_type && source.relevance_type !== 'none' && (
                       <span
                         className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300"
@@ -546,26 +624,16 @@ export default function NewsTab({ onApprove }: Props) {
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${source.status === 'imported' ? '' : 'uppercase'} ${STATUS_COLORS[source.status] || STATUS_COLORS.unreviewed}`}>
                       {STATUS_LABELS[source.status] || source.status}
                     </span>
-                    {/* Origin badge for imported sources */}
+                    {/* Origin badges */}
                     {source.added_by_name === 'Imported from Contested Skies' && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/40">
-                        from Contested Skies
-                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/40">from Contested Skies</span>
                     )}
-                    {/* Fixed authoritative framework reference (Kantor / FIU) — not graded */}
                     {source.added_by_name === 'Kantor Framework' && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300"
-                        title="Fixed authoritative framework reference — not graded">
-                        Framework — fixed
-                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300" title="Fixed authoritative framework reference — not graded">Framework — fixed</span>
                     )}
-                    {/* Source-archive origin badge */}
                     {source.added_by_name === 'Contested Skies Archive' && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/40">
-                        Source archive
-                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/40">Source archive</span>
                     )}
-                    {/* Published-to-info-page badge (feedback loop) */}
                     {source.used_in_page && (
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300"
                         title={source.used_in_page_at ? `Published ${formatDate(source.used_in_page_at)}` : undefined}>
@@ -579,7 +647,7 @@ export default function NewsTab({ onApprove }: Props) {
                     {/* Date */}
                     <span className="text-xs text-gray-400 dark:text-white/30">{formatDate(source.published_at)}</span>
 
-                    {/* Geography — gate proposes (geography_confirmed=0), human confirms/edits */}
+                    {/* Geography editor */}
                     {geoEdit?.id === source.id ? (
                       <span className="inline-flex items-center gap-1">
                         <input
@@ -593,18 +661,10 @@ export default function NewsTab({ onApprove }: Props) {
                           placeholder="Geography…"
                           className="px-1.5 py-0.5 rounded border border-gray-200 dark:border-white/[0.15] bg-white dark:bg-transparent text-[11px] text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 w-32"
                         />
-                        <button
-                          onClick={() => handleGeography(source.id, geoEdit.value)}
-                          className="p-0.5 rounded text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20"
-                          title="Save geography"
-                        >
+                        <button onClick={() => handleGeography(source.id, geoEdit.value)} className="p-0.5 rounded text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20" title="Save geography">
                           <svg width="11" height="11" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                         </button>
-                        <button
-                          onClick={() => setGeoEdit(null)}
-                          className="p-0.5 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-white/[0.06]"
-                          title="Cancel"
-                        >
+                        <button onClick={() => setGeoEdit(null)} className="p-0.5 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-white/[0.06]" title="Cancel">
                           <svg width="11" height="11" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                         </button>
                       </span>
@@ -633,12 +693,8 @@ export default function NewsTab({ onApprove }: Props) {
 
                   {/* Title */}
                   {source.url ? (
-                    <a
-                      href={source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-semibold text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 transition line-clamp-2"
-                    >
+                    <a href={source.url} target="_blank" rel="noopener noreferrer"
+                      className="text-sm font-semibold text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 transition line-clamp-2">
                       {source.title}
                     </a>
                   ) : (
@@ -654,34 +710,71 @@ export default function NewsTab({ onApprove }: Props) {
                   {cats.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {cats.map(cat => (
-                        <span key={cat} className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-medium">
-                          {cat}
-                        </span>
+                        <span key={cat} className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-medium">{cat}</span>
                       ))}
                     </div>
                   )}
 
-                  {/* Phase 4: Disposition + Topic tag pickers (save immediately) */}
+                  {/* Phase 1 + Phase 4: PROJECT selector (replaces Disposition TagPicker).
+                      Phase 4: TOPIC tag picker (unchanged, with forceOpen for gate). */}
                   <div className="flex flex-wrap items-start gap-x-4 gap-y-1.5 mt-2.5">
-                    <TagPicker
-                      label="Disposition"
-                      value={dispoTags}
-                      known={knownDisposition}
-                      chipClass="bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300"
-                      onAdd={tag => handleSetTags(source.id, 'disposition', [...dispoTags, tag])}
-                      onRemove={tag => handleSetTags(source.id, 'disposition', dispoTags.filter(t => t !== tag))}
-                      onCreate={name => handleCreateTag(source.id, 'disposition', dispoTags, name)}
-                    />
+                    {/* PROJECT — single-select dropdown, stored in disposition_tags. */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30">Project</span>
+                      {projects.length > 0 ? (
+                        <select
+                          value={projectSel}
+                          onChange={e => handleProjectSelect(source.id, e.target.value)}
+                          className={`px-2 py-0.5 rounded text-[11px] border focus:outline-none focus:ring-1 focus:ring-indigo-500/50 bg-white dark:bg-gray-900 text-gray-700 dark:text-white/80 ${
+                            gateErr?.missingProject
+                              ? 'border-red-400 dark:border-red-500'
+                              : 'border-gray-200 dark:border-white/[0.15]'
+                          }`}
+                        >
+                          {projects.map(p => (
+                            <option key={p.id} value={p.name}>{p.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-[11px] text-gray-400 dark:text-white/30">Loading…</span>
+                      )}
+                    </div>
+
+                    {/* TOPIC tag picker (thematic) — unchanged, Phase 2 fixes applied via TagPicker. */}
                     <TagPicker
                       label="Topic"
                       value={themaTags}
                       known={knownThematic}
                       chipClass="bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-300"
-                      onAdd={tag => handleSetTags(source.id, 'thematic', [...themaTags, tag])}
+                      onAdd={tag => {
+                        handleSetTags(source.id, 'thematic', [...themaTags, tag])
+                        // Clear gate error once topic is satisfied.
+                        setGateError(prev => {
+                          const n = { ...prev }
+                          if (n[source.id]) n[source.id] = { ...n[source.id], missingTopic: false }
+                          return n
+                        })
+                      }}
                       onRemove={tag => handleSetTags(source.id, 'thematic', themaTags.filter(t => t !== tag))}
                       onCreate={name => handleCreateTag(source.id, 'thematic', themaTags, name)}
+                      forceOpen={forceOpenTopicId === source.id}
                     />
                   </div>
+
+                  {/* Phase 4: inline gate error message (shown when Approve is blocked). */}
+                  {gateErr && (gateErr.missingProject || gateErr.missingTopic) && (
+                    <div className="mt-2 flex items-center gap-1 text-[11px] text-red-600 dark:text-red-400">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="shrink-0">
+                        <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.3"/>
+                        <path d="M6 4v2.5M6 8h.01" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                      </svg>
+                      {gateErr.missingProject && gateErr.missingTopic
+                        ? 'Select a project and add a topic tag to approve'
+                        : gateErr.missingProject
+                        ? 'Select a project to approve'
+                        : 'Add a topic tag to approve'}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -689,10 +782,7 @@ export default function NewsTab({ onApprove }: Props) {
               <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
                 {/* Confidence: fixed for framework refs, gradeable for journalistic sources */}
                 {source.added_by_name === 'Kantor Framework' ? (
-                  <span
-                    className="px-2 py-1 rounded text-[11px] border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 font-medium"
-                    title="Fixed authoritative source — confidence is not graded"
-                  >
+                  <span className="px-2 py-1 rounded text-[11px] border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 font-medium" title="Fixed authoritative source — confidence is not graded">
                     Authoritative — fixed
                   </span>
                 ) : (
@@ -710,18 +800,46 @@ export default function NewsTab({ onApprove }: Props) {
 
                 <div className="flex-1" />
 
-                {/* Approve */}
+                {/* Phase 4: Approve — gated on project + topic. Dimmed + tooltip when blocked. */}
                 {source.status !== 'approved' && source.status !== 'pushed' && (
                   <button
-                    onClick={() => handleStatus(source.id, 'approved')}
+                    onClick={async () => {
+                      if (!canApprove) {
+                        // Show inline error and auto-open the relevant picker.
+                        setGateError(prev => ({
+                          ...prev,
+                          [source.id]: {
+                            missingProject: projectSel === '',
+                            missingTopic: themaTags.length === 0,
+                          },
+                        }))
+                        if (themaTags.length === 0) {
+                          setForceOpenTopicId(source.id)
+                          setTimeout(() => setForceOpenTopicId(null), 0)
+                        }
+                        return
+                      }
+                      // Clear any gate error.
+                      setGateError(prev => { const n = { ...prev }; delete n[source.id]; return n })
+                      // Auto-save project to disposition_tags if not yet persisted.
+                      if (dispoTags.length === 0 && projectSel) {
+                        await handleSetTags(source.id, 'disposition', [projectSel])
+                      }
+                      handleStatus(source.id, 'approved')
+                    }}
                     disabled={isPending}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-medium transition disabled:opacity-50"
+                    title={gateTooltip}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-white text-xs font-medium transition ${
+                      canApprove
+                        ? 'bg-green-500 hover:bg-green-600 disabled:opacity-50'
+                        : 'bg-green-500/40 cursor-not-allowed'
+                    }`}
                   >
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     Approve
                   </button>
                 )}
-                {/* Save */}
+                {/* Save — ungated */}
                 {source.status !== 'saved' && source.status !== 'approved' && source.status !== 'pushed' && (
                   <button
                     onClick={() => handleStatus(source.id, 'saved')}
@@ -732,7 +850,7 @@ export default function NewsTab({ onApprove }: Props) {
                     Save
                   </button>
                 )}
-                {/* Reject */}
+                {/* Reject — ungated */}
                 {source.status !== 'rejected' && (
                   <button
                     onClick={() => handleStatus(source.id, 'rejected')}
