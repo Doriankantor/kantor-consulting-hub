@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v1.1.21   |   134 commits   |   ~27,770 lines of TS/TSX
+  Current version: v1.1.22   |   136 commits   |   ~27,900 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -257,6 +257,22 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       result summary); only visible when N > 0
     • Ran rescore over 145-article backlog: 141 now scored, 38 relevant (≥4),
       0 failures; top scores are Colombian drone-conflict articles (REL 10)
+
+  v1.1.22 (Jun 2) — SUPABASE cs_articles SYNC (BILINGUAL PRIMARY SOURCE)
+    • importFromContestedSkies handler: HTML scrape → supabaseAdmin.from('cs_articles')
+      query (imported_to_hub=false); INSERT OR IGNORE on url as dedup safety net
+    • syncFromContestedSkies(): shared async function called by both manual "Sync now"
+      button and the fetchAndStoreNews() refresh flow
+    • Field mapping: claude_analysis.relevance_score→relevance_score,
+      claude_analysis.countries[0]→geography, primary_category→categories_json,
+      claude_analysis.confidence_suggestion→confidence, claude_analysis.summary→snippet
+    • gate_processed=1 set on import; NO local re-gating — pipeline scores used as-is
+    • imported_to_hub=true written back to Supabase after each successful local insert
+    • ENABLE_NEWSAPI=false flag disables NewsAPI English-only fetch; code preserved
+    • language column (nullable TEXT) added to intelligence_sources; inferred from
+      domain/title patterns (es/pt/null); ES/EN/PT badge on each card
+    • First sync: 12 cs_articles imported (8 ES, 4 PT), all gate_processed=1,
+      scores 6–9 from pipeline
 
 ───────────────────────────────────────────────────────────────────────────────
 10. KEY FILES (quick reference)

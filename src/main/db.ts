@@ -747,6 +747,8 @@ export function initDatabase(): void {
   // disposition_tags / thematic_tags: JSON arrays, same pattern as categories_json
   try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN disposition_tags TEXT;') } catch {}
   try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN thematic_tags TEXT;') } catch {}
+  // language: best-guess ISO code inferred from domain/title ('es'|'pt'|'en'). Nullable.
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN language TEXT;') } catch {}
 
   // Known-tags registry (controlled-but-growable vocabularies). The (name,type)
   // unique index prevents storing the same tag twice / near-duplicates.

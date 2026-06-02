@@ -546,7 +546,7 @@ export default function NewsTab({ onApprove }: Props) {
               ) : (
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v6M3.5 5L6 7.5 8.5 5M2 9.5h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
               )}
-              {importing ? 'Importing…' : 'Import Contested Skies'}
+              {importing ? 'Syncing…' : 'Sync now'}
             </button>
             <button
               onClick={handleRefreshNews}
@@ -680,7 +680,23 @@ export default function NewsTab({ onApprove }: Props) {
                     <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${source.status === 'imported' ? '' : 'uppercase'} ${STATUS_COLORS[source.status] || STATUS_COLORS.unreviewed}`}>
                       {STATUS_LABELS[source.status] || source.status}
                     </span>
+                    {/* Language badge — ES / EN / PT visibility only, no filter */}
+                    {source.language && (
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                          source.language === 'es' ? 'bg-yellow-100 dark:bg-yellow-500/15 text-yellow-700 dark:text-yellow-300' :
+                          source.language === 'pt' ? 'bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-300' :
+                          'bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300'
+                        }`}
+                        title={`Article language: ${source.language.toUpperCase()}`}
+                      >
+                        {source.language.toUpperCase()}
+                      </span>
+                    )}
                     {/* Origin badges */}
+                    {source.added_by_name === 'Contested Skies Pipeline' && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300">Pipeline</span>
+                    )}
                     {source.added_by_name === 'Imported from Contested Skies' && (
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/40">from Contested Skies</span>
                     )}

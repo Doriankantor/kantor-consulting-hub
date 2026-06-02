@@ -384,6 +384,7 @@ interface IntelligenceSource {
   gate_reasoning: string | null
   disposition_tags: string | null      // JSON array
   thematic_tags: string | null         // JSON array
+  language: string | null              // inferred: 'es' | 'pt' | 'en' | null
 }
 
 interface IntelligencePushLog {

@@ -2403,6 +2403,11 @@ function autoDetectCategories(text: string): string[] {
   return cats.slice(0, 3) // max 3 categories
 }
 
+// ── NewsAPI fetch (DISABLED — Supabase cs_articles is now primary source) ───
+// Set ENABLE_NEWSAPI = true to re-enable the English-only NewsAPI fetch.
+// The code is fully preserved and will work again when the flag is flipped.
+const ENABLE_NEWSAPI = false
+
 // ── NewsAPI fetch ────────────────────────────────────────────────────────
 const NEWS_QUERIES = [
   'drone proliferation OR "drone strikes" OR "drone purchases" OR "counter drone" OR "weaponized drones" OR "DJI drones" OR "drone warfare" OR "loitering munitions" OR "FPV drones" OR "drone swarms"',
@@ -2537,52 +2542,209 @@ async function classifyUnscoredArticles(limit = GATE_MAX_PER_RUN): Promise<numbe
   return scored
 }
 
-async function fetchAndStoreNews(): Promise<number> {
-  const apiKey = process.env.NEWSAPI_KEY
+// ── Supabase → local sync helpers ─────────────────────────────────────────
+
+// Map cs_articles primary_category values to the app's category strings.
+const PIPELINE_CATEGORY_MAP: Record<string, string> = {
+  criminal_vnsa:       'Criminal & VNSA Activity',
+  offensive_use:       'Incident',
+  defensive_systems:   'Counter-drone / C-UAS',
+  military_investment: 'Investment & Procurement',
+  private_investment:  'Investment & Procurement',
+  new_technology:      'Innovation & Technology',
+  policy_regulation:   'Policy & Regulation',
+  military_activity:   'State Military Activity',
+  finance_sanctions:   'Finance & Sanctions',
+  extra_regional:      'Extra-regional Supplier',
+}
+
+// Infer the article's language from its title and source domain.
+// Simple heuristic: Portuguese if Brazilian domain or pt-keywords; Spanish if
+// Spanish-language outlet domain or es-keywords; null if unsure (leaves badge blank).
+function inferLanguage(title: string | null, url: string | null): 'es' | 'pt' | 'en' | null {
+  const txt = `${title || ''} ${url || ''}`.toLowerCase()
+  const PT_SIGNALS = ['.br/', '.br"', 'globo.com', 'r7.com', 'uol.com', 'folha.uol', 'estadao', 'defesanet',
+    'polícia', 'policia', 'adolescente', 'brasileiro', 'avanço', 'eficiência', 'reforça', 'adota', 'atingido']
+  const ES_SIGNALS = ['eltiempo.com', 'elespectador.com', 'aristeguinoticias', 'lafm.com.co', '.mx/',
+    'record.com.mx', 'eldiariodechihuahua', 'semana.com', 'caracol', 'infobae', 'elpais.com',
+    'infodefensa', 'defensa.com', 'zona-militar', 'dron ', 'drones ', 'guerrilla', 'concejal',
+    'ejército', 'ejercito', 'ministro de defensa', 'prohibid', 'alistan', 'colombian', 'colombia ']
+  if (PT_SIGNALS.some(s => txt.includes(s))) return 'pt'
+  if (ES_SIGNALS.some(s => txt.includes(s))) return 'es'
+  return null
+}
+
+// Pull unimported rows from cs_articles, map pipeline analysis fields to local
+// intelligence_sources schema, and mark each successfully inserted row as
+// imported_to_hub=true in Supabase. This is the SHARED function used by both
+// the manual "Sync now" button and the automatic refresh flow.
+// IMPORTANT: imported rows arrive with gate_processed=1 — the local relevance
+// gate DOES NOT run on them (they are already scored by the GDELT pipeline).
+async function syncFromContestedSkies(): Promise<{ imported: number; skipped: number; total: number }> {
   const db = getDatabase()
-  let stored = 0
-  if (!apiKey) console.log('[Intelligence] NEWSAPI_KEY not set, skipping news fetch')
-  if (apiKey) for (const q of NEWS_QUERIES) {
-    try {
-      const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&language=en&sortBy=publishedAt&pageSize=20&apiKey=${apiKey}`
-      const res = await fetch(url)
-      if (!res.ok) {
-        console.warn('[Intelligence] NewsAPI error:', res.status, await res.text())
-        continue
-      }
-      const data = await res.json() as { articles?: Array<{ url: string; title: string; description: string; content: string; source: { name: string }; publishedAt: string; urlToImage: string }> }
-      for (const article of data.articles ?? []) {
-        if (!article.url || !article.title) continue
-        const confidence = autoDetectConfidence(article.source?.name ?? '')
-        const snippet = article.description || article.content?.slice(0, 300) || ''
-        const categories = autoDetectCategories((article.title || '') + ' ' + snippet)
-        try {
-          const { randomUUID } = await import('crypto')
-          db.prepare(`
-            INSERT OR IGNORE INTO intelligence_sources
-              (id, type, title, snippet, url, source_name, published_at, confidence, categories_json, image_url)
-            VALUES (?, 'article', ?, ?, ?, ?, ?, ?, ?, ?)
-          `).run(
-            randomUUID(),
-            article.title,
-            snippet,
-            article.url,
-            article.source?.name || '',
-            article.publishedAt,
-            confidence,
-            JSON.stringify(categories),
-            article.urlToImage || null
-          )
-          stored++
-        } catch { /* duplicate URL — skip */ }
-      }
-    } catch (e) {
-      console.warn('[Intelligence] NewsAPI query error:', e)
+  const { data: rows, error } = await supabaseAdmin
+    .from('cs_articles')
+    .select('*')
+    .eq('imported_to_hub', false)
+
+  if (error) {
+    console.warn('[Sync] cs_articles fetch failed:', error.message)
+    return { imported: 0, skipped: 0, total: 0 }
+  }
+  if (!rows || rows.length === 0) {
+    console.log('[Sync] cs_articles: no new articles to import')
+    return { imported: 0, skipped: 0, total: 0 }
+  }
+
+  const { randomUUID } = require('crypto') as typeof import('crypto')
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO intelligence_sources
+      (id, type, title, snippet, content, url, source_name, published_at,
+       status, confidence, categories_json, geography, region,
+       relevance_score, gate_processed, language, added_by_name)
+    VALUES (?, 'article', ?, ?, ?, ?, ?, ?, 'unreviewed', ?, ?, ?, ?, ?, 1, ?, 'Contested Skies Pipeline')
+  `)
+
+  let imported = 0
+  let skipped = 0
+  const importedUrls: string[] = []
+
+  for (const row of rows) {
+    const url: string | null = row.url || null
+    if (!url) { skipped++; continue }
+
+    // Parse the GDELT pipeline's Claude analysis blob.
+    let analysis: Record<string, unknown> = {}
+    try { analysis = JSON.parse(row.claude_analysis || '{}') } catch { /* leave empty */ }
+
+    const title: string | null = row.title || null
+    const snippet: string | null =
+      (analysis.summary as string | undefined) || row.content_snippet || null
+    const content: string | null = row.content_snippet || null
+    const sourceName: string | null = row.source_name || null
+    const publishedAt: string | null = row.published_at || null
+
+    // confidence: prefer pipeline's claude_analysis suggestion, fallback 'medium'
+    const confSuggestion = String(analysis.confidence_suggestion ?? '').toLowerCase()
+    const confidence: 'high' | 'medium' | 'low' =
+      confSuggestion === 'high' ? 'high' : confSuggestion === 'low' ? 'low' : 'medium'
+
+    // categories: pipeline primary_category → mapped label + autoDetect supplement
+    const pipelineCat = PIPELINE_CATEGORY_MAP[String(row.primary_category ?? '')] || null
+    const autoCats = autoDetectCategories(`${title || ''} ${snippet || ''}`)
+    const allCats = [...new Set([...(pipelineCat ? [pipelineCat] : []), ...autoCats])].slice(0, 3)
+
+    // geography: first country from pipeline's countries array
+    const countries: string[] = Array.isArray(analysis.countries) ? analysis.countries as string[] : []
+    const geography: string | null = countries[0] || null
+
+    // relevance_score: directly from pipeline (already Claude-scored, 0-10)
+    const rawScore = Number(analysis.relevance_score)
+    const relevanceScore: number | null = Number.isFinite(rawScore) ? rawScore : null
+
+    // language: inferred (cs_articles has no language column)
+    const language = inferLanguage(title, url)
+
+    const r = insert.run(
+      randomUUID(),
+      title,
+      snippet,
+      content,
+      url,
+      sourceName,
+      publishedAt,
+      confidence,
+      JSON.stringify(allCats),
+      geography,
+      geography,      // region mirrors geography
+      relevanceScore,
+      language,
+    )
+
+    if (r.changes > 0) {
+      imported++
+      importedUrls.push(url)
+    } else {
+      skipped++ // URL already in DB — INSERT OR IGNORE fired
     }
   }
-  if (apiKey) console.log(`[Intelligence] Fetched and stored ${stored} new articles`)
-  // Relevance gate (Phase 2): score any articles not yet through the gate.
-  // Cost-capped + FAIL-OPEN — never throws, so it can't break the fetch.
+
+  // Mark the successfully inserted rows as imported in Supabase so they aren't
+  // re-pulled next sync. Fire-and-forget: a Supabase failure here is non-fatal
+  // because INSERT OR IGNORE will de-dup them on the next sync anyway.
+  if (importedUrls.length > 0) {
+    try {
+      const { error: updErr } = await supabaseAdmin
+        .from('cs_articles')
+        .update({ imported_to_hub: true, imported_at: new Date().toISOString() })
+        .in('url', importedUrls)
+      if (updErr) console.warn('[Sync] imported_to_hub update failed:', updErr.message)
+    } catch (e) {
+      console.warn('[Sync] imported_to_hub update threw:', (e as Error)?.message)
+    }
+  }
+
+  console.log(`[Sync] cs_articles → local: ${imported} imported, ${skipped} skipped (already in DB), ${rows.length} total checked`)
+  return { imported, skipped, total: rows.length }
+}
+
+async function fetchAndStoreNews(): Promise<number> {
+  // ── Primary source: Supabase cs_articles (GDELT pipeline, bilingual LATAM) ──
+  let stored = 0
+  try {
+    const { imported } = await syncFromContestedSkies()
+    stored += imported
+  } catch (e) {
+    console.warn('[Sync] Supabase sync failed (fail-open):', (e as Error)?.message)
+  }
+
+  // ── Secondary source: NewsAPI (English-only — DISABLED, flag ENABLE_NEWSAPI) ──
+  // Set ENABLE_NEWSAPI = true at the top of this file to re-enable.
+  if (ENABLE_NEWSAPI) {
+    const apiKey = process.env.NEWSAPI_KEY
+    const db = getDatabase()
+    if (!apiKey) {
+      console.log('[Intelligence] NEWSAPI_KEY not set, skipping NewsAPI fetch')
+    } else {
+      for (const q of NEWS_QUERIES) {
+        try {
+          const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&language=en&sortBy=publishedAt&pageSize=20&apiKey=${apiKey}`
+          const res = await fetch(url)
+          if (!res.ok) {
+            console.warn('[Intelligence] NewsAPI error:', res.status, await res.text())
+            continue
+          }
+          const data = await res.json() as { articles?: Array<{ url: string; title: string; description: string; content: string; source: { name: string }; publishedAt: string; urlToImage: string }> }
+          for (const article of data.articles ?? []) {
+            if (!article.url || !article.title) continue
+            const confidence = autoDetectConfidence(article.source?.name ?? '')
+            const snippet = article.description || article.content?.slice(0, 300) || ''
+            const categories = autoDetectCategories((article.title || '') + ' ' + snippet)
+            try {
+              const { randomUUID } = await import('crypto')
+              db.prepare(`
+                INSERT OR IGNORE INTO intelligence_sources
+                  (id, type, title, snippet, url, source_name, published_at, confidence, categories_json, image_url)
+                VALUES (?, 'article', ?, ?, ?, ?, ?, ?, ?, ?)
+              `).run(
+                randomUUID(), article.title, snippet, article.url,
+                article.source?.name || '', article.publishedAt,
+                confidence, JSON.stringify(categories), article.urlToImage || null
+              )
+              stored++
+            } catch { /* duplicate URL — skip */ }
+          }
+        } catch (e) {
+          console.warn('[Intelligence] NewsAPI query error:', e)
+        }
+      }
+      console.log(`[Intelligence] NewsAPI fetched ${stored} new articles`)
+    }
+  }
+
+  // Relevance gate: score any rows that still have gate_processed=0.
+  // Pipeline rows arrive with gate_processed=1 and are SKIPPED by this —
+  // they are already scored and must not be re-gated.
   try { await classifyUnscoredArticles() } catch (e) { console.warn('[Gate] pass failed:', (e as Error)?.message) }
   return stored
 }
@@ -3357,53 +3519,18 @@ ${textContent.slice(0, 8000)}`
     return { ok: true, count: items.length, sections }
   })
 
-  // ── Part 8: Import the Contested Skies Source Archive (Section 07) ─────────
-  // Fetches the live page, parses its embedded sourceArchive JS data, and imports
-  // each article as a pending-confirmation intelligence source.
-  ipcMain.handle('intelligence:importFromContestedSkies', async (_e, params: {
+  // ── Part 8: Sync from Supabase cs_articles (replaced HTML scrape 2026-06-02) ──
+  // The handler name is preserved so existing UI callers (NewsTab "Sync now"
+  // button) continue to work unchanged. The old HTML-scrape approach is retired;
+  // the shared syncFromContestedSkies() function queries cs_articles directly.
+  // NOTE: imported rows arrive with gate_processed=1 — the local gate does NOT
+  // re-run on them; they carry relevance_score from the GDELT pipeline already.
+  ipcMain.handle('intelligence:importFromContestedSkies', async (_e, _params: {
     userId?: string; addedByName?: string
   }) => {
     try {
-      const res = await fetch('https://contestedskies.kantor-consulting.com', {
-        signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(30000) : undefined,
-      })
-      if (!res.ok) return { ok: false, error: `Failed to fetch Contested Skies (HTTP ${res.status})` }
-      const html = await res.text()
-
-      // Extract each country block: name + its articles array contents.
-      const countryRe = /(\w+):\s*\{\s*name:\s*"([^"]+)",[\s\S]*?articles:\s*\[([\s\S]*?)\]\s*\}/g
-      const articleRe = /\{\s*date:\s*"([^"]*)",\s*pub:\s*"([^"]*)",\s*title:\s*"([^"]*)",\s*url:\s*"([^"]*)",\s*blurb:\s*"([^"]*)"\s*,\s*platformMentioned:\s*(true|false)\s*\}/g
-
-      const insert = db().prepare(`
-        INSERT OR IGNORE INTO intelligence_sources
-          (id, type, title, content, url, source_name, published_at, status, confidence,
-           categories_json, snippet, location_mentioned, added_by_id, added_by_name)
-        VALUES (?, 'article', ?, ?, ?, ?, ?, 'imported', 'medium', ?, ?, ?, ?, ?)
-      `)
-
-      let imported = 0
-      let total = 0
-      let cm: RegExpExecArray | null
-      while ((cm = countryRe.exec(html)) !== null) {
-        const countryName = cm[2]
-        const articlesBlock = cm[3]
-        let am: RegExpExecArray | null
-        articleRe.lastIndex = 0
-        while ((am = articleRe.exec(articlesBlock)) !== null) {
-          total++
-          const [, rawDate, pub, title, url, blurb, platformMentioned] = am
-          const publishedAt = rawDate.replace(/-XX/g, '-01')
-          const cats = autoDetectCategories(`${title} ${blurb}`)
-          if (platformMentioned === 'true' && !cats.includes('Innovation & Technology')) cats.push('Innovation & Technology')
-          const r = insert.run(
-            uuid(), title, blurb, url, pub, publishedAt,
-            JSON.stringify(cats), blurb.slice(0, 300), countryName,
-            params.userId || null, 'Imported from Contested Skies',
-          )
-          if (r.changes > 0) imported++
-        }
-      }
-      return { ok: true, imported, total }
+      const result = await syncFromContestedSkies()
+      return { ok: true, imported: result.imported, total: result.total, skipped: result.skipped }
     } catch (e: any) {
       return { ok: false, error: e.message }
     }
