@@ -4,6 +4,11 @@ copyright: Copyright © 2024 Kantor Consulting
 
 directories:
   buildResources: resources
+  # Build-output dir for packaged installers. Installer retention rule
+  # (scripts/prune-installers.mjs, wired into package/make:mac/release):
+  # retain only the latest + one previous build installer; older installers are
+  # auto-pruned on build. Never deletes source, config, env, databases,
+  # node_modules, or caches — only versioned installer files inside this dir.
   output: dist
 
 files:

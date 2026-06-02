@@ -183,7 +183,7 @@ export default function Workspace() {
   const {
     viewMode, setViewMode, tasks, columns, selectedTask, createTask, selectTask,
     boards, activeBoard, archiveBoard, deleteBoard, duplicateBoard, renameBoard,
-    createBoard, setActiveBoardId, archivedBoards, restoreBoard, restoreTask,
+    createBoard, setActiveBoardId, archivedBoards, restoreBoard, restoreTask, cloudError,
   } = useWorkspace()
   const { localUser } = useAuth()
   // Match AuthContext's admin definition (email OR role). The admin email must
@@ -595,15 +595,31 @@ export default function Workspace() {
         </div>
       )}
 
+      {/* Cloud connection error — inline, no stale-local fallback, no crash */}
+      {cloudError && (
+        <div className="shrink-0 mx-4 mt-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/25 text-[12px] text-red-600 dark:text-red-400">
+          {cloudError}
+        </div>
+      )}
+
       {/* View content */}
       <div className="flex-1 overflow-hidden">
-        {accessDenied ? (
+        {(!isAdmin && boards.length === 0) ? (
+          // Zero visible boards (cloud, membership-scoped). Filter, don't bounce.
           <div className="flex-1 flex items-center justify-center h-full p-6">
             <div className="text-center max-w-md">
-              <p className="text-lg font-semibold text-gray-900 dark:text-white">No boards available on this device</p>
+              <p className="text-lg font-semibold text-gray-900 dark:text-white">You have not been added to any workspaces yet.</p>
               <p className="text-sm text-gray-400 dark:text-white/50 mt-1">
-                You don’t have access to any boards on this machine yet. Board memberships are
-                stored locally and don’t sync between devices — ask an admin to add you to a board here.
+                Ask an admin or a member of a board to add you, and it will appear here.
+              </p>
+            </div>
+          </div>
+        ) : accessDenied ? (
+          <div className="flex-1 flex items-center justify-center h-full p-6">
+            <div className="text-center max-w-md">
+              <p className="text-lg font-semibold text-gray-900 dark:text-white">You don’t have access to this board</p>
+              <p className="text-sm text-gray-400 dark:text-white/50 mt-1">
+                Ask an admin or an existing member to add you to this board.
               </p>
             </div>
           </div>

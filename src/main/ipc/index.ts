@@ -17,6 +17,17 @@ import {
   listClients, getClient, createClientRecord, updateClient, deleteClient,
   addClientContact, deleteClientContact, seedContactsToCloud,
 } from '../cloud/contacts'
+import * as boardsCloud from '../cloud/boards'
+import { seedBoardsToCloud } from '../cloud/boardsSeed'
+
+// ── Ambient acting user (Stage 2 cat.3) ──────────────────────────────────────
+// Board visibility is membership-scoped and must be enforced in the main process
+// (the service-role key bypasses RLS). Many board/workspace READ channels carry
+// no user argument, so the renderer stamps the signed-in user's local id here
+// once at login via app:setActingUser, and the board handlers resolve it to a
+// stable email + admin flag (see cloud/boards.ts resolveActor).
+let currentActingUserId: string | undefined
+export function getActingUserId(): string | undefined { return currentActingUserId }
 
 // ── Supabase admin client (service role) ──────────────────────────────────
 // process.env.SUPABASE_URL and process.env.SUPABASE_SERVICE_ROLE_KEY are
@@ -248,16 +259,9 @@ function registerSettingsHandlers() {
 // ── Projects ───────────────────────────────────────────────────────────────
 
 function registerProjectHandlers() {
-  ipcMain.handle('projects:getAll', () =>
-    getDatabase().prepare('SELECT * FROM projects ORDER BY updated_at DESC').all()
-  )
-  ipcMain.handle('projects:upsert', (_e, p: Record<string, unknown>) => {
-    getDatabase().prepare(`INSERT INTO projects (id,title,description,status,owner_id,created_at,updated_at,is_dirty)
-      VALUES (@id,@title,@description,@status,@owner_id,@created_at,@updated_at,1)
-      ON CONFLICT(id) DO UPDATE SET title=excluded.title,description=excluded.description,
-        status=excluded.status,updated_at=excluded.updated_at,is_dirty=1`).run(p)
-    return true
-  })
+  // CLOUD-SOURCED (Stage 2, category 3).
+  ipcMain.handle('projects:getAll', () => boardsCloud.getAllProjects())
+  ipcMain.handle('projects:upsert', (_e, p: Record<string, unknown>) => boardsCloud.upsertProject(p))
 }
 
 // ── Tasks ──────────────────────────────────────────────────────────────────
@@ -282,17 +286,15 @@ function createNotification(n: {
 }
 
 function registerCommentHandlers() {
-  ipcMain.handle('comments:get', (_e, taskId: string) =>
-    getDatabase().prepare('SELECT * FROM task_comments WHERE task_id=? ORDER BY created_at ASC').all(taskId)
-  )
-  ipcMain.handle('comments:add', (_e, c: {
+  // CLOUD-SOURCED (Stage 2, category 3). Comment rows live in the cloud; local
+  // notification + @mention side-effects are preserved (notifications not migrated).
+  ipcMain.handle('comments:get', (_e, taskId: string) => boardsCloud.getComments(taskId))
+  ipcMain.handle('comments:add', async (_e, c: {
     task_id: string; author_id: string; author_name: string; content: string;
     task_title?: string; assignee_ids?: string[]
   }) => {
-    const { task_title, assignee_ids, ...fields } = c
-    const entry = { id: uuid(), created_at: now(), ...fields }
-    getDatabase().prepare(`INSERT INTO task_comments (id,task_id,author_id,author_name,content,created_at)
-      VALUES (@id,@task_id,@author_id,@author_name,@content,@created_at)`).run(entry)
+    const { task_title, assignee_ids } = c
+    const entry = await boardsCloud.addComment(c)
 
     // Notify assignees (except the commenter)
     const targets = (assignee_ids ?? []).filter(id => id !== c.author_id)
@@ -328,18 +330,8 @@ function registerCommentHandlers() {
 
     return entry
   })
-  ipcMain.handle('comments:delete', (_e, id: string, deletedById?: string, deletedByName?: string) => {
-    const db = getDatabase()
-    const comment = db.prepare('SELECT * FROM task_comments WHERE id=?').get(id) as Record<string, unknown> | undefined
-    if (comment) {
-      db.prepare(`INSERT INTO trash (id,item_type,item_id,item_name,item_data_json,deleted_by_id,deleted_by_name,expires_at)
-        VALUES (?,?,?,?,?,?,?,datetime('now','+30 days'))`)
-        .run(uuid(), 'comment', id,
-          String(comment.content ?? '').slice(0, 80),
-          JSON.stringify(comment),
-          deletedById ?? null, deletedByName ?? null)
-    }
-    db.prepare('DELETE FROM task_comments WHERE id=?').run(id)
+  ipcMain.handle('comments:delete', async (_e, id: string, deletedById?: string, deletedByName?: string) => {
+    await boardsCloud.deleteComment(id, deletedById, deletedByName)
     return true
   })
 }
@@ -347,34 +339,10 @@ function registerCommentHandlers() {
 // ── Activity ───────────────────────────────────────────────────────────────
 
 function registerActivityHandlers() {
-  ipcMain.handle('activity:get', (_e, taskId: string) =>
-    getDatabase().prepare('SELECT * FROM task_activity WHERE task_id=? ORDER BY created_at DESC LIMIT 50').all(taskId)
-  )
-  ipcMain.handle('activity:add', (_e, e: { task_id: string; actor_name: string; action: string }) => {
-    const row = { id: uuid(), created_at: now(), ...e }
-    getDatabase().prepare(`INSERT INTO task_activity (id,task_id,actor_name,action,created_at)
-      VALUES (@id,@task_id,@actor_name,@action,@created_at)`).run(row)
-    return row
-  })
-
-  // Global feed: last 60 events across all tasks (activity + comments merged)
-  ipcMain.handle('activity:getFeed', () => {
-    const db = getDatabase()
-    const rows = db.prepare(`
-      SELECT id, task_id, actor_name, action, created_at, 'activity' as source,
-             (SELECT title FROM workspace_tasks WHERE id = task_id) as task_title
-      FROM task_activity
-      UNION ALL
-      SELECT id, task_id, author_name as actor_name,
-             CASE WHEN LENGTH(content) > 80 THEN SUBSTR(content,1,80)||'…' ELSE content END as action,
-             created_at, 'comment' as source,
-             (SELECT title FROM workspace_tasks WHERE id = task_id) as task_title
-      FROM task_comments
-      ORDER BY created_at DESC
-      LIMIT 60
-    `).all()
-    return rows
-  })
+  // CLOUD-SOURCED (Stage 2, category 3). Feed is membership-filtered via the ambient actor.
+  ipcMain.handle('activity:get', (_e, taskId: string) => boardsCloud.getActivity(taskId))
+  ipcMain.handle('activity:add', (_e, e: { task_id: string; actor_name: string; action: string }) => boardsCloud.addActivity(e))
+  ipcMain.handle('activity:getFeed', () => boardsCloud.getFeed(currentActingUserId))
 }
 
 // ── Auth ───────────────────────────────────────────────────────────────────
@@ -730,31 +698,11 @@ function registerDriveHandlers() {
 // ── Areas ─────────────────────────────────────────────────────────────────
 
 function registerAreaHandlers() {
-  ipcMain.handle('areas:list', () =>
-    getDatabase().prepare('SELECT * FROM areas ORDER BY is_default DESC, position ASC').all()
-  )
-
-  ipcMain.handle('areas:create', (_e, name: string, color: string) => {
-    const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now().toString(36)
-    const maxPos = (getDatabase().prepare('SELECT MAX(position) as m FROM areas').get() as { m: number | null }).m ?? 0
-    getDatabase().prepare('INSERT INTO areas (id, name, color, is_default, position) VALUES (?, ?, ?, 0, ?)')
-      .run(id, name.trim(), color, maxPos + 1)
-    return { ok: true, id }
-  })
-
-  ipcMain.handle('areas:update', (_e, id: string, name: string, color: string) => {
-    getDatabase().prepare('UPDATE areas SET name=?, color=? WHERE id=?').run(name.trim(), color, id)
-    return { ok: true }
-  })
-
-  ipcMain.handle('areas:delete', (_e, id: string) => {
-    // Only delete non-default areas
-    const area = getDatabase().prepare('SELECT is_default FROM areas WHERE id=?').get(id) as { is_default: number } | undefined
-    if (!area) return { error: 'Area not found.' }
-    if (area.is_default) return { error: 'Default areas cannot be deleted.' }
-    getDatabase().prepare('DELETE FROM areas WHERE id=?').run(id)
-    return { ok: true }
-  })
+  // CLOUD-SOURCED (Stage 2, category 3). Workspace-global.
+  ipcMain.handle('areas:list', () => boardsCloud.listAreas())
+  ipcMain.handle('areas:create', (_e, name: string, color: string) => boardsCloud.createArea(name, color))
+  ipcMain.handle('areas:update', (_e, id: string, name: string, color: string) => boardsCloud.updateArea(id, name, color))
+  ipcMain.handle('areas:delete', (_e, id: string) => boardsCloud.deleteArea(id))
 }
 
 // ── App ────────────────────────────────────────────────────────────────────
@@ -875,82 +823,26 @@ function registerClaudeHandlers() {
 // ── Labels ─────────────────────────────────────────────────────────────────
 
 function registerLabelHandlers() {
-  ipcMain.handle('labels:list', () =>
-    getDatabase().prepare('SELECT * FROM labels ORDER BY position ASC').all()
-  )
-  ipcMain.handle('labels:create', (_e, name: string, color: string) => {
-    const id = 'label-' + Date.now().toString(36)
-    const maxPos = (getDatabase().prepare('SELECT MAX(position) as m FROM labels').get() as { m: number | null }).m ?? 0
-    getDatabase().prepare('INSERT INTO labels (id,name,color,position) VALUES (?,?,?,?)').run(id, name.trim(), color, maxPos + 1)
-    return { ok: true, id }
-  })
-  ipcMain.handle('labels:update', (_e, id: string, name: string, color: string) => {
-    getDatabase().prepare('UPDATE labels SET name=?,color=? WHERE id=?').run(name.trim(), color, id)
-    return { ok: true }
-  })
-  ipcMain.handle('labels:delete', (_e, id: string) => {
-    getDatabase().prepare('DELETE FROM task_labels WHERE label_id=?').run(id)
-    getDatabase().prepare('DELETE FROM labels WHERE id=?').run(id)
-    return { ok: true }
-  })
-  ipcMain.handle('taskLabels:get', (_e, taskId: string) => {
-    return getDatabase().prepare(`
-      SELECT l.* FROM labels l
-      JOIN task_labels tl ON tl.label_id = l.id
-      WHERE tl.task_id = ?
-      ORDER BY l.position ASC
-    `).all(taskId)
-  })
-  ipcMain.handle('taskLabels:set', (_e, taskId: string, labelIds: string[]) => {
-    const db = getDatabase()
-    db.prepare('DELETE FROM task_labels WHERE task_id=?').run(taskId)
-    const insert = db.prepare('INSERT OR IGNORE INTO task_labels (task_id,label_id) VALUES (?,?)')
-    for (const lid of labelIds) insert.run(taskId, lid)
-    return { ok: true }
-  })
+  // CLOUD-SOURCED (Stage 2, category 3).
+  ipcMain.handle('labels:list', () => boardsCloud.listLabels())
+  ipcMain.handle('labels:create', (_e, name: string, color: string) => boardsCloud.createLabel(name, color))
+  ipcMain.handle('labels:update', (_e, id: string, name: string, color: string) => boardsCloud.updateLabel(id, name, color))
+  ipcMain.handle('labels:delete', (_e, id: string) => boardsCloud.deleteLabel(id))
+  ipcMain.handle('taskLabels:get', (_e, taskId: string) => boardsCloud.getTaskLabels(taskId))
+  ipcMain.handle('taskLabels:set', (_e, taskId: string, labelIds: string[]) => boardsCloud.setTaskLabels(taskId, labelIds))
 }
 
 // ── Checklists ─────────────────────────────────────────────────────────────
 
 function registerChecklistHandlers() {
-  ipcMain.handle('checklists:get', (_e, taskId: string) => {
-    const db = getDatabase()
-    const lists = db.prepare('SELECT * FROM task_checklists WHERE task_id=? ORDER BY position ASC').all(taskId) as any[]
-    for (const list of lists) {
-      list.items = db.prepare('SELECT * FROM task_checklist_items WHERE checklist_id=? ORDER BY position ASC').all(list.id)
-    }
-    return lists
-  })
-  ipcMain.handle('checklists:create', (_e, taskId: string, title: string) => {
-    const id = uuid()
-    const maxPos = (getDatabase().prepare('SELECT MAX(position) as m FROM task_checklists WHERE task_id=?').get(taskId) as { m: number | null }).m ?? 0
-    getDatabase().prepare('INSERT INTO task_checklists (id,task_id,title,position) VALUES (?,?,?,?)').run(id, taskId, title.trim(), maxPos + 1)
-    return { ok: true, id }
-  })
-  ipcMain.handle('checklists:delete', (_e, checklistId: string) => {
-    const db = getDatabase()
-    db.prepare('DELETE FROM task_checklist_items WHERE checklist_id=?').run(checklistId)
-    db.prepare('DELETE FROM task_checklists WHERE id=?').run(checklistId)
-    return { ok: true }
-  })
-  ipcMain.handle('checklistItems:add', (_e, checklistId: string, taskId: string, text: string) => {
-    const id = uuid()
-    const maxPos = (getDatabase().prepare('SELECT MAX(position) as m FROM task_checklist_items WHERE checklist_id=?').get(checklistId) as { m: number | null }).m ?? 0
-    getDatabase().prepare('INSERT INTO task_checklist_items (id,checklist_id,task_id,text,checked,position) VALUES (?,?,?,?,0,?)').run(id, checklistId, taskId, text.trim(), maxPos + 1)
-    return { ok: true, id }
-  })
-  ipcMain.handle('checklistItems:toggle', (_e, itemId: string, checked: boolean) => {
-    getDatabase().prepare('UPDATE task_checklist_items SET checked=? WHERE id=?').run(checked ? 1 : 0, itemId)
-    return { ok: true }
-  })
-  ipcMain.handle('checklistItems:delete', (_e, itemId: string) => {
-    getDatabase().prepare('DELETE FROM task_checklist_items WHERE id=?').run(itemId)
-    return { ok: true }
-  })
-  ipcMain.handle('checklistItems:update', (_e, itemId: string, text: string) => {
-    getDatabase().prepare('UPDATE task_checklist_items SET text=? WHERE id=?').run(text.trim(), itemId)
-    return { ok: true }
-  })
+  // CLOUD-SOURCED (Stage 2, category 3).
+  ipcMain.handle('checklists:get', (_e, taskId: string) => boardsCloud.getChecklists(taskId))
+  ipcMain.handle('checklists:create', (_e, taskId: string, title: string) => boardsCloud.createChecklist(taskId, title))
+  ipcMain.handle('checklists:delete', (_e, checklistId: string) => boardsCloud.deleteChecklist(checklistId))
+  ipcMain.handle('checklistItems:add', (_e, checklistId: string, taskId: string, text: string) => boardsCloud.addChecklistItem(checklistId, taskId, text))
+  ipcMain.handle('checklistItems:toggle', (_e, itemId: string, checked: boolean) => boardsCloud.toggleChecklistItem(itemId, checked))
+  ipcMain.handle('checklistItems:delete', (_e, itemId: string) => boardsCloud.deleteChecklistItem(itemId))
+  ipcMain.handle('checklistItems:update', (_e, itemId: string, text: string) => boardsCloud.updateChecklistItem(itemId, text))
 }
 
 // ── Attachments ────────────────────────────────────────────────────────────
@@ -1067,219 +959,57 @@ function registerChatHandlers() {
 // ── Comment edit ───────────────────────────────────────────────────────────
 
 function registerCommentEditHandler() {
-  ipcMain.handle('comments:update', (_e, id: string, content: string) => {
-    getDatabase().prepare('UPDATE task_comments SET content=?, updated_at=CURRENT_TIMESTAMP WHERE id=?').run(content, id)
+  // CLOUD-SOURCED (Stage 2, category 3).
+  ipcMain.handle('comments:update', (_e, id: string, content: string) => boardsCloud.updateComment(id, content))
+}
+
+// ── Board membership: ambient acting user + one-time seed ───────────────────
+function registerBoardsCloudHandlers() {
+  // Renderer stamps the signed-in user's local id once at login so the
+  // membership-scoped board handlers know who is asking (service role bypasses RLS).
+  ipcMain.handle('app:setActingUser', (_e, userId: string | null) => {
+    currentActingUserId = userId ?? undefined
     return { ok: true }
   })
+  // Admin-only, one-time, idempotent seed of this machine's local board tables.
+  ipcMain.handle('boards:seedToCloud', (_e, requestEmail: string) => seedBoardsToCloud(requestEmail))
 }
 
 // ── Boards ────────────────────────────────────────────────────────────────
 
 function registerBoardHandlers() {
-  const db = () => getDatabase()
-
-  ipcMain.handle('boards:list', (_e, includeArchived: boolean = false) => {
-    const rows = includeArchived
-      ? db().prepare('SELECT * FROM workspace_boards ORDER BY position ASC, created_at ASC').all()
-      : db().prepare('SELECT * FROM workspace_boards WHERE archived=0 ORDER BY position ASC, created_at ASC').all()
-    return rows
-  })
-
-  ipcMain.handle('boards:listArchived', () =>
-    db().prepare('SELECT * FROM workspace_boards WHERE archived=1 ORDER BY archived_at DESC').all()
-  )
-
-  ipcMain.handle('boards:create', (_e, name: string) => {
-    const id = uuid()
-    const maxPos = (db().prepare('SELECT MAX(position) as mp FROM workspace_boards WHERE archived=0').get() as { mp: number | null })?.mp ?? -1
-    db().prepare('INSERT INTO workspace_boards (id,name,position) VALUES (?,?,?)').run(id, name, maxPos + 1)
-    return { ok: true, id }
-  })
-
-  ipcMain.handle('boards:rename', (_e, id: string, name: string) => {
-    db().prepare("UPDATE workspace_boards SET name=?,updated_at=datetime('now') WHERE id=?").run(name, id)
-    return { ok: true }
-  })
-
-  ipcMain.handle('boards:archive', (_e, id: string, archivedBy: string) => {
-    db().prepare("UPDATE workspace_boards SET archived=1,archived_at=datetime('now'),archived_by=?,updated_at=datetime('now') WHERE id=?").run(archivedBy, id)
-    return { ok: true }
-  })
-
-  ipcMain.handle('boards:restore', (_e, id: string) => {
-    const maxPos = (db().prepare('SELECT MAX(position) as mp FROM workspace_boards WHERE archived=0').get() as { mp: number | null })?.mp ?? -1
-    db().prepare("UPDATE workspace_boards SET archived=0,archived_at=NULL,archived_by=NULL,position=?,updated_at=datetime('now') WHERE id=?").run(maxPos + 1, id)
-    return { ok: true }
-  })
-
-  ipcMain.handle('boards:delete', (_e, id: string, deletedById?: string, deletedByName?: string) => {
-    const board = db().prepare('SELECT * FROM workspace_boards WHERE id=?').get(id) as Record<string, unknown> | undefined
-    if (board) {
-      db().prepare(`INSERT INTO trash (id,item_type,item_id,item_name,item_data_json,deleted_by_id,deleted_by_name,expires_at)
-        VALUES (?,?,?,?,?,?,?,datetime('now','+30 days'))`)
-        .run(uuid(), 'board', id, String(board.name ?? id), JSON.stringify(board), deletedById ?? null, deletedByName ?? null)
-    }
-    // Delete all tasks in this board first, then the board itself
-    db().prepare('DELETE FROM task_activity WHERE task_id IN (SELECT id FROM workspace_tasks WHERE board_id=?)').run(id)
-    db().prepare('DELETE FROM task_comments WHERE task_id IN (SELECT id FROM workspace_tasks WHERE board_id=?)').run(id)
-    db().prepare('DELETE FROM workspace_tasks WHERE board_id=?').run(id)
-    db().prepare('DELETE FROM workspace_boards WHERE id=?').run(id)
-    return { ok: true }
-  })
-
-  ipcMain.handle('boards:duplicate', (_e, id: string, newName: string) => {
-    const newId = uuid()
-    const maxPos = (db().prepare('SELECT MAX(position) as mp FROM workspace_boards WHERE archived=0').get() as { mp: number | null })?.mp ?? -1
-    db().prepare('INSERT INTO workspace_boards (id,name,position) VALUES (?,?,?)').run(newId, newName, maxPos + 1)
-    return { ok: true, id: newId }
-  })
-
-  ipcMain.handle('boards:taskCount', (_e, id: string) => {
-    const row = db().prepare('SELECT COUNT(*) as c FROM workspace_tasks WHERE board_id=?').get(id) as { c: number }
-    return row.c
-  })
+  // CLOUD-SOURCED (Stage 2, category 3). Membership-scoped: admin sees all,
+  // members see only their boards (enforced in cloud/boards via the ambient actor).
+  ipcMain.handle('boards:list', (_e, includeArchived: boolean = false) =>
+    boardsCloud.listBoards(currentActingUserId, includeArchived))
+  ipcMain.handle('boards:listArchived', () => boardsCloud.listArchivedBoards(currentActingUserId))
+  ipcMain.handle('boards:create', (_e, name: string) => boardsCloud.createBoard(currentActingUserId, name))
+  ipcMain.handle('boards:rename', (_e, id: string, name: string) => boardsCloud.renameBoard(id, name))
+  ipcMain.handle('boards:archive', (_e, id: string, archivedBy: string) => boardsCloud.archiveBoard(id, archivedBy))
+  ipcMain.handle('boards:restore', (_e, id: string) => boardsCloud.restoreBoard(id))
+  // Hard delete is ADMIN-ONLY (verified in the main process — service role bypasses RLS).
+  ipcMain.handle('boards:delete', (_e, id: string, deletedById?: string, deletedByName?: string) =>
+    boardsCloud.deleteBoard(currentActingUserId, id, deletedById, deletedByName))
+  ipcMain.handle('boards:duplicate', (_e, id: string, newName: string) => boardsCloud.duplicateBoard(currentActingUserId, id, newName))
+  ipcMain.handle('boards:taskCount', (_e, id: string) => boardsCloud.boardTaskCount(id))
 }
 
 // ── Workspace (local SQLite — columns + tasks) ────────────────────────────
 
 function registerWorkspaceHandlers() {
-  const db = () => getDatabase()
+  // CLOUD-SOURCED (Stage 2, category 3). Columns + tasks live in the cloud;
+  // task lists are membership-filtered via the ambient actor; ordering preserved.
+  ipcMain.handle('workspace:getColumns', (_e, boardId?: string) => boardsCloud.getColumns(currentActingUserId, boardId))
+  ipcMain.handle('workspace:addColumn', (_e, col: { id: string; name: string; position: number; color: string; board_id?: string }) => boardsCloud.addColumn(col))
+  ipcMain.handle('workspace:updateColumn', (_e, colId: string, partial: { name?: string; position?: number }) => boardsCloud.updateColumn(colId, partial))
 
-  // ── Columns ──
-  ipcMain.handle('workspace:getColumns', (_e, boardId?: string) => {
-    if (boardId) {
-      return db().prepare('SELECT * FROM workspace_columns WHERE board_id=? ORDER BY position ASC').all(boardId)
-    }
-    return db().prepare('SELECT * FROM workspace_columns ORDER BY position ASC').all()
-  })
-
-  ipcMain.handle('workspace:addColumn', (_e, col: { id: string; name: string; position: number; color: string; board_id?: string }) => {
-    db().prepare('INSERT INTO workspace_columns (id,name,position,color,board_id) VALUES (?,?,?,?,?)').run(col.id, col.name, col.position, col.color, col.board_id ?? 'board-main')
-    return { ok: true }
-  })
-
-  ipcMain.handle('workspace:updateColumn', (_e, colId: string, partial: { name?: string; position?: number }) => {
-    const sets: string[] = []
-    const vals: unknown[] = []
-    if (partial.name     !== undefined) { sets.push('name=?');     vals.push(partial.name) }
-    if (partial.position !== undefined) { sets.push('position=?'); vals.push(partial.position) }
-    if (sets.length) db().prepare(`UPDATE workspace_columns SET ${sets.join(',')} WHERE id=?`).run(...vals, colId)
-    return { ok: true }
-  })
-
-  // ── Tasks ──
-  ipcMain.handle('workspace:getTasks', () => {
-    const rows = db().prepare(`
-      SELECT t.* FROM workspace_tasks t
-      LEFT JOIN workspace_boards b ON t.board_id = b.id
-      WHERE (t.archived IS NULL OR t.archived = 0)
-        AND (b.id IS NULL OR b.archived = 0)
-      ORDER BY t.position ASC
-    `).all() as Record<string, unknown>[]
-    return rows.map(r => ({ ...r, assignee_ids: JSON.parse((r.assignees_json as string) || '[]') }))
-  })
-
-  ipcMain.handle('workspace:archiveTask', (_e, taskId: string) => {
-    db().prepare("UPDATE workspace_tasks SET archived=1, updated_at=datetime('now') WHERE id=?").run(taskId)
-    return { ok: true }
-  })
-
-  ipcMain.handle('workspace:getArchivedTasks', () => {
-    const rows = db().prepare(`
-      SELECT t.* FROM workspace_tasks t
-      WHERE t.archived = 1
-      ORDER BY t.updated_at DESC
-    `).all() as Record<string, unknown>[]
-    return rows.map(r => ({ ...r, assignee_ids: JSON.parse((r.assignees_json as string) || '[]') }))
-  })
-
-  ipcMain.handle('workspace:restoreTask', (_e, taskId: string) => {
-    db().prepare("UPDATE workspace_tasks SET archived=0, updated_at=datetime('now') WHERE id=?").run(taskId)
-    return { ok: true }
-  })
-
-  ipcMain.handle('workspace:createTask', (_e, t: {
-    id: string; board_id?: string; column_id: string; title: string; content_type: string;
-    client: string | null; area_of_analysis: string | null; assignee_ids: string[];
-    due_date: string | null; start_date: string | null; priority: string;
-    description: string | null; notes: string | null; sources_json: string | null; position: number
-  }) => {
-    db().prepare(`INSERT INTO workspace_tasks
-      (id,board_id,column_id,title,content_type,client,area_of_analysis,assignees_json,
-       due_date,start_date,priority,description,notes,sources_json,position)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    `).run(t.id, t.board_id ?? 'board-main', t.column_id, t.title, t.content_type,
-      t.client, t.area_of_analysis,
-      JSON.stringify(t.assignee_ids ?? []),
-      t.due_date, t.start_date, t.priority, t.description, t.notes, t.sources_json, t.position)
-    return { ok: true }
-  })
-
-  ipcMain.handle('workspace:updateTask', (_e, taskId: string, partial: Record<string, unknown>) => {
-    const sets: string[] = []
-    const vals: unknown[] = []
-    const fields: Record<string, string> = {
-      column_id: 'column_id', title: 'title', content_type: 'content_type',
-      client: 'client', client_id: 'client_id', client_org: 'client_org', area_of_analysis: 'area_of_analysis',
-      due_date: 'due_date', start_date: 'start_date', priority: 'priority',
-      description: 'description', notes: 'notes', sources_json: 'sources_json',
-      position: 'position', recurrence_json: 'recurrence_json',
-    }
-    for (const [key, col] of Object.entries(fields)) {
-      if (key in partial) { sets.push(`${col}=?`); vals.push(partial[key]) }
-    }
-    if ('assignee_ids' in partial) {
-      sets.push('assignees_json=?')
-      vals.push(JSON.stringify(partial.assignee_ids))
-    }
-    sets.push("updated_at=datetime('now')")
-    if (sets.length > 1) db().prepare(`UPDATE workspace_tasks SET ${sets.join(',')} WHERE id=?`).run(...vals, taskId)
-
-    // Recurring task auto-copy logic
-    if ('column_id' in partial) {
-      const newCol = partial.column_id as string
-      if (newCol === 'col-delivery' || newCol === 'col-published') {
-        const task = db().prepare('SELECT * FROM workspace_tasks WHERE id=?').get(taskId) as Record<string,unknown> | undefined
-        if (task?.recurrence_json) {
-          try {
-            const rec = JSON.parse(task.recurrence_json as string) as { type: string; value: string | number }
-            const now2 = new Date()
-            let nextDue: Date | null = null
-            if (task.due_date) {
-              const base = new Date(task.due_date as string)
-              if (rec.type === 'weekly')    { nextDue = new Date(base); nextDue.setDate(nextDue.getDate() + 7) }
-              if (rec.type === 'monthly')   { nextDue = new Date(base); nextDue.setMonth(nextDue.getMonth() + 1) }
-              if (rec.type === 'quarterly') { nextDue = new Date(base); nextDue.setMonth(nextDue.getMonth() + 3) }
-              if (rec.type === 'custom')    { nextDue = new Date(base); nextDue.setDate(nextDue.getDate() + Number(rec.value)) }
-            }
-            const newId = uuid()
-            const colCount = (db().prepare('SELECT COUNT(*) as c FROM workspace_tasks WHERE column_id=?').get('col-scoping') as {c:number}).c
-            db().prepare(`INSERT INTO workspace_tasks
-              (id,column_id,title,content_type,client,client_id,area_of_analysis,assignees_json,due_date,start_date,priority,recurrence_json,position)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-              .run(newId, 'col-scoping', task.title, task.content_type, task.client??null, task.client_id??null,
-                   task.area_of_analysis??null, task.assignees_json??'[]',
-                   nextDue ? nextDue.toISOString().slice(0,10) : null,
-                   now2.toISOString().slice(0,10),
-                   task.priority, task.recurrence_json, colCount)
-          } catch {}
-        }
-      }
-    }
-
-    return { ok: true }
-  })
-
-  ipcMain.handle('workspace:deleteTask', (_e, taskId: string, deletedById?: string, deletedByName?: string) => {
-    const task = db().prepare('SELECT * FROM workspace_tasks WHERE id=?').get(taskId) as Record<string, unknown> | undefined
-    if (task) {
-      db().prepare(`INSERT INTO trash (id,item_type,item_id,item_name,item_data_json,deleted_by_id,deleted_by_name,expires_at)
-        VALUES (?,?,?,?,?,?,?,datetime('now','+30 days'))`)
-        .run(uuid(), 'task', taskId, String(task.title ?? taskId), JSON.stringify(task), deletedById ?? null, deletedByName ?? null)
-    }
-    db().prepare('DELETE FROM workspace_tasks WHERE id=?').run(taskId)
-    return { ok: true }
-  })
+  ipcMain.handle('workspace:getTasks', () => boardsCloud.getTasks(currentActingUserId))
+  ipcMain.handle('workspace:archiveTask', (_e, taskId: string) => boardsCloud.archiveTask(taskId))
+  ipcMain.handle('workspace:getArchivedTasks', () => boardsCloud.getArchivedTasks(currentActingUserId))
+  ipcMain.handle('workspace:restoreTask', (_e, taskId: string) => boardsCloud.restoreTask(taskId))
+  ipcMain.handle('workspace:createTask', (_e, t: Parameters<typeof boardsCloud.createTask>[0]) => boardsCloud.createTask(t))
+  ipcMain.handle('workspace:updateTask', (_e, taskId: string, partial: Record<string, unknown>) => boardsCloud.updateTask(taskId, partial))
+  ipcMain.handle('workspace:deleteTask', (_e, taskId: string, deletedById?: string, deletedByName?: string) => boardsCloud.deleteTask(taskId, deletedById, deletedByName))
 }
 
 // ── Clients ───────────────────────────────────────────────────────────────
@@ -1324,34 +1054,23 @@ function registerContactsHandlers() {
 // ── Templates ──────────────────────────────────────────────────────────────
 
 function registerTemplatesHandlers() {
-  const db = () => getDatabase()
-  ipcMain.handle('templates:list', (_e, boardId?: string) => {
-    if (boardId) {
-      return db().prepare('SELECT * FROM task_templates WHERE board_id=? OR board_id IS NULL ORDER BY is_builtin DESC, name ASC').all(boardId)
-    }
-    return db().prepare('SELECT * FROM task_templates ORDER BY is_builtin DESC, name ASC').all()
-  })
-  ipcMain.handle('templates:create', (_e, data: Record<string, unknown>) => {
-    const id = uuid()
-    db().prepare(`INSERT INTO task_templates (id,name,content_type,duration_days,checklist_json,is_builtin) VALUES (?,?,?,?,?,0)`)
-      .run(id, data.name, data.content_type??'policy-brief', data.duration_days??7, JSON.stringify(data.checklist??[]))
-    return { ok: true, id }
-  })
+  // CLOUD-SOURCED (Stage 2, category 3). Renderer passes `checklist` (array);
+  // it is serialized to checklist_json here to match the cloud schema.
+  ipcMain.handle('templates:list', (_e, boardId?: string) => boardsCloud.listTemplates(boardId))
+  ipcMain.handle('templates:create', (_e, data: Record<string, unknown>) =>
+    boardsCloud.createTemplate({
+      name: data.name, content_type: data.content_type, duration_days: data.duration_days,
+      checklist_json: JSON.stringify(data.checklist ?? []), board_id: data.board_id ?? null,
+    }))
   ipcMain.handle('templates:update', (_e, id: string, data: Record<string, unknown>) => {
-    const sets: string[] = []
-    const vals: unknown[] = []
-    if ('name' in data) { sets.push('name=?'); vals.push(data.name) }
-    if ('content_type' in data) { sets.push('content_type=?'); vals.push(data.content_type) }
-    if ('duration_days' in data) { sets.push('duration_days=?'); vals.push(data.duration_days) }
-    if ('checklist' in data) { sets.push('checklist_json=?'); vals.push(JSON.stringify(data.checklist)) }
-    sets.push("updated_at=datetime('now')")
-    if (sets.length > 1) db().prepare(`UPDATE task_templates SET ${sets.join(',')} WHERE id=? AND is_builtin=0`).run(...vals, id)
-    return { ok: true }
+    const patch: Record<string, unknown> = {}
+    if ('name' in data) patch.name = data.name
+    if ('content_type' in data) patch.content_type = data.content_type
+    if ('duration_days' in data) patch.duration_days = data.duration_days
+    if ('checklist' in data) patch.checklist_json = JSON.stringify(data.checklist)
+    return boardsCloud.updateTemplate(id, patch)
   })
-  ipcMain.handle('templates:delete', (_e, id: string) => {
-    db().prepare('DELETE FROM task_templates WHERE id=? AND is_builtin=0').run(id)
-    return { ok: true }
-  })
+  ipcMain.handle('templates:delete', (_e, id: string) => boardsCloud.deleteTemplate(id))
 }
 
 // ── Analytics ──────────────────────────────────────────────────────────────
@@ -1865,36 +1584,26 @@ function registerTodoHandlers() {
 function registerBoardMembersHandlers() {
   const db = () => getDatabase()
 
-  ipcMain.handle('boardMembers:list', (_e, boardId: string) => {
-    return db().prepare(`
-      SELECT bm.user_id, lu.full_name, lu.email, lu.role, bm.added_at
-      FROM board_members bm
-      JOIN local_users lu ON lu.id = bm.user_id
-      WHERE bm.board_id = ?
-      ORDER BY bm.added_at ASC
-    `).all(boardId) as { user_id: string; full_name: string; email: string; role: string; added_at: string }[]
-  })
+  // CLOUD-SOURCED (Stage 2, category 3). Membership is email-keyed in the cloud.
+  ipcMain.handle('boardMembers:list', (_e, boardId: string) => boardsCloud.listMembers(boardId))
 
+  // Add: cloud module authorizes (admin OR existing member) and writes the row;
+  // local notification + email side-effects are preserved here (notifications not migrated).
   ipcMain.handle('boardMembers:add', async (_e, boardId: string, userId: string, addedByName: string) => {
+    const res = await boardsCloud.addMember(currentActingUserId, boardId, userId, addedByName)
+    if (!res.ok) return res
     try {
-      db().prepare(`INSERT OR IGNORE INTO board_members (board_id, user_id, added_by) VALUES (?, ?, ?)`)
-        .run(boardId, userId, addedByName)
-
-      // Get board name and user info for notification/email
-      const board = db().prepare('SELECT name FROM workspace_boards WHERE id=?').get(boardId) as { name: string } | undefined
-      const boardName = board?.name ?? boardId
+      const boardName = await boardsCloud.getBoardName(boardId)
       const userRow = db().prepare('SELECT email, full_name FROM local_users WHERE id=?').get(userId) as { email: string; full_name: string | null } | undefined
 
-      // Create in-app notification
+      // In-app notification (local; targets this device's local user id if present)
       createNotification({
-        user_id: userId,
-        type: 'board_added',
+        user_id: userId, type: 'board_added',
         title: `You've been added to ${boardName}`,
         body: `You now have access to ${boardName} on Kantor Consulting Hub`,
         actor_name: addedByName,
       })
 
-      // Send email notification
       if (userRow?.email) {
         try {
           const gmailPass = getSetting('gmail_app_password')
@@ -1925,54 +1634,16 @@ function registerBoardMembersHandlers() {
           console.warn('[boardMembers:add] email send failed:', emailErr)
         }
       }
-
-      return { ok: true }
-    } catch (err: unknown) {
-      return { ok: false, error: String(err) }
+    } catch (sideErr) {
+      console.warn('[boardMembers:add] notification side-effect failed:', sideErr)
     }
-  })
-
-  ipcMain.handle('boardMembers:remove', (_e, boardId: string, userId: string) => {
-    db().prepare('DELETE FROM board_members WHERE board_id=? AND user_id=?').run(boardId, userId)
     return { ok: true }
   })
 
-  ipcMain.handle('boardMembers:check', (_e, boardId: string, userId: string) => {
-    // Admin always has access
-    const user = db().prepare('SELECT role FROM local_users WHERE id=?').get(userId) as { role: string } | undefined
-    if (user?.role === 'admin' || userId === 'local-admin') return { hasAccess: true }
-    const row = db().prepare('SELECT 1 FROM board_members WHERE board_id=? AND user_id=?').get(boardId, userId)
-    return { hasAccess: !!row }
-  })
-
-  ipcMain.handle('boardMembers:taskCount', (_e, boardId: string, userId: string) => {
-    const rows = db().prepare(
-      `SELECT assignees_json FROM workspace_tasks WHERE board_id=? AND (archived IS NULL OR archived=0)`
-    ).all(boardId) as { assignees_json: string }[]
-    let count = 0
-    for (const r of rows) {
-      try {
-        const ids: string[] = JSON.parse(r.assignees_json || '[]')
-        if (ids.includes(userId)) count++
-      } catch {}
-    }
-    return count
-  })
-
-  ipcMain.handle('boardMembers:listForUser', (_e, userId: string) => {
-    // Admin gets all board IDs
-    const user = db().prepare('SELECT role FROM local_users WHERE id=?').get(userId) as { role: string } | undefined
-    if (user?.role === 'admin' || userId === 'local-admin') {
-      const allBoards = db().prepare('SELECT id FROM workspace_boards WHERE archived=0').all() as { id: string }[]
-      return allBoards.map(b => b.id)
-    }
-    const rows = db().prepare(
-      `SELECT bm.board_id FROM board_members bm
-       JOIN workspace_boards wb ON wb.id = bm.board_id
-       WHERE bm.user_id=? AND wb.archived=0`
-    ).all(userId) as { board_id: string }[]
-    return rows.map(r => r.board_id)
-  })
+  ipcMain.handle('boardMembers:remove', (_e, boardId: string, userId: string) => boardsCloud.removeMember(currentActingUserId, boardId, userId))
+  ipcMain.handle('boardMembers:check', (_e, boardId: string, userId: string) => boardsCloud.checkAccess(userId ?? currentActingUserId, boardId))
+  ipcMain.handle('boardMembers:taskCount', (_e, boardId: string, userId: string) => boardsCloud.memberTaskCount(boardId, userId))
+  ipcMain.handle('boardMembers:listForUser', (_e, userId: string) => boardsCloud.listForUser(userId ?? currentActingUserId))
 }
 
 // ── Personal To-Do ─────────────────────────────────────────────────────────
@@ -2179,6 +1850,7 @@ export function registerIpcHandlers(): void {
   registerNotificationHandlers()
   registerChatHandlers()
   registerCommentEditHandler()
+  registerBoardsCloudHandlers()
   registerDialogHandlers()
   registerBoardHandlers()
   registerWorkspaceHandlers()

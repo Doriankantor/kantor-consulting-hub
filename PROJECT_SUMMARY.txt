@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v1.1.30   |   152 commits   |   ~29,300 lines of TS/TSX
+  Current version: v2.0.0   |   155 commits   |   ~30,400 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -440,6 +440,45 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       with per-row Restore (everyone) and Delete permanently (admin only). Inline
       cloud-error banners on delete/restore/purge failure; no crash, no stale-local
       fallback. Clients are NOT trashable in this build (contacts only).
+
+  v2.0.0 (Jun 3) -- MAJOR: WORKSPACE BOARDS MIGRATED TO CLOUD (Stage 2, cat.3 part A)
+    * Workspace boards are now CLOUD-SOURCED with MEMBERSHIP-SCOPED visibility,
+      following the chat/contacts pattern (cloud = single source of truth;
+      renderer -> IPC -> main -> Supabase; renderer makes no direct Supabase calls).
+      ATTACHMENTS are OUT OF SCOPE and remain local/untouched.
+    * 13 cloud tables + RLS (created via SQL in 4 confirmed steps): workspace_boards,
+      areas, projects, labels, board_members, workspace_columns, workspace_tasks,
+      task_comments, task_checklists(+items), task_labels, task_activity,
+      task_templates. RLS membership-join on every board/child table (child tables
+      join through workspace_tasks.board_id); DELETE = service_role/admin only.
+    * ACCESS MODEL: a member sees a board only with a board_members row (keyed by
+      EMAIL -- the only identity stable across devices, since local_users.id is
+      device-specific); admin sees ALL boards/cards with NO board_members row.
+      Admins and any board member can add members (spreads member-to-member).
+    * Membership is enforced IN THE MAIN PROCESS (service-role key bypasses RLS):
+      new src/main/cloud/boards.ts resolves the acting user -> email + admin flag and
+      filters every board/column/task/feed read; RLS is the backstop. The signed-in
+      user's local id is stamped via app:setActingUser at login.
+    * All boards:*/workspace:*/boardMembers:*/areas:*/labels:*/taskLabels:*/
+      checklists:*/checklistItems:*/comments:*/activity:*/projects:*/templates:*
+      IPC handlers rewired to the cloud module (channel names unchanged). Ordering
+      preserved (position fields). Board hard-delete is admin-only. Comment/board
+      delete still write a LOCAL trash backup.
+    * Workspace GATE: filters, never bounces. Zero visible boards renders
+      "You have not been added to any workspaces yet."; a board you are not on shows
+      "You don't have access to this board" inline. ErrorBoundary retained. Inline
+      cloud-error banner on failure; no stale-local fallback; no crash.
+    * Guarded one-time SEED (Settings -> Cloud migration -> "Seed boards"): admin-only,
+      no-op if cloud already has boards, FK-safe order (parents -> columns -> tasks ->
+      children -> board_members LAST), board_members translated local id -> email
+      (admin excluded), deduped by id, local rows kept. ws transport inherited.
+    * NOTE / follow-up (part B): analytics, to-do, personal to-do, notification
+      scheduler, and trash restore still read LOCAL workspace tables (out of scope
+      here); notifications remain local/per-device.
+    * Ships alongside: build-installer retention rule (scripts/prune-installers.mjs,
+      keep latest + one previous, auto-pruned on build; README + electron-builder
+      comment); CLAUDE.md updated to reflect the home-dir working copy (the iCloud
+      copy is deprecated) and the .env-based GH_TOKEN release flow.
 
   v1.1.30 (Jun 3) -- RELEASE TOOLING: GH_TOKEN FROM .env
     * npm run release now auto-loads GH_TOKEN from the gitignored .env (falling

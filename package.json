@@ -8,9 +8,10 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "package": "npm run build && electron-builder",
-    "make:mac": "npm run build && electron-builder --mac --universal",
-    "release": "npm run build && export GH_TOKEN=\"${GH_TOKEN:-$(grep -E '^GH_TOKEN=' .env | cut -d= -f2- | tr -d '\\\"')}\" && electron-builder --mac --universal --publish always && electron-builder --win --x64 --publish always && find dist -maxdepth 1 -name 'KantorConsultingHub-*' ! -name \"*$(node -p \"require('./package.json').version\")*\" -delete"
+    "prune:installers": "node scripts/prune-installers.mjs",
+    "package": "npm run build && electron-builder && npm run prune:installers",
+    "make:mac": "npm run build && electron-builder --mac --universal && npm run prune:installers",
+    "release": "npm run build && export GH_TOKEN=\"${GH_TOKEN:-$(grep -E '^GH_TOKEN=' .env | cut -d= -f2- | tr -d '\\\"')}\" && electron-builder --mac --universal --publish always && electron-builder --win --x64 --publish always && npm run prune:installers"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",

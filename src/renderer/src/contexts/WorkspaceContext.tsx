@@ -21,6 +21,7 @@ interface WorkspaceContextType {
   areas: Area[]
   labels: Label[]
   loading: boolean
+  cloudError: string | null   // set when a cloud read fails (no stale-local fallback)
 
   // Card meta maps (for Kanban display)
   commentCounts: Record<string, number>
@@ -90,6 +91,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [pendingSection, setPendingSection] = useState<string | null>(null)
   const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [cloudError, setCloudError] = useState<string | null>(null)
   const [viewMode, setViewModeState] = useState<ViewMode>(() => {
     return (localStorage.getItem('workspace-view') as ViewMode) ?? 'kanban'
   })
@@ -144,6 +146,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       ])
       setBoards(active)
       setArchivedBoards(archived)
+      setCloudError(null)
       // If saved activeBoard no longer exists (was deleted/archived), reset to first board
       setActiveBoardIdState(prev => {
         const stillActive = active.find(b => b.id === prev)
@@ -153,7 +156,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         }
         return prev
       })
-    } catch {}
+    } catch (e: any) {
+      // Cloud unreachable — surface inline; do NOT silently fall back to stale local data.
+      setCloudError(`Couldn't reach the server — boards may be out of date. (${e?.message ?? 'network error'})`)
+    }
   }, [])
 
   const refreshBoards = loadBoards
@@ -276,10 +282,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           avatar_url: null,
           role: (m.role as 'admin' | 'member') ?? 'member',
         })))
+        setCloudError(null)
         loadTaskMeta(taskList)
         checkDeadlines(taskList)
-      } catch (err) {
+      } catch (err: any) {
         console.error('[WorkspaceContext] load error', err)
+        setCloudError(`Couldn't reach the server — the workspace may be out of date. (${err?.message ?? 'network error'})`)
       } finally {
         if (mounted) setLoading(false)
       }
@@ -502,6 +510,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       checklistSummaries,
       taskLabelMap,
       loading,
+      cloudError,
       viewMode,
       setViewMode,
       selectedTask,

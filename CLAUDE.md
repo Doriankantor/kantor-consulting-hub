@@ -1,14 +1,18 @@
 # Kantor Consulting Hub — Claude Instructions
 
 ## Project location
-The project lives in iCloud Drive and syncs automatically across all Apple devices:
-`~/Library/Mobile Documents/com~apple~CloudDocs/newsroom-pm`
+The canonical working copy lives in the home directory (NOT iCloud):
+`/Users/doriankantor/newsroom-pm`
 
-On a new device, run `bash setup-new-device.sh` once after iCloud syncs the folder.
-This creates the local `.nosync` directories and runs `npm install`.
+GitHub is the source of truth and the cross-device sync mechanism:
+`github.com/Doriankantor/kantor-consulting-hub`. On a new device, `git clone` the
+repo and run `npm install` (or `bash setup-new-device.sh`).
 
-`node_modules`, `dist`, and `out` are symlinks to `*.nosync` folders — iCloud skips
-those automatically. Never move or delete the symlinks.
+History note: the project was previously kept in iCloud Drive
+(`~/Library/Mobile Documents/com~apple~CloudDocs/newsroom-pm`), using `*.nosync`
+symlinks so iCloud would skip `node_modules`/`dist`/`out`. **That iCloud copy is
+stale/deprecated — do not work from it.** In the home copy, `dist` may still be a
+`dist.nosync` symlink; leave it as-is and don't delete it.
 
 ## Project
 Electron 31 + React 18 + TypeScript + Tailwind CSS desktop app.
@@ -34,7 +38,7 @@ changed. Never let it go stale and never delete it.
 4. Check `git status --porcelain` — if anything remains, stage and commit it too
 5. `npm version patch --no-git-tag-version` — bump patch version
 6. `git add package.json package-lock.json && git commit -m "Bump version to v$(node -p "require('./package.json').version")"` — commit version bump
-7. Source GH_TOKEN from `~/.zprofile` then run: `PATH="/Users/doriankantor/.local/bin:$PATH" npm run release` — build and publish to GitHub Releases
+7. Run `PATH="/Users/doriankantor/.local/bin:$PATH" npm run release` — build and publish to GitHub Releases. `npm run release` auto-loads `GH_TOKEN` from the gitignored `.env` (falling back to an already-set env var); no shell-profile export needed
 8. `git push origin main` — push all commits to GitHub
 9. Confirm the new version number to the user
 

@@ -43,6 +43,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     else   localStorage.removeItem(LOCAL_USER_KEY)
   }
 
+  // Stamp the main process with the signed-in user's local id so the
+  // membership-scoped cloud board handlers know who is asking (the service-role
+  // key bypasses RLS, so visibility is enforced in the main process). Runs on the
+  // restored session at startup and on every sign-in / sign-out.
+  useEffect(() => {
+    window.api.app.setActingUser(localUser?.id ?? null).catch(() => {})
+  }, [localUser?.id])
+
   const checkSetupNeeded = useCallback(async () => {
     try {
       const key     = await window.api.settings.get('anthropic_api_key')

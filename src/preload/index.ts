@@ -64,6 +64,7 @@ const api = {
   },
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion'),
+    setActingUser: (userId: string | null) => ipcRenderer.invoke('app:setActingUser', userId),
   },
   claude: {
     sendMessage: (params: { messages: { role: 'user' | 'assistant'; content: string }[]; taskContext: Record<string, string | null>; userId?: string }) =>
@@ -176,6 +177,7 @@ const api = {
     delete:       (id: string, deletedById?: string, deletedByName?: string) => ipcRenderer.invoke('boards:delete', id, deletedById, deletedByName),
     duplicate:    (id: string, newName: string)        => ipcRenderer.invoke('boards:duplicate', id, newName),
     taskCount:    (id: string)                         => ipcRenderer.invoke('boards:taskCount', id),
+    seedToCloud:  (requestEmail: string)               => ipcRenderer.invoke('boards:seedToCloud', requestEmail),
   },
   analytics: {
     getData:   ()  => ipcRenderer.invoke('analytics:getData'),

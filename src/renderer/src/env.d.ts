@@ -504,6 +504,7 @@ interface Window {
     }
     app: {
       getVersion: () => Promise<string>
+      setActingUser: (userId: string | null) => Promise<{ ok: boolean }>
     }
     claude: {
       sendMessage: (params: { messages: { role: 'user' | 'assistant'; content: string }[]; taskContext: Record<string, string | null>; userId?: string }) => Promise<{ started?: boolean; error?: string }>
@@ -596,6 +597,7 @@ interface Window {
       delete:       (id: string, deletedById?: string, deletedByName?: string) => Promise<{ ok: boolean }>
       duplicate:    (id: string, newName: string)        => Promise<{ ok: boolean; id: string }>
       taskCount:    (id: string)                         => Promise<number>
+      seedToCloud:  (requestEmail: string)               => Promise<{ ok: boolean; counts?: Record<string, number>; reason?: string }>
     }
     updater: {
       onAvailable:    (cb: (info: { version: string; releaseNotes?: string | null }) => void) => void

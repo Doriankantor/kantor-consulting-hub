@@ -58,6 +58,8 @@ function CloudMigrationSection({ adminEmail }: { adminEmail: string }) {
   const [chatResult,      setChatResult]      = useState<{ ok: boolean; text: string } | null>(null)
   const [contactsRunning, setContactsRunning] = useState(false)
   const [contactsResult,  setContactsResult]  = useState<{ ok: boolean; text: string } | null>(null)
+  const [boardsRunning,   setBoardsRunning]   = useState(false)
+  const [boardsResult,    setBoardsResult]    = useState<{ ok: boolean; text: string } | null>(null)
 
   async function runChat() {
     setChatRunning(true); setChatResult(null)
@@ -87,6 +89,20 @@ function CloudMigrationSection({ adminEmail }: { adminEmail: string }) {
     } catch (e: any) {
       setContactsResult({ ok: false, text: `Couldn't reach the server: ${e?.message || 'unknown error'}` })
     } finally { setContactsRunning(false) }
+  }
+
+  async function runBoards() {
+    setBoardsRunning(true); setBoardsResult(null)
+    try {
+      const r = await window.api.boards.seedToCloud(adminEmail)
+      if (!r.ok) { setBoardsResult({ ok: false, text: r.reason || 'Seed failed.' }); return }
+      if (r.reason) { setBoardsResult({ ok: true, text: r.reason }); return }
+      const c = r.counts ?? {}
+      const parts = Object.entries(c).filter(([,n]) => n > 0).map(([t,n]) => `${n} ${t.replace(/_/g,' ')}`)
+      setBoardsResult({ ok: true, text: parts.length ? `Uploaded: ${parts.join(', ')}.` : 'Nothing to upload.' })
+    } catch (e: any) {
+      setBoardsResult({ ok: false, text: `Couldn't reach the server: ${e?.message || 'unknown error'}` })
+    } finally { setBoardsRunning(false) }
   }
 
   function SeedRow({ label, description, running, result, onRun, btnLabel }: {
@@ -123,6 +139,11 @@ function CloudMigrationSection({ adminEmail }: { adminEmail: string }) {
         label="Seed contacts & clients to cloud (one-time)"
         description="Uploads this machine's contacts, clients, interactions, and task links to the cloud once -- the founding dataset. No-ops if the cloud already has contacts. Local rows kept as backup."
         running={contactsRunning} result={contactsResult} onRun={runContacts} btnLabel="Seed contacts"
+      />
+      <SeedRow
+        label="Seed workspace boards to cloud (one-time)"
+        description="Uploads this machine's boards, columns, cards, comments, checklists, labels, activity, templates, areas, projects, and board memberships to the cloud once -- the founding dataset (attachments excluded). Memberships decide who sees what. No-ops if the cloud already has boards. Local rows kept as backup."
+        running={boardsRunning} result={boardsResult} onRun={runBoards} btnLabel="Seed boards"
       />
     </Section>
   )
