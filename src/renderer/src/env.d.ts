@@ -707,6 +707,8 @@ interface Window {
       getPushLog:           ()                                 => Promise<IntelligencePushLog[]>
       getPipelineStats:     ()                                 => Promise<{ pending: number; sentToPages: number }>
       getStatusCounts:      ()                                 => Promise<{ unreviewed: number; approved: number; rejected: number }>
+      getUnscoredCount:     ()                                 => Promise<number>
+      rescoreUnscored:      ()                                 => Promise<{ ok: boolean; processed: number; relevant: number; failed: number; remaining: number; error?: string }>
       importFromContestedSkies: (params: { userId?: string; addedByName?: string }) => Promise<{ ok: boolean; imported?: number; total?: number; error?: string }>
       getImportedCount:     ()                                 => Promise<number>
       confirmImported:      (params: { confidence?: string; reviewedById?: string; reviewedByName?: string }) => Promise<{ ok: boolean; count: number; addedToPages: string[] }>

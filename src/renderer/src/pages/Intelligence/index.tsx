@@ -16,11 +16,22 @@ export default function Intelligence() {
   const [queueCount, setQueueCount] = useState(0)
   const [stats, setStats] = useState<{ pending: number; sentToPages: number }>({ pending: 0, sentToPages: 0 })
   const [toast, setToast] = useState<string | null>(null)
+  // Re-score button state
+  const [unscoredCount, setUnscoredCount] = useState(0)
+  const [rescoring, setRescoring] = useState(false)
+  const [rescoreResult, setRescoreResult] = useState<string | null>(null)
 
   const refreshStats = useCallback(async () => {
     try {
       const s = await window.api.intelligence.getPipelineStats()
       setStats(s)
+    } catch {}
+  }, [])
+
+  const refreshUnscoredCount = useCallback(async () => {
+    try {
+      const n = await window.api.intelligence.getUnscoredCount()
+      setUnscoredCount(n)
     } catch {}
   }, [])
 
@@ -30,19 +41,41 @@ export default function Intelligence() {
       setQueueCount(items.length)
     } catch {}
     refreshStats()
+    refreshUnscoredCount()
     // Pipeline toast: surface which Info Pages the source flowed into.
     if (addedToPages && addedToPages.length) {
       const [first, ...rest] = addedToPages
       setToast(rest.length ? `Source added to ${first} +${rest.length} more` : `Source added to ${first}`)
       setTimeout(() => setToast(null), 3200)
     }
-  }, [refreshStats])
+  }, [refreshStats, refreshUnscoredCount])
 
   useEffect(() => {
     refreshQueueCount()
-    const interval = setInterval(refreshStats, 20000)
+    const interval = setInterval(() => { refreshStats(); refreshUnscoredCount() }, 20000)
     return () => clearInterval(interval)
-  }, [refreshQueueCount, refreshStats])
+  }, [refreshQueueCount, refreshStats, refreshUnscoredCount])
+
+  async function handleRescore() {
+    setRescoring(true)
+    setRescoreResult(null)
+    try {
+      const res = await window.api.intelligence.rescoreUnscored()
+      if (!res.ok) {
+        setRescoreResult(`Error: ${res.error ?? 'unknown'}`)
+      } else {
+        setRescoreResult(`Done — ${res.processed} scored, ${res.relevant} relevant (≥4), ${res.failed} failed, ${res.remaining} remaining`)
+        setUnscoredCount(res.remaining)
+        // Show as toast
+        setToast(`Re-scored ${res.processed} articles (${res.relevant} relevant)`)
+        setTimeout(() => setToast(null), 4000)
+      }
+    } catch (e) {
+      setRescoreResult(`Failed: ${(e as Error)?.message}`)
+    } finally {
+      setRescoring(false)
+    }
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden relative">
@@ -65,8 +98,31 @@ export default function Intelligence() {
               Monitor, vet, and publish drone intelligence to Contested Skies
             </p>
           </div>
-          {/* Pipeline counters */}
+          {/* Pipeline counters + re-score button */}
           <div className="flex items-center gap-2">
+            {/* Re-score unscored button — only shown when unscored articles exist */}
+            {unscoredCount > 0 && (
+              <div className="flex flex-col items-end gap-0.5">
+                <button
+                  onClick={handleRescore}
+                  disabled={rescoring}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-violet-300 dark:border-violet-500/40 text-violet-700 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 text-xs font-medium transition disabled:opacity-50"
+                  title="Run the relevance gate over all articles that haven't been scored yet"
+                >
+                  {rescoring ? (
+                    <span className="w-3 h-3 border-2 border-violet-400/30 border-t-violet-500 rounded-full animate-spin" />
+                  ) : (
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                      <path d="M10 6A4 4 0 1 1 6 2M10 2v4H6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                  {rescoring ? 'Scoring…' : `Re-score unscored (${unscoredCount})`}
+                </button>
+                {rescoreResult && (
+                  <span className="text-[10px] text-gray-500 dark:text-white/40 max-w-[220px] text-right leading-tight">{rescoreResult}</span>
+                )}
+              </div>
+            )}
             <div className="px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-center">
               <p className="text-base font-bold text-amber-700 dark:text-amber-400 leading-none">{stats.pending}</p>
               <p className="text-[9px] text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider mt-0.5">pending review</p>

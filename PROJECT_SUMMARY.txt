@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v1.1.20   |   132 commits   |   ~27,620 lines of TS/TSX
+  Current version: v1.1.21   |   134 commits   |   ~27,770 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -247,6 +247,16 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
     • Topic picker dropdown rebuilt as a React portal (createPortal → document.body,
       position:fixed from getBoundingClientRect) — escapes card stacking context
       created by transition-all; rows are now opaque and clickable
+
+  v1.1.21 (Jun 2) — RELEVANCE GATE BACKLOG RESCORE
+    • intelligence:rescoreUnscored IPC: scores all gate_processed=0 articles
+      using the same gateClassifyArticle path, in sequential batches of 10,
+      fail-open per row, logs progress after each batch
+    • intelligence:getUnscoredCount IPC: live count of unscored articles
+    • "Re-score unscored (N)" button in Intelligence header (violet, spinner,
+      result summary); only visible when N > 0
+    • Ran rescore over 145-article backlog: 141 now scored, 38 relevant (≥4),
+      0 failures; top scores are Colombian drone-conflict articles (REL 10)
 
 ───────────────────────────────────────────────────────────────────────────────
 10. KEY FILES (quick reference)

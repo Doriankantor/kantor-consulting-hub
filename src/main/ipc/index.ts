@@ -2840,6 +2840,95 @@ function registerIntelligenceHandlers(): void {
     return { unreviewed: m['unreviewed'] ?? 0, approved: m['approved'] ?? 0, rejected: m['rejected'] ?? 0 }
   })
 
+  // Count articles still waiting for gate scoring (gate_processed=0 or NULL).
+  ipcMain.handle('intelligence:getUnscoredCount', () => {
+    const row = db().prepare(
+      "SELECT COUNT(*) as c FROM intelligence_sources WHERE type='article' AND (gate_processed IS NULL OR gate_processed=0)"
+    ).get() as { c: number }
+    return row.c
+  })
+
+  // Re-score the backlog of unscored articles using the same gate path.
+  // Runs the existing classifyUnscoredArticles() in sequential batches of 10
+  // so cost and rate-limit exposure are bounded. Progress is logged after each batch.
+  // Returns totals: { processed, relevant, failed, remaining }.
+  ipcMain.handle('intelligence:rescoreUnscored', async () => {
+    const BATCH = 10
+    let totalProcessed = 0
+    let totalRelevant = 0
+    let totalFailed = 0
+
+    const apiKey = getGlobalAnthropicKey()
+    if (!apiKey) return { ok: false, error: 'No Anthropic API key configured', processed: 0, relevant: 0, failed: 0, remaining: 0 }
+
+    const database = getDatabase()
+    // Count total unscored before starting
+    const totalUnscored = (database.prepare(
+      "SELECT COUNT(*) as c FROM intelligence_sources WHERE type='article' AND (gate_processed IS NULL OR gate_processed=0) AND COALESCE(added_by_name,'') != 'Kantor Framework'"
+    ).get() as { c: number }).c
+
+    console.log(`[Gate:rescore] Starting — ${totalUnscored} unscored article(s) to process in batches of ${BATCH}`)
+
+    // Process until no unscored rows remain
+    while (true) {
+      const rows = database.prepare(`
+        SELECT id, title, snippet, content, source_name
+        FROM intelligence_sources
+        WHERE type='article'
+          AND (gate_processed IS NULL OR gate_processed=0)
+          AND COALESCE(added_by_name,'') != 'Kantor Framework'
+        ORDER BY added_at DESC
+        LIMIT ?
+      `).all(BATCH) as Array<{ id: string; title: string | null; snippet: string | null; content: string | null; source_name: string | null }>
+
+      if (rows.length === 0) break
+
+      let batchProcessed = 0
+      let batchRelevant = 0
+      let batchFailed = 0
+
+      for (const row of rows) {
+        try {
+          const result = await gateClassifyArticle(
+            { title: row.title, snippet: row.snippet || row.content?.slice(0, 300) || '', source: row.source_name },
+            apiKey
+          )
+          if (!result) {
+            // gateClassifyArticle already logged; mark processed=1 with null score to
+            // avoid retrying indefinitely on permanent failures (bad content etc.)
+            database.prepare('UPDATE intelligence_sources SET gate_processed=1 WHERE id=?').run(row.id)
+            batchFailed++
+            totalFailed++
+            continue
+          }
+          database.prepare(`
+            UPDATE intelligence_sources
+            SET relevance_score=?, relevance_type=?, gate_reasoning=?, gate_processed=1,
+                geography = CASE WHEN COALESCE(geography_confirmed,0)=1 THEN geography ELSE ? END,
+                region    = CASE WHEN COALESCE(geography_confirmed,0)=1 THEN region    ELSE ? END
+            WHERE id=?
+          `).run(result.relevance_score, result.relevance_type, result.reasoning, result.geography, result.region, row.id)
+          batchProcessed++
+          totalProcessed++
+          if (result.relevance_score >= 4) { batchRelevant++; totalRelevant++ }
+        } catch (e) {
+          console.warn('[Gate:rescore] row error (fail-open):', row.id, (e as Error)?.message)
+          batchFailed++
+          totalFailed++
+        }
+      }
+
+      console.log(`[Gate:rescore] Batch done — processed=${batchProcessed} relevant(≥4)=${batchRelevant} failed=${batchFailed} | running totals: ${totalProcessed}/${totalUnscored}`)
+    }
+
+    const remaining = (database.prepare(
+      "SELECT COUNT(*) as c FROM intelligence_sources WHERE type='article' AND (gate_processed IS NULL OR gate_processed=0)"
+    ).get() as { c: number }).c
+
+    console.log(`[Gate:rescore] Complete — processed=${totalProcessed} relevant=${totalRelevant} failed=${totalFailed} remaining=${remaining}`)
+    return { ok: true, processed: totalProcessed, relevant: totalRelevant, failed: totalFailed, remaining }
+  })
+
   ipcMain.handle('intelligence:updateConfidence', (_e, id: string, confidence: string) => {
     db().prepare('UPDATE intelligence_sources SET confidence=?, confidence_override=1 WHERE id=?').run(confidence, id)
     return { ok: true }
