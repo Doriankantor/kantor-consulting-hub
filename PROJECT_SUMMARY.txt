@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v1.1.25   |   142 commits   |   ~28,330 lines of TS/TSX
+  Current version: v1.1.26   |   144 commits   |   ~28,650 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -344,6 +344,36 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
     • Safety: team:list hides admin by EMAIL, so role='admin' does not surface
       the admin as a team member; no profile row is created/seeded for anyone;
       non-admin members with no boards still route to the dashboard (unchanged).
+
+  v1.1.26 (Jun 2) — WORKSPACE ERROR BOUNDARY + TEAM CHAT MOVED TO CLOUD
+    • Workspace bounce fix (non-admin member on a fresh device): the board-access
+      guard called navigate('/dashboard') because board_members rows are
+      local-only and don't sync, so a member set up on another machine had zero
+      memberships here. Replaced the silent redirect with an inline "no boards on
+      this device" state that STAYS on Workspace, plus permanent console logging.
+    • New components/ErrorBoundary.tsx wraps the /workspace route — any real
+      render throw is now surfaced inline (with component stack) and never hidden
+      behind a redirect or white screen. First error boundary in the app.
+    • CLOUD MIGRATION — Stage 2, category 1: TEAM CHAT is now cloud-sourced.
+      New reusable src/main/cloud/ module: client.ts (shared service-role Supabase
+      client; service role bypasses RLS — RLS guards the public anon key) +
+      chat.ts (listChatMessages / sendChatMessage / seedChatToCloud). This is the
+      per-category template every later migration mirrors (list/create/seed).
+    • chat:getMessages / chat:send now read/write a cloud chat_messages table
+      (renderer → IPC → main → Supabase); channel names unchanged; sender identity
+      stamped server-side from local_users; errors propagate (no stale-local
+      fallback). Renderer makes NO direct Supabase calls.
+    • Admin-only, idempotent ONE-TIME seed (chat:seedToCloud + Settings → Cloud
+      migration button): double-guarded by admin-email AND no-op-if-cloud-non-empty
+      so it can't duplicate or run from another machine's stray data; excludes
+      admin-authored messages (admin is not a chat participant); dedups by id;
+      never deletes local rows (kept as backup).
+    • ChatPanel: inline "couldn't reach the server" banner on cloud failure,
+      restores unsent text, no crash, no silent local fallback.
+    • Cloud chat_messages table + RLS (SELECT to authenticated; INSERT to
+      authenticated; no UPDATE/DELETE; anon denied) must be created once via SQL
+      in the Supabase editor (service-role key can't run DDL); seed then triggered
+      in-app by the admin.
 
 ───────────────────────────────────────────────────────────────────────────────
 10. KEY FILES (quick reference)
