@@ -50,42 +50,80 @@ function StatusBadge({ status }: { status: string }) {
 // cloud (Stage 2, category 1). Guarded server-side: admin-only + no-op if the
 // cloud table already has rows, so it can never duplicate or run from another
 // machine's stray local data. Never auto-runs.
-function ChatCloudSeedSection({ adminEmail }: { adminEmail: string }) {
-  const [running, setRunning] = useState(false)
-  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
-  async function run() {
-    setRunning(true); setResult(null)
+// Admin-only, one-time seed section for all cloud-migrated categories.
+// Each seed button is independently guarded server-side (admin-only + no-op if
+// cloud already has rows), so any button is safe to click multiple times.
+function CloudMigrationSection({ adminEmail }: { adminEmail: string }) {
+  const [chatRunning,     setChatRunning]     = useState(false)
+  const [chatResult,      setChatResult]      = useState<{ ok: boolean; text: string } | null>(null)
+  const [contactsRunning, setContactsRunning] = useState(false)
+  const [contactsResult,  setContactsResult]  = useState<{ ok: boolean; text: string } | null>(null)
+
+  async function runChat() {
+    setChatRunning(true); setChatResult(null)
     try {
       const r = await window.api.chat.seedToCloud(adminEmail)
       const text = r.ok
-        ? (r.uploaded > 0 ? `Uploaded ${r.uploaded} message${r.uploaded !== 1 ? 's' : ''} to the cloud.` : (r.reason || 'Nothing to upload.'))
+        ? (r.uploaded > 0 ? `Uploaded ${r.uploaded} message${r.uploaded !== 1 ? 's' : ''}.` : (r.reason || 'Nothing to upload.'))
         : (r.reason || 'Seed failed.')
-      setResult({ ok: r.ok, text })
+      setChatResult({ ok: r.ok, text })
     } catch (e: any) {
-      setResult({ ok: false, text: `Couldn’t reach the server: ${e?.message || 'unknown error'}` })
-    } finally { setRunning(false) }
+      setChatResult({ ok: false, text: `Couldn't reach the server: ${e?.message || 'unknown error'}` })
+    } finally { setChatRunning(false) }
   }
-  return (
-    <Section title="Cloud migration (admin)">
-      <div className="px-5 py-4">
+
+  async function runContacts() {
+    setContactsRunning(true); setContactsResult(null)
+    try {
+      const r = await window.api.clients.seedToCloud(adminEmail)
+      if (!r.ok) {
+        setContactsResult({ ok: false, text: r.reason || 'Seed failed.' })
+        return
+      }
+      if (r.reason) { setContactsResult({ ok: true, text: r.reason }); return }
+      const c = r.counts ?? {}
+      const parts = Object.entries(c).filter(([,n]) => n > 0).map(([t,n]) => `${n} ${t.replace(/_/g,' ')}`)
+      setContactsResult({ ok: true, text: parts.length ? `Uploaded: ${parts.join(', ')}.` : 'Nothing to upload.' })
+    } catch (e: any) {
+      setContactsResult({ ok: false, text: `Couldn't reach the server: ${e?.message || 'unknown error'}` })
+    } finally { setContactsRunning(false) }
+  }
+
+  function SeedRow({ label, description, running, result, onRun, btnLabel }: {
+    label: string; description: string; running: boolean
+    result: { ok: boolean; text: string } | null; onRun: () => void; btnLabel: string
+  }) {
+    return (
+      <div className="px-5 py-4 border-b border-gray-100 dark:border-white/[0.06] last:border-0">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900 dark:text-white">Seed team chat to cloud (one-time)</p>
-            <p className="text-[11px] text-gray-400 dark:text-white/50 mt-1 leading-relaxed max-w-md">
-              Uploads this machine’s existing chat history to the cloud once — the founding dataset.
-              No-ops if the cloud already has messages, so it’s safe to click again and can’t run from
-              another machine. Local messages are kept as a backup.
-            </p>
+            <p className="text-sm font-medium text-gray-900 dark:text-white">{label}</p>
+            <p className="text-[11px] text-gray-400 dark:text-white/50 mt-1 leading-relaxed max-w-md">{description}</p>
           </div>
-          <button onClick={run} disabled={running}
+          <button onClick={onRun} disabled={running}
             className="titlebar-no-drag px-3 py-1.5 rounded-lg text-xs font-medium bg-hub-blue hover:bg-hub-blue/80 disabled:opacity-50 text-white transition shrink-0">
-            {running ? 'Seeding…' : 'Seed chat'}
+            {running ? 'Seeding...' : btnLabel}
           </button>
         </div>
         {result && (
           <p className={`mt-2 text-xs ${result.ok ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>{result.text}</p>
         )}
       </div>
+    )
+  }
+
+  return (
+    <Section title="Cloud migration (admin)">
+      <SeedRow
+        label="Seed team chat to cloud (one-time)"
+        description="Uploads this machine's existing chat history to the cloud once -- the founding dataset. No-ops if the cloud already has messages. Local messages kept as backup."
+        running={chatRunning} result={chatResult} onRun={runChat} btnLabel="Seed chat"
+      />
+      <SeedRow
+        label="Seed contacts & clients to cloud (one-time)"
+        description="Uploads this machine's contacts, clients, interactions, and task links to the cloud once -- the founding dataset. No-ops if the cloud already has contacts. Local rows kept as backup."
+        running={contactsRunning} result={contactsResult} onRun={runContacts} btnLabel="Seed contacts"
+      />
     </Section>
   )
 }
@@ -1046,8 +1084,8 @@ export default function Settings() {
           </Section>
         )}
 
-        {/* Cloud migration (admin only) — one-time chat seed */}
-        {isAdmin && <ChatCloudSeedSection adminEmail={localUser?.email ?? user?.email ?? ''} />}
+        {/* Cloud migration (admin only) — one-time seeds for all migrated categories */}
+        {isAdmin && <CloudMigrationSection adminEmail={localUser?.email ?? user?.email ?? ''} />}
 
         {/* Team Management (admin only) */}
         {isAdmin && (

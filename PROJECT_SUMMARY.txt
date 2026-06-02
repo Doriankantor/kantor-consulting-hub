@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v1.1.27   |   146 commits   |   ~28,655 lines of TS/TSX
+  Current version: v1.1.28   |   148 commits   |   ~29,100 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -388,7 +388,35 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       requires a MANUAL install of v1.1.27 (download the DMG, replace the app in
       /Applications); auto-update can't self-heal a startup crash.
 
-───────────────────────────────────────────────────────────────────────────────
+  v1.1.28 (Jun 2) -- CONTACTS/CRM MOVED TO CLOUD (Stage 2, category 2)
+    * Five new cloud tables (contacts, contact_interactions, contact_task_links,
+      clients, client_contacts) mirroring local SQLite schemas. RLS enabled on
+      all five: authenticated can SELECT/INSERT/UPDATE; no DELETE policy (only
+      service_role/main process can delete -- defense-in-depth).
+    * New src/main/cloud/contacts.ts with 11 functions covering all
+      contacts/clients/interactions/task-links operations, reusing the shared
+      cloud client (ws transport inherited -- no WebSocket regression).
+    * All contacts:* and clients:* IPC handlers now read/write the cloud tables;
+      channel names unchanged so the renderer keeps working. contacts:get and
+      clients:get resolve workspace task data from local SQLite (workspace tasks
+      not yet migrated); task IDs travel through cloud contact_task_links.
+    * contacts:delete still inserts into LOCAL trash before cloud-deleting
+      (trash not yet migrated); cloud CASCADE handles interactions + task_links.
+    * Admin-only one-time seed (seedContactsToCloud + Settings button): FK-safe
+      upload order (clients/contacts first, then dependent tables), deduped by
+      id, no-op if cloud already has contacts, never auto-runs, local rows kept.
+    * Settings -> Cloud migration (admin) now shows both chat and contacts seed
+      buttons in a single combined section (CloudMigrationSection).
+    * Contacts page: inline cloud-error banner on failure; does NOT silently fall
+      back to stale local data; no crash.
+    * NOTE: the five cloud tables + RLS must be created via the provided SQL
+      in the Supabase SQL editor before the seed button works.
+
+---
+  v1.1.27 hotfix note: v1.1.26 app launch crash (Node.js 20 / WebSocket) is
+  fixed; v1.1.27 was the minimum viable safe build. v1.1.28 builds on top.
+
+------------------------------------------------------------------------------
 10. KEY FILES (quick reference)
 ───────────────────────────────────────────────────────────────────────────────
   src/main/db.ts               SQLite schema + migrations

@@ -576,6 +576,7 @@ interface Window {
       delete:        (id: string)                               => Promise<{ ok?: boolean }>
       addContact:    (clientId: string, c: Record<string, unknown>) => Promise<{ ok?: boolean; id?: string }>
       deleteContact: (contactId: string)                         => Promise<{ ok?: boolean }>
+      seedToCloud:  (requestEmail: string)                       => Promise<{ ok: boolean; counts?: Record<string, number>; reason?: string }>
     }
     templates: {
       list:   (boardId?: string)                             => Promise<TaskTemplate[]>

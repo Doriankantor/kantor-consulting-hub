@@ -143,6 +143,7 @@ const api = {
     delete:        (id: string)                              => ipcRenderer.invoke('clients:delete', id),
     addContact:    (clientId: string, c: Record<string, unknown>) => ipcRenderer.invoke('clients:addContact', clientId, c),
     deleteContact: (contactId: string)                       => ipcRenderer.invoke('clients:deleteContact', contactId),
+    seedToCloud:  (requestEmail: string)                     => ipcRenderer.invoke('clients:seedToCloud', requestEmail),
   },
   templates: {
     list:   (boardId?: string)                              => ipcRenderer.invoke('templates:list', boardId),

@@ -1141,6 +1141,7 @@ export default function Contacts() {
 
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
+  const [cloudError, setCloudError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [teamMembers, setTeamMembers] = useState<LocalTeamMember[]>([])
   const [areas, setAreas] = useState<Area[]>([])
@@ -1157,6 +1158,7 @@ export default function Contacts() {
     setLoading(true)
     try {
       const data = await window.api.contacts.list()
+      setCloudError(null)
       // Permission filter: hide confidential/sensitive from non-admin non-assigned
       const userId = localUser?.id ?? 'local-admin'
       const visible = isAdmin
@@ -1167,7 +1169,10 @@ export default function Contacts() {
             return true
           })
       setContacts(visible)
-    } catch {}
+    } catch (e: any) {
+      // Cloud unreachable — surface inline; do NOT silently fall back to stale local data.
+      setCloudError(`Couldn't reach the server — contacts may be out of date. (${e?.message ?? 'network error'})`)
+    }
     setLoading(false)
   }, [isAdmin, localUser])
 
@@ -1272,6 +1277,13 @@ export default function Contacts() {
             {SORT_OPTIONS.map(s => <option key={s.value} value={s.value}>Sort: {s.label}</option>)}
           </select>
         </div>
+
+        {/* Cloud connection error — do NOT silently show stale data */}
+        {cloudError && (
+          <div className="mx-3 mt-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/25 text-[11px] text-red-600 dark:text-red-400">
+            {cloudError}
+          </div>
+        )}
 
         {/* Contact list */}
         <div className="flex-1 overflow-y-auto">
