@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v1.1.29   |   150 commits   |   ~29,300 lines of TS/TSX
+  Current version: v1.1.30   |   152 commits   |   ~29,300 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -440,6 +440,14 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       with per-row Restore (everyone) and Delete permanently (admin only). Inline
       cloud-error banners on delete/restore/purge failure; no crash, no stale-local
       fallback. Clients are NOT trashable in this build (contacts only).
+
+  v1.1.30 (Jun 3) -- RELEASE TOOLING: GH_TOKEN FROM .env
+    * npm run release now auto-loads GH_TOKEN from the gitignored .env (falling
+      back to an already-set env var) before the electron-builder --publish steps,
+      so publishing no longer depends on shell-profile exports. electron-builder
+      reads the token from process.env only and does NOT parse .env itself; the
+      release script bridges that gap with a grep/cut extraction that safely
+      ignores malformed/bare lines. No app-code or feature changes.
 
 ---
   v1.1.27 hotfix note: v1.1.26 app launch crash (Node.js 20 / WebSocket) is
