@@ -2904,6 +2904,55 @@ Help the analyst think through the update. Ask clarifying questions when useful,
 // unrelated pages (e.g. Trump Immigration) even if keywords overlap.
 // Dedupes by (page_id, origin_source_id) and skips pages where it's already published.
 // Returns the names of the pages it was added to.
+// ── Info-page source pipeline ─────────────────────────────────────────────
+// Normalize a board name to the same format stored in disposition_tags.
+// "LATAM drone monitor" → "latam-drone-monitor"
+function normalizeBoardName(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, '-')
+}
+
+// When an article is approved, create info_page_sources rows (stage='new') for
+// every PIPELINE info-page whose project (board) appears in the article's
+// disposition_tags. The Source Intelligence project selector stores the board's
+// raw display name (e.g. "LATAM Drone Threat"), so we match on that first, with
+// id / normalized-name fallbacks for robustness. INSERT OR IGNORE prevents
+// duplicates on re-approve. Scoped to pipeline pages so only the LATAM drone
+// monitor (the sole pipeline page) collects sources.
+function addToInfoPagePipeline(sourceId: string): void {
+  const db = getDatabase()
+  const src = db.prepare('SELECT disposition_tags FROM intelligence_sources WHERE id=?').get(sourceId) as { disposition_tags: string | null } | undefined
+  if (!src) return
+  let tags: string[] = []
+  try { tags = JSON.parse(src.disposition_tags || '[]') } catch { return }
+  if (!tags.length) return
+
+  const boards = db.prepare("SELECT id, name, board_config FROM workspace_boards WHERE board_type='info-page' AND archived=0").all() as { id: string; name: string; board_config: string | null }[]
+  const now = new Date().toISOString()
+
+  for (const board of boards) {
+    // Only pipeline-enabled info pages collect a committable source library.
+    let cfg: Record<string, unknown> = {}
+    try { cfg = JSON.parse(board.board_config || '{}') } catch { cfg = {} }
+    if (!cfg.pipeline) continue
+    // Match disposition_tags against the board's display name (what the project
+    // selector persists), falling back to id and normalized name.
+    const matches = tags.includes(board.name) || tags.includes(board.id) || tags.includes(normalizeBoardName(board.name))
+    if (!matches) continue
+    try {
+      const r = db.prepare(
+        'INSERT OR IGNORE INTO info_page_sources (article_id, info_page, stage, added_at) VALUES (?,?,?,?)'
+      ).run(sourceId, board.id, 'new', now)
+      if (r.changes > 0) {
+        db.prepare(
+          'INSERT INTO info_page_changes (article_id, info_page, from_stage, to_stage, created_at) VALUES (?,?,NULL,?,?)'
+        ).run(sourceId, board.id, 'new', now)
+      }
+    } catch (e) {
+      console.warn('[Pipeline] addToInfoPagePipeline failed for', sourceId, board.id, (e as Error)?.message)
+    }
+  }
+}
+
 function addApprovedSourceToInfoPages(sourceId: string): string[] {
   const db = getDatabase()
   const src = db.prepare('SELECT * FROM intelligence_sources WHERE id=?').get(sourceId) as Record<string, any> | undefined
@@ -2986,6 +3035,8 @@ function registerIntelligenceHandlers(): void {
       // Pipeline: fan this approved source out into matching Info Pages' Sources tabs.
       let addedToPages: string[] = []
       try { addedToPages = addApprovedSourceToInfoPages(id) } catch (e) { console.warn('[Pipeline] fan-out failed', e) }
+      // Source pipeline: create/ensure an info_page_sources row for this article.
+      try { addToInfoPagePipeline(id) } catch (e) { console.warn('[Pipeline] info_page_sources insert failed', e) }
       // Learning loop: mirror the verdict up to Supabase (fire-and-forget).
       void pushVerdictToSupabase(meta?.url, status, reviewedByName)
       return { ok: true, addedToPages }
@@ -4172,5 +4223,108 @@ ${changesList}
 Preserve all existing HTML structure, CSS, and visual design exactly. Only add the new content listed above. Do not remove any existing content. After implementing all changes, commit with message: "Intelligence update: ${today} — ${n} item${n!==1?'s':''}" and push to main branch.`
 
     return { ok: true, prompt }
+  })
+
+  // ── Source pipeline: info_page_sources lifecycle handlers ─────────────────
+
+  // Return all info_page_sources rows for a page (all stages), joined with full
+  // intelligence_sources metadata so the UI has everything it needs to display.
+  ipcMain.handle('infoPages:getSourcePipeline', (_e, pageId: string) => {
+    return db().prepare(`
+      SELECT ips.id as pipeline_id, ips.article_id, ips.info_page, ips.stage,
+             ips.design_notes, ips.added_at, ips.committed_at,
+             is2.title, is2.url, is2.source_name, is2.published_at, is2.snippet,
+             is2.relevance_score, is2.relevance_type, is2.geography, is2.language,
+             is2.categories_json, is2.thematic_tags, is2.confidence,
+             is2.review_notes, is2.disposition_tags
+      FROM info_page_sources ips
+      JOIN intelligence_sources is2 ON is2.id = ips.article_id
+      WHERE ips.info_page = ?
+      ORDER BY ips.added_at DESC
+    `).all(pageId)
+  })
+
+  // Move checked 'new' items to 'review'. Logs each transition.
+  ipcMain.handle('infoPages:sendToReview', (_e, pageId: string, articleIds: string[]) => {
+    if (!articleIds?.length) return { ok: true, moved: 0 }
+    const now = new Date().toISOString()
+    let moved = 0
+    for (const articleId of articleIds) {
+      const r = db().prepare(
+        "UPDATE info_page_sources SET stage='review' WHERE article_id=? AND info_page=? AND stage='new'"
+      ).run(articleId, pageId)
+      if (r.changes > 0) {
+        db().prepare(
+          "INSERT INTO info_page_changes (article_id, info_page, from_stage, to_stage, created_at) VALUES (?,?,'new','review',?)"
+        ).run(articleId, pageId, now)
+        moved++
+      }
+    }
+    return { ok: true, moved }
+  })
+
+  // Move one 'review' item back to 'new' (back-out path).
+  ipcMain.handle('infoPages:backSourceToNew', (_e, pageId: string, articleId: string) => {
+    const now = new Date().toISOString()
+    const r = db().prepare(
+      "UPDATE info_page_sources SET stage='new', design_notes=NULL WHERE article_id=? AND info_page=? AND stage='review'"
+    ).run(articleId, pageId)
+    if (r.changes > 0) {
+      db().prepare(
+        "INSERT INTO info_page_changes (article_id, info_page, from_stage, to_stage, created_at) VALUES (?,?,'review','new',?)"
+      ).run(articleId, pageId, now)
+    }
+    return { ok: true }
+  })
+
+  // Commit all 'review' items to 'committed'. Saves design_notes onto each row.
+  ipcMain.handle('infoPages:commitSources', (_e, pageId: string, designNotes: string) => {
+    const now = new Date().toISOString()
+    // Collect review items before updating.
+    const reviewItems = db().prepare(
+      "SELECT article_id FROM info_page_sources WHERE info_page=? AND stage='review'"
+    ).all(pageId) as { article_id: string }[]
+    if (!reviewItems.length) return { ok: true, committed: 0 }
+    db().prepare(
+      "UPDATE info_page_sources SET stage='committed', committed_at=?, design_notes=? WHERE info_page=? AND stage='review'"
+    ).run(now, designNotes || null, pageId)
+    for (const item of reviewItems) {
+      db().prepare(
+        "INSERT INTO info_page_changes (article_id, info_page, from_stage, to_stage, note, created_at) VALUES (?,?,'review','committed',?,?)"
+      ).run(item.article_id, pageId, designNotes || null, now)
+    }
+    return { ok: true, committed: reviewItems.length }
+  })
+
+  // Persist the shared pre-publish design notes onto every item currently in the
+  // 'review' stage, without committing. Lets the batch's design guidance survive
+  // reloads and be read back when the user returns to Pre-Commit Review.
+  ipcMain.handle('infoPages:saveReviewNotes', (_e, pageId: string, designNotes: string) => {
+    const r = db().prepare(
+      "UPDATE info_page_sources SET design_notes=? WHERE info_page=? AND stage='review'"
+    ).run(designNotes || null, pageId)
+    return { ok: true, saved: r.changes }
+  })
+
+  // Return info_page_changes in reverse-chronological order (Recent Changes tab).
+  ipcMain.handle('infoPages:getSourceChanges', (_e, pageId: string) => {
+    return db().prepare(`
+      SELECT ipc.*, is2.title, is2.source_name
+      FROM info_page_changes ipc
+      LEFT JOIN intelligence_sources is2 ON is2.id = ipc.article_id
+      WHERE ipc.info_page = ?
+      ORDER BY ipc.created_at DESC
+      LIMIT 200
+    `).all(pageId)
+  })
+
+  // Count items currently in each pipeline stage for a page (used by Intelligence tab).
+  ipcMain.handle('infoPages:getSourcePipelineCounts', (_e, pageId: string) => {
+    const rows = db().prepare(
+      'SELECT stage, COUNT(*) as c FROM info_page_sources WHERE info_page=? GROUP BY stage'
+    ).all(pageId) as { stage: string; c: number }[]
+    const m: Record<string, number> = {}
+    rows.forEach(r => { m[r.stage] = r.c })
+    return { new: m['new'] ?? 0, review: m['review'] ?? 0, committed: m['committed'] ?? 0 }
   })
 }

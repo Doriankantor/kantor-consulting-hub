@@ -2,18 +2,20 @@ import { useState, useEffect, useCallback } from 'react'
 import NewsTab from './NewsTab'
 import SocialTab from './SocialTab'
 import DocumentsTab from './DocumentsTab'
-import PublishQueue from './PublishQueue'
 
+// Phase 7: the Publish Queue / "Push to Contested Skies" tab has been removed.
+// Approved articles now flow to the linked Info Page's New Sources, where they
+// are committed and (later, with admin approval) pushed live from downstream.
+// The live-site push code (intelligence:pushToContestedSkies + PublishQueue.tsx)
+// is preserved but no longer reachable from here.
 const TABS = [
   { id: 'news',      label: 'News Articles' },
   { id: 'social',    label: 'Social Media' },
   { id: 'documents', label: 'Documents' },
-  { id: 'queue',     label: 'Publish Queue' },
 ]
 
 export default function Intelligence() {
-  const [activeTab, setActiveTab] = useState<'news' | 'social' | 'documents' | 'queue'>('news')
-  const [queueCount, setQueueCount] = useState(0)
+  const [activeTab, setActiveTab] = useState<'news' | 'social' | 'documents'>('news')
   const [stats, setStats] = useState<{ pending: number; sentToPages: number }>({ pending: 0, sentToPages: 0 })
   const [toast, setToast] = useState<string | null>(null)
   // Re-score button state
@@ -35,26 +37,23 @@ export default function Intelligence() {
     } catch {}
   }, [])
 
-  const refreshQueueCount = useCallback(async (addedToPages?: string[]) => {
-    try {
-      const items = await window.api.intelligence.getQueue()
-      setQueueCount(items.length)
-    } catch {}
+  // Called after an approve/reject in the News/Social/Documents tabs.
+  const handleApproved = useCallback(async (addedToPages?: string[]) => {
     refreshStats()
     refreshUnscoredCount()
-    // Pipeline toast: surface which Info Pages the source flowed into.
+    // Push-to-Info-Page feedback: surface which Info Page New Sources the source flowed into.
     if (addedToPages && addedToPages.length) {
       const [first, ...rest] = addedToPages
-      setToast(rest.length ? `Source added to ${first} +${rest.length} more` : `Source added to ${first}`)
+      setToast(rest.length ? `Pushed to ${first} +${rest.length} more` : `Pushed to ${first} → New Sources`)
       setTimeout(() => setToast(null), 3200)
     }
   }, [refreshStats, refreshUnscoredCount])
 
   useEffect(() => {
-    refreshQueueCount()
+    handleApproved()
     const interval = setInterval(() => { refreshStats(); refreshUnscoredCount() }, 20000)
     return () => clearInterval(interval)
-  }, [refreshQueueCount, refreshStats, refreshUnscoredCount])
+  }, [handleApproved, refreshStats, refreshUnscoredCount])
 
   async function handleRescore() {
     setRescoring(true)
@@ -95,7 +94,7 @@ export default function Intelligence() {
           <div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">Source Intelligence</h1>
             <p className="text-sm text-gray-500 dark:text-white/50 mt-0.5">
-              Monitor, vet, and publish drone intelligence to Contested Skies
+              Monitor, vet, and route drone intelligence to the linked Info Page
             </p>
           </div>
           {/* Pipeline counters + re-score button */}
@@ -127,10 +126,25 @@ export default function Intelligence() {
               <p className="text-base font-bold text-amber-700 dark:text-amber-400 leading-none">{stats.pending}</p>
               <p className="text-[9px] text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider mt-0.5">pending review</p>
             </div>
-            <div className="px-3 py-1.5 rounded-lg bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 text-center">
-              <p className="text-base font-bold text-green-700 dark:text-green-400 leading-none">{stats.sentToPages}</p>
-              <p className="text-[9px] text-green-600/70 dark:text-green-400/60 uppercase tracking-wider mt-0.5">sent to info pages</p>
-            </div>
+            {/* Phase 7: Push to Info Page affordance (replaces "Push to Contested Skies").
+                Approving an article auto-pushes it to the linked Info Page's New Sources;
+                this button explains/surfaces that routing. */}
+            <button
+              onClick={() => {
+                setToast('Approve an article to push it to the Info Page → New Sources')
+                setTimeout(() => setToast(null), 3200)
+              }}
+              title="Approving an article pushes it to the linked Info Page's New Sources, where it can be reviewed and committed."
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/25 hover:bg-indigo-100 dark:hover:bg-indigo-500/15 transition text-center"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-indigo-600 dark:text-indigo-400 shrink-0">
+                <path d="M7 9.5V2.5M7 2.5L4 5.5M7 2.5l3 3M2.5 10.5h9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <span className="leading-none">
+                <span className="block text-base font-bold text-indigo-700 dark:text-indigo-400">{stats.sentToPages}</span>
+                <span className="block text-[9px] text-indigo-600/70 dark:text-indigo-400/60 uppercase tracking-wider mt-0.5">push to info page</span>
+              </span>
+            </button>
           </div>
         </div>
         {/* Tabs */}
@@ -146,11 +160,6 @@ export default function Intelligence() {
               }`}
             >
               {tab.label}
-              {tab.id === 'queue' && queueCount > 0 && (
-                <span className="ml-2 px-1.5 py-0.5 rounded-full bg-green-500 text-white text-[10px] font-bold">
-                  {queueCount}
-                </span>
-              )}
             </button>
           ))}
         </div>
@@ -158,10 +167,9 @@ export default function Intelligence() {
 
       {/* Tab content */}
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'news'      && <NewsTab onApprove={refreshQueueCount} />}
-        {activeTab === 'social'    && <SocialTab onApprove={refreshQueueCount} />}
-        {activeTab === 'documents' && <DocumentsTab onApprove={refreshQueueCount} />}
-        {activeTab === 'queue'     && <PublishQueue onPushed={refreshQueueCount} />}
+        {activeTab === 'news'      && <NewsTab onApprove={handleApproved} />}
+        {activeTab === 'social'    && <SocialTab onApprove={handleApproved} />}
+        {activeTab === 'documents' && <DocumentsTab onApprove={handleApproved} />}
       </div>
     </div>
   )

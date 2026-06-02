@@ -290,6 +290,14 @@ const api = {
     clearChat:            (pageId: string)                            => ipcRenderer.invoke('infoPages:clearChat', pageId),
     chat:                 (params: Record<string,unknown>)            => ipcRenderer.invoke('infoPages:chat', params),
     summarizeAnalysis:    (params: Record<string,unknown>)            => ipcRenderer.invoke('infoPages:summarizeAnalysis', params),
+    // Source pipeline (two-stage commit lifecycle)
+    getSourcePipeline:    (pageId: string)                           => ipcRenderer.invoke('infoPages:getSourcePipeline', pageId),
+    sendToReview:         (pageId: string, articleIds: string[])     => ipcRenderer.invoke('infoPages:sendToReview', pageId, articleIds),
+    backSourceToNew:      (pageId: string, articleId: string)        => ipcRenderer.invoke('infoPages:backSourceToNew', pageId, articleId),
+    commitSources:        (pageId: string, designNotes: string)      => ipcRenderer.invoke('infoPages:commitSources', pageId, designNotes),
+    saveReviewNotes:      (pageId: string, designNotes: string)      => ipcRenderer.invoke('infoPages:saveReviewNotes', pageId, designNotes),
+    getSourceChanges:     (pageId: string)                           => ipcRenderer.invoke('infoPages:getSourceChanges', pageId),
+    getSourcePipelineCounts: (pageId: string)                        => ipcRenderer.invoke('infoPages:getSourcePipelineCounts', pageId),
   },
   updater: {
     onAvailable:    (cb: (info: { version: string; releaseNotes?: string | null }) => void) =>

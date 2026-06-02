@@ -8,8 +8,23 @@ import ClaudeAnalysisTab from './tabs/ClaudeAnalysisTab'
 import DesignNotesTab from './tabs/DesignNotesTab'
 import CommitReviewTab from './tabs/CommitReviewTab'
 import RecentlyPublishedTab from './tabs/RecentlyPublishedTab'
+import NewSourcesTab from './tabs/NewSourcesTab'
+import PreCommitReviewTab from './tabs/PreCommitReviewTab'
+import AllSourcesTab from './tabs/AllSourcesTab'
+import RecentChangesTab from './tabs/RecentChangesTab'
 
-const TABS = [
+// Source-commit pipeline tabs — shown only on pipeline-enabled Info Pages
+// (currently the LATAM drone monitor). These implement the two-stage commit
+// lifecycle: New Sources → Pre-Commit Review → All Sources, plus a log.
+const PIPELINE_TABS = [
+  { id: 'new-sources',    label: 'New Sources' },
+  { id: 'pre-commit',     label: 'Pre-Commit Review' },
+  { id: 'all-sources',    label: 'All Sources' },
+  { id: 'recent-changes', label: 'Recent Changes' },
+]
+
+// Existing editorial tabs — present on every Info Page.
+const BASE_TABS = [
   { id: 'sources',  label: 'Sources' },
   { id: 'manual',   label: 'Manual Info' },
   { id: 'analysis', label: 'Claude Analysis' },
@@ -18,6 +33,11 @@ const TABS = [
   { id: 'published',label: 'Recently Published' },
 ]
 
+function parseConfig(raw: string | null | undefined): InfoPageConfig {
+  if (!raw) return {}
+  try { return JSON.parse(raw) } catch { return {} }
+}
+
 export default function InfoPages() {
   const { isAdmin, localUser } = useAuth()
   const [pages, setPages] = useState<InfoPage[]>([])
@@ -25,8 +45,11 @@ export default function InfoPages() {
   const [activeTab, setActiveTab] = useState('sources')
   const [isOwner, setIsOwner] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
+  const [pipelineCounts, setPipelineCounts] = useState<{ new: number; review: number; committed: number }>({ new: 0, review: 0, committed: 0 })
 
   const selectedPage = pages.find(p => p.id === selectedPageId) || null
+  const isPipeline = !!parseConfig(selectedPage?.board_config).pipeline
+  const tabs = isPipeline ? [...PIPELINE_TABS, ...BASE_TABS] : BASE_TABS
 
   const loadPages = useCallback(async () => {
     try {
@@ -38,6 +61,20 @@ export default function InfoPages() {
 
   useEffect(() => { loadPages() }, [])
 
+  // Reset to the first relevant tab whenever the selected page changes, so a
+  // pipeline page opens on New Sources and a standard page on Sources.
+  useEffect(() => {
+    if (!selectedPageId) return
+    const page = pages.find(p => p.id === selectedPageId)
+    setActiveTab(parseConfig(page?.board_config).pipeline ? 'new-sources' : 'sources')
+  }, [selectedPageId])
+
+  const refreshPipelineCounts = useCallback(async () => {
+    if (!selectedPageId) return
+    try { setPipelineCounts(await window.api.infoPages.getSourcePipelineCounts(selectedPageId)) }
+    catch { setPipelineCounts({ new: 0, review: 0, committed: 0 }) }
+  }, [selectedPageId])
+
   useEffect(() => {
     if (!selectedPageId || !localUser) return
     window.api.infoPages.isOwner(selectedPageId, localUser.id).then(setIsOwner).catch(() => setIsOwner(false))
@@ -46,8 +83,22 @@ export default function InfoPages() {
     }).catch(() => setPendingCount(0))
   }, [selectedPageId, localUser])
 
+  useEffect(() => { refreshPipelineCounts() }, [refreshPipelineCounts])
+
   const canApprove = isAdmin || isOwner
   const canGeneratePrompt = isAdmin
+
+  function tabBadge(id: string): number {
+    if (id === 'review') return pendingCount
+    if (id === 'new-sources') return pipelineCounts.new
+    if (id === 'pre-commit') return pipelineCounts.review
+    return 0
+  }
+  function badgeColor(id: string): string {
+    if (id === 'pre-commit') return 'bg-indigo-500'
+    if (id === 'new-sources') return 'bg-gray-400 dark:bg-white/30'
+    return 'bg-purple-500'
+  }
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -66,26 +117,36 @@ export default function InfoPages() {
           <div className="shrink-0 px-5 pt-4 pb-0 border-b border-gray-200 dark:border-white/[0.08]">
             <h2 className="text-base font-bold text-gray-900 dark:text-white mb-3">{selectedPage.name}</h2>
             <div className="flex gap-0.5 overflow-x-auto">
-              {TABS.map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-t-lg border-b-2 whitespace-nowrap transition-all ${
-                    activeTab === tab.id
-                      ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10'
-                      : 'border-transparent text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/70'
-                  }`}
-                >
-                  {tab.label}
-                  {tab.id === 'review' && pendingCount > 0 && (
-                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-purple-500 text-white text-[9px] font-bold">{pendingCount}</span>
-                  )}
-                </button>
-              ))}
+              {tabs.map(tab => {
+                const badge = tabBadge(tab.id)
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-t-lg border-b-2 whitespace-nowrap transition-all ${
+                      activeTab === tab.id
+                        ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10'
+                        : 'border-transparent text-gray-500 dark:text-white/50 hover:text-gray-700 dark:hover:text-white/70'
+                    }`}
+                  >
+                    {tab.label}
+                    {badge > 0 && (
+                      <span className={`ml-1 px-1.5 py-0.5 rounded-full text-white text-[9px] font-bold ${badgeColor(tab.id)}`}>{badge}</span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
           <div className="flex-1 overflow-hidden">
+            {/* Source-commit pipeline tabs (pipeline pages only) */}
+            {activeTab === 'new-sources'    && <NewSourcesTab pageId={selectedPage.id} onMoved={refreshPipelineCounts} />}
+            {activeTab === 'pre-commit'     && <PreCommitReviewTab pageId={selectedPage.id} onMoved={refreshPipelineCounts} />}
+            {activeTab === 'all-sources'    && <AllSourcesTab pageId={selectedPage.id} />}
+            {activeTab === 'recent-changes' && <RecentChangesTab pageId={selectedPage.id} />}
+
+            {/* Existing editorial tabs */}
             {activeTab === 'sources'   && <SourcesTab  pageId={selectedPage.id} page={selectedPage} localUser={localUser} />}
             {activeTab === 'manual'    && <ManualInfoTab pageId={selectedPage.id} page={selectedPage} localUser={localUser} />}
             {activeTab === 'analysis'  && <ClaudeAnalysisTab pageId={selectedPage.id} page={selectedPage} canApprove={canApprove} localUser={localUser} onNavigate={setActiveTab} />}

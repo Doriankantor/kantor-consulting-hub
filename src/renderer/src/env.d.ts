@@ -212,6 +212,7 @@ interface InfoPageConfig {
   file?: string
   branch?: string
   status?: 'active' | 'setup-pending'
+  pipeline?: boolean   // when true, the source-commit pipeline tabs are shown
 }
 
 interface InfoPageItem {
@@ -385,6 +386,45 @@ interface IntelligenceSource {
   disposition_tags: string | null      // JSON array
   thematic_tags: string | null         // JSON array
   language: string | null              // inferred: 'es' | 'pt' | 'en' | null
+}
+
+// Source pipeline row — joined from info_page_sources + intelligence_sources.
+interface InfoPageSourceRow {
+  pipeline_id: number
+  article_id: string
+  info_page: string
+  stage: 'new' | 'review' | 'committed'
+  design_notes: string | null
+  added_at: string
+  committed_at: string | null
+  // From intelligence_sources:
+  title: string | null
+  url: string | null
+  source_name: string | null
+  published_at: string | null
+  snippet: string | null
+  relevance_score: number | null
+  relevance_type: string | null
+  geography: string | null
+  language: string | null
+  categories_json: string | null
+  thematic_tags: string | null
+  confidence: string | null
+  review_notes: string | null
+  disposition_tags: string | null
+}
+
+// Audit log entry from info_page_changes.
+interface InfoPageChangeRow {
+  id: number
+  article_id: string
+  info_page: string
+  from_stage: string | null
+  to_stage: string
+  note: string | null
+  created_at: string
+  title: string | null
+  source_name: string | null
 }
 
 interface IntelligencePushLog {
@@ -685,6 +725,14 @@ interface Window {
       clearChat:            (pageId: string)                                   => Promise<{ ok: boolean }>
       chat:                 (params: { pageId: string; pageName: string; userId?: string; message: string }) => Promise<{ ok: boolean; reply?: string; error?: string }>
       summarizeAnalysis:    (params: { pageId: string; pageName: string; userId?: string }) => Promise<{ ok: boolean; summary?: string; recommendations?: Array<{ section: string; action: string; detail: string; confidence: string }>; error?: string }>
+      // Source pipeline
+      getSourcePipeline:    (pageId: string) => Promise<InfoPageSourceRow[]>
+      sendToReview:         (pageId: string, articleIds: string[]) => Promise<{ ok: boolean; moved: number }>
+      backSourceToNew:      (pageId: string, articleId: string) => Promise<{ ok: boolean }>
+      commitSources:        (pageId: string, designNotes: string) => Promise<{ ok: boolean; committed: number }>
+      saveReviewNotes:      (pageId: string, designNotes: string) => Promise<{ ok: boolean; saved: number }>
+      getSourceChanges:     (pageId: string) => Promise<InfoPageChangeRow[]>
+      getSourcePipelineCounts: (pageId: string) => Promise<{ new: number; review: number; committed: number }>
     }
     intelligence: {
       getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number }) => Promise<IntelligenceSource[]>

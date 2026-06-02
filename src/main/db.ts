@@ -898,6 +898,38 @@ export function initDatabase(): void {
     );
   `)
 
+  // ── Source pipeline lifecycle (Phases 1-6: two-stage commit) ──────────────
+  // info_page_sources: tracks each approved intelligence article through the
+  // new→review→committed lifecycle for a specific info page.
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS info_page_sources (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        article_id   TEXT NOT NULL,
+        info_page    TEXT NOT NULL,
+        stage        TEXT NOT NULL DEFAULT 'new' CHECK(stage IN ('new','review','committed')),
+        design_notes TEXT,
+        added_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+        committed_at DATETIME,
+        UNIQUE(article_id, info_page)
+      );
+    `)
+  } catch {}
+  // info_page_changes: append-only audit log of every stage transition.
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS info_page_changes (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        article_id  TEXT NOT NULL,
+        info_page   TEXT NOT NULL,
+        from_stage  TEXT,
+        to_stage    TEXT NOT NULL,
+        note        TEXT,
+        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `)
+  } catch {}
+
   // Seed Info Page boards
   try {
     db.exec("INSERT OR IGNORE INTO workspace_boards (id,name,position,board_type,board_config) VALUES ('board-info-latam','LATAM Drone Threat',50,'info-page','{\"repo\":\"Doriankantor/contested-skies-monitor\",\"live_url\":\"contestedskies.kantor-consulting.com\",\"keywords\":\"drone proliferation,drone strikes,drone purchases,counter drone,civilian drone use,criminal drone use,weaponized drones,DJI drones,drone warfare,loitering munitions,kamikaze drones,FPV drones,drone swarms,autonomous weapons,UAV,MALE drones,drone jamming,anti-drone systems,drone export controls,drone regulation,drones Latin America,drones Colombia,drones Venezuela,drones Mexico,drones Brazil,cartel drones,narco drones,DJI export restrictions,Iranian drones,Turkish Bayraktar,Chinese drone exports,drone proliferation non-state actors\",\"status\":\"active\",\"pipeline\":true}')")

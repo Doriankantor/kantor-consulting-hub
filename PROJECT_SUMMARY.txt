@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v1.1.23   |   138 commits   |   ~27,950 lines of TS/TSX
+  Current version: v1.1.24   |   140 commits   |   ~28,350 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -287,6 +287,38 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
     • "Sync now" (formerly "Import Contested Skies") button removed from
       News Articles filter bar; underlying IPC/function preserved
     • Sidebar: Intelligence moved above Info Pages
+
+  v1.1.24 (Jun 2) — INFO PAGES SOURCE-COMMIT PIPELINE (TWO-STAGE)
+    • New lifecycle for approved Source Intelligence articles → a committable
+      Info Page source library. Two new SQLite tables: info_page_sources
+      (id, article_id, info_page, stage new|review|committed, design_notes,
+      added_at, committed_at, UNIQUE(article_id,info_page)) and info_page_changes
+      (append-only stage-transition audit log). Both idempotent.
+    • Approve hook: approving an article whose PROJECT (disposition_tags) names a
+      pipeline-enabled Info Page creates/ensures a stage='new' source row + logs
+      the add. Fixed a matcher bug — disposition_tags stores the board's raw
+      display name ("LATAM Drone Threat"), not the slug; now matched correctly
+      and scoped to board_config.pipeline=true (LATAM drone monitor only).
+    • Four new Info Page tabs (shown only on pipeline pages, before the editorial
+      tabs): New Sources, Pre-Commit Review, All Sources, Recent Changes. Each
+      source card shows full carried metadata (relevance score+type, geography,
+      categories, topic tags, confidence, language, free-hand review note).
+    • New Sources: per-row checkbox + select-all + "Send to Review (N)" → stage
+      'review', logged. Pre-Commit Review: shared "Pre-publish design notes"
+      textarea (persists via new infoPages:saveReviewNotes IPC, and on commit),
+      "Commit (N)" → stage 'committed' + committed_at + log, per-item
+      "← New Sources" back-out path. All Sources: committed library, read-only,
+      newest-committed first, design notes shown. Recent Changes: reverse-chron
+      transition log. Extracted shared PipelineSourceCard component.
+    • New IPC: infoPages:getSourcePipeline, sendToReview, backSourceToNew,
+      commitSources, saveReviewNotes, getSourceChanges, getSourcePipelineCounts.
+    • Source Intelligence: removed the Publish Queue tab and the "Push to
+      Contested Skies" button; replaced with a header "Push to Info Page"
+      affordance reflecting the new flow (approve → Info Page New Sources). The
+      live-site push code is PRESERVED, not deleted — PublishQueue.tsx and the
+      intelligence:pushToContestedSkies handler remain intact but unreachable
+      from Intelligence, to be wired downstream of Info Pages (admin-only,
+      never automatic) in a later build.
 
 ───────────────────────────────────────────────────────────────────────────────
 10. KEY FILES (quick reference)
