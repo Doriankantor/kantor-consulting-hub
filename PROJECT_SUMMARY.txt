@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v1.1.26   |   144 commits   |   ~28,650 lines of TS/TSX
+  Current version: v1.1.27   |   146 commits   |   ~28,655 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -374,6 +374,19 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       authenticated; no UPDATE/DELETE; anon denied) must be created once via SQL
       in the Supabase editor (service-role key can't run DDL); seed then triggered
       in-app by the admin.
+
+  v1.1.27 (Jun 2) — HOTFIX: v1.1.26 crashed on launch (cloud client WebSocket)
+    • v1.1.26 shipped a launch crash: src/main/cloud/client.ts called
+      createClient() WITHOUT the `ws` realtime transport. supabase-js eagerly
+      builds a RealtimeClient, and Electron's Node 20 has no native WebSocket, so
+      the constructor threw "Node.js 20 detected without native WebSocket support"
+      at main-process startup — bricking the app before the window/updater loaded.
+    • Fix: cloud/client.ts now imports `ws` and passes
+      realtime: { transport: ws as unknown as typeof WebSocket } (same pattern as
+      the existing cs_articles supabaseAdmin client). App launches normally again.
+    • NOTE: because v1.1.26 crashes before the in-app updater runs, recovering
+      requires a MANUAL install of v1.1.27 (download the DMG, replace the app in
+      /Applications); auto-update can't self-heal a startup crash.
 
 ───────────────────────────────────────────────────────────────────────────────
 10. KEY FILES (quick reference)
