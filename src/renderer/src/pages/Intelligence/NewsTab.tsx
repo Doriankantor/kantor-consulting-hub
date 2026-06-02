@@ -238,7 +238,6 @@ export default function NewsTab({ onApprove }: Props) {
   const [knownThematic, setKnownThematic] = useState<string[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const [importedCount, setImportedCount] = useState(0)
-  const [importing, setImporting] = useState(false)
   const [confirmingImported, setConfirmingImported] = useState(false)
 
   const refreshImportedCount = useCallback(async () => {
@@ -298,17 +297,6 @@ export default function NewsTab({ onApprove }: Props) {
       if (result.ok) { await load() }
     } finally {
       setRefreshing(false)
-    }
-  }
-
-  async function handleImportContestedSkies() {
-    setImporting(true)
-    try {
-      const res = await window.api.intelligence.importFromContestedSkies({ userId: localUser?.id, addedByName: localUser?.name })
-      if (res.ok) await load()
-      else alert(res.error || 'Import failed')
-    } finally {
-      setImporting(false)
     }
   }
 
@@ -537,18 +525,6 @@ export default function NewsTab({ onApprove }: Props) {
         {isAdmin && (
           <div className="ml-auto flex items-center gap-2">
             <button
-              onClick={handleImportContestedSkies}
-              disabled={importing}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-orange-300 dark:border-orange-500/40 text-orange-700 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-500/10 text-xs font-medium transition disabled:opacity-50"
-            >
-              {importing ? (
-                <span className="w-3 h-3 border-2 border-orange-400/30 border-t-orange-500 rounded-full animate-spin" />
-              ) : (
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v6M3.5 5L6 7.5 8.5 5M2 9.5h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              )}
-              {importing ? 'Syncing…' : 'Sync now'}
-            </button>
-            <button
               onClick={handleRefreshNews}
               disabled={refreshing}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium transition disabled:opacity-50"
@@ -655,8 +631,17 @@ export default function NewsTab({ onApprove }: Props) {
                       <span className={`w-1.5 h-1.5 rounded-full ${confStyle.dot}`} />
                       {conf}
                     </span>
-                    {/* Relevance-score badge */}
-                    {(() => {
+                    {/* Relevance-score badge.
+                        gate_processed=1 + NULL score = tombstoned (failed to score) → gray "scoring failed".
+                        gate_processed=0 + NULL score = not yet gated → gray "REL —". */}
+                    {source.gate_processed === 1 && source.relevance_score == null ? (
+                      <span
+                        className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/30"
+                        title={source.gate_reasoning || 'Scoring failed — could not classify this article'}
+                      >
+                        scoring failed
+                      </span>
+                    ) : ((() => {
                       const rb = relevanceBadge(source.relevance_score)
                       return (
                         <span
@@ -666,7 +651,7 @@ export default function NewsTab({ onApprove }: Props) {
                           <span className="opacity-60 font-medium">REL</span>{rb.label}
                         </span>
                       )
-                    })()}
+                    })())}
                     {/* Relevance-type badge */}
                     {source.relevance_type && source.relevance_type !== 'none' && (
                       <span

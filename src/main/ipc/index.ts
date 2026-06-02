@@ -2447,11 +2447,14 @@ function getGlobalAnthropicKey(): string | null {
 
 const GATE_SYSTEM_PROMPT = `You classify drone/UAS news for a Colombia-focused security consultancy. An article matters if it is (a) in-region LATAM, (b) supply-side (a supplier/transfer/training that could reach LATAM), (c) a precedent (a policy/legal/operational development elsewhere that is a model or warning for Colombia, e.g. foreign policing powers vs. Colombian counterparts), or (d) an escalation-signal (a drone-conflict dynamic that could foreshadow LATAM escalation). Score 0-10 for Colombia relevance. Work in Spanish or English. Return ONLY JSON.`
 
-// Classify a single article. Returns null on ANY failure (fail-open).
+// Classify a single article.
+// Returns GateResult on success, or { error: string } on any failure so the
+// caller can write a tombstone (gate_processed=1, relevance_score NULL) instead
+// of leaving the row at gate_processed=0 and retrying forever.
 async function gateClassifyArticle(
   article: { title?: string | null; snippet?: string | null; source?: string | null },
   apiKey: string
-): Promise<GateResult | null> {
+): Promise<GateResult | { error: string }> {
   try {
     const AnthropicLib = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk')
     const client = new AnthropicLib({ apiKey })
@@ -2476,7 +2479,7 @@ Source: ${article.source || 'Unknown'}`,
     })
     const text = msg.content?.[0]?.type === 'text' ? msg.content[0].text : ''
     const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) return null
+    if (!jsonMatch) return { error: 'no JSON in response' }
     const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
     let score = Number(parsed.relevance_score)
     if (!Number.isFinite(score)) score = 0
@@ -2487,8 +2490,7 @@ Source: ${article.source || 'Unknown'}`,
     const reasoning = parsed.reasoning ? String(parsed.reasoning).slice(0, 500) : null
     return { relevance_score: score, relevance_type: rtype as GateRelevanceType, geography, region: geography, reasoning }
   } catch (e) {
-    console.warn('[Gate] classify failed (fail-open):', (e as Error)?.message)
-    return null
+    return { error: String((e as Error)?.message || e).slice(0, 200) }
   }
 }
 
@@ -2519,12 +2521,24 @@ async function classifyUnscoredArticles(limit = GATE_MAX_PER_RUN): Promise<numbe
     return 0
   }
   let scored = 0
+  let failed = 0
   for (const row of rows) {
     const result = await gateClassifyArticle(
       { title: row.title, snippet: row.snippet || row.content?.slice(0, 300) || '', source: row.source_name },
       apiKey
     )
-    if (!result) continue // FAIL-OPEN: leave unscored, retried next pass
+    if ('error' in result) {
+      // Permanent failure: write a tombstone so this row is never retried.
+      // relevance_score stays NULL (distinguishable via gate_processed=1 + NULL score).
+      const reason = `gate failed: ${result.error}`.slice(0, 300)
+      console.warn('[Gate] row failed — tombstoning:', row.id, reason)
+      try {
+        db.prepare('UPDATE intelligence_sources SET gate_processed=1, gate_reasoning=? WHERE id=?')
+          .run(reason, row.id)
+      } catch (e) { console.warn('[Gate] could not write tombstone for', row.id, (e as Error)?.message) }
+      failed++
+      continue
+    }
     try {
       db.prepare(`
         UPDATE intelligence_sources
@@ -2538,7 +2552,7 @@ async function classifyUnscoredArticles(limit = GATE_MAX_PER_RUN): Promise<numbe
       console.warn('[Gate] could not persist score for', row.id, (e as Error)?.message)
     }
   }
-  if (scored) console.log(`[Gate] Scored ${scored} article(s) for Colombia relevance.`)
+  if (scored || failed) console.log(`[Gate] Scored ${scored} article(s), tombstoned ${failed} permanently-failed article(s).`)
   return scored
 }
 
@@ -3003,9 +3017,11 @@ function registerIntelligenceHandlers(): void {
   })
 
   // Count articles still waiting for gate scoring (gate_processed=0 or NULL).
+  // Excludes 'Kantor Framework' rows — same filter as classifyUnscoredArticles —
+  // so authoritative fixed references never inflate the counter.
   ipcMain.handle('intelligence:getUnscoredCount', () => {
     const row = db().prepare(
-      "SELECT COUNT(*) as c FROM intelligence_sources WHERE type='article' AND (gate_processed IS NULL OR gate_processed=0)"
+      "SELECT COUNT(*) as c FROM intelligence_sources WHERE type='article' AND (gate_processed IS NULL OR gate_processed=0) AND COALESCE(added_by_name,'') != 'Kantor Framework'"
     ).get() as { c: number }
     return row.c
   })
@@ -3055,10 +3071,10 @@ function registerIntelligenceHandlers(): void {
             { title: row.title, snippet: row.snippet || row.content?.slice(0, 300) || '', source: row.source_name },
             apiKey
           )
-          if (!result) {
-            // gateClassifyArticle already logged; mark processed=1 with null score to
-            // avoid retrying indefinitely on permanent failures (bad content etc.)
-            database.prepare('UPDATE intelligence_sources SET gate_processed=1 WHERE id=?').run(row.id)
+          if ('error' in result) {
+            // Permanent failure: tombstone so it's never retried.
+            const reason = `gate failed: ${result.error}`.slice(0, 300)
+            database.prepare('UPDATE intelligence_sources SET gate_processed=1, gate_reasoning=? WHERE id=?').run(reason, row.id)
             batchFailed++
             totalFailed++
             continue
@@ -3084,7 +3100,7 @@ function registerIntelligenceHandlers(): void {
     }
 
     const remaining = (database.prepare(
-      "SELECT COUNT(*) as c FROM intelligence_sources WHERE type='article' AND (gate_processed IS NULL OR gate_processed=0)"
+      "SELECT COUNT(*) as c FROM intelligence_sources WHERE type='article' AND (gate_processed IS NULL OR gate_processed=0) AND COALESCE(added_by_name,'') != 'Kantor Framework'"
     ).get() as { c: number }).c
 
     console.log(`[Gate:rescore] Complete — processed=${totalProcessed} relevant=${totalRelevant} failed=${totalFailed} remaining=${remaining}`)

@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v1.1.22   |   136 commits   |   ~27,900 lines of TS/TSX
+  Current version: v1.1.23   |   138 commits   |   ~27,950 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -273,6 +273,20 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       domain/title patterns (es/pt/null); ES/EN/PT badge on each card
     • First sync: 12 cs_articles imported (8 ES, 4 PT), all gate_processed=1,
       scores 6–9 from pipeline
+
+  v1.1.23 (Jun 2) — GATE TOMBSTONE FIX + BUTTON REMOVAL + SIDEBAR REORDER
+    • gateClassifyArticle: returns { error } instead of null on failure so
+      classifyUnscoredArticles can write gate_processed=1 (tombstone) with
+      gate_reasoning='gate failed: <reason>' — stops infinite retry loop
+    • getUnscoredCount + rescoreUnscored: exclude Kantor Framework rows (same
+      filter as the gate) so they don't inflate the counter
+    • 4 stuck rows (Kantor Framework authoritative refs): tombstoned directly;
+      counter reads 0; "Re-score unscored" button hidden
+    • gate_processed=1 + NULL relevance_score → gray "scoring failed" badge
+      instead of "REL —" so tombstoned rows are distinguishable
+    • "Sync now" (formerly "Import Contested Skies") button removed from
+      News Articles filter bar; underlying IPC/function preserved
+    • Sidebar: Intelligence moved above Info Pages
 
 ───────────────────────────────────────────────────────────────────────────────
 10. KEY FILES (quick reference)
