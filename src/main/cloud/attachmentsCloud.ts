@@ -349,19 +349,22 @@ export async function seedAttachmentsToCloud(requestEmail: string): Promise<{
       created_at: local.created_at as string ?? new Date().toISOString(),
     }
 
-    if (type === 'url' || !localPath) {
-      // URL-type: seed metadata only (no blob needed).
-      // No-local-path file type (shouldn't happen but guard it): skip with a report.
-      if (!localPath && type !== 'url') {
-        skippedNoPath++
-        continue
-      }
+    // Detection keys on PRESENCE OF A URL, not on an enumerated type list, so it
+    // covers 'url', 'gdoc', 'gslides', 'gsheet', and any future link kind.
+    // Rule: a non-empty url with NO usable local file blob is a link/metadata-only
+    // attachment (storage_path = null; url + original `type` preserved via baseRow).
+    // A blob is only a local_path that is set AND whose file actually exists.
+    const hasLocalFile = !!localPath && existsSync(localPath)
+    const hasUrl = typeof url === 'string' && url.trim().length > 0
+
+    if (!hasLocalFile && hasUrl) {
+      // Link/URL-type: seed metadata only (no blob needed). `type` preserved.
       const { error } = await cloud.from('task_attachments').upsert(
         { ...baseRow, storage_path: null },
         { onConflict: 'id', ignoreDuplicates: true }
       )
       if (error) {
-        console.warn('[seed] url row failed:', id, error.message)
+        console.warn('[seed] url/link row failed:', id, error.message)
         skippedNoPath++
       } else {
         seeded++
@@ -369,17 +372,24 @@ export async function seedAttachmentsToCloud(requestEmail: string): Promise<{
       continue
     }
 
-    // Blob-type: check file exists.
-    if (!existsSync(localPath)) {
-      skippedMissing++
-      missingFiles.push(localPath)
+    if (!hasLocalFile) {
+      // No usable local file AND no url to fall back on.
+      if (localPath) {
+        // local_path was set but the file is gone — report as missing-on-disk.
+        skippedMissing++
+        missingFiles.push(localPath)
+      } else {
+        skippedNoPath++
+      }
       continue
     }
 
-    const ext = extname(localPath).toLowerCase()
+    // Blob-type: usable local file present → upload to Storage.
+    const blobPath = localPath as string
+    const ext = extname(blobPath).toLowerCase()
     const storagePath = `${taskId}/${id}${ext}`
     try {
-      await uploadToStorage(localPath, storagePath, mimeType)
+      await uploadToStorage(blobPath, storagePath, mimeType)
       const { error } = await cloud.from('task_attachments').upsert(
         { ...baseRow, storage_path: storagePath },
         { onConflict: 'id', ignoreDuplicates: true }
@@ -388,14 +398,14 @@ export async function seedAttachmentsToCloud(requestEmail: string): Promise<{
         await deleteStorageBlob(storagePath)
         console.warn('[seed] metadata insert failed after upload:', id, error.message)
         skippedMissing++
-        missingFiles.push(`${localPath} (upload succeeded, metadata failed)`)
+        missingFiles.push(`${blobPath} (upload succeeded, metadata failed)`)
       } else {
         seeded++
       }
     } catch (e) {
-      console.warn('[seed] upload failed for:', localPath, (e as Error)?.message)
+      console.warn('[seed] upload failed for:', blobPath, (e as Error)?.message)
       skippedMissing++
-      missingFiles.push(localPath)
+      missingFiles.push(blobPath)
     }
   }
 

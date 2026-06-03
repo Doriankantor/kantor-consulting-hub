@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v2.0.3   |   161 commits   |   ~31,200 lines of TS/TSX
+  Current version: v2.0.4   |   165 commits   |   ~31,200 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -440,6 +440,18 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       with per-row Restore (everyone) and Delete permanently (admin only). Inline
       cloud-error banners on delete/restore/purge failure; no crash, no stale-local
       fallback. Clients are NOT trashable in this build (contacts only).
+
+  v2.0.4 (Jun 4) -- FIX: SEED NOW MIGRATES ALL LINK-TYPE ATTACHMENTS (gdoc, gslides, etc.)
+    * seedAttachmentsToCloud: broadened link detection from `type === 'url'` to a
+      general "has a non-empty url AND no usable local file blob" rule. Previously,
+      link-type attachments with type 'gdoc', 'gslides', 'gsheet', or any non-'url'
+      link kind were silently dropped as "no path" during seeding even when they had
+      a valid url. Now ALL such rows are seeded as metadata-only (storage_path=null,
+      url + original `type` preserved) -- no enumerated type list anywhere in the
+      detection condition. The original `type` value is preserved so the UI still
+      renders/opens gdoc vs gslides vs url correctly.
+    * No change to live add path (addUrlAttachment already stored any type as
+      metadata-only), blob/file upload path, cache/download, deletion, or realtime.
 
   v2.0.3 (Jun 3) -- CLOUD STORAGE ATTACHMENTS (final piece of boards)
     * Card attachments now live in the cloud (private Supabase Storage bucket
