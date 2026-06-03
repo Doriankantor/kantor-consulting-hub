@@ -20,6 +20,10 @@ import {
 import * as boardsCloud from '../cloud/boards'
 import { seedBoardsToCloud } from '../cloud/boardsSeed'
 import { startRealtime, rescope as rescopeRealtime, teardownAll as teardownRealtime } from '../cloud/realtimeManager'
+import {
+  listAttachments, addFileAttachment, addUrlAttachment,
+  openAttachment, deleteAttachment, seedAttachmentsToCloud,
+} from '../cloud/attachmentsCloud'
 
 // ── Ambient acting user (Stage 2 cat.3) ──────────────────────────────────────
 // Board visibility is membership-scoped and must be enforced in the main process
@@ -849,68 +853,35 @@ function registerChecklistHandlers() {
 // ── Attachments ────────────────────────────────────────────────────────────
 
 function registerAttachmentHandlers() {
-  const userDataPath = app.getPath('userData')
-  const attachmentsDir = join(userDataPath, 'attachments')
-
+  // CLOUD-SOURCED (Stage 2 — final piece of boards). All attachment metadata in the
+  // cloud task_attachments table; blobs in the private 'card-attachments' Storage bucket.
+  // Renderer makes NO direct Storage calls. Native picker stays in main (no IPC payload).
+  // Local userData/attachments/ dir is left untouched (seed READS it; we do not modify it).
   ipcMain.handle('attachments:get', (_e, taskId: string) =>
-    getDatabase().prepare('SELECT * FROM task_attachments WHERE task_id=? ORDER BY created_at ASC').all(taskId)
+    listAttachments(currentActingUserId, taskId)
   )
-
-  ipcMain.handle('attachments:addFile', async (_e, taskId: string, authorId: string, authorName: string) => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openFile'], title: 'Select File to Attach' })
-    if (canceled || !filePaths[0]) return { canceled: true }
-
-    if (!existsSync(attachmentsDir)) mkdirSync(attachmentsDir, { recursive: true })
-
-    const srcPath = filePaths[0]
-    const ext = extname(srcPath)
-    const id = uuid()
-    const destPath = join(attachmentsDir, id + ext)
-    copyFileSync(srcPath, destPath)
-
-    const fileName = basename(srcPath)
-    getDatabase().prepare(`INSERT INTO task_attachments (id,task_id,name,type,local_path,mime_type,author_id,author_name) VALUES (?,?,?,?,?,?,?,?)`)
-      .run(id, taskId, fileName, 'file', destPath, '', authorId, authorName)
-
-    // Auto-copy to Drive if connected
-    if (driveSync.isConnected()) {
-      try {
-        const task = getDatabase().prepare('SELECT wt.title, wb.name as board_name FROM workspace_tasks wt LEFT JOIN workspace_boards wb ON wt.board_id = wb.id WHERE wt.id = ?').get(taskId) as { title: string; board_name: string } | undefined
-        const projectName = task?.board_name ?? 'General'
-        const taskTitle = task?.title ?? 'Untitled'
-        const folderPath = `KantorConsultingHub/${projectName}/${taskTitle}`
-        void driveSync.copyFileToDrive(destPath, fileName, folderPath)
-      } catch {}
-    }
-
-    return { ok: true, id, name: fileName, local_path: destPath }
-  })
-
-  ipcMain.handle('attachments:addUrl', (_e, taskId: string, name: string, url: string, type: string, authorId: string, authorName: string) => {
-    const id = uuid()
-    getDatabase().prepare(`INSERT INTO task_attachments (id,task_id,name,type,url,author_id,author_name) VALUES (?,?,?,?,?,?,?)`)
-      .run(id, taskId, name.trim() || url, type || 'url', url.trim(), authorId, authorName)
-    return { ok: true, id }
-  })
-
-  ipcMain.handle('attachments:delete', (_e, id: string) => {
-    getDatabase().prepare('DELETE FROM task_attachments WHERE id=?').run(id)
-    return { ok: true }
-  })
-
+  ipcMain.handle('attachments:addFile', (_e, taskId: string) =>
+    addFileAttachment(currentActingUserId, taskId)
+  )
+  ipcMain.handle('attachments:addUrl', (_e, taskId: string, name: string, url: string, type: string) =>
+    addUrlAttachment(currentActingUserId, taskId, url, name, type)
+  )
+  ipcMain.handle('attachments:delete', (_e, id: string) =>
+    deleteAttachment(currentActingUserId, id)
+  )
+  // open: URL-type attachments return { url } for renderer shell.openExternal.
+  // Blob-type: cache-then-shell.openPath (handled in main via openAttachment).
   ipcMain.handle('attachments:open', async (_e, attachmentId: string) => {
-    const row = getDatabase().prepare('SELECT * FROM task_attachments WHERE id=?').get(attachmentId) as any
-    if (!row) return { error: 'Not found' }
-    if (row.local_path && existsSync(row.local_path)) {
-      await shell.openPath(row.local_path)
+    const result = await openAttachment(currentActingUserId, attachmentId)
+    if (result.url) {
+      await shell.openExternal(result.url)
       return { ok: true }
     }
-    if (row.url) {
-      await shell.openExternal(row.url)
-      return { ok: true }
-    }
-    return { error: 'No file or URL' }
+    return result
   })
+  ipcMain.handle('attachments:seedToCloud', (_e, requestEmail: string) =>
+    seedAttachmentsToCloud(requestEmail)
+  )
 }
 
 // ── Notifications ──────────────────────────────────────────────────────────

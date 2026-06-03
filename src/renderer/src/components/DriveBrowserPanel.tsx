@@ -38,7 +38,7 @@ export default function DriveBrowserPanel({ taskId, authorId, authorName, onClos
   async function handleUploadFile() {
     setUploading(true)
     try {
-      const result = await window.api.attachments.addFile(taskId, authorId, authorName)
+      const result = await window.api.attachments.addFile(taskId)
       if (result.ok) {
         onAttachmentAdded()
         onClose()
@@ -56,9 +56,7 @@ export default function DriveBrowserPanel({ taskId, authorId, authorName, onClos
         taskId,
         linkName.trim() || linkUrl.trim(),
         linkUrl.trim(),
-        linkType,
-        authorId,
-        authorName
+        linkType
       )
       onAttachmentAdded()
       onClose()

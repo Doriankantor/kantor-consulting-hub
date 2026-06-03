@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v2.0.2   |   159 commits   |   ~30,600 lines of TS/TSX
+  Current version: v2.0.3   |   161 commits   |   ~31,200 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -440,6 +440,42 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       with per-row Restore (everyone) and Delete permanently (admin only). Inline
       cloud-error banners on delete/restore/purge failure; no crash, no stale-local
       fallback. Clients are NOT trashable in this build (contacts only).
+
+  v2.0.3 (Jun 3) -- CLOUD STORAGE ATTACHMENTS (final piece of boards)
+    * Card attachments now live in the cloud (private Supabase Storage bucket
+      'card-attachments', 30MB cap). Every board member on every machine can open
+      files attached to cards they have access to -- no restart, no manual sync.
+    * Architecture: renderer -> IPC -> main -> Supabase Storage. Renderer makes NO
+      direct Storage calls. Native file picker (dialog.showOpenDialog) stays in
+      main so bytes never cross IPC. Upload streams from disk via fs.readFile.
+      Download caches to userData/attachment-cache/ on first open, then
+      shell.openPath -- subsequent opens are instant (no re-download).
+    * New src/main/cloud/attachmentsCloud.ts: addFileAttachment (native picker +
+      stream upload + metadata row), addUrlAttachment (metadata only, no blob),
+      listAttachments (board-visibility gated), openAttachment (cache-on-open),
+      deleteAttachment (blob + row, admin or author only -- fixes the existing
+      local file-deletion leak), storagePathsForTask/Board helpers,
+      deleteStorageBlob/Blobs, seedAttachmentsToCloud (guarded one-time seed).
+    * Cascade blob cleanup: deleteTask and deleteBoard in boards.ts now collect
+      and delete Storage blobs BEFORE the DB row delete (FK cascade handles rows;
+      blobs needed explicit removal). Fixes orphaned blobs on card/board delete.
+    * Author identity: email-keyed (author_email), consistent with rest of cloud
+      schema. Resolved in main from ambient acting user -- author args removed from
+      addFile/addUrl IPC signatures (renderer no longer passes authorId/authorName).
+    * RLS on cloud task_attachments: membership-join predicate matching the pattern
+      on all other child tables (task_comments, task_activity, etc.) -- admin email
+      OR task_id in (tasks on boards where user is a member). No DELETE policy ->
+      service_role/main process only. NOT using(true) (corrected from initial draft).
+    * Realtime: task_attachments registered as a consumer of the existing manager
+      (boardsRealtime.ts); file added/removed on machine A appears/disappears live
+      on machine B without restart. replica identity full applied so DELETEs carry
+      task_id in payload.old.
+    * Guarded one-time seed (Settings -> Cloud migration -> "Seed attachments"):
+      admin-only, no-op if cloud already has rows, best-effort per file (missing
+      files skipped + reported, not fatal), URL-type rows seeded as metadata only.
+      Run AFTER "Seed boards".
+    * Local userData/attachments/ (original files) and local SQLite task_attachments
+      left untouched -- seed reads but never modifies them.
 
   v2.0.2 (Jun 3) -- LIVE BOARD UPDATES VIA SUPABASE REALTIME
     * Boards/cards/columns/members now update LIVE across machines -- no restart or

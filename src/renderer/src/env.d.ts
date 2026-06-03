@@ -68,11 +68,13 @@ interface TaskAttachment {
   task_id: string
   name: string
   type: 'file' | 'gdoc' | 'url'
-  local_path: string | null
+  // Cloud schema: storage_path replaces local_path; author_email replaces author_id.
+  storage_path: string | null
+  local_path: string | null   // kept for backwards compat (may be null on cloud rows)
   url: string | null
   mime_type: string | null
   size_bytes: number | null
-  author_id: string
+  author_email: string        // stable cross-device identity (email-keyed)
   author_name: string
   created_at: string
 }
@@ -538,11 +540,12 @@ interface Window {
       update: (itemId: string, text: string)                       => Promise<{ ok?: boolean }>
     }
     attachments: {
-      get:     (taskId: string)                                                                             => Promise<TaskAttachment[]>
-      addFile: (taskId: string, authorId: string, authorName: string)                                     => Promise<{ ok?: boolean; id?: string; name?: string; local_path?: string; canceled?: boolean }>
-      addUrl:  (taskId: string, name: string, url: string, type: string, authorId: string, authorName: string) => Promise<{ ok?: boolean; id?: string }>
-      delete:  (id: string)                                                                                 => Promise<{ ok?: boolean }>
-      open:    (attachmentId: string)                                                                       => Promise<{ ok?: boolean; error?: string }>
+      get:         (taskId: string)                                           => Promise<TaskAttachment[]>
+      addFile:     (taskId: string)                                           => Promise<{ ok?: boolean; id?: string; name?: string; storage_path?: string; canceled?: boolean; error?: string }>
+      addUrl:      (taskId: string, name: string, url: string, type: string) => Promise<{ ok?: boolean; id?: string }>
+      delete:      (id: string)                                               => Promise<{ ok?: boolean; error?: string }>
+      open:        (attachmentId: string)                                     => Promise<{ ok?: boolean; error?: string }>
+      seedToCloud: (requestEmail: string)                                     => Promise<{ ok: boolean; seeded?: number; skippedMissing?: number; skippedNoPath?: number; missingFiles?: string[]; reason?: string }>
     }
     notifications: {
       get:         (userId: string) => Promise<AppNotification[]>

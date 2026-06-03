@@ -103,11 +103,13 @@ const api = {
     update: (itemId: string, text: string)                       => ipcRenderer.invoke('checklistItems:update', itemId, text),
   },
   attachments: {
-    get:     (taskId: string)                                                                                         => ipcRenderer.invoke('attachments:get', taskId),
-    addFile: (taskId: string, authorId: string, authorName: string)                                                  => ipcRenderer.invoke('attachments:addFile', taskId, authorId, authorName),
-    addUrl:  (taskId: string, name: string, url: string, type: string, authorId: string, authorName: string)        => ipcRenderer.invoke('attachments:addUrl', taskId, name, url, type, authorId, authorName),
-    delete:  (id: string)                                                                                             => ipcRenderer.invoke('attachments:delete', id),
-    open:    (attachmentId: string)                                                                                   => ipcRenderer.invoke('attachments:open', attachmentId),
+    get:         (taskId: string)                                              => ipcRenderer.invoke('attachments:get', taskId),
+    // addFile: author args removed — main resolves identity from the ambient acting user.
+    addFile:     (taskId: string)                                              => ipcRenderer.invoke('attachments:addFile', taskId),
+    addUrl:      (taskId: string, name: string, url: string, type: string)    => ipcRenderer.invoke('attachments:addUrl', taskId, name, url, type),
+    delete:      (id: string)                                                  => ipcRenderer.invoke('attachments:delete', id),
+    open:        (attachmentId: string)                                        => ipcRenderer.invoke('attachments:open', attachmentId),
+    seedToCloud: (requestEmail: string)                                        => ipcRenderer.invoke('attachments:seedToCloud', requestEmail),
   },
   notifications: {
     get:         (userId: string)  => ipcRenderer.invoke('notifications:get', userId),

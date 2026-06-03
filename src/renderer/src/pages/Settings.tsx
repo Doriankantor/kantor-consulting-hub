@@ -60,6 +60,8 @@ function CloudMigrationSection({ adminEmail }: { adminEmail: string }) {
   const [contactsResult,  setContactsResult]  = useState<{ ok: boolean; text: string } | null>(null)
   const [boardsRunning,   setBoardsRunning]   = useState(false)
   const [boardsResult,    setBoardsResult]    = useState<{ ok: boolean; text: string } | null>(null)
+  const [attRunning,      setAttRunning]      = useState(false)
+  const [attResult,       setAttResult]       = useState<{ ok: boolean; text: string } | null>(null)
 
   async function runChat() {
     setChatRunning(true); setChatResult(null)
@@ -105,6 +107,22 @@ function CloudMigrationSection({ adminEmail }: { adminEmail: string }) {
     } finally { setBoardsRunning(false) }
   }
 
+  async function runAttachments() {
+    setAttRunning(true); setAttResult(null)
+    try {
+      const r = await window.api.attachments.seedToCloud(adminEmail)
+      if (!r.ok) { setAttResult({ ok: false, text: r.reason || 'Seed failed.' }); return }
+      if (r.reason) { setAttResult({ ok: true, text: r.reason }); return }
+      const parts: string[] = []
+      if (r.seeded) parts.push(`${r.seeded} file(s) uploaded`)
+      if (r.skippedMissing) parts.push(`${r.skippedMissing} skipped (file missing on disk)`)
+      if (r.skippedNoPath) parts.push(`${r.skippedNoPath} skipped (no path)`)
+      setAttResult({ ok: true, text: parts.length ? parts.join(', ') + '.' : 'Nothing to upload.' })
+    } catch (e: any) {
+      setAttResult({ ok: false, text: `Couldn't reach the server: ${e?.message || 'unknown error'}` })
+    } finally { setAttRunning(false) }
+  }
+
   function SeedRow({ label, description, running, result, onRun, btnLabel }: {
     label: string; description: string; running: boolean
     result: { ok: boolean; text: string } | null; onRun: () => void; btnLabel: string
@@ -144,6 +162,11 @@ function CloudMigrationSection({ adminEmail }: { adminEmail: string }) {
         label="Seed workspace boards to cloud (one-time)"
         description="Uploads this machine's boards, columns, cards, comments, checklists, labels, activity, templates, areas, projects, and board memberships to the cloud once -- the founding dataset (attachments excluded). Memberships decide who sees what. No-ops if the cloud already has boards. Local rows kept as backup."
         running={boardsRunning} result={boardsResult} onRun={runBoards} btnLabel="Seed boards"
+      />
+      <SeedRow
+        label="Seed card attachments to cloud (one-time)"
+        description="Uploads this machine's card attachments (files + URL-type metadata) to the private cloud Storage bucket once -- the founding dataset. Files missing from disk are skipped and reported. No-ops if the cloud already has attachments. Local files and rows kept as backup. Run AFTER 'Seed boards'."
+        running={attRunning} result={attResult} onRun={runAttachments} btnLabel="Seed attachments"
       />
     </Section>
   )

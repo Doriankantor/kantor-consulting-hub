@@ -1,6 +1,11 @@
 import { randomUUID } from 'crypto'
 import { cloud, CLOUD_ADMIN_EMAIL } from './client'
 import { getDatabase } from '../db'
+// Lazy import to avoid a circular dependency (attachmentsCloud imports boards).
+async function getBlobHelpers() {
+  const m = await import('./attachmentsCloud')
+  return { storagePathsForTask: m.storagePathsForTask, storagePathsForBoard: m.storagePathsForBoard, deleteStorageBlobs: m.deleteStorageBlobs }
+}
 
 // ── Workspace boards: cloud-sourced (Stage 2, category 3 — DATA ONLY) ────────
 // Mirrors the chat/contacts pattern: cloud is the single source of truth for
@@ -205,6 +210,14 @@ export async function deleteBoard(actingUserId: string | undefined, id: string, 
         .run(randomUUID(), 'board', id, String((board as Record<string, unknown>).name ?? id), JSON.stringify(board), deletedById ?? null, deletedByName ?? null)
     } catch { /* trash insert must not block delete */ }
   }
+  // Cascade blob cleanup: collect all attachment blobs for ALL tasks on this board
+  // BEFORE the board row delete (cascade removes tasks+attachments rows; blobs don't self-delete).
+  try {
+    const { storagePathsForBoard, deleteStorageBlobs } = await getBlobHelpers()
+    const paths = await storagePathsForBoard(id)
+    await deleteStorageBlobs(paths)
+  } catch (e) { console.warn('[boards] attachment blob cascade cleanup failed (board):', (e as Error)?.message) }
+
   const { error } = await cloud.from('workspace_boards').delete().eq('id', id)
   if (error) throw new Error(`boards delete failed: ${error.message}`)
   return { ok: true }
@@ -369,6 +382,15 @@ export async function deleteTask(taskId: string, deletedById?: string, deletedBy
         .run(randomUUID(), 'task', taskId, String((task as Record<string, unknown>).title ?? taskId), JSON.stringify(task), deletedById ?? null, deletedByName ?? null)
     } catch { /* non-fatal */ }
   }
+  // Cascade blob cleanup: delete Storage blobs for this task's attachments BEFORE
+  // the row delete (DB FK cascade removes task_attachments rows automatically; blobs need explicit removal).
+  // the row delete (DB cascade removes task_attachments rows; blobs need explicit removal).
+  try {
+    const { storagePathsForTask, deleteStorageBlobs } = await getBlobHelpers()
+    const paths = await storagePathsForTask(taskId)
+    await deleteStorageBlobs(paths)
+  } catch (e) { console.warn('[boards] attachment blob cascade cleanup failed (task):', (e as Error)?.message) }
+
   const { error } = await cloud.from('workspace_tasks').delete().eq('id', taskId)
   if (error) throw new Error(`task delete failed: ${error.message}`)
   return { ok: true }

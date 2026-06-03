@@ -58,6 +58,25 @@ export function registerBoardsRealtime(): void {
     isRelevant,
     pushChannel: 'workspace:remoteChange',
   })
+
+  // task_attachments: registers as a SEPARATE consumer so the Realtime manager
+  // knows to subscribe to that table. resolveBoardId maps via the existing
+  // boardIdOfTask(row.task_id) helper; isRelevant uses isBoardVisible.
+  // scope 'board' → the renderer re-reads attachments for the open card.
+  registerRealtimeSource({
+    name: 'attachments',
+    tables: ['task_attachments'],
+    async resolveBoardId(_table, row) {
+      const taskId = row.task_id as string | undefined
+      if (!taskId) return null
+      const boardId = await boardIdOfTask(taskId)
+      return boardId ? { boardId, scope: 'board' as const } : null
+    },
+    async isRelevant(resolved, _table, _row) {
+      return isBoardVisible(getActingUserId(), resolved.boardId)
+    },
+    pushChannel: 'workspace:remoteChange',
+  })
 }
 
 // Silence unused-set warnings while documenting intent (sets used above).

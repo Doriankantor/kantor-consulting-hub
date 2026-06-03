@@ -567,7 +567,7 @@ export default function TaskDetailPanel() {
   async function handleAddFile() {
     setAttLoading(true)
     try {
-      const result = await window.api.attachments.addFile(selectedTask.id, currentUserId, currentUserName)
+      const result = await window.api.attachments.addFile(selectedTask.id)
       if (!result.canceled) {
         await loadAttachments(selectedTask.id)
         refreshTaskMeta(selectedTask.id)
@@ -579,7 +579,7 @@ export default function TaskDetailPanel() {
     const url = newAttUrl.trim()
     if (!url) return
     const type = url.includes('docs.google.com') ? 'gdoc' : 'url'
-    await window.api.attachments.addUrl(selectedTask.id, newAttName || url, url, type, currentUserId, currentUserName)
+    await window.api.attachments.addUrl(selectedTask.id, newAttName || url, url, type)
     await loadAttachments(selectedTask.id)
     refreshTaskMeta(selectedTask.id)
     setNewAttName('')
@@ -1279,7 +1279,7 @@ export default function TaskDetailPanel() {
                   {attachments.length > 0 && (
                     <div className="space-y-1.5 mb-2">
                       {attachments.map(att => {
-                        const canDelete = att.author_id === currentUserId || isAdminUser
+                        const canDelete = att.author_email === localUser?.email || isAdminUser
                         return (
                           <div key={att.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] group">
                             <FileTypeIcon name={att.name} type={att.type} />
