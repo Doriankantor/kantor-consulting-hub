@@ -326,6 +326,50 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     return () => { mounted = false }
   }, [activeBoardId])
 
+  // ── Realtime: live invalidate pushed from main (no polling/refetch-on-focus) ─
+  // Main filters by membership and sends a lightweight {boardId, scope}; we then
+  // re-run the EXISTING membership-filtered loaders. 'list' → refresh board list;
+  // 'board' → if it's the OPEN board, reload its columns+tasks; otherwise just
+  // refresh the list (counts/indicators) WITHOUT fetching a non-open board's tasks.
+  // Pushes are serialized via a promise chain so a burst never stacks overlapping
+  // refetches. The awaited refetches inside create/archive/etc. are unaffected.
+  const activeBoardIdRef = useRef(activeBoardId)
+  useEffect(() => { activeBoardIdRef.current = activeBoardId }, [activeBoardId])
+  const remoteChainRef = useRef<Promise<void>>(Promise.resolve())
+
+  useEffect(() => {
+    async function reloadOpenBoard() {
+      const actorId = localUser?.id
+      const [cols, taskList] = await Promise.all([
+        window.api.workspace.getColumns(activeBoardIdRef.current, actorId),
+        window.api.workspace.getTasks(actorId),
+      ])
+      setColumns(cols)
+      setTasks(taskList)
+      setCloudError(null)
+      loadTaskMeta(taskList)
+    }
+    async function handle(d: { boardId: string | null; scope: 'list' | 'board' }) {
+      try {
+        if (d.scope === 'list') {
+          await loadBoards()
+        } else if (d.boardId && d.boardId === activeBoardIdRef.current) {
+          await reloadOpenBoard()
+        } else {
+          // Change on a board that isn't open: refresh the list only (counts /
+          // indicators). Do NOT fetch tasks for a board the user isn't viewing.
+          await loadBoards()
+        }
+      } catch { /* a later push or a manual action recovers */ }
+    }
+    window.api.workspace.onRemoteChange((d) => {
+      // Serialize: chain each push so refetches never overlap.
+      remoteChainRef.current = remoteChainRef.current.then(() => handle(d)).catch(() => {})
+    })
+    return () => { window.api.workspace.removeRemoteChangeListeners() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadBoards, localUser?.id])
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   const setViewMode = useCallback((v: ViewMode) => {

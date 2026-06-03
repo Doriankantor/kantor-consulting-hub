@@ -19,6 +19,7 @@ import {
 } from '../cloud/contacts'
 import * as boardsCloud from '../cloud/boards'
 import { seedBoardsToCloud } from '../cloud/boardsSeed'
+import { startRealtime, rescope as rescopeRealtime, teardownAll as teardownRealtime } from '../cloud/realtimeManager'
 
 // ── Ambient acting user (Stage 2 cat.3) ──────────────────────────────────────
 // Board visibility is membership-scoped and must be enforced in the main process
@@ -968,8 +969,18 @@ function registerBoardsCloudHandlers() {
   // Renderer stamps the signed-in user's local id once at login so the
   // membership-scoped board handlers know who is asking (service role bypasses RLS).
   ipcMain.handle('app:setActingUser', (_e, userId: string | null) => {
+    const prev = currentActingUserId
     currentActingUserId = userId ?? undefined
     boardsCloud.setAmbientActingUser(currentActingUserId)
+    // Realtime lifecycle: start once identity is known; rescope on user switch so
+    // the live relevance filter follows the new user; tear down on logout.
+    try {
+      if (!currentActingUserId) teardownRealtime()
+      else if (!prev) startRealtime()
+      else if (prev !== currentActingUserId) rescopeRealtime()
+    } catch (e) {
+      console.warn('[realtime] lifecycle on setActingUser failed:', (e as Error)?.message)
+    }
     return { ok: true }
   })
   // Admin-only, one-time, idempotent seed of this machine's local board tables.

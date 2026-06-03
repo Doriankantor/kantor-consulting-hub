@@ -1,0 +1,64 @@
+import { registerRealtimeSource, type ResolvedScope, type RealtimeEventType } from './realtimeManager'
+import { boardIdOfTask, isBoardVisible, boardMembersRelevant } from './boards'
+import { getActingUserId } from '../ipc'
+
+// ── Boards Realtime source (first consumer of the manager) ───────────────────
+// Parent tables map to a board directly; child tables (live in-card updates) map
+// via the changed row's task_id → board. board_members changes invalidate the
+// board LIST (a grant makes a board appear; a revoke makes it disappear).
+// Relevance reuses the EXISTING email-keyed visibility (isBoardVisible /
+// boardMembersRelevant) against the CURRENT acting user — admin sees all.
+
+const PARENT_LIST_TABLES = new Set(['workspace_boards', 'board_members'])
+const PARENT_BOARD_TABLES = new Set(['workspace_columns', 'workspace_tasks'])
+const CHILD_TABLES = new Set(['task_comments', 'task_activity', 'task_checklists', 'task_checklist_items', 'task_labels'])
+
+async function resolveBoardId(table: string, row: Record<string, unknown>, _e: RealtimeEventType): Promise<ResolvedScope | null> {
+  // workspace_boards: the row IS the board; list-level change (add/rename/archive/delete).
+  if (table === 'workspace_boards') {
+    return { boardId: (row.id as string) ?? null, scope: 'list' }
+  }
+  // board_members: membership grant/revoke → list-level change.
+  if (table === 'board_members') {
+    return { boardId: (row.board_id as string) ?? null, scope: 'list' }
+  }
+  // columns / tasks: board-level change, board_id is on the row.
+  if (PARENT_BOARD_TABLES.has(table)) {
+    return { boardId: (row.board_id as string) ?? null, scope: 'board' }
+  }
+  // child tables: map task_id → board (board-level change).
+  if (CHILD_TABLES.has(table)) {
+    const taskId = row.task_id as string | undefined
+    if (!taskId) return null
+    const boardId = await boardIdOfTask(taskId)
+    return boardId ? { boardId, scope: 'board' } : null
+  }
+  return null
+}
+
+async function isRelevant(resolved: ResolvedScope, table: string, row: Record<string, unknown>, _e: RealtimeEventType): Promise<boolean> {
+  const actor = getActingUserId()
+  // Membership changes: relevant if they touch THIS user's email or a board they
+  // can already see (so grants appear and revokes disappear, live).
+  if (table === 'board_members') {
+    return boardMembersRelevant(actor, row)
+  }
+  // Everything else: only if the acting user can see the resolved board.
+  return isBoardVisible(actor, resolved.boardId)
+}
+
+export function registerBoardsRealtime(): void {
+  registerRealtimeSource({
+    name: 'boards',
+    tables: [
+      'workspace_boards', 'board_members', 'workspace_columns', 'workspace_tasks',
+      'task_comments', 'task_activity', 'task_checklists', 'task_checklist_items', 'task_labels',
+    ],
+    resolveBoardId,
+    isRelevant,
+    pushChannel: 'workspace:remoteChange',
+  })
+}
+
+// Silence unused-set warnings while documenting intent (sets used above).
+void PARENT_LIST_TABLES

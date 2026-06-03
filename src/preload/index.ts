@@ -135,6 +135,10 @@ const api = {
     restoreTask:      (id: string) => ipcRenderer.invoke('workspace:restoreTask', id),
     addColumn:    (c: Record<string, unknown>)            => ipcRenderer.invoke('workspace:addColumn', c),
     updateColumn: (id: string, p: Record<string, unknown>) => ipcRenderer.invoke('workspace:updateColumn', id, p),
+    // Realtime invalidate push from main (reuses the existing event-bridge pattern).
+    onRemoteChange:      (cb: (d: { boardId: string | null; scope: 'list' | 'board' }) => void) =>
+      ipcRenderer.on('workspace:remoteChange', (_e, d) => cb(d)),
+    removeRemoteChangeListeners: () => ipcRenderer.removeAllListeners('workspace:remoteChange'),
   },
   clients: {
     list:          ()                                         => ipcRenderer.invoke('clients:list'),

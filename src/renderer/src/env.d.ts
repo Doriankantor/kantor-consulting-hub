@@ -570,6 +570,8 @@ interface Window {
       restoreTask:      (id: string) => Promise<{ ok?: boolean }>
       addColumn:    (c: Record<string, unknown>)              => Promise<{ ok?: boolean }>
       updateColumn: (id: string, p: Record<string, unknown>)  => Promise<{ ok?: boolean }>
+      onRemoteChange: (cb: (d: { boardId: string | null; scope: 'list' | 'board' }) => void) => void
+      removeRemoteChangeListeners: () => void
     }
     clients: {
       list:          ()                                          => Promise<ClientRecord[]>

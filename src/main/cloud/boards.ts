@@ -82,7 +82,7 @@ async function actorCanAccessBoard(actor: Actor, boardId: string): Promise<boole
   return (await visibleBoardIds(actor)).has(boardId)
 }
 
-async function boardIdOfTask(taskId: string): Promise<string | null> {
+export async function boardIdOfTask(taskId: string): Promise<string | null> {
   const { data, error } = await cloud.from('workspace_tasks').select('board_id').eq('id', taskId).single()
   if (error && error.code !== 'PGRST116') throw new Error(`task lookup failed: ${error.message}`)
   return (data?.board_id as string | undefined) ?? null
@@ -92,6 +92,28 @@ async function actorCanAccessTask(actor: Actor, taskId: string): Promise<boolean
   if (actor.isAdmin) return true
   const boardId = await boardIdOfTask(taskId)
   return boardId ? (await visibleBoardIds(actor)).has(boardId) : false
+}
+
+// ── Reuse helpers for the Realtime manager (NEW — wrap existing logic only) ───
+// Whether the acting user may see a given board (admin → all; else membership).
+// Reuses resolveActor + visibleBoardIds unchanged.
+export async function isBoardVisible(actingUserId: string | undefined, boardId: string | null): Promise<boolean> {
+  if (!boardId) return false
+  const actor = resolveActor(actingUserId)
+  if (actor.isAdmin) return true
+  return (await visibleBoardIds(actor)).has(boardId)
+}
+
+// Relevance for a board_members row change: push if it touches the acting user's
+// own email (grant/revoke for them) OR a board they can already see.
+export async function boardMembersRelevant(actingUserId: string | undefined, row: Record<string, unknown>): Promise<boolean> {
+  const actor = resolveActor(actingUserId)
+  if (actor.isAdmin) return true
+  const rowEmail = String(row?.user_email ?? '').toLowerCase()
+  if (rowEmail && rowEmail === actor.email) return true
+  const boardId = row?.board_id as string | undefined
+  if (boardId && (await visibleBoardIds(actor)).has(boardId)) return true
+  return false
 }
 
 // Resolve a target identifier (a local_users.id OR an email) to a stable email.

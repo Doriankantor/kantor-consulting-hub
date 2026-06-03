@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v2.0.1   |   157 commits   |   ~30,400 lines of TS/TSX
+  Current version: v2.0.2   |   159 commits   |   ~30,600 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -440,6 +440,38 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       with per-row Restore (everyone) and Delete permanently (admin only). Inline
       cloud-error banners on delete/restore/purge failure; no crash, no stale-local
       fallback. Clients are NOT trashable in this build (contacts only).
+
+  v2.0.2 (Jun 3) -- LIVE BOARD UPDATES VIA SUPABASE REALTIME
+    * Boards/cards/columns/members now update LIVE across machines -- no restart or
+      manual refresh. Replaces the previous "only re-reads at startup or after a
+      local mutation" behavior.
+    * New reusable main-process Realtime manager (src/main/cloud/realtimeManager.ts):
+      registerRealtimeSource({ name, tables, resolveBoardId, isRelevant, pushChannel });
+      opens cloud.channel postgres_changes subscriptions (the shared service-role
+      client's ws transport makes this work), maps each change -> board, filters by
+      the CURRENT acting user, debounces 250ms per board, and pushes a LIGHTWEIGHT
+      invalidate { boardId, scope } to the renderer over the existing
+      webContents.send bridge (no full rows). Owns all channel lifecycle:
+      startRealtime / rescope / teardownAll. Future categories (intel, info pages,
+      uploads) plug in as config, not new mechanism.
+    * Boards consumer (src/main/cloud/boardsRealtime.ts) watches 9 tables:
+      workspace_boards, board_members (scope 'list'), workspace_columns,
+      workspace_tasks (scope 'board'), and child task_comments/task_activity/
+      task_checklists/task_checklist_items/task_labels (scope 'board' via
+      boardIdOfTask). Relevance reuses the existing email-keyed visibility
+      (isBoardVisible / boardMembersRelevant); admin sees all. Membership add/remove
+      makes a board appear/disappear live. Admin/membership logic itself unchanged
+      (only new exported wrappers added to boards.ts).
+    * Renderer (WorkspaceContext) subscribes via new preload workspace.onRemoteChange;
+      'list' -> re-run loadBoards(); 'board' -> reload the OPEN board's columns+tasks
+      (never fetches a non-open board's tasks). Pushes serialized via a promise chain
+      so bursts never stack. Renderer makes no direct Supabase calls.
+    * Lifecycle: start on first app:setActingUser, rescope on user switch, teardown
+      on logout / window-all-closed / before-quit.
+    * REQUIRES (Supabase-side, one-time): the 9 tables added to the supabase_realtime
+      publication, and REPLICA IDENTITY FULL on workspace_tasks/workspace_columns/
+      task_comments/task_activity/task_checklists/task_checklist_items so DELETEs map
+      to their board (live card removal). Nothing fires until the publication is set.
 
   v2.0.1 (Jun 3) -- FIX: ADMIN BOARD-VISIBILITY RACE (admin saw zero boards)
     * Root cause: board reads (boards:list / workspace:getColumns / getTasks / etc.)
