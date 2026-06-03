@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync } from 'fs'
 import { join, extname, basename } from 'path'
-import { app, dialog, shell } from 'electron'
+import { app, dialog, shell, BrowserWindow } from 'electron'
 import { pipeline } from 'stream/promises'
 import { cloud, CLOUD_ADMIN_EMAIL } from './client'
 import { getDatabase } from '../db'
@@ -158,15 +158,18 @@ export async function listAttachments(
 export async function addFileAttachment(
   actingUserId: string | undefined,
   taskId: string,
+  win?: BrowserWindow | null,
 ): Promise<{ ok?: boolean; id?: string; name?: string; storage_path?: string; canceled?: boolean; error?: string }> {
   const boardId = await boardIdOfTask(taskId)
   if (!(await isBoardVisible(actingUserId, boardId))) {
     return { error: 'Not authorised to attach files to this card.' }
   }
-  const { canceled, filePaths } = await dialog.showOpenDialog({
-    properties: ['openFile'],
-    title: 'Select File to Attach',
-  })
+  // Pass the BrowserWindow so macOS shows the dialog as a sheet attached to the
+  // app window instead of a floating window that appears behind it.
+  const dialogOpts = { properties: ['openFile'] as const, title: 'Select File to Attach' }
+  const { canceled, filePaths } = win
+    ? await dialog.showOpenDialog(win, dialogOpts)
+    : await dialog.showOpenDialog(dialogOpts)
   if (canceled || !filePaths[0]) return { canceled: true }
 
   const srcPath = filePaths[0]

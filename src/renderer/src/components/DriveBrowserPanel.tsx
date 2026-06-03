@@ -20,6 +20,7 @@ export default function DriveBrowserPanel({ taskId, authorId, authorName, onClos
   const [addingLink,   setAddingLink]   = useState(false)
   const [sharedFiles,  setSharedFiles]  = useState<{id:string;name:string;mimeType:string;size?:string}[]>([])
   const [loadingFiles, setLoadingFiles] = useState(false)
+  const [uploadError,  setUploadError]  = useState<string | null>(null)
 
   useEffect(() => {
     window.api.drive.isConnected().then(setDriveConnected).catch(() => setDriveConnected(false))
@@ -37,12 +38,18 @@ export default function DriveBrowserPanel({ taskId, authorId, authorName, onClos
 
   async function handleUploadFile() {
     setUploading(true)
+    setUploadError(null)
     try {
       const result = await window.api.attachments.addFile(taskId)
       if (result.ok) {
         onAttachmentAdded()
         onClose()
+      } else if (result.error) {
+        setUploadError(result.error)
       }
+      // result.canceled → user dismissed picker, do nothing
+    } catch (err) {
+      setUploadError((err as Error)?.message ?? 'Upload failed.')
     } finally {
       setUploading(false)
     }
@@ -113,6 +120,9 @@ export default function DriveBrowserPanel({ taskId, authorId, authorName, onClos
           {/* Upload tab */}
           {tab === 'upload' && (
             <div className="space-y-4">
+              {uploadError && (
+                <p className="text-xs text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-500/10 rounded-lg px-3 py-2">{uploadError}</p>
+              )}
               <div
                 onClick={handleUploadFile}
                 className="border-2 border-dashed border-gray-200 dark:border-white/[0.12] rounded-xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-500/60 hover:bg-indigo-50/50 dark:hover:bg-indigo-500/5 transition"

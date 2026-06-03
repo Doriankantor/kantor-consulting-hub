@@ -860,9 +860,11 @@ function registerAttachmentHandlers() {
   ipcMain.handle('attachments:get', (_e, taskId: string) =>
     listAttachments(currentActingUserId, taskId)
   )
-  ipcMain.handle('attachments:addFile', (_e, taskId: string) =>
-    addFileAttachment(currentActingUserId, taskId)
-  )
+  ipcMain.handle('attachments:addFile', (e, taskId: string) => {
+    const { BrowserWindow } = require('electron') as typeof import('electron')
+    const win = BrowserWindow.fromWebContents(e.sender)
+    return addFileAttachment(currentActingUserId, taskId, win)
+  })
   ipcMain.handle('attachments:addUrl', (_e, taskId: string, name: string, url: string, type: string) =>
     addUrlAttachment(currentActingUserId, taskId, url, name, type)
   )
