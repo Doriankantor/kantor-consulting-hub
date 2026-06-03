@@ -21,17 +21,40 @@ import { getDatabase } from '../db'
 
 const now = () => new Date().toISOString()
 
+// ── Ambient acting user (fallback only) ──────────────────────────────────────
+// The board READ path now passes the acting user explicitly (see the IPC layer),
+// so visibility never depends on effect ordering. This ambient value is a
+// fallback for callers that don't pass an actor (writes attributed elsewhere).
+let ambientActingUserId: string | undefined
+export function setAmbientActingUser(userId: string | null | undefined): void {
+  ambientActingUserId = userId ?? undefined
+}
+
 // ── Actor identity ──────────────────────────────────────────────────────────
 export interface Actor { email: string; isAdmin: boolean }
 
-// Resolve the acting local user id → stable email + admin flag.
-export function resolveActor(actingUserId?: string | null): Actor {
-  if (!actingUserId) return { email: '', isAdmin: false }
-  if (actingUserId === 'local-admin') return { email: CLOUD_ADMIN_EMAIL, isAdmin: true }
+// Resolve the acting user → stable email + admin flag. Accepts a local_users.id,
+// the 'local-admin' literal, OR an email (the renderer may pass either). When no
+// explicit value is given, falls back to the ambient acting user. Admin detection
+// logic is unchanged: 'local-admin' literal, OR email === CLOUD_ADMIN_EMAIL
+// (case-normalized), OR local_users.role === 'admin'.
+export function resolveActor(actingUserOrId?: string | null): Actor {
+  const value = actingUserOrId ?? ambientActingUserId
+  if (!value) return { email: '', isAdmin: false }
+  if (value === 'local-admin') return { email: CLOUD_ADMIN_EMAIL, isAdmin: true }
+  // Explicit email passed directly (renderer may stamp email instead of id).
+  if (value.includes('@')) {
+    const email = value.toLowerCase()
+    if (email === CLOUD_ADMIN_EMAIL) return { email, isAdmin: true }
+    try {
+      const row = getDatabase().prepare('SELECT role FROM local_users WHERE LOWER(email)=?').get(email) as { role?: string } | undefined
+      return { email, isAdmin: row?.role === 'admin' }
+    } catch { return { email, isAdmin: false } }
+  }
   try {
     const row = getDatabase()
       .prepare('SELECT email, role FROM local_users WHERE id=?')
-      .get(actingUserId) as { email?: string; role?: string } | undefined
+      .get(value) as { email?: string; role?: string } | undefined
     const email = (row?.email ?? '').toLowerCase()
     const isAdmin = email === CLOUD_ADMIN_EMAIL || row?.role === 'admin'
     return { email, isAdmin }

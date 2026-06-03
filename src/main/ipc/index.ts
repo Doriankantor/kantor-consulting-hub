@@ -342,7 +342,7 @@ function registerActivityHandlers() {
   // CLOUD-SOURCED (Stage 2, category 3). Feed is membership-filtered via the ambient actor.
   ipcMain.handle('activity:get', (_e, taskId: string) => boardsCloud.getActivity(taskId))
   ipcMain.handle('activity:add', (_e, e: { task_id: string; actor_name: string; action: string }) => boardsCloud.addActivity(e))
-  ipcMain.handle('activity:getFeed', () => boardsCloud.getFeed(currentActingUserId))
+  ipcMain.handle('activity:getFeed', (_e, actorId?: string) => boardsCloud.getFeed(actorId ?? currentActingUserId))
 }
 
 // ── Auth ───────────────────────────────────────────────────────────────────
@@ -969,6 +969,7 @@ function registerBoardsCloudHandlers() {
   // membership-scoped board handlers know who is asking (service role bypasses RLS).
   ipcMain.handle('app:setActingUser', (_e, userId: string | null) => {
     currentActingUserId = userId ?? undefined
+    boardsCloud.setAmbientActingUser(currentActingUserId)
     return { ok: true }
   })
   // Admin-only, one-time, idempotent seed of this machine's local board tables.
@@ -980,9 +981,11 @@ function registerBoardsCloudHandlers() {
 function registerBoardHandlers() {
   // CLOUD-SOURCED (Stage 2, category 3). Membership-scoped: admin sees all,
   // members see only their boards (enforced in cloud/boards via the ambient actor).
-  ipcMain.handle('boards:list', (_e, includeArchived: boolean = false) =>
-    boardsCloud.listBoards(currentActingUserId, includeArchived))
-  ipcMain.handle('boards:listArchived', () => boardsCloud.listArchivedBoards(currentActingUserId))
+  // Board READS carry the acting user EXPLICITLY (actorId arg) so visibility never
+  // depends on effect ordering; fall back to the ambient value if not supplied.
+  ipcMain.handle('boards:list', (_e, includeArchived: boolean = false, actorId?: string) =>
+    boardsCloud.listBoards(actorId ?? currentActingUserId, includeArchived))
+  ipcMain.handle('boards:listArchived', (_e, actorId?: string) => boardsCloud.listArchivedBoards(actorId ?? currentActingUserId))
   ipcMain.handle('boards:create', (_e, name: string) => boardsCloud.createBoard(currentActingUserId, name))
   ipcMain.handle('boards:rename', (_e, id: string, name: string) => boardsCloud.renameBoard(id, name))
   ipcMain.handle('boards:archive', (_e, id: string, archivedBy: string) => boardsCloud.archiveBoard(id, archivedBy))
@@ -999,13 +1002,14 @@ function registerBoardHandlers() {
 function registerWorkspaceHandlers() {
   // CLOUD-SOURCED (Stage 2, category 3). Columns + tasks live in the cloud;
   // task lists are membership-filtered via the ambient actor; ordering preserved.
-  ipcMain.handle('workspace:getColumns', (_e, boardId?: string) => boardsCloud.getColumns(currentActingUserId, boardId))
+  // Reads carry the acting user explicitly (actorId), ambient as fallback.
+  ipcMain.handle('workspace:getColumns', (_e, boardId?: string, actorId?: string) => boardsCloud.getColumns(actorId ?? currentActingUserId, boardId))
   ipcMain.handle('workspace:addColumn', (_e, col: { id: string; name: string; position: number; color: string; board_id?: string }) => boardsCloud.addColumn(col))
   ipcMain.handle('workspace:updateColumn', (_e, colId: string, partial: { name?: string; position?: number }) => boardsCloud.updateColumn(colId, partial))
 
-  ipcMain.handle('workspace:getTasks', () => boardsCloud.getTasks(currentActingUserId))
+  ipcMain.handle('workspace:getTasks', (_e, actorId?: string) => boardsCloud.getTasks(actorId ?? currentActingUserId))
   ipcMain.handle('workspace:archiveTask', (_e, taskId: string) => boardsCloud.archiveTask(taskId))
-  ipcMain.handle('workspace:getArchivedTasks', () => boardsCloud.getArchivedTasks(currentActingUserId))
+  ipcMain.handle('workspace:getArchivedTasks', (_e, actorId?: string) => boardsCloud.getArchivedTasks(actorId ?? currentActingUserId))
   ipcMain.handle('workspace:restoreTask', (_e, taskId: string) => boardsCloud.restoreTask(taskId))
   ipcMain.handle('workspace:createTask', (_e, t: Parameters<typeof boardsCloud.createTask>[0]) => boardsCloud.createTask(t))
   ipcMain.handle('workspace:updateTask', (_e, taskId: string, partial: Record<string, unknown>) => boardsCloud.updateTask(taskId, partial))

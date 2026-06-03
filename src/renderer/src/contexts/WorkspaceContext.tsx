@@ -140,9 +140,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const loadBoards = useCallback(async () => {
     try {
+      const actorId = localUser?.id
       const [active, archived] = await Promise.all([
-        window.api.boards.list(false),
-        window.api.boards.listArchived(),
+        window.api.boards.list(false, actorId),
+        window.api.boards.listArchived(actorId),
       ])
       setBoards(active)
       setArchivedBoards(archived)
@@ -160,7 +161,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       // Cloud unreachable — surface inline; do NOT silently fall back to stale local data.
       setCloudError(`Couldn't reach the server — boards may be out of date. (${e?.message ?? 'network error'})`)
     }
-  }, [])
+  }, [localUser?.id])
 
   const refreshBoards = loadBoards
 
@@ -259,17 +260,26 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true
+    const actorId = localUser?.id
     loadAreas()
     loadLabels()
-    loadBoards()
 
     async function load() {
+      // Identity must be known before any board read — never fire board reads with
+      // an empty actor (that's the race that made admin see zero boards). When the
+      // user signs in, localUser?.id changes and this effect re-runs.
+      if (!actorId) { if (mounted) setLoading(false); return }
       try {
-        // Use activeBoardId snapshot from initial state for column loading
+        // Belt-and-suspenders (Phase 2): stamp the ambient acting user before the
+        // first load so even the ambient fallback path resolves the right actor on
+        // cold start, regardless of effect ordering vs AuthProvider.
+        await window.api.app.setActingUser(actorId).catch(() => {})
+        await loadBoards()
+        // Use activeBoardId snapshot from initial state for column loading.
         const boardId = localStorage.getItem('activeBoard') ?? 'board-main'
         const [cols, taskList, teamList] = await Promise.all([
-          window.api.workspace.getColumns(boardId),
-          window.api.workspace.getTasks(),
+          window.api.workspace.getColumns(boardId, actorId),
+          window.api.workspace.getTasks(actorId),
           window.api.team.list(),
         ])
         if (!mounted) return
@@ -295,7 +305,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     load()
     return () => { mounted = false }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [localUser?.id])
 
   // ── Reload columns when active board changes ─────────────────────────────
   useEffect(() => {
@@ -307,7 +317,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     let mounted = true
     async function loadColumnsForBoard() {
       try {
-        const cols = await window.api.workspace.getColumns(activeBoardId)
+        const cols = await window.api.workspace.getColumns(activeBoardId, localUser?.id)
         if (!mounted) return
         setColumns(cols)
       } catch {}
@@ -418,7 +428,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const restoreTask = useCallback(async (taskId: string) => {
     await window.api.workspace.restoreTask(taskId)
     // Re-fetch all tasks to bring the restored task back into the board
-    const rows = await window.api.workspace.getTasks() as Task[]
+    const rows = await window.api.workspace.getTasks(localUser?.id) as Task[]
     const taskList = rows.map((r: Record<string, unknown>) => ({
       ...(r as unknown as Task),
       assignee_ids: Array.isArray(r.assignee_ids) ? r.assignee_ids : [],

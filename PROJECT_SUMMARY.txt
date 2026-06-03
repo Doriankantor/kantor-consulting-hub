@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-02
-  Current version: v2.0.0   |   155 commits   |   ~30,400 lines of TS/TSX
+  Current version: v2.0.1   |   157 commits   |   ~30,400 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -440,6 +440,29 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       with per-row Restore (everyone) and Delete permanently (admin only). Inline
       cloud-error banners on delete/restore/purge failure; no crash, no stale-local
       fallback. Clients are NOT trashable in this build (contacts only).
+
+  v2.0.1 (Jun 3) -- FIX: ADMIN BOARD-VISIBILITY RACE (admin saw zero boards)
+    * Root cause: board reads (boards:list / workspace:getColumns / getTasks / etc.)
+      could fire BEFORE app:setActingUser stamped the acting user, because the
+      WorkspaceProvider mount effect runs before the AuthProvider effect. With the
+      ambient actor undefined, resolveActor returned {isAdmin:false, email:''} ->
+      empty board set; the admin has no board_members fallback and nothing
+      re-fetched, so the admin saw zero boards permanently. Members were only
+      incidentally shielded.
+    * Fix (removes the timing dependency): board READS now carry the acting user
+      EXPLICITLY -- the renderer passes localUser.id as a trailing actorId arg on
+      boards:list/listArchived, workspace:getColumns/getTasks/getArchivedTasks, and
+      activity:getFeed (channel names unchanged). resolveActor uses the explicit
+      value (id / 'local-admin' / email) and falls back to the ambient only if not
+      supplied, so a read can never run with an unknown actor.
+    * Belt-and-suspenders: WorkspaceContext gates the initial load on identity and
+      awaits app:setActingUser(localUser.id) before the first boards/columns/tasks
+      load; it never fires board reads with an empty actor. app:setActingUser also
+      syncs the cloud/boards ambient.
+    * Admin detection logic itself is UNCHANGED ('local-admin' literal, email ===
+      CLOUD_ADMIN_EMAIL case-normalized, or role === 'admin') -- only the timing and
+      delivery of the actor changed. Members still see exactly their membership-
+      scoped boards; admin now sees ALL boards on cold start with no refresh.
 
   v2.0.0 (Jun 3) -- MAJOR: WORKSPACE BOARDS MIGRATED TO CLOUD (Stage 2, cat.3 part A)
     * Workspace boards are now CLOUD-SOURCED with MEMBERSHIP-SCOPED visibility,

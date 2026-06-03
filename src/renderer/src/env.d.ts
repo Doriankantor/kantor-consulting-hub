@@ -469,7 +469,7 @@ interface Window {
     activity: {
       get:     (taskId: string) => Promise<import('./types').ActivityEntry[]>
       add:     (e: { task_id: string; actor_name: string; action: string }) => Promise<import('./types').ActivityEntry>
-      getFeed: () => Promise<Array<{ id: string; task_id: string; actor_name: string; action: string; created_at: string; source: 'activity' | 'comment'; task_title: string | null }>>
+      getFeed: (actorId?: string) => Promise<Array<{ id: string; task_id: string; actor_name: string; action: string; created_at: string; source: 'activity' | 'comment'; task_title: string | null }>>
     }
     team: {
       list:            (includeAdmin?: boolean)                                              => Promise<LocalTeamMember[]>
@@ -560,13 +560,13 @@ interface Window {
       openFile: () => Promise<{ canceled: boolean; filePaths: string[] }>
     }
     workspace: {
-      getColumns:   (boardId?: string)                        => Promise<import('./types').Column[]>
-      getTasks:     ()                                        => Promise<import('./types').Task[]>
+      getColumns:   (boardId?: string, actorId?: string)      => Promise<import('./types').Column[]>
+      getTasks:     (actorId?: string)                        => Promise<import('./types').Task[]>
       createTask:   (t: Record<string, unknown>)              => Promise<{ ok?: boolean }>
       updateTask:   (id: string, p: Record<string, unknown>)  => Promise<{ ok?: boolean }>
       deleteTask:   (id: string, deletedById?: string, deletedByName?: string) => Promise<{ ok?: boolean }>
       archiveTask:      (id: string) => Promise<{ ok?: boolean }>
-      getArchivedTasks: ()           => Promise<unknown[]>
+      getArchivedTasks: (actorId?: string) => Promise<unknown[]>
       restoreTask:      (id: string) => Promise<{ ok?: boolean }>
       addColumn:    (c: Record<string, unknown>)              => Promise<{ ok?: boolean }>
       updateColumn: (id: string, p: Record<string, unknown>)  => Promise<{ ok?: boolean }>
@@ -588,8 +588,8 @@ interface Window {
       delete: (id: string)                                   => Promise<{ ok?: boolean }>
     }
     boards: {
-      list:         (includeArchived?: boolean)         => Promise<import('./types').Board[]>
-      listArchived: ()                                   => Promise<import('./types').Board[]>
+      list:         (includeArchived?: boolean, actorId?: string) => Promise<import('./types').Board[]>
+      listArchived: (actorId?: string)                   => Promise<import('./types').Board[]>
       create:       (name: string)                       => Promise<{ ok: boolean; id: string }>
       rename:       (id: string, name: string)           => Promise<{ ok: boolean }>
       archive:      (id: string, archivedBy: string)     => Promise<{ ok: boolean }>

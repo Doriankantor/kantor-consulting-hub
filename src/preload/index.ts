@@ -29,7 +29,7 @@ const api = {
   activity: {
     get:     (taskId: string) => ipcRenderer.invoke('activity:get', taskId),
     add:     (e: { task_id: string; actor_name: string; action: string }) => ipcRenderer.invoke('activity:add', e),
-    getFeed: ()               => ipcRenderer.invoke('activity:getFeed'),
+    getFeed: (actorId?: string) => ipcRenderer.invoke('activity:getFeed', actorId),
   },
   team: {
     list:            (includeAdmin?: boolean)                                              => ipcRenderer.invoke('team:list', includeAdmin),
@@ -125,13 +125,13 @@ const api = {
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
   },
   workspace: {
-    getColumns:   (boardId?: string)                      => ipcRenderer.invoke('workspace:getColumns', boardId),
-    getTasks:     ()                                      => ipcRenderer.invoke('workspace:getTasks'),
+    getColumns:   (boardId?: string, actorId?: string)   => ipcRenderer.invoke('workspace:getColumns', boardId, actorId),
+    getTasks:     (actorId?: string)                      => ipcRenderer.invoke('workspace:getTasks', actorId),
     createTask:   (t: Record<string, unknown>)            => ipcRenderer.invoke('workspace:createTask', t),
     updateTask:   (id: string, p: Record<string, unknown>) => ipcRenderer.invoke('workspace:updateTask', id, p),
     deleteTask:   (id: string, deletedById?: string, deletedByName?: string) => ipcRenderer.invoke('workspace:deleteTask', id, deletedById, deletedByName),
     archiveTask:      (id: string) => ipcRenderer.invoke('workspace:archiveTask', id),
-    getArchivedTasks: ()           => ipcRenderer.invoke('workspace:getArchivedTasks'),
+    getArchivedTasks: (actorId?: string) => ipcRenderer.invoke('workspace:getArchivedTasks', actorId),
     restoreTask:      (id: string) => ipcRenderer.invoke('workspace:restoreTask', id),
     addColumn:    (c: Record<string, unknown>)            => ipcRenderer.invoke('workspace:addColumn', c),
     updateColumn: (id: string, p: Record<string, unknown>) => ipcRenderer.invoke('workspace:updateColumn', id, p),
@@ -168,8 +168,8 @@ const api = {
     unlinkTask:        (contactId: string, taskId: string)            => ipcRenderer.invoke('contacts:unlinkTask', contactId, taskId),
   },
   boards: {
-    list:         (includeArchived?: boolean)         => ipcRenderer.invoke('boards:list', includeArchived),
-    listArchived: ()                                   => ipcRenderer.invoke('boards:listArchived'),
+    list:         (includeArchived?: boolean, actorId?: string) => ipcRenderer.invoke('boards:list', includeArchived, actorId),
+    listArchived: (actorId?: string)                   => ipcRenderer.invoke('boards:listArchived', actorId),
     create:       (name: string)                       => ipcRenderer.invoke('boards:create', name),
     rename:       (id: string, name: string)           => ipcRenderer.invoke('boards:rename', id, name),
     archive:      (id: string, archivedBy: string)     => ipcRenderer.invoke('boards:archive', id, archivedBy),
