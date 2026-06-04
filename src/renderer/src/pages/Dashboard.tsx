@@ -76,13 +76,12 @@ function feedIcon(source: 'activity' | 'comment', action: string): string {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { localUser } = useAuth()
+  const { localUser, isAdmin, isRoot } = useAuth()
   const { tasks, columns, members, selectTask, openTask, setActiveBoardId } = useWorkspace()
   const navigate = useNavigate()
   const [profileMemberId, setProfileMemberId] = useState<string | null>(null)
 
   const firstName = localUser?.name?.split(' ')[0] ?? localUser?.email?.split('@')[0] ?? 'there'
-  const isAdmin   = localUser?.role === 'admin'
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   })

@@ -559,6 +559,13 @@ interface Window {
       send:        (msg: { author_id: string; author_name: string; content: string }) => Promise<ChatMessage>
       seedToCloud: (requestEmail: string) => Promise<{ ok: boolean; uploaded: number; reason?: string }>
     }
+    permissions: {
+      getMine:               ()                                                        => Promise<{ isRoot: boolean; keys: string[] }>
+      getAll:                ()                                                        => Promise<{ user_email: string; permission_key: string; granted_by: string; granted_at: string }[]>
+      set:                   (p: { userEmail: string; key: string; on: boolean })      => Promise<{ ok: boolean; error?: string }>
+      onChange:              (cb: () => void)                                          => void
+      removeChangeListeners: ()                                                        => void
+    }
     dialog: {
       openFile: () => Promise<{ canceled: boolean; filePaths: string[] }>
     }

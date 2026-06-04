@@ -1,4 +1,5 @@
 import type { Task, TeamMember } from '../types'
+import { ADMIN_EMAIL } from '../supabase/client'
 
 const now = new Date().toISOString()
 
@@ -230,7 +231,7 @@ export const SEED_TASKS: Task[] = [
 export const SEED_MEMBERS: TeamMember[] = [
   {
     id: 'user-dorian',
-    email: 'doriankantor@gmail.com',
+    email: ADMIN_EMAIL,
     full_name: 'Dorian Kantor',
     avatar_url: null,
     role: 'admin',

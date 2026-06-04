@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
-import { cloud } from './client'
+import { cloud, CLOUD_ADMIN_EMAIL } from './client'
+import { resolveActor } from './boards'
 import { getDatabase } from '../db'
 
 // ── Contacts / CRM: cloud-sourced (Stage 2, category 2) ─────────────────────
@@ -167,8 +168,9 @@ export async function restoreContact(id: string): Promise<{ ok: boolean }> {
 // task_links). ADMIN ONLY — the requesting user's email is verified here in the
 // main process before the delete is issued (RLS cannot gate the service-role key).
 export async function permanentDeleteContact(id: string, requestEmail: string): Promise<{ ok: boolean; reason?: string }> {
-  if ((requestEmail ?? '').toLowerCase() !== CLOUD_ADMIN) {
-    return { ok: false, reason: 'Only the admin can permanently delete contacts.' }
+  const actor = await resolveActor(requestEmail)
+  if (!actor.isRoot) {
+    return { ok: false, reason: 'Only root can permanently delete contacts.' }
   }
   const { error } = await cloud.from('contacts').delete().eq('id', id)
   if (error) throw new Error(`contacts permanent delete failed: ${error.message}`)
@@ -358,14 +360,12 @@ export async function deleteClientContact(contactId: string): Promise<{ ok: bool
 //      a forced re-run cannot duplicate. Local rows are never deleted.
 // FK-safe upload order: clients & contacts first, then dependent tables.
 
-const CLOUD_ADMIN = 'doriankantor@gmail.com'
-
 export async function seedContactsToCloud(requestEmail: string): Promise<{
   ok: boolean
   counts?: Record<string, number>
   reason?: string
 }> {
-  if ((requestEmail ?? '').toLowerCase() !== CLOUD_ADMIN) {
+  if ((requestEmail ?? '').toLowerCase() !== CLOUD_ADMIN_EMAIL) {
     return { ok: false, counts: {}, reason: 'Only the admin can run the one-time contacts seed.' }
   }
 

@@ -3,6 +3,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import { mkdirSync, existsSync } from 'fs'
 import { createHash, randomBytes } from 'crypto'
+import { CLOUD_ADMIN_EMAIL } from './constants'
 
 // ── Password hashing (sha-256 + per-user salt, sufficient for local desktop) ──
 export function hashPassword(password: string, salt: string): string {
@@ -155,7 +156,7 @@ export function initDatabase(): void {
       VALUES (?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
     `)
-    insertSetting.run('local_admin_email', 'doriankantor@gmail.com')
+    insertSetting.run('local_admin_email', CLOUD_ADMIN_EMAIL)
     insertSetting.run('local_admin_name',  'Dorian Kantor')
     insertSetting.run('local_admin_salt',  salt)
     insertSetting.run('local_admin_hash',  hash)
@@ -609,7 +610,7 @@ export function initDatabase(): void {
   // never be a task assignee. Strip its id from every task's assignee list
   // while leaving all other assignees (incl. dk@kantor-consulting.com) intact.
   try {
-    const adminRow = db.prepare("SELECT id FROM local_users WHERE LOWER(email)='doriankantor@gmail.com'").get() as { id: string } | undefined
+    const adminRow = db.prepare("SELECT id FROM local_users WHERE LOWER(email)=?").get(CLOUD_ADMIN_EMAIL) as { id: string } | undefined
     if (adminRow?.id) {
       const rows = db.prepare("SELECT id, assignees_json FROM workspace_tasks WHERE assignees_json LIKE ?").all(`%"${adminRow.id}"%`) as { id: string; assignees_json: string }[]
       const upd = db.prepare('UPDATE workspace_tasks SET assignees_json=? WHERE id=?')
@@ -680,7 +681,7 @@ export function initDatabase(): void {
     // device that wasn't the bootstrap machine — so heal it unconditionally,
     // independent of that setting. This stops the Workspace tab bouncing the
     // admin to the dashboard on a newly set-up machine.
-    db.exec("UPDATE local_users SET role='admin' WHERE LOWER(email)='doriankantor@gmail.com' AND role != 'admin'")
+    db.prepare("UPDATE local_users SET role='admin' WHERE LOWER(email)=? AND role != 'admin'").run(CLOUD_ADMIN_EMAIL)
     // Also honor a configured admin email if one is stored locally.
     const adminEmailRow = db.prepare("SELECT value FROM settings WHERE key='local_admin_email'").get() as { value: string } | undefined
     if (adminEmailRow?.value) {

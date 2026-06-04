@@ -1,6 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import TeamMemberProfilePanel from '../components/TeamMemberProfilePanel'
+import { ADMIN_EMAIL } from '../supabase/client'
 
 // ── Avatar ─────────────────────────────────────────────────────────────────
 
@@ -54,7 +55,7 @@ function RoleBadge({ role }: { role: string }) {
 // ── Main ──────────────────────────────────────────────────────────────────
 
 export default function Team() {
-  const { isAdmin, localUser } = useAuth()
+  const { isAdmin, isRoot, localUser } = useAuth()
   const currentId = localUser?.id ?? null
 
   const [members, setMembers] = useState<LocalTeamMember[]>([])
@@ -72,6 +73,16 @@ export default function Team() {
   // The access code to share for the most recently invited member.
   const [generatedCode, setGeneratedCode] = useState<{ email: string; name: string; code: string } | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+
+  // Permissions panel state (root-only)
+  type PermRow = { user_email: string; permission_key: string }
+  const [allPerms, setAllPerms] = useState<PermRow[]>([])
+  const PERM_LABELS: Record<string, string> = {
+    see_all_boards:    'See all boards',
+    delete_attachment: 'Delete attachments',
+    invite_members:    'Invite members',
+  }
+  const PERM_KEYS = Object.keys(PERM_LABELS)
 
   useEffect(() => { load() }, [])
 
@@ -104,8 +115,22 @@ export default function Team() {
         })
       )
       setInviteCodes(Object.fromEntries(codeEntries.filter(([, c]) => c)))
+      // Load permission grants for the panel (root-only — silently no-op for non-root)
+      if (isRoot) {
+        try { setAllPerms(await window.api.permissions.getAll()) } catch {}
+      }
     } catch {}
     setLoading(false)
+  }
+
+  async function togglePerm(userEmail: string, key: string, on: boolean) {
+    await window.api.permissions.set({ userEmail, key, on })
+    setAllPerms(prev =>
+      on
+        ? [...prev.filter(p => !(p.user_email === userEmail && p.permission_key === key)),
+           { user_email: userEmail, permission_key: key }]
+        : prev.filter(p => !(p.user_email === userEmail && p.permission_key === key))
+    )
   }
 
   async function handleMarkActive(member: LocalTeamMember) {
@@ -122,7 +147,7 @@ export default function Team() {
 
     // Client-side domain pre-check for instant feedback
     if (
-      trimmedEmail !== 'doriankantor@gmail.com' &&
+      trimmedEmail !== ADMIN_EMAIL &&
       !trimmedEmail.endsWith('@kantor-consulting.com')
     ) {
       setMsg({ type: 'err', text: 'Only @kantor-consulting.com emails are allowed.' })
@@ -397,6 +422,53 @@ export default function Team() {
           </p>
         )}
       </div>
+
+      {/* ── Member Permissions (root-only) ─────────────────────────────────── */}
+      {isRoot && members.filter(m => m.status !== 'inactive' && m.email !== localUser?.email).length > 0 && (
+        <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-white/[0.07]">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Member Permissions</h2>
+          <p className="text-xs text-gray-500 dark:text-white/50 mb-4">
+            Toggle what each team member can do beyond their default access.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr>
+                  <th className="text-left pb-2 pr-6 text-gray-500 dark:text-white/50 font-medium">Member</th>
+                  {PERM_KEYS.map(k => (
+                    <th key={k} className="text-center pb-2 px-3 text-gray-500 dark:text-white/50 font-medium whitespace-nowrap">{PERM_LABELS[k]}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-white/[0.04]">
+                {members
+                  .filter(m => m.status !== 'inactive' && m.email !== localUser?.email)
+                  .map(m => (
+                    <tr key={m.id}>
+                      <td className="py-2 pr-6">
+                        <div className="font-medium text-gray-800 dark:text-white/85">{m.full_name || m.email}</div>
+                        <div className="text-gray-400 dark:text-white/35">{m.email}</div>
+                      </td>
+                      {PERM_KEYS.map(k => {
+                        const granted = allPerms.some(p => p.user_email === m.email && p.permission_key === k)
+                        return (
+                          <td key={k} className="py-2 px-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={granted}
+                              onChange={e => togglePerm(m.email, k, e.target.checked)}
+                              className="w-4 h-4 rounded accent-indigo-500 cursor-pointer"
+                            />
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {profileMemberId && (
         <TeamMemberProfilePanel

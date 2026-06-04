@@ -6,6 +6,8 @@ import { copyFileSync, mkdirSync, existsSync } from 'fs'
 import { join, basename, extname } from 'path'
 import { randomBytes, createHash, createHmac } from 'crypto'
 import { getDatabase, hashPassword } from '../db'
+import { CLOUD_ADMIN_EMAIL, PERMISSION_KEYS } from '../constants'
+import { cloud } from '../cloud/client'
 import { driveSync } from '../google/drive'
 import { sendEmail, inviteEmailHtml } from '../google/gmail'
 import { connectUserGoogle, getUserGoogleStatus, disconnectUserGoogle, getUserCalendars, getUserCalendarEvents, diagnoseUserGoogle } from '../google/userGoogle'
@@ -355,14 +357,14 @@ function registerActivityHandlers() {
 function registerAuthHandlers() {
   ipcMain.handle('auth:localSignIn', async (_e, email: string, password: string) => {
     const trimmed = email.trim().toLowerCase()
-    if (trimmed !== 'doriankantor@gmail.com' && !trimmed.endsWith('@kantor-consulting.com')) {
+    if (trimmed !== CLOUD_ADMIN_EMAIL && !trimmed.endsWith('@kantor-consulting.com')) {
       return { error: 'Access restricted to Kantor Consulting team members only.' }
     }
     // The system admin must always resolve to role 'admin' on every device. On a
     // fresh machine (no local row, no local_admin bootstrap) the cross-device
     // path (C) below would otherwise provision the admin as 'member', which makes
     // the Workspace board-access guard bounce them to the dashboard.
-    const isAdminEmail = trimmed === 'doriankantor@gmail.com'
+    const isAdminEmail = trimmed === CLOUD_ADMIN_EMAIL
     const db = getDatabase()
     const row = db.prepare('SELECT * FROM local_users WHERE LOWER(email)=?').get(trimmed) as Record<string, unknown> | undefined
 
@@ -531,7 +533,6 @@ function registerTeamHandlers() {
   // The system admin account (doriankantor@gmail.com) is the logged-in owner and
   // must never surface as a *team member*. By default team:list hides it; the
   // Settings admin panel passes includeAdmin=true to manage it directly.
-  const ADMIN_EMAIL = 'doriankantor@gmail.com'
   ipcMain.handle('team:list', (_e, includeAdmin?: boolean) =>
     getDatabase()
       .prepare(`SELECT id,email,full_name,role,status,must_change_password,anthropic_key_set,created_at,last_active
@@ -539,14 +540,20 @@ function registerTeamHandlers() {
                 WHERE status != 'inactive'
                 ${includeAdmin ? '' : 'AND LOWER(email) != ?'}
                 ORDER BY created_at`)
-      .all(...(includeAdmin ? [] : [ADMIN_EMAIL]))
+      .all(...(includeAdmin ? [] : [CLOUD_ADMIN_EMAIL]))
   )
 
   ipcMain.handle('team:invite', async (_e, params: { email: string; full_name: string; role?: string }) => {
+    // Caller must be root OR have invite_members permission (enforced in main; never trust renderer).
+    const caller = await boardsCloud.resolveActor(currentActingUserId)
+    if (!caller.can(PERMISSION_KEYS.INVITE_MEMBERS)) {
+      return { error: 'You do not have permission to invite team members.' }
+    }
+
     const email = (params.email ?? '').trim().toLowerCase()
 
-    // Domain validation — allow @kantor-consulting.com + doriankantor@gmail.com
-    if (email !== 'doriankantor@gmail.com' && !email.endsWith('@kantor-consulting.com')) {
+    // Domain validation — allow @kantor-consulting.com + admin email (unchanged)
+    if (email !== CLOUD_ADMIN_EMAIL && !email.endsWith('@kantor-consulting.com')) {
       return { error: 'Only @kantor-consulting.com emails are allowed.' }
     }
 
@@ -645,7 +652,7 @@ function registerTeamHandlers() {
   })
 
   ipcMain.handle('team:edit', (_e, params: { id: string; full_name?: string; email?: string; role?: string }) => {
-    if (params.email && !params.email.endsWith('@kantor-consulting.com') && params.email !== 'doriankantor@gmail.com') {
+    if (params.email && !params.email.endsWith('@kantor-consulting.com') && params.email !== CLOUD_ADMIN_EMAIL) {
       return { error: 'Email must use the @kantor-consulting.com domain.' }
     }
     const db = getDatabase()
@@ -1113,7 +1120,7 @@ function registerAnalyticsHandlers() {
     })
 
     // Exclude the system admin account from the team breakdown.
-    const allMembers = db.prepare("SELECT id, full_name, email FROM local_users WHERE status=? AND LOWER(email) != 'doriankantor@gmail.com'").all('active') as any[]
+    const allMembers = db.prepare("SELECT id, full_name, email FROM local_users WHERE status=? AND LOWER(email) != ?").all('active', CLOUD_ADMIN_EMAIL) as any[]
     const memberStats = allMembers.map(m => {
       const assigned = db.prepare(`SELECT COUNT(*) as c FROM workspace_tasks WHERE archived=0 AND assignees_json LIKE ?`).get(`%"${m.id}"%`) as {c:number}
       const completed = db.prepare(`SELECT COUNT(*) as c FROM workspace_tasks WHERE column_id='col-published' AND archived=0 AND assignees_json LIKE ?`).get(`%"${m.id}"%`) as {c:number}
@@ -1818,6 +1825,51 @@ function startNotificationScheduler() {
   setTimeout(() => checkAndSendReminders().catch(() => {}), 30_000)
 }
 
+// ── Permissions ────────────────────────────────────────────────────────────
+
+function registerPermissionsHandlers() {
+  // Return the acting user's root status + granted permission keys.
+  // Called by renderer on login and whenever permissions:invalidate fires.
+  ipcMain.handle('permissions:getMine', async () => {
+    const actor = await boardsCloud.resolveActor(currentActingUserId)
+    if (actor.isRoot) {
+      return { isRoot: true, keys: Object.values(PERMISSION_KEYS) as string[] }
+    }
+    const { data } = await cloud.from('member_permissions').select('permission_key').eq('user_email', actor.email)
+    const keys = ((data ?? []) as { permission_key: string }[]).map(r => r.permission_key)
+    return { isRoot: false, keys }
+  })
+
+  // Return all granted permissions (root-only; for the admin panel UI).
+  ipcMain.handle('permissions:getAll', async () => {
+    const actor = await boardsCloud.resolveActor(currentActingUserId)
+    if (!actor.isRoot) return []
+    const { data } = await cloud.from('member_permissions').select('*').order('granted_at', { ascending: true })
+    return (data ?? []) as { user_email: string; permission_key: string; granted_by: string; granted_at: string }[]
+  })
+
+  // Grant or revoke a permission toggle. Root-only; verified in main.
+  ipcMain.handle('permissions:set', async (_e, params: { userEmail: string; key: string; on: boolean }) => {
+    const actor = await boardsCloud.resolveActor(currentActingUserId)
+    if (!actor.isRoot) return { ok: false, error: 'Only root can set permissions.' }
+    const { userEmail, key, on } = params
+    const validKeys = Object.values(PERMISSION_KEYS) as string[]
+    if (!validKeys.includes(key)) return { ok: false, error: `Unknown permission key: ${key}` }
+    if (on) {
+      const { error } = await cloud.from('member_permissions').upsert(
+        { user_email: userEmail, permission_key: key, granted_by: actor.email, granted_at: new Date().toISOString() },
+        { onConflict: 'user_email,permission_key', ignoreDuplicates: false }
+      )
+      if (error) return { ok: false, error: error.message }
+    } else {
+      const { error } = await cloud.from('member_permissions')
+        .delete().eq('user_email', userEmail).eq('permission_key', key)
+      if (error) return { ok: false, error: error.message }
+    }
+    return { ok: true }
+  })
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 
 export function registerIpcHandlers(): void {
@@ -1859,6 +1911,7 @@ export function registerIpcHandlers(): void {
   startTrashAutoDelete()
   registerIntelligenceHandlers()
   registerInfoPageHandlers()
+  registerPermissionsHandlers()
 }
 
 // ── Intelligence auto-refresh (called from main/index.ts after app ready) ──
@@ -2356,7 +2409,7 @@ function resolveAnthropicKey(userId?: string): string | undefined {
   if (userKey) return userKey
   const globalKey = (db.prepare("SELECT value FROM settings WHERE key='anthropic_api_key'").get() as { value: string } | undefined)?.value
   if (globalKey) return globalKey
-  const admin = db.prepare("SELECT id FROM local_users WHERE LOWER(email)='doriankantor@gmail.com'").get() as { id: string } | undefined
+  const admin = db.prepare("SELECT id FROM local_users WHERE LOWER(email)=?").get(CLOUD_ADMIN_EMAIL) as { id: string } | undefined
   return keyForUser(admin?.id)
 }
 

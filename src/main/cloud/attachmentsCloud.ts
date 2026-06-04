@@ -3,9 +3,9 @@ import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync } 
 import { join, extname, basename } from 'path'
 import { app, dialog, shell, BrowserWindow } from 'electron'
 import { pipeline } from 'stream/promises'
-import { cloud, CLOUD_ADMIN_EMAIL } from './client'
+import { cloud, CLOUD_ADMIN_EMAIL_EMAIL } from './client'
 import { getDatabase } from '../db'
-import { resolveActor, isBoardVisible, boardIdOfTask } from './boards'
+import { resolveActor, resolveIdentity, isBoardVisible, boardIdOfTask } from './boards'
 
 // ── Supabase Storage: card attachments (Stage 2 — final piece of boards) ─────
 // File blobs live in the private 'card-attachments' bucket. Metadata in a cloud
@@ -15,7 +15,6 @@ import { resolveActor, isBoardVisible, boardIdOfTask } from './boards'
 // Downloads cache to userData/attachment-cache/ keyed on storage_path.
 
 const BUCKET = 'card-attachments'
-const CLOUD_ADMIN = CLOUD_ADMIN_EMAIL
 
 // ── Paths ────────────────────────────────────────────────────────────────────
 
@@ -36,22 +35,18 @@ function cachePathFor(storagePath: string): string {
 // ── Actor helpers ─────────────────────────────────────────────────────────────
 
 function actorEmail(actingUserId?: string | null): string {
-  return resolveActor(actingUserId).email
+  return resolveIdentity(actingUserId).email
 }
 
+// Display-name helper — uses sync resolveIdentity (no permission fetch needed).
+// isRoot only affects the fallback string when no DB row is found.
 function actorName(actingUserId?: string | null): string {
-  const actor = resolveActor(actingUserId)
-  if (!actor.email) return 'Unknown'
-  if (actor.isAdmin) {
-    try {
-      const row = getDatabase().prepare('SELECT full_name FROM local_users WHERE LOWER(email)=?').get(actor.email) as { full_name?: string } | undefined
-      return row?.full_name ?? 'Admin'
-    } catch { return 'Admin' }
-  }
+  const { email, isRoot } = resolveIdentity(actingUserId)
+  if (!email) return 'Unknown'
   try {
-    const row = getDatabase().prepare('SELECT full_name FROM local_users WHERE LOWER(email)=?').get(actor.email) as { full_name?: string } | undefined
-    return row?.full_name ?? actor.email.split('@')[0]
-  } catch { return actor.email.split('@')[0] }
+    const row = getDatabase().prepare('SELECT full_name FROM local_users WHERE LOWER(email)=?').get(email) as { full_name?: string } | undefined
+    return row?.full_name ?? (isRoot ? 'Admin' : email.split('@')[0])
+  } catch { return isRoot ? 'Admin' : email.split('@')[0] }
 }
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
@@ -275,10 +270,10 @@ export async function deleteAttachment(
   if (!row) return { ok: true } // already gone
   const att = row as CloudAttachment
 
-  const actor = resolveActor(actingUserId)
+  const actor = await resolveActor(actingUserId)
   const isAuthor = actor.email && actor.email === (att.author_email ?? '').toLowerCase()
-  if (!actor.isAdmin && !isAuthor) {
-    return { ok: false, error: 'Only the file author or an admin can delete this attachment.' }
+  if (!isAuthor && !actor.can('delete_attachment')) {
+    return { ok: false, error: 'Only the file author or a permitted member can delete this attachment.' }
   }
 
   // Delete blob first (non-fatal if already gone).
@@ -304,7 +299,7 @@ export async function seedAttachmentsToCloud(requestEmail: string): Promise<{
   missingFiles?: string[]
   reason?: string
 }> {
-  if ((requestEmail ?? '').toLowerCase() !== CLOUD_ADMIN) {
+  if ((requestEmail ?? '').toLowerCase() !== CLOUD_ADMIN_EMAIL) {
     return { ok: false, reason: 'Only the admin can run the one-time attachments seed.' }
   }
 
@@ -342,7 +337,7 @@ export async function seedAttachmentsToCloud(requestEmail: string): Promise<{
 
     // Resolve author email.
     const authorId = local.author_id as string
-    const authorEmail = emailById.get(authorId) ?? (authorId === 'local-admin' ? CLOUD_ADMIN : '')
+    const authorEmail = emailById.get(authorId) ?? (authorId === 'local-admin' ? CLOUD_ADMIN_EMAIL : '')
     const authorName = local.author_name as string
 
     const baseRow = {

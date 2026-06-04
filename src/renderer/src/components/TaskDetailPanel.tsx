@@ -310,10 +310,9 @@ function ClientPicker({ clientId, clientName, clientOrg, createdBy, onChange }: 
 
 export default function TaskDetailPanel() {
   const { selectedTask, selectTask, updateTask, deleteTask, columns, members, areas, labels, refreshTaskMeta, pendingSection, setPendingSection } = useWorkspace()
-  const { localUser } = useAuth()
+  const { localUser, isRoot, can } = useAuth()
   const currentUserId   = localUser?.id   ?? 'local-admin'
   const currentUserName = localUser?.name ?? 'Dorian Kantor'
-  const isAdminUser     = localUser?.role === 'admin'
 
   // Editing state — overrides selected task fields until saved
   const [editing, setEditing] = useState<Partial<Task>>({})
@@ -1279,7 +1278,7 @@ export default function TaskDetailPanel() {
                   {attachments.length > 0 && (
                     <div className="space-y-1.5 mb-2">
                       {attachments.map(att => {
-                        const canDelete = att.author_email === localUser?.email || isAdminUser
+                        const canDelete = att.author_email === localUser?.email || can('delete_attachment')
                         return (
                           <div key={att.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.06] group">
                             <FileTypeIcon name={att.name} type={att.type} />
@@ -1452,7 +1451,7 @@ export default function TaskDetailPanel() {
                     <div className="space-y-3">
                       {comments.map(c => {
                         const canEdit   = c.author_id === currentUserId
-                        const canDelete = c.author_id === currentUserId || isAdminUser
+                        const canDelete = c.author_id === currentUserId || isRoot
                         const isEditing = editingCommentId === c.id
                         return (
                           <div key={c.id} className="flex gap-2.5 group">

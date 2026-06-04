@@ -1,5 +1,5 @@
 import { registerRealtimeSource, type ResolvedScope, type RealtimeEventType } from './realtimeManager'
-import { boardIdOfTask, isBoardVisible, boardMembersRelevant } from './boards'
+import { boardIdOfTask, isBoardVisible, boardMembersRelevant, resolveIdentity } from './boards'
 import { getActingUserId } from '../ipc'
 
 // ── Boards Realtime source (first consumer of the manager) ───────────────────
@@ -76,6 +76,23 @@ export function registerBoardsRealtime(): void {
       return isBoardVisible(getActingUserId(), resolved.boardId)
     },
     pushChannel: 'workspace:remoteChange',
+  })
+
+  // member_permissions: grant or revoke pushes a live invalidate so each renderer
+  // re-fetches its permission set (no relaunch required after a toggle).
+  registerRealtimeSource({
+    name: 'permissions',
+    tables: ['member_permissions'],
+    async resolveBoardId(_table, _row) {
+      return { boardId: null, scope: 'list' as const }
+    },
+    async isRelevant(_resolved, _table, row) {
+      const { email, isRoot } = resolveIdentity(getActingUserId())
+      const changedEmail = String(row?.user_email ?? '').toLowerCase()
+      // Root sees all permission changes (panel refresh); members see only their own.
+      return isRoot || changedEmail === email
+    },
+    pushChannel: 'permissions:invalidate',
   })
 }
 

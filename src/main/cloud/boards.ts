@@ -36,41 +36,53 @@ export function setAmbientActingUser(userId: string | null | undefined): void {
 }
 
 // ── Actor identity ──────────────────────────────────────────────────────────
-export interface Actor { email: string; isAdmin: boolean }
+export interface Actor { email: string; isRoot: boolean; can: (key: string) => boolean }
 
-// Resolve the acting user → stable email + admin flag. Accepts a local_users.id,
-// the 'local-admin' literal, OR an email (the renderer may pass either). When no
-// explicit value is given, falls back to the ambient acting user. Admin detection
-// logic is unchanged: 'local-admin' literal, OR email === CLOUD_ADMIN_EMAIL
-// (case-normalized), OR local_users.role === 'admin'.
-export function resolveActor(actingUserOrId?: string | null): Actor {
+// Sync identity-only helper: resolves email + root flag without touching Supabase.
+// isRoot = (email === CLOUD_ADMIN_EMAIL) — always a hardcoded comparison, never cloud.
+// Used for display-name resolution (actorName) and as the inner step of resolveActor.
+export function resolveIdentity(actingUserOrId?: string | null): { email: string; isRoot: boolean } {
   const value = actingUserOrId ?? ambientActingUserId
-  if (!value) return { email: '', isAdmin: false }
-  if (value === 'local-admin') return { email: CLOUD_ADMIN_EMAIL, isAdmin: true }
-  // Explicit email passed directly (renderer may stamp email instead of id).
+  if (!value) return { email: '', isRoot: false }
+  if (value === 'local-admin') return { email: CLOUD_ADMIN_EMAIL, isRoot: true }
   if (value.includes('@')) {
     const email = value.toLowerCase()
-    if (email === CLOUD_ADMIN_EMAIL) return { email, isAdmin: true }
-    try {
-      const row = getDatabase().prepare('SELECT role FROM local_users WHERE LOWER(email)=?').get(email) as { role?: string } | undefined
-      return { email, isAdmin: row?.role === 'admin' }
-    } catch { return { email, isAdmin: false } }
+    return { email, isRoot: email === CLOUD_ADMIN_EMAIL }
   }
   try {
     const row = getDatabase()
-      .prepare('SELECT email, role FROM local_users WHERE id=?')
-      .get(value) as { email?: string; role?: string } | undefined
+      .prepare('SELECT email FROM local_users WHERE id=?')
+      .get(value) as { email?: string } | undefined
     const email = (row?.email ?? '').toLowerCase()
-    const isAdmin = email === CLOUD_ADMIN_EMAIL || row?.role === 'admin'
-    return { email, isAdmin }
+    return { email, isRoot: email === CLOUD_ADMIN_EMAIL }
   } catch {
-    return { email: '', isAdmin: false }
+    return { email: '', isRoot: false }
   }
 }
 
-// Board ids the actor may see. Admin → all (non-deleted). Else → membership by email.
+// Resolve the acting user → stable email + root flag + permission-checker.
+// isRoot = (email === CLOUD_ADMIN_EMAIL) — hardcoded, never read from cloud.
+// can(key): true if isRoot; else true iff a member_permissions row exists for
+// (this email, key). Permissions fetched ONCE per resolveActor call and cached
+// in the returned closure; multiple can() calls on the same Actor are O(1).
+export async function resolveActor(actingUserOrId?: string | null): Promise<Actor> {
+  const { email, isRoot } = resolveIdentity(actingUserOrId)
+  let permKeys: Set<string> = new Set()
+  if (!isRoot && email) {
+    try {
+      const { data } = await cloud
+        .from('member_permissions')
+        .select('permission_key')
+        .eq('user_email', email)
+      permKeys = new Set(((data ?? []) as { permission_key: string }[]).map(r => r.permission_key))
+    } catch { /* best-effort: deny all on lookup failure */ }
+  }
+  return { email, isRoot, can: (key: string) => isRoot || permKeys.has(key) }
+}
+
+// Board ids the actor may see. see_all_boards → all (non-deleted). Else → membership by email.
 async function visibleBoardIds(actor: Actor): Promise<Set<string>> {
-  if (actor.isAdmin) {
+  if (actor.can('see_all_boards')) {
     const { data, error } = await cloud.from('workspace_boards').select('id').eq('deleted', 0)
     if (error) throw new Error(`boards visibility failed: ${error.message}`)
     return new Set((data ?? []).map((r: { id: string }) => r.id))
@@ -83,7 +95,7 @@ async function visibleBoardIds(actor: Actor): Promise<Set<string>> {
 }
 
 async function actorCanAccessBoard(actor: Actor, boardId: string): Promise<boolean> {
-  if (actor.isAdmin) return true
+  if (actor.can('see_all_boards')) return true
   return (await visibleBoardIds(actor)).has(boardId)
 }
 
@@ -94,7 +106,7 @@ export async function boardIdOfTask(taskId: string): Promise<string | null> {
 }
 
 async function actorCanAccessTask(actor: Actor, taskId: string): Promise<boolean> {
-  if (actor.isAdmin) return true
+  if (actor.can('see_all_boards')) return true
   const boardId = await boardIdOfTask(taskId)
   return boardId ? (await visibleBoardIds(actor)).has(boardId) : false
 }
@@ -104,16 +116,16 @@ async function actorCanAccessTask(actor: Actor, taskId: string): Promise<boolean
 // Reuses resolveActor + visibleBoardIds unchanged.
 export async function isBoardVisible(actingUserId: string | undefined, boardId: string | null): Promise<boolean> {
   if (!boardId) return false
-  const actor = resolveActor(actingUserId)
-  if (actor.isAdmin) return true
+  const actor = await resolveActor(actingUserId)
+  if (actor.can('see_all_boards')) return true
   return (await visibleBoardIds(actor)).has(boardId)
 }
 
 // Relevance for a board_members row change: push if it touches the acting user's
 // own email (grant/revoke for them) OR a board they can already see.
 export async function boardMembersRelevant(actingUserId: string | undefined, row: Record<string, unknown>): Promise<boolean> {
-  const actor = resolveActor(actingUserId)
-  if (actor.isAdmin) return true
+  const actor = await resolveActor(actingUserId)
+  if (actor.can('see_all_boards')) return true
   const rowEmail = String(row?.user_email ?? '').toLowerCase()
   if (rowEmail && rowEmail === actor.email) return true
   const boardId = row?.board_id as string | undefined
@@ -137,35 +149,35 @@ function resolveEmail(idOrEmail: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function listBoards(actingUserId: string | undefined, includeArchived = false): Promise<Record<string, unknown>[]> {
-  const actor = resolveActor(actingUserId)
+  const actor = await resolveActor(actingUserId)
   const visible = await visibleBoardIds(actor)
   let q = cloud.from('workspace_boards').select('*').eq('deleted', 0)
   if (!includeArchived) q = q.eq('archived', 0)
   const { data, error } = await q.order('position', { ascending: true }).order('created_at', { ascending: true })
   if (error) throw new Error(`boards list failed: ${error.message}`)
-  return (data ?? []).filter((b: { id: string }) => actor.isAdmin || visible.has(b.id)) as Record<string, unknown>[]
+  return (data ?? []).filter((b: { id: string }) => actor.can('see_all_boards') || visible.has(b.id)) as Record<string, unknown>[]
 }
 
 export async function listArchivedBoards(actingUserId?: string): Promise<Record<string, unknown>[]> {
-  const actor = resolveActor(actingUserId)
+  const actor = await resolveActor(actingUserId)
   const visible = await visibleBoardIds(actor)
   const { data, error } = await cloud
     .from('workspace_boards').select('*').eq('deleted', 0).eq('archived', 1)
     .order('archived_at', { ascending: false })
   if (error) throw new Error(`boards listArchived failed: ${error.message}`)
-  return (data ?? []).filter((b: { id: string }) => actor.isAdmin || visible.has(b.id)) as Record<string, unknown>[]
+  return (data ?? []).filter((b: { id: string }) => actor.can('see_all_boards') || visible.has(b.id)) as Record<string, unknown>[]
 }
 
 export async function createBoard(actingUserId: string | undefined, name: string): Promise<{ ok: boolean; id: string }> {
-  const actor = resolveActor(actingUserId)
+  const actor = await resolveActor(actingUserId)
   const id = randomUUID()
   const { data: maxRow } = await cloud.from('workspace_boards').select('position').eq('deleted', 0).order('position', { ascending: false }).limit(1).maybeSingle()
   const pos = ((maxRow?.position as number | undefined) ?? -1) + 1
   const { error } = await cloud.from('workspace_boards').insert({ id, name, position: pos, created_at: now(), updated_at: now() })
   if (error) throw new Error(`boards create failed: ${error.message}`)
-  // Non-admin creators are added as a member so they can see their new board.
-  // Admin never gets a board_members row (per the no-admin-as-member rule).
-  if (!actor.isAdmin && actor.email) {
+  // Users without see_all_boards are added as a member so they can see their new board.
+  // see_all_boards users (including root) never get a board_members row.
+  if (!actor.can('see_all_boards') && actor.email) {
     await cloud.from('board_members').upsert(
       { board_id: id, user_email: actor.email, added_by_email: actor.email, added_at: now() },
       { onConflict: 'board_id,user_email', ignoreDuplicates: true }
@@ -200,8 +212,8 @@ export async function restoreBoard(id: string): Promise<{ ok: boolean }> {
 // Writes the board to LOCAL trash first (trash not migrated). Cloud FK CASCADE
 // removes columns/tasks/comments/checklists/labels/activity for the board.
 export async function deleteBoard(actingUserId: string | undefined, id: string, deletedById?: string, deletedByName?: string): Promise<{ ok: boolean; reason?: string }> {
-  const actor = resolveActor(actingUserId)
-  if (!actor.isAdmin) return { ok: false, reason: 'Only an admin can delete a board.' }
+  const actor = await resolveActor(actingUserId)
+  if (!actor.isRoot) return { ok: false, reason: 'Only root can delete a board.' }
   const { data: board } = await cloud.from('workspace_boards').select('*').eq('id', id).maybeSingle()
   if (board) {
     try {
@@ -239,13 +251,13 @@ export async function boardTaskCount(id: string): Promise<number> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getColumns(actingUserId: string | undefined, boardId?: string): Promise<Record<string, unknown>[]> {
-  const actor = resolveActor(actingUserId)
+  const actor = await resolveActor(actingUserId)
   const visible = await visibleBoardIds(actor)
   let q = cloud.from('workspace_columns').select('*')
   if (boardId) q = q.eq('board_id', boardId)
   const { data, error } = await q.order('position', { ascending: true })
   if (error) throw new Error(`columns get failed: ${error.message}`)
-  return (data ?? []).filter((c: { board_id: string }) => actor.isAdmin || visible.has(c.board_id)) as Record<string, unknown>[]
+  return (data ?? []).filter((c: { board_id: string }) => actor.can('see_all_boards') || visible.has(c.board_id)) as Record<string, unknown>[]
 }
 
 export async function addColumn(col: { id: string; name: string; position: number; color: string; board_id?: string }): Promise<{ ok: boolean }> {
@@ -274,14 +286,14 @@ export async function updateColumn(colId: string, partial: { name?: string; posi
 const mapTask = (r: Record<string, unknown>) => ({ ...r, assignee_ids: JSON.parse((r.assignees_json as string) || '[]') })
 
 export async function getTasks(actingUserId?: string): Promise<Record<string, unknown>[]> {
-  const actor = resolveActor(actingUserId)
+  const actor = await resolveActor(actingUserId)
   const visible = await visibleBoardIds(actor)
-  if (!actor.isAdmin && visible.size === 0) return []
+  if (!actor.can('see_all_boards') && visible.size === 0) return []
   // Active tasks on non-archived boards. Filter to visible boards in JS.
   const { data: boards, error: bErr } = await cloud.from('workspace_boards').select('id').eq('deleted', 0).eq('archived', 0)
   if (bErr) throw new Error(`tasks board filter failed: ${bErr.message}`)
   const activeBoardIds = (boards ?? []).map((b: { id: string }) => b.id)
-    .filter((id: string) => actor.isAdmin || visible.has(id))
+    .filter((id: string) => actor.can('see_all_boards') || visible.has(id))
   if (activeBoardIds.length === 0) return []
   const { data, error } = await cloud.from('workspace_tasks').select('*')
     .in('board_id', activeBoardIds).or('archived.is.null,archived.eq.0')
@@ -291,12 +303,12 @@ export async function getTasks(actingUserId?: string): Promise<Record<string, un
 }
 
 export async function getArchivedTasks(actingUserId?: string): Promise<Record<string, unknown>[]> {
-  const actor = resolveActor(actingUserId)
+  const actor = await resolveActor(actingUserId)
   const visible = await visibleBoardIds(actor)
   const { data, error } = await cloud.from('workspace_tasks').select('*').eq('archived', 1)
     .order('updated_at', { ascending: false })
   if (error) throw new Error(`archived tasks get failed: ${error.message}`)
-  return (data ?? []).filter((t: { board_id: string }) => actor.isAdmin || visible.has(t.board_id)).map(mapTask)
+  return (data ?? []).filter((t: { board_id: string }) => actor.can('see_all_boards') || visible.has(t.board_id)).map(mapTask)
 }
 
 export async function archiveTask(taskId: string): Promise<{ ok: boolean }> {
@@ -419,7 +431,7 @@ export async function listMembers(boardId: string): Promise<{ user_id: string; u
 // the board (membership can spread member-to-member). targetUserId is a local id;
 // it is resolved to the stable email here.
 export async function addMember(actingUserId: string | undefined, boardId: string, targetUserId: string, addedByName: string): Promise<{ ok: boolean; error?: string }> {
-  const actor = resolveActor(actingUserId)
+  const actor = await resolveActor(actingUserId)
   if (!(await actorCanAccessBoard(actor, boardId))) {
     return { ok: false, error: 'Only an admin or an existing member of this board can add members.' }
   }
@@ -437,7 +449,7 @@ export async function addMember(actingUserId: string | undefined, boardId: strin
 }
 
 export async function removeMember(actingUserId: string | undefined, boardId: string, targetUserId: string): Promise<{ ok: boolean; error?: string }> {
-  const actor = resolveActor(actingUserId)
+  const actor = await resolveActor(actingUserId)
   if (!(await actorCanAccessBoard(actor, boardId))) return { ok: false, error: 'Not allowed.' }
   const targetEmail = resolveEmail(targetUserId)
   if (!targetEmail) return { ok: false, error: 'Could not resolve the user.' }
@@ -452,7 +464,7 @@ export async function getBoardName(boardId: string): Promise<string> {
 }
 
 export async function checkAccess(actingUserId: string | undefined, boardId: string): Promise<{ hasAccess: boolean }> {
-  const actor = resolveActor(actingUserId)
+  const actor = await resolveActor(actingUserId)
   return { hasAccess: await actorCanAccessBoard(actor, boardId) }
 }
 
@@ -469,11 +481,11 @@ export async function memberTaskCount(boardId: string, userId: string): Promise<
 
 // Board ids visible to a user (admin: all non-archived; else their memberships on non-archived boards).
 export async function listForUser(actingUserId?: string): Promise<string[]> {
-  const actor = resolveActor(actingUserId)
+  const actor = await resolveActor(actingUserId)
   const { data: boards, error } = await cloud.from('workspace_boards').select('id').eq('deleted', 0).eq('archived', 0)
   if (error) throw new Error(`listForUser failed: ${error.message}`)
   const activeIds = new Set((boards ?? []).map((b: { id: string }) => b.id))
-  if (actor.isAdmin) return [...activeIds]
+  if (actor.can('see_all_boards')) return [...activeIds]
   const visible = await visibleBoardIds(actor)
   return [...visible].filter(id => activeIds.has(id))
 }
@@ -534,9 +546,9 @@ export async function addActivity(e: { task_id: string; actor_name: string; acti
 
 // Global feed of recent activity + comments across the actor's visible boards.
 export async function getFeed(actingUserId?: string): Promise<Record<string, unknown>[]> {
-  const actor = resolveActor(actingUserId)
+  const actor = await resolveActor(actingUserId)
   const visible = await visibleBoardIds(actor)
-  // Resolve which task ids are visible (admin: all; else tasks on visible boards).
+  // Resolve which task ids are visible (see_all_boards: all; else tasks on visible boards).
   let taskTitle = new Map<string, string>()
   let visibleTaskIds: Set<string> | null = null
   {
@@ -545,7 +557,7 @@ export async function getFeed(actingUserId?: string): Promise<Record<string, unk
     if (error) throw new Error(`feed task scope failed: ${error.message}`)
     const rows = (data ?? []) as { id: string; title: string; board_id: string }[]
     taskTitle = new Map(rows.map(r => [r.id, r.title]))
-    if (!actor.isAdmin) visibleTaskIds = new Set(rows.filter(r => visible.has(r.board_id)).map(r => r.id))
+    if (!actor.can('see_all_boards')) visibleTaskIds = new Set(rows.filter(r => visible.has(r.board_id)).map(r => r.id))
   }
   const [{ data: acts }, { data: cmts }] = await Promise.all([
     cloud.from('task_activity').select('*').order('created_at', { ascending: false }).limit(120),

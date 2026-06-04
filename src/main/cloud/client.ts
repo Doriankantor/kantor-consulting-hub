@@ -28,4 +28,6 @@ export const cloud: SupabaseClient = createClient(
 )
 
 // The system admin is the logged-in owner, not a team member / chat participant.
-export const CLOUD_ADMIN_EMAIL = 'doriankantor@gmail.com'
+// Re-exported from the canonical source so cloud/* files that already import
+// from ./client keep working without changing their import paths.
+export { CLOUD_ADMIN_EMAIL } from '../constants'

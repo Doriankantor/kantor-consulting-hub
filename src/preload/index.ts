@@ -123,6 +123,13 @@ const api = {
     send:        (msg: { author_id: string; author_name: string; content: string }) => ipcRenderer.invoke('chat:send', msg),
     seedToCloud: (requestEmail: string) => ipcRenderer.invoke('chat:seedToCloud', requestEmail),
   },
+  permissions: {
+    getMine:              ()                                                              => ipcRenderer.invoke('permissions:getMine'),
+    getAll:               ()                                                              => ipcRenderer.invoke('permissions:getAll'),
+    set:                  (p: { userEmail: string; key: string; on: boolean })           => ipcRenderer.invoke('permissions:set', p),
+    onChange:             (cb: () => void)                                               => ipcRenderer.on('permissions:invalidate', () => cb()),
+    removeChangeListeners: ()                                                             => ipcRenderer.removeAllListeners('permissions:invalidate'),
+  },
   dialog: {
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
   },

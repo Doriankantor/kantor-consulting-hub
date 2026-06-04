@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { Session, User } from '@supabase/supabase-js'
 import { supabase, Profile, ADMIN_EMAIL } from '../supabase/client'
 
@@ -10,13 +10,16 @@ interface AuthContextType {
   loading:            boolean
   needsSetup:         boolean
   mustChangePassword: boolean
-  isAdmin:            boolean
+  isRoot:             boolean
+  isAdmin:            boolean  // alias for isRoot — kept for backward compat
+  can:                (key: string) => boolean
   signIn:             (email: string, password: string) => Promise<{ error: string | null }>
   signOut:            () => Promise<void>
   completeSetup:      (anthropicKey: string) => Promise<void>
   skipSetup:          () => Promise<void>
   completeMustChange: () => void
   refreshProfile:     () => Promise<void>
+  refreshPermissions: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -35,7 +38,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     catch { return null }
   })
 
-  const isAdmin = user?.email === ADMIN_EMAIL || localUser?.email === ADMIN_EMAIL
+  const [permKeys, setPermKeys] = useState<Set<string>>(new Set())
+  const isRoot  = user?.email === ADMIN_EMAIL || localUser?.email === ADMIN_EMAIL
+  const isAdmin = isRoot  // backward-compat alias
+  const can = useMemo(() => (key: string) => isRoot || permKeys.has(key), [isRoot, permKeys])
+
+  const refreshPermissions = useCallback(async () => {
+    try {
+      const result = await window.api.permissions.getMine()
+      setPermKeys(new Set(result.keys))
+    } catch { /* best-effort */ }
+  }, [])
 
   function setLocalUser(u: LocalAuthUser | null) {
     setLocalUserState(u)
@@ -50,6 +63,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     window.api.app.setActingUser(localUser?.id ?? null).catch(() => {})
   }, [localUser?.id])
+
+  // Fetch permission keys on login and clear on logout.
+  useEffect(() => {
+    if (localUser) { refreshPermissions() } else { setPermKeys(new Set()) }
+  }, [localUser?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live propagation: re-fetch permissions when main sends an invalidate
+  // (triggered by member_permissions realtime change).
+  useEffect(() => {
+    window.api.permissions.onChange(refreshPermissions)
+    return () => window.api.permissions.removeChangeListeners()
+  }, [refreshPermissions])
 
   const checkSetupNeeded = useCallback(async () => {
     try {
@@ -124,8 +149,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       session, localUser, user, profile, loading,
-      needsSetup, mustChangePassword, isAdmin,
-      signIn, signOut, completeSetup, skipSetup, completeMustChange, refreshProfile,
+      needsSetup, mustChangePassword, isRoot, isAdmin, can,
+      signIn, signOut, completeSetup, skipSetup, completeMustChange, refreshProfile, refreshPermissions,
     }}>
       {children}
     </AuthContext.Provider>
