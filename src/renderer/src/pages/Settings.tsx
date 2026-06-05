@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { ADMIN_EMAIL } from '../supabase/client'
 import { useTheme, GRADIENT_PRESETS, LIGHT_THEME_PRESETS } from '../contexts/ThemeContext'
 import ConnectClaude from '../components/ConnectClaude'
 import { useWorkspace } from '../contexts/WorkspaceContext'
@@ -332,9 +333,9 @@ export default function Settings() {
     if (!confirm(`Remove ${memberName} from all non-admin boards? They will lose access immediately.`)) return
     for (const b of matrixBoards) {
       if (matrix[b.id]?.has(userId)) {
-        // Don't remove admins
+        // Don't remove root (root has no board_members rows and sees all via isRoot)
         const memberRow = matrixMembers.find(m => m.id === userId)
-        if (memberRow?.role === 'admin') continue
+        if (memberRow?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) continue
         await window.api.boardMembers.remove(b.id, userId).catch(() => {})
         setMatrix(prev => {
           const next = { ...prev }
@@ -1275,7 +1276,8 @@ export default function Settings() {
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
                         {matrixMembers.map(m => {
-                          const isAdminMember = m.role === 'admin'
+                          // Only ROOT implicitly has all-board access; role==='admin' is cosmetic now.
+                          const isRootMember = m.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()
                           const name = m.full_name || m.email
                           return (
                             <tr key={m.id} className="group hover:bg-gray-50 dark:hover:bg-white/[0.02] transition">
@@ -1286,13 +1288,13 @@ export default function Settings() {
                                 </div>
                               </td>
                               {matrixBoards.map(b => {
-                                const hasAccess = isAdminMember || !!(matrix[b.id]?.has(m.id))
+                                const hasAccess = isRootMember || !!(matrix[b.id]?.has(m.id))
                                 return (
                                   <td key={b.id} className="py-2.5 px-2 text-center">
                                     <input
                                       type="checkbox"
                                       checked={hasAccess}
-                                      disabled={isAdminMember}
+                                      disabled={isRootMember}
                                       onChange={() => toggleBoardAccess(b.id, m.id, hasAccess)}
                                       className={`titlebar-no-drag w-4 h-4 rounded cursor-pointer disabled:cursor-not-allowed ${hasAccess ? 'accent-green-500' : ''}`}
                                       title={hasAccess ? 'Has access' : 'No access'}
@@ -1302,7 +1304,7 @@ export default function Settings() {
                               })}
                               <td className="py-2.5 pl-3">
                                 <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition">
-                                  {!isAdminMember && (
+                                  {!isRootMember && (
                                     <>
                                       <button
                                         onClick={() => grantAllBoards(m.id)}

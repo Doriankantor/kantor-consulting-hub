@@ -78,9 +78,7 @@ export default function Team() {
   type PermRow = { user_email: string; permission_key: string }
   const [allPerms, setAllPerms] = useState<PermRow[]>([])
   const PERM_LABELS: Record<string, string> = {
-    see_all_boards:    'See all boards',
     delete_attachment: 'Delete attachments',
-    invite_members:    'Invite members',
     add_board_members: 'Add members to boards',
   }
   const PERM_KEYS = Object.keys(PERM_LABELS)

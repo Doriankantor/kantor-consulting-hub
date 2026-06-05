@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-06-02
-  Current version: v2.0.5   |   167 commits   |   ~31,200 lines of TS/TSX
+  Generated: 2026-06-06
+  Current version: v2.0.6   |   174 commits   |   ~31,300 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -451,6 +451,42 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       result.error strings in a red banner below the upload zone. Previously any
       failure (auth rejection, storage error, network error) was silently swallowed
       and the spinner just stopped with no feedback.
+
+  v2.0.6 (Jun 6) -- PERMISSIONS MODEL: PHASE 1b + SIMPLIFICATION TO isRoot + 2 TOGGLES
+    * Phase 1b per-member permissions: cloud member_permissions table (email-keyed,
+      RLS on, in supabase_realtime, replica identity full); resolveActor() ->
+      { email, isRoot, can(key) }; all boards.ts gates awaited; root-only toggle
+      panel on the Team page; permissions IPC + preload + live invalidate push.
+    * Live propagation fix: AuthContext exposes permsVersion (bumped on every
+      permissions refresh); WorkspaceContext re-fetches the board list when it
+      changes, so a live grant/revoke updates the list without a relaunch (absorbs
+      the login-time bump to avoid a double load). No second onChange listener.
+    * Vocabulary cleanup: dropped the isAdmin alias from AuthContext — privilege is
+      now isRoot (email === CLOUD_ADMIN_EMAIL) + can(); ~18 consumers updated.
+      Admin-email centralized in src/main/constants.ts. comment-delete confirmed
+      reserved-to-root.
+    * NEW scoped capability add_board_members: a non-root member may add others to
+      a board ONLY with the grant AND a real board_members row for that board
+      (strict membership queried directly; see_all_boards never satisfied it). Root
+      adds to any board. Plus-circle UI gated to match and reacts to permsVersion.
+    * MODEL SIMPLIFICATION: eliminated see_all_boards entirely — a member sees a
+      board only via a board_members row; only root sees all (14 boards.ts gates
+      switched from can('see_all_boards') to actor.isRoot). Board creation is now
+      admin-only (main rejects non-root; New Board button already root-gated).
+      invite_members removed as a toggle — inviting people to the app is admin-only
+      (Team form + team:invite handler gate on isRoot). The ONLY toggleable member
+      capabilities are now delete_attachment and add_board_members.
+    * Decoupled local_users.role from privilege: role is now a cosmetic badge only.
+      Fixed 5 spots that conflated role==='admin' with privilege (BoardMembersPanel
+      remove-protection, Settings access-matrix all-access/disable/bulk-revoke,
+      Workspace setup-banner count + add-member candidate filter) to key on
+      isRoot (email) instead.
+    * Add-member modal now excludes users already members of the target board
+      (matched by email) — previously only excluded admins, which had masked the
+      gap while the test member carried role='admin'.
+    * Cleanup SQL (run in the hub project): DELETE FROM member_permissions WHERE
+      permission_key IN ('see_all_boards','invite_members'); plus reset any
+      role='admin' non-root test accounts to 'member' (per-device local_users).
 
   v2.0.4 (Jun 4) -- FIX: SEED NOW MIGRATES ALL LINK-TYPE ATTACHMENTS (gdoc, gslides, etc.)
     * seedAttachmentsToCloud: broadened link detection from `type === 'url'` to a

@@ -9,9 +9,7 @@ export const CLOUD_ADMIN_EMAIL = 'doriankantor@gmail.com'
 // RESERVED capabilities (delete board, permanent-delete contact) are hardcoded
 // isRoot checks and have no key here.
 export const PERMISSION_KEYS = {
-  SEE_ALL_BOARDS:    'see_all_boards',
   DELETE_ATTACHMENT: 'delete_attachment',
-  INVITE_MEMBERS:    'invite_members',
   ADD_BOARD_MEMBERS: 'add_board_members',
 } as const
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS]

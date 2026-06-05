@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { ADMIN_EMAIL } from '../supabase/client'
 
 // ── Color helpers ──────────────────────────────────────────────────────────
 
@@ -173,8 +174,9 @@ export default function BoardMembersPanel({ boardId, boardName, isAdmin, canAddM
               {members.map(m => {
                 const name = m.full_name || m.email
                 const isSelf = m.user_id === currentUserId
-                const isAdminMember = m.role === 'admin'
-                const canRemove = isAdmin && !isSelf && !isAdminMember
+                const isAdminMember = m.role === 'admin'           // cosmetic: drives the Admin/Member badge
+                const isRootMember = m.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()
+                const canRemove = isAdmin && !isSelf && !isRootMember
 
                 return (
                   <div key={m.user_id} className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-white/[0.03] transition group">

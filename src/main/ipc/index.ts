@@ -544,9 +544,9 @@ function registerTeamHandlers() {
   )
 
   ipcMain.handle('team:invite', async (_e, params: { email: string; full_name: string; role?: string }) => {
-    // Caller must be root OR have invite_members permission (enforced in main; never trust renderer).
+    // Inviting people to the app is admin-only (enforced in main; never trust renderer).
     const caller = await boardsCloud.resolveActor(currentActingUserId)
-    if (!caller.can(PERMISSION_KEYS.INVITE_MEMBERS)) {
+    if (!caller.isRoot) {
       return { error: 'You do not have permission to invite team members.' }
     }
 

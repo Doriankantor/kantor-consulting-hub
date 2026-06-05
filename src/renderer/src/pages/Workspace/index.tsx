@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useAuth } from '../../contexts/AuthContext'
+import { ADMIN_EMAIL } from '../../supabase/client'
 import KanbanView from './KanbanView'
 import TimelineView from './TimelineView'
 import ListView from './ListView'
@@ -51,8 +52,8 @@ function BoardMemberAvatars({ boardId, boardName, isAdmin, currentUserId, curren
   const [showPanel, setShowPanel] = useState(false)
   const { isRoot, can, localUser } = useAuth()
   // STRICT membership of THIS board, by email (the cloud board_members key),
-  // derived from the already-loaded member list — no extra IPC. see_all_boards
-  // does NOT count: such a user simply has no row in `members`.
+  // derived from the already-loaded member list — no extra IPC. Only a real
+  // board_members row counts (root adds via isRoot, below).
   const myEmail = localUser?.email?.toLowerCase()
   const isMemberOfThisBoard = !!myEmail && members.some(m => m.email.toLowerCase() === myEmail)
   // Reacts to permsVersion: AuthContext rebuilds `can` on every permissions
@@ -251,7 +252,7 @@ export default function Workspace() {
     }
     // Check if any board has 0 non-admin members
     Promise.all(boards.map(b =>
-      window.api.boardMembers.list(b.id).then(ms => ms.filter(m => m.role !== 'admin').length)
+      window.api.boardMembers.list(b.id).then(ms => ms.filter(m => m.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()).length)
     )).then(counts => {
       if (counts.some(c => c === 0)) setShowSetupBanner(true)
     }).catch(() => {})
@@ -391,8 +392,17 @@ export default function Workspace() {
 
   async function openNewBoardMembersModal(boardId: string, boardName: string) {
     const team = await window.api.team.list().catch(() => [])
-    // Exclude admin from the list (admin always has access)
-    setAllTeamForModal(team.filter(m => m.role !== 'admin' && m.id !== 'local-admin').map(m => ({ id: m.id, full_name: m.full_name, email: m.email })))
+    // Existing members of THIS board — boardMembers.list returns user_id = email
+    // (the cloud key). Match by email (lowercased): the id/email mismatch across
+    // devices makes id comparison unreliable.
+    const members = await window.api.boardMembers.list(boardId).catch(() => [])
+    const existingEmails = new Set(members.map(m => String(m.user_id).toLowerCase()))
+    // Exclude root (always has access) and anyone already a member of this board.
+    setAllTeamForModal(team.filter(m =>
+      m.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()
+      && m.id !== 'local-admin'
+      && !existingEmails.has(m.email.toLowerCase())
+    ).map(m => ({ id: m.id, full_name: m.full_name, email: m.email })))
     setSelectedMemberIds(new Set())
     setNewBoardMembersModal({ boardId, boardName })
   }

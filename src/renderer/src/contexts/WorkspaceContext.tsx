@@ -371,7 +371,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [loadBoards, localUser?.id])
 
   // ── Re-fetch the board list when permissions change LIVE ────────────────────
-  // The list is filtered server-side (main applies see_all_boards), so a live
+  // The list is filtered server-side (main scopes by membership / isRoot), so a live
   // can() change alone won't update the cached list — we must re-fetch. This
   // mirrors the workspace:remoteChange 'list' path above, but is driven by
   // AuthContext's permsVersion (NOT a second permissions.onChange listener, which
