@@ -282,7 +282,7 @@ function NewBoardModal({ areas, onClose, onCreate }: NewBoardModalProps) {
 // ── Main sidebar ───────────────────────────────────────────────────────────
 
 export default function Sidebar() {
-  const { isAdmin, localUser } = useAuth()
+  const { isRoot, localUser } = useAuth()
   const { boards, archivedBoards, activeBoard, setActiveBoardId, createBoard, refreshBoards, areas } = useWorkspace()
   const { state: updateState } = useUpdate()
   const updateAvailable = updateState === 'available' || updateState === 'downloading' || updateState === 'ready'
@@ -298,12 +298,12 @@ export default function Sidebar() {
 
   // Load board membership for non-admin users
   useEffect(() => {
-    if (isAdmin) return
+    if (isRoot) return
     if (!userId) return
     window.api.boardMembers.listForUser(userId).then(ids => setMemberBoardIds(ids)).catch(() => {})
-  }, [isAdmin, userId])
+  }, [isRoot, userId])
 
-  const visibleBoards = isAdmin ? boards : boards.filter(b => memberBoardIds.includes(b.id))
+  const visibleBoards = isRoot ? boards : boards.filter(b => memberBoardIds.includes(b.id))
 
   const refreshInboxCount = useCallback(async () => {
     try {
@@ -348,7 +348,7 @@ export default function Sidebar() {
     { to: '/files',        label: 'Files',        icon: <FilesIcon /> },
     { to: '/contacts',     label: 'Contacts',     icon: <ContactsIcon /> },
     { to: '/calendar',  label: 'Calendar',  icon: <CalendarIcon /> },
-    ...(isAdmin ? [{ to: '/analytics', label: 'Analytics', icon: <AnalyticsIcon /> }] : []),
+    ...(isRoot ? [{ to: '/analytics', label: 'Analytics', icon: <AnalyticsIcon /> }] : []),
     { to: '/team',      label: 'Team',       icon: <TeamIcon /> },
     { to: '/settings',  label: 'Settings',   icon: <SettingsIcon />, updateDot: updateAvailable },
     { to: '/trash',     label: 'Trash',      icon: <TrashIcon /> },
@@ -367,7 +367,7 @@ export default function Sidebar() {
     const newId = await createBoard(name)
     await refreshBoards()
     navigate('/workspace')
-    if (isAdmin) {
+    if (isRoot) {
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('newBoardCreated', { detail: { id: newId, name } }))
       }, 200)
@@ -417,7 +417,7 @@ export default function Sidebar() {
             ))}
 
             {/* New Board button — admin only */}
-            {isAdmin && (
+            {isRoot && (
               <button
                 onClick={() => setNewBoardModal(true)}
                 className="titlebar-no-drag w-full flex items-center gap-1.5 pl-5 pr-3 py-1.5 rounded-xl text-xs text-[#888] dark:text-white/40 hover:text-[#555] dark:hover:text-white/65 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition"
@@ -507,7 +507,7 @@ export default function Sidebar() {
       )}
 
       {/* Admin indicator */}
-      {isAdmin && (
+      {isRoot && (
         <div className="px-3 mx-2.5 py-2 rounded-xl bg-black/[0.06] dark:bg-white/[0.08] border border-black/[0.08] dark:border-white/[0.12]">
           <div className="flex items-center gap-2">
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="text-gray-600 dark:text-white/75">

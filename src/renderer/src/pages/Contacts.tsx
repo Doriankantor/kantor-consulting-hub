@@ -384,7 +384,7 @@ function ContactDetail({
   onDeleted: () => void
   onUpdated: (c: Contact) => void
 }) {
-  const { isAdmin, localUser } = useAuth()
+  const { isRoot, localUser } = useAuth()
   const { tasks: workspaceTasks, selectTask } = useWorkspace()
 
   const [contact, setContact] = useState<Contact | null>(null)
@@ -641,7 +641,7 @@ function ContactDetail({
 
           {/* Actions */}
           <div className="flex items-center gap-2 shrink-0">
-            {isAdmin && (
+            {isRoot && (
               <label className="flex items-center gap-1.5 cursor-pointer select-none" title="Confidential">
                 <div
                   onClick={() => handleToggleFlag('confidential', contact.confidential === 1 ? 0 : 1)}
@@ -1119,7 +1119,7 @@ function ContactDetail({
           </section>
 
           {/* ── Do Not Contact ─────────────────────────────────────────── */}
-          {isAdmin && (
+          {isRoot && (
             <section className="pb-6">
               <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-gray-200 dark:border-white/[0.07] bg-white/60 dark:bg-white/[0.02]">
                 <div>
@@ -1147,7 +1147,7 @@ function ContactDetail({
 // ── Main Contacts Page ─────────────────────────────────────────────────────
 
 export default function Contacts() {
-  const { isAdmin, localUser } = useAuth()
+  const { isRoot, localUser } = useAuth()
   const { selectedTask } = useWorkspace()
 
   const [contacts, setContacts] = useState<Contact[]>([])
@@ -1178,7 +1178,7 @@ export default function Contacts() {
       setCloudError(null)
       // Permission filter: hide confidential/sensitive from non-admin non-assigned
       const userId = localUser?.id ?? 'local-admin'
-      const visible = isAdmin
+      const visible = isRoot
         ? data
         : data.filter(c => {
             if (c.confidential === 1 && c.assigned_to !== userId) return false
@@ -1191,7 +1191,7 @@ export default function Contacts() {
       setCloudError(`Couldn't reach the server — contacts may be out of date. (${e?.message ?? 'network error'})`)
     }
     setLoading(false)
-  }, [isAdmin, localUser])
+  }, [isRoot, localUser])
 
   const loadTrash = useCallback(async () => {
     setTrashLoading(true)
@@ -1414,7 +1414,7 @@ export default function Contacts() {
                         >
                           Restore
                         </button>
-                        {isAdmin && (
+                        {isRoot && (
                           <button
                             onClick={() => handlePermanentDelete(c.id, c.full_name)}
                             className="titlebar-no-drag flex-1 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 text-xs font-semibold transition"

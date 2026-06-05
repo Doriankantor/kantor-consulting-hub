@@ -55,7 +55,7 @@ function RoleBadge({ role }: { role: string }) {
 // ── Main ──────────────────────────────────────────────────────────────────
 
 export default function Team() {
-  const { isAdmin, isRoot, localUser } = useAuth()
+  const { isRoot, localUser } = useAuth()
   const currentId = localUser?.id ?? null
 
   const [members, setMembers] = useState<LocalTeamMember[]>([])
@@ -203,7 +203,7 @@ export default function Team() {
         </div>
 
         {/* Invite form — admin only */}
-        {isAdmin && (
+        {isRoot && (
           <div className="bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl p-5 mb-6 shadow-sm">
             <h2 className="text-sm font-semibold text-gray-700 dark:text-white/85 mb-1">
               Invite a team member
@@ -373,12 +373,12 @@ export default function Team() {
 
                   <div className="flex items-center gap-2">
                     {/* Pending member: show access code + a way to confirm them */}
-                    {isAdmin && member.status === 'invited' && inviteCodes[member.id] && (
+                    {isRoot && member.status === 'invited' && inviteCodes[member.id] && (
                       <code className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 font-mono text-[11px] tracking-wider select-all">
                         {inviteCodes[member.id]}
                       </code>
                     )}
-                    {isAdmin && member.status === 'invited' && (
+                    {isRoot && member.status === 'invited' && (
                       <button
                         onClick={e => { e.stopPropagation(); handleMarkActive(member) }}
                         className="titlebar-no-drag px-2 py-1 rounded-lg text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/10 transition"
@@ -389,7 +389,7 @@ export default function Team() {
                     )}
                     <StatusBadge status={member.status} />
                     <RoleBadge role={member.role} />
-                    {isAdmin && (
+                    {isRoot && (
                       <button
                         onClick={e => { e.stopPropagation(); copyMemberCode(member) }}
                         className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2 py-1 rounded-lg text-[10px] font-semibold text-gray-400 dark:text-white/50 hover:text-hub-gold hover:bg-hub-gold/10 transition"
@@ -398,7 +398,7 @@ export default function Team() {
                         {copied === `code-${member.id}` ? 'Copied ✓' : 'Copy code'}
                       </button>
                     )}
-                    {isAdmin && member.id !== currentId && (
+                    {isRoot && member.id !== currentId && (
                       <button
                         onClick={e => { e.stopPropagation(); handleRemove(member) }}
                         className="titlebar-no-drag opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition"
@@ -416,7 +416,7 @@ export default function Team() {
           )}
         </div>
 
-        {!isAdmin && (
+        {!isRoot && (
           <p className="mt-4 text-center text-xs text-gray-400 dark:text-white/50">
             Contact your administrator to add or remove team members.
           </p>

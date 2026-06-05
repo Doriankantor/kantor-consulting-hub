@@ -39,7 +39,7 @@ function parseConfig(raw: string | null | undefined): InfoPageConfig {
 }
 
 export default function InfoPages() {
-  const { isAdmin, localUser } = useAuth()
+  const { isRoot, localUser } = useAuth()
   const [pages, setPages] = useState<InfoPage[]>([])
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('sources')
@@ -85,8 +85,8 @@ export default function InfoPages() {
 
   useEffect(() => { refreshPipelineCounts() }, [refreshPipelineCounts])
 
-  const canApprove = isAdmin || isOwner
-  const canGeneratePrompt = isAdmin
+  const canApprove = isRoot || isOwner
+  const canGeneratePrompt = isRoot
 
   function tabBadge(id: string): number {
     if (id === 'review') return pendingCount
@@ -108,7 +108,7 @@ export default function InfoPages() {
         selectedPageId={selectedPageId}
         onSelect={setSelectedPageId}
         onRefresh={loadPages}
-        isAdmin={isAdmin}
+        isAdmin={isRoot}
       />
 
       {/* Main area */}
@@ -151,7 +151,7 @@ export default function InfoPages() {
             {activeTab === 'manual'    && <ManualInfoTab pageId={selectedPage.id} page={selectedPage} localUser={localUser} />}
             {activeTab === 'analysis'  && <ClaudeAnalysisTab pageId={selectedPage.id} page={selectedPage} canApprove={canApprove} localUser={localUser} onNavigate={setActiveTab} />}
             {activeTab === 'design'    && <DesignNotesTab pageId={selectedPage.id} page={selectedPage} localUser={localUser} onNavigate={setActiveTab} />}
-            {activeTab === 'review'    && <CommitReviewTab pageId={selectedPage.id} page={selectedPage} canApprove={canApprove} canGeneratePrompt={canGeneratePrompt} onCountChange={setPendingCount} localUser={localUser} isAdmin={isAdmin} />}
+            {activeTab === 'review'    && <CommitReviewTab pageId={selectedPage.id} page={selectedPage} canApprove={canApprove} canGeneratePrompt={canGeneratePrompt} onCountChange={setPendingCount} localUser={localUser} isAdmin={isRoot} />}
             {activeTab === 'published' && <RecentlyPublishedTab pageId={selectedPage.id} />}
           </div>
         </div>

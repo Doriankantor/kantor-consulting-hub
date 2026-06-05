@@ -49,7 +49,7 @@ function TypeIcon({ type }: { type: string }) {
 }
 
 export default function Trash() {
-  const { localUser, isAdmin } = useAuth()
+  const { localUser, isRoot } = useAuth()
   const [items, setItems] = useState<TrashItem[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterType>('all')
@@ -137,7 +137,7 @@ export default function Trash() {
               >
                 Restore all
               </button>
-              {isAdmin && (
+              {isRoot && (
                 <button
                   onClick={() => setConfirmEmpty(true)}
                   className="px-3 py-1.5 rounded-lg text-sm font-medium bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 transition"
@@ -222,7 +222,7 @@ export default function Trash() {
                 >
                   {restoring === item.id ? '…' : 'Restore'}
                 </button>
-                {isAdmin && (
+                {isRoot && (
                   <button
                     onClick={() => handleDeletePerm(item.id)}
                     disabled={deleting === item.id}

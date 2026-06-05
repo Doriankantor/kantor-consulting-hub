@@ -182,7 +182,7 @@ function fmtActive(ts: string | null): string {
 }
 
 export default function Settings() {
-  const { user, localUser, isAdmin, signOut } = useAuth()
+  const { user, localUser, isRoot, signOut } = useAuth()
   const { theme, setTheme, gradientTheme, setGradientTheme, lightTheme, setLightTheme } = useTheme()
   const { refreshAreas } = useWorkspace()
   const { state: updateState, version: updateVersion, percent: updatePercent, errorMsg: updateErrorMsg, lastChecked, autoInstall, releaseNotes, checkNow, downloadNow, setAutoInstall } = useUpdate()
@@ -405,7 +405,7 @@ export default function Settings() {
         })
       }).catch(() => {})
     }
-    if (isAdmin) { loadAreas(); loadTeam(); loadTemplates(); loadMatrix() }
+    if (isRoot) { loadAreas(); loadTeam(); loadTemplates(); loadMatrix() }
     async function loadArchived() {
       setArchivedLoading(true)
       try {
@@ -420,7 +420,7 @@ export default function Settings() {
       setArchivedLoading(false)
     }
     loadArchived()
-  }, [isAdmin, localUser])
+  }, [isRoot, localUser])
 
   async function loadTeam() {
     setLoadingTeam(true)
@@ -692,7 +692,7 @@ export default function Settings() {
                 <p className="text-xs text-gray-400 dark:text-white/65 mt-0.5">{displayEmail}</p>
               </div>
             </div>
-            <div className="flex gap-1.5">{isAdmin && <RoleBadge role="admin" />}</div>
+            <div className="flex gap-1.5">{isRoot && <RoleBadge role="admin" />}</div>
           </Row>
         </Section>
 
@@ -813,7 +813,7 @@ export default function Settings() {
         </Section>
 
         {/* Integrations (admin only) */}
-        {isAdmin && (
+        {isRoot && (
           <Section title="Integrations">
             {/* Team shared API key */}
             <div className="px-5 py-4 border-b border-gray-100 dark:border-white/[0.06]">
@@ -949,7 +949,7 @@ export default function Settings() {
         )}
 
         {/* Areas of Analysis (admin only) */}
-        {isAdmin && (
+        {isRoot && (
           <Section title="Areas of Analysis">
             <div className="px-5 py-4">
               <div className="flex items-center justify-between mb-3">
@@ -1046,7 +1046,7 @@ export default function Settings() {
         )}
 
         {/* Task Templates (admin only) */}
-        {isAdmin && (
+        {isRoot && (
           <Section title="Task Templates">
             <div className="px-5 py-4">
               <div className="flex items-center justify-between mb-3">
@@ -1129,10 +1129,10 @@ export default function Settings() {
         )}
 
         {/* Cloud migration (admin only) — one-time seeds for all migrated categories */}
-        {isAdmin && <CloudMigrationSection adminEmail={localUser?.email ?? user?.email ?? ''} />}
+        {isRoot && <CloudMigrationSection adminEmail={localUser?.email ?? user?.email ?? ''} />}
 
         {/* Team Management (admin only) */}
-        {isAdmin && (
+        {isRoot && (
           <Section title="Team Management">
             {/* Tabs */}
             <div className="flex border-b border-gray-100 dark:border-white/[0.06]">
@@ -1396,7 +1396,7 @@ export default function Settings() {
                             >
                               Restore
                             </button>
-                            {isAdmin && (
+                            {isRoot && (
                               <button
                                 onClick={() => handleDeleteBoard(board.id, board.name)}
                                 className="titlebar-no-drag px-2.5 py-1.5 rounded-lg text-red-400/60 hover:text-red-400 hover:bg-red-500/10 text-xs transition"
@@ -1551,7 +1551,7 @@ export default function Settings() {
             { key: 'email_task_deadline_30', label: 'Task deadline reminder (2nd reminder)' },
             { key: 'email_task_overdue',     label: 'Task overdue' },
             { key: 'email_task_stage',       label: 'Task stage changed' },
-            ...(isAdmin ? [{ key: 'email_task_completed', label: 'Task completed (admin only)' }] : []),
+            ...(isRoot ? [{ key: 'email_task_completed', label: 'Task completed (admin only)' }] : []),
             { key: 'email_task_comment',  label: 'Comment on your task' },
             { key: 'email_task_mention',  label: '@mention in a comment' },
           ].map(({ key, label }) => (
@@ -1593,7 +1593,7 @@ export default function Settings() {
           </div>
           {[
             { key: 'email_board_added', label: 'You were added to a board' },
-            ...(isAdmin ? [
+            ...(isRoot ? [
               { key: 'email_team_invited', label: 'Team member invited (admin only)' },
               { key: 'email_team_removed', label: 'Team member removed (admin only)' },
             ] : []),
@@ -1614,7 +1614,7 @@ export default function Settings() {
             <p className="text-xs font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider">System</p>
           </div>
           {[
-            ...(isAdmin ? [{ key: 'email_app_update', label: 'App update available (admin only)' }] : []),
+            ...(isRoot ? [{ key: 'email_app_update', label: 'App update available (admin only)' }] : []),
             { key: 'email_weekly_digest', label: 'Weekly digest (every Monday 8am)' },
           ].map(({ key, label }) => (
             <Row key={key}>
@@ -1757,7 +1757,7 @@ export default function Settings() {
             </div>
 
             {/* Auto-update toggle — admin only */}
-            {isAdmin && (
+            {isRoot && (
               <label className="flex items-center justify-between gap-4 cursor-pointer">
                 <div>
                   <p className="text-sm text-gray-700 dark:text-white/80">Automatically install updates</p>

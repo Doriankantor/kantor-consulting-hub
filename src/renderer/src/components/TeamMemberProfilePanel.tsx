@@ -52,7 +52,7 @@ interface Props {
 export default function TeamMemberProfilePanel({ memberId, onClose, showSendMessage = false }: Props) {
   const navigate = useNavigate()
   const { tasks, setActiveBoardId, openTask, boards } = useWorkspace()
-  const { localUser, isAdmin } = useAuth()
+  const { localUser, isRoot } = useAuth()
 
   const [member, setMember] = useState<LocalTeamMember | null>(null)
   const [activity, setActivity] = useState<{id:string; task_id:string; actor_name:string; action:string; created_at:string; source:'activity'|'comment'; task_title:string|null}[]>([])
@@ -260,7 +260,7 @@ export default function TeamMemberProfilePanel({ memberId, onClose, showSendMess
           )}
 
           {/* Remove from team — admin only, not self */}
-          {isAdmin && member.id !== localUser?.id && (
+          {isRoot && member.id !== localUser?.id && (
             <div className="p-4">
               {confirmRemove ? (
                 <div className="space-y-2">

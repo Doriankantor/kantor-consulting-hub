@@ -43,7 +43,7 @@ interface CalendarItem {
 type Group = 'today' | 'week' | 'upcoming' | 'nodate' | 'done'
 
 export default function Todo() {
-  const { localUser, isAdmin } = useAuth()
+  const { localUser, isRoot } = useAuth()
   const { areas, openTask, setActiveBoardId } = useWorkspace()
   const navigate = useNavigate()
   const userId = localUser?.id ?? 'local-admin'
@@ -513,7 +513,7 @@ export default function Todo() {
     + calGroups.today.length + calGroups.week.length
 
   // Personal todos only render for the logged-in user (never admin viewing others)
-  const showPersonal = !isAdmin || localUser?.id === userId
+  const showPersonal = !isRoot || localUser?.id === userId
 
   return (
     <div className="h-full flex flex-col bg-slate-50 dark:bg-hub-navy overflow-hidden">

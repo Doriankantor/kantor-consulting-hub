@@ -53,7 +53,7 @@ function StatusBadge({ status }: { status: string }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function Clients() {
-  const { isAdmin } = useAuth()
+  const { isRoot } = useAuth()
 
   // List state
   const [clients, setClients] = useState<ClientRecord[]>([])
@@ -239,7 +239,7 @@ export default function Clients() {
                 {clients.length}
               </span>
             </div>
-            {isAdmin && (
+            {isRoot && (
               <button
                 onClick={() => setShowNewClient(v => !v)}
                 className="titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-hub-gold/15 hover:bg-hub-gold/25 border border-hub-gold/30 text-hub-gold text-xs font-semibold transition"
@@ -286,7 +286,7 @@ export default function Clients() {
         </div>
 
         {/* New client form */}
-        {showNewClient && isAdmin && (
+        {showNewClient && isRoot && (
           <div className="px-4 py-4 border-b border-gray-100 dark:border-white/[0.06] space-y-2.5 bg-gray-50 dark:bg-white/[0.02]">
             <p className="text-[10px] font-semibold text-gray-400 dark:text-white/65 uppercase tracking-widest">New Client</p>
             <input value={newClient.name} onChange={e => setNewClient(p => ({ ...p, name: e.target.value }))} placeholder="Client name *" className={inputCls} />
@@ -418,7 +418,7 @@ export default function Clients() {
                   <StatusBadge status={editingClient ? (editData.status ?? detail.client.status) : detail.client.status} />
                 </div>
               </div>
-              {isAdmin && (
+              {isRoot && (
                 <div className="flex items-center gap-2 shrink-0 mt-1">
                   {editingClient ? (
                     <>
@@ -592,7 +592,7 @@ export default function Clients() {
                     <p className="text-sm text-gray-500 dark:text-white/65">
                       {detail.contacts.length} contact{detail.contacts.length !== 1 ? 's' : ''}
                     </p>
-                    {isAdmin && (
+                    {isRoot && (
                       <button
                         onClick={() => setShowNewContact(v => !v)}
                         className="titlebar-no-drag flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-hub-gold/15 hover:bg-hub-gold/25 border border-hub-gold/30 text-hub-gold text-xs font-semibold transition"
@@ -605,7 +605,7 @@ export default function Clients() {
                     )}
                   </div>
 
-                  {showNewContact && isAdmin && (
+                  {showNewContact && isRoot && (
                     <div className="p-4 rounded-xl bg-gray-50 dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.08] space-y-2.5">
                       <input value={newContact.name} onChange={e => setNewContact(p => ({ ...p, name: e.target.value }))} placeholder="Name *" className={inputCls} />
                       <input value={newContact.role} onChange={e => setNewContact(p => ({ ...p, role: e.target.value }))} placeholder="Role / Title" className={inputCls} />
@@ -640,7 +640,7 @@ export default function Clients() {
                           {c.email && <p className="text-xs text-gray-500 dark:text-white/50 mt-0.5">{c.email}</p>}
                           {c.phone && <p className="text-xs text-gray-400 dark:text-white/65 mt-0.5">{c.phone}</p>}
                         </div>
-                        {isAdmin && (
+                        {isRoot && (
                           <button
                             onClick={() => handleDeleteContact(c.id)}
                             className="titlebar-no-drag shrink-0 p-1 rounded text-gray-300 dark:text-white/50 hover:text-red-400 transition opacity-0 group-hover:opacity-100"

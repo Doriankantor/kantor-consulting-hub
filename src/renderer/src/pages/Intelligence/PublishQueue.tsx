@@ -32,7 +32,7 @@ const TYPE_COLORS: Record<string, string> = {
 interface Props { onPushed: () => void }
 
 export default function PublishQueue({ onPushed }: Props) {
-  const { localUser, isAdmin } = useAuth()
+  const { localUser, isRoot } = useAuth()
   const [queue, setQueue] = useState<IntelligenceSource[]>([])
   const [pushLog, setPushLog] = useState<IntelligencePushLog[]>([])
   const [loading, setLoading] = useState(true)
@@ -166,7 +166,7 @@ export default function PublishQueue({ onPushed }: Props) {
             </p>
           </div>
           <div className="ml-auto">
-            {isAdmin ? (
+            {isRoot ? (
               <button
                 onClick={handlePush}
                 disabled={pushing || queue.length === 0}

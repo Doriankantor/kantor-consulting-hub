@@ -107,19 +107,19 @@ interface AnalyticsData {
 }
 
 export default function Analytics() {
-  const { isAdmin } = useAuth()
+  const { isRoot } = useAuth()
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [exportMsg, setExportMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
-    if (!isAdmin) return
+    if (!isRoot) return
     window.api.analytics.getData()
       .then(setData)
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [isAdmin])
+  }, [isRoot])
 
   async function handleExportPDF() {
     setExporting(true)
@@ -138,7 +138,7 @@ export default function Analytics() {
     setTimeout(() => setExportMsg(null), 5000)
   }
 
-  if (!isAdmin) {
+  if (!isRoot) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center">
         <svg width="48" height="48" viewBox="0 0 48 48" fill="none" className="mb-3 text-gray-300 dark:text-white/50">

@@ -184,7 +184,7 @@ export default function Workspace() {
     boards, activeBoard, archiveBoard, deleteBoard, duplicateBoard, renameBoard,
     createBoard, setActiveBoardId, archivedBoards, restoreBoard, restoreTask, cloudError,
   } = useWorkspace()
-  const { localUser, isAdmin, isRoot, can } = useAuth()
+  const { localUser, isRoot, can } = useAuth()
 
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -192,7 +192,7 @@ export default function Workspace() {
   // ── Access protection ───────────────────────────────────────────────────
   const [accessDenied, setAccessDenied] = useState(false)
   useEffect(() => {
-    if (!activeBoard || isAdmin) { setAccessDenied(false); return }
+    if (!activeBoard || isRoot) { setAccessDenied(false); return }
     const userId = localUser?.id ?? 'local-admin'
     window.api.boardMembers.check(activeBoard.id, userId).then(({ hasAccess }) => {
       if (hasAccess) { setAccessDenied(false); return }
@@ -218,7 +218,7 @@ export default function Workspace() {
       setAccessDenied(false)
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeBoard?.id, isAdmin])
+  }, [activeBoard?.id, isRoot])
 
   // ── New board members modal ─────────────────────────────────────────────
   const [newBoardMembersModal, setNewBoardMembersModal] = useState<{ boardId: string; boardName: string } | null>(null)
@@ -232,7 +232,7 @@ export default function Workspace() {
   const [setupPanelBoard, setSetupPanelBoard] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(() => {
-    if (!isAdmin || boards.length === 0) return
+    if (!isRoot || boards.length === 0) return
     const dismissed = localStorage.getItem('boardMembershipSetupDismissed')
     if (dismissed) {
       const until = Number(dismissed)
@@ -244,20 +244,20 @@ export default function Workspace() {
     )).then(counts => {
       if (counts.some(c => c === 0)) setShowSetupBanner(true)
     }).catch(() => {})
-  }, [isAdmin, boards])
+  }, [isRoot, boards])
 
   // Listen for new board creation event from sidebar
   useEffect(() => {
     function handleNewBoardCreated(e: Event) {
       const detail = (e as CustomEvent<{ id: string; name: string }>).detail
-      if (detail && isAdmin) {
+      if (detail && isRoot) {
         openNewBoardMembersModal(detail.id, detail.name)
       }
     }
     window.addEventListener('newBoardCreated', handleNewBoardCreated)
     return () => window.removeEventListener('newBoardCreated', handleNewBoardCreated)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin])
+  }, [isRoot])
 
   // Archived tasks drawer
   const [showArchivedTasks, setShowArchivedTasks] = useState(false)
@@ -442,7 +442,7 @@ export default function Workspace() {
           <BoardMemberAvatars
             boardId={activeBoard.id}
             boardName={activeBoard.name}
-            isAdmin={isAdmin}
+            isAdmin={isRoot}
             currentUserId={localUser?.id ?? 'local-admin'}
             currentUserName={localUser?.name ?? 'Admin'}
           />
@@ -506,7 +506,7 @@ export default function Workspace() {
                       Archive
                     </button>
                   )}
-                  {isAdmin && (
+                  {isRoot && (
                     <>
                       <div className="mx-3 my-1 border-t border-gray-100 dark:border-white/[0.06]"/>
                       <button onClick={handleDelete} className="titlebar-no-drag w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition text-left">
@@ -556,7 +556,7 @@ export default function Workspace() {
       )}
 
       {/* Setup banner (admin only, one-time) */}
-      {showSetupBanner && isAdmin && (
+      {showSetupBanner && isRoot && (
         <div className="shrink-0 flex items-center gap-3 px-5 py-3 bg-indigo-500/10 border-b border-indigo-500/20">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-indigo-500 shrink-0">
             <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.3"/>
@@ -598,7 +598,7 @@ export default function Workspace() {
 
       {/* View content */}
       <div className="flex-1 overflow-hidden">
-        {(!isAdmin && boards.length === 0) ? (
+        {(!isRoot && boards.length === 0) ? (
           // Zero visible boards (cloud, membership-scoped). Filter, don't bounce.
           <div className="flex-1 flex items-center justify-center h-full p-6">
             <div className="text-center max-w-md">

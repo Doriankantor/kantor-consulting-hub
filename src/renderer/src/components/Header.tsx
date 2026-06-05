@@ -30,7 +30,7 @@ function BellIcon() {
 }
 
 export default function Header() {
-  const { profile, user, localUser, isAdmin } = useAuth()
+  const { profile, user, localUser, isRoot } = useAuth()
   const { resolvedTheme, setTheme } = useTheme()
   const navigate = useNavigate()
   const [inboxUnread, setInboxUnread] = useState(0)
@@ -89,7 +89,7 @@ export default function Header() {
           {isDark ? <SunIcon /> : <MoonIcon />}
         </button>
 
-        {isAdmin && (
+        {isRoot && (
           <span className="hidden sm:inline px-2 py-0.5 rounded-full bg-black/[0.06] dark:bg-white/10 border border-black/[0.08] dark:border-white/20 text-gray-600 dark:text-white/70 text-[10px] font-bold tracking-wide">
             ADMIN
           </span>

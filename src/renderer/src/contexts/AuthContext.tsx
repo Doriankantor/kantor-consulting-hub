@@ -11,7 +11,6 @@ interface AuthContextType {
   needsSetup:         boolean
   mustChangePassword: boolean
   isRoot:             boolean
-  isAdmin:            boolean  // alias for isRoot — kept for backward compat
   can:                (key: string) => boolean
   permsVersion:       number   // bumps on every permissions refresh (live invalidate); a stable re-fetch signal
   signIn:             (email: string, password: string) => Promise<{ error: string | null }>
@@ -45,7 +44,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // permissions change live, without subscribing a second permissions.onChange.
   const [permsVersion, setPermsVersion] = useState(0)
   const isRoot  = user?.email === ADMIN_EMAIL || localUser?.email === ADMIN_EMAIL
-  const isAdmin = isRoot  // backward-compat alias
   const can = useMemo(() => (key: string) => isRoot || permKeys.has(key), [isRoot, permKeys])
 
   const refreshPermissions = useCallback(async () => {
@@ -155,7 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       session, localUser, user, profile, loading,
-      needsSetup, mustChangePassword, isRoot, isAdmin, can, permsVersion,
+      needsSetup, mustChangePassword, isRoot, can, permsVersion,
       signIn, signOut, completeSetup, skipSetup, completeMustChange, refreshProfile, refreshPermissions,
     }}>
       {children}

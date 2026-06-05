@@ -76,7 +76,7 @@ function feedIcon(source: 'activity' | 'comment', action: string): string {
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { localUser, isAdmin, isRoot } = useAuth()
+  const { localUser, isRoot } = useAuth()
   const { tasks, columns, members, selectTask, openTask, setActiveBoardId } = useWorkspace()
   const navigate = useNavigate()
   const [profileMemberId, setProfileMemberId] = useState<string | null>(null)
@@ -148,7 +148,7 @@ export default function Dashboard() {
       <div className="mb-7">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           Good {getGreeting()}, {firstName}
-          {isAdmin && (
+          {isRoot && (
             <span className="ml-3 text-sm font-semibold px-2.5 py-1 rounded-full bg-hub-gold/15 border border-hub-gold/30 text-hub-gold align-middle">
               Admin
             </span>
@@ -312,8 +312,8 @@ export default function Dashboard() {
               {members.map(m => (
                 <div
                   key={m.id}
-                  className={`flex items-center gap-2.5 ${isAdmin ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.04] rounded-xl px-2 py-1 -mx-2 transition' : ''}`}
-                  onClick={() => isAdmin && setProfileMemberId(m.id)}
+                  className={`flex items-center gap-2.5 ${isRoot ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-white/[0.04] rounded-xl px-2 py-1 -mx-2 transition' : ''}`}
+                  onClick={() => isRoot && setProfileMemberId(m.id)}
                 >
                   <div
                     className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-white text-[10px] font-bold"

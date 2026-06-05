@@ -214,7 +214,7 @@ interface Props {
 }
 
 export default function NewsTab({ onApprove }: Props) {
-  const { localUser, isAdmin } = useAuth()
+  const { localUser, isRoot } = useAuth()
   const [sources, setSources] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -522,7 +522,7 @@ export default function NewsTab({ onApprove }: Props) {
           </span>
         </div>
 
-        {isAdmin && (
+        {isRoot && (
           <div className="ml-auto flex items-center gap-2">
             <button
               onClick={handleRefreshNews}
@@ -546,7 +546,7 @@ export default function NewsTab({ onApprove }: Props) {
           <p className="text-xs text-orange-800 dark:text-orange-300">
             <span className="font-semibold">{importedCount} source{importedCount !== 1 ? 's' : ''} imported from Contested Skies</span> — pending your confirmation. Review and set final confidence before they move to the Info Pages Sources tab.
           </p>
-          {isAdmin && (
+          {isRoot && (
             <button
               onClick={handleConfirmImported}
               disabled={confirmingImported}
@@ -814,8 +814,8 @@ export default function NewsTab({ onApprove }: Props) {
                       }}
                       onRemove={tag => handleSetTags(source.id, 'thematic', themaTags.filter(t => t !== tag))}
                       onCreate={name => handleCreateTag(source.id, 'thematic', themaTags, name)}
-                      onDelete={isAdmin ? tag => handleDeleteTag('thematic', tag) : undefined}
-                      isAdmin={isAdmin}
+                      onDelete={isRoot ? tag => handleDeleteTag('thematic', tag) : undefined}
+                      isAdmin={isRoot}
                       forceOpen={forceOpenTopicId === source.id}
                     />
                   </div>
@@ -921,7 +921,7 @@ export default function NewsTab({ onApprove }: Props) {
                   </button>
                 )}
                 {/* Delete */}
-                {isAdmin && (
+                {isRoot && (
                   <button
                     onClick={() => handleDelete(source.id)}
                     className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition"

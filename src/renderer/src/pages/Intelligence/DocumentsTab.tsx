@@ -18,7 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
 interface Props { onApprove: (addedToPages?: string[]) => void }
 
 export default function DocumentsTab({ onApprove }: Props) {
-  const { localUser, isAdmin } = useAuth()
+  const { localUser, isRoot } = useAuth()
   const [documents, setDocuments] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -299,7 +299,7 @@ export default function DocumentsTab({ onApprove }: Props) {
                     Reject
                   </button>
                 )}
-                {isAdmin && (
+                {isRoot && (
                   <button
                     onClick={() => handleDelete(doc.id)}
                     className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
