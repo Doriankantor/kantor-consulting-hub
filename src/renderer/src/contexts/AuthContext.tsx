@@ -13,6 +13,7 @@ interface AuthContextType {
   isRoot:             boolean
   isAdmin:            boolean  // alias for isRoot — kept for backward compat
   can:                (key: string) => boolean
+  permsVersion:       number   // bumps on every permissions refresh (live invalidate); a stable re-fetch signal
   signIn:             (email: string, password: string) => Promise<{ error: string | null }>
   signOut:            () => Promise<void>
   completeSetup:      (anthropicKey: string) => Promise<void>
@@ -39,6 +40,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   })
 
   const [permKeys, setPermKeys] = useState<Set<string>>(new Set())
+  // Monotonic counter bumped on each permissions refresh. Consumers (e.g. the
+  // board list) depend on this instead of permKeys' Set identity to re-fetch when
+  // permissions change live, without subscribing a second permissions.onChange.
+  const [permsVersion, setPermsVersion] = useState(0)
   const isRoot  = user?.email === ADMIN_EMAIL || localUser?.email === ADMIN_EMAIL
   const isAdmin = isRoot  // backward-compat alias
   const can = useMemo(() => (key: string) => isRoot || permKeys.has(key), [isRoot, permKeys])
@@ -47,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const result = await window.api.permissions.getMine()
       setPermKeys(new Set(result.keys))
+      setPermsVersion(v => v + 1)
     } catch { /* best-effort */ }
   }, [])
 
@@ -149,7 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       session, localUser, user, profile, loading,
-      needsSetup, mustChangePassword, isRoot, isAdmin, can,
+      needsSetup, mustChangePassword, isRoot, isAdmin, can, permsVersion,
       signIn, signOut, completeSetup, skipSetup, completeMustChange, refreshProfile, refreshPermissions,
     }}>
       {children}

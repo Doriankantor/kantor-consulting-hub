@@ -79,7 +79,7 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 // ── Provider ───────────────────────────────────────────────────────────────
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
-  const { localUser } = useAuth()
+  const { localUser, permsVersion } = useAuth()
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS)
   const [tasks, setTasks] = useState<Task[]>([])
   const [members, setMembers] = useState<TeamMember[]>([])
@@ -369,6 +369,29 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     return () => { window.api.workspace.removeRemoteChangeListeners() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadBoards, localUser?.id])
+
+  // ── Re-fetch the board list when permissions change LIVE ────────────────────
+  // The list is filtered server-side (main applies see_all_boards), so a live
+  // can() change alone won't update the cached list — we must re-fetch. This
+  // mirrors the workspace:remoteChange 'list' path above, but is driven by
+  // AuthContext's permsVersion (NOT a second permissions.onChange listener, which
+  // would clobber AuthContext's via removeAllListeners). We absorb the single
+  // permsVersion bump caused by the login refresh so sign-in / user-switch don't
+  // double-load (the mount effect already loads on localUser.id).
+  const permsUserRef = useRef<string | undefined>(undefined)
+  const absorbLoginPermsRef = useRef(false)
+  useEffect(() => {
+    if (!localUser) { permsUserRef.current = undefined; absorbLoginPermsRef.current = false; return }
+    if (permsUserRef.current !== localUser.id) {
+      // login or user switch: arm to ignore the next (login-triggered) perms bump.
+      permsUserRef.current = localUser.id
+      absorbLoginPermsRef.current = true
+      return
+    }
+    if (absorbLoginPermsRef.current) { absorbLoginPermsRef.current = false; return }
+    loadBoards()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permsVersion, localUser?.id])
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
