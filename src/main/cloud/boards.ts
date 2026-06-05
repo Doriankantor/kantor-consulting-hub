@@ -432,8 +432,22 @@ export async function listMembers(boardId: string): Promise<{ user_id: string; u
 // it is resolved to the stable email here.
 export async function addMember(actingUserId: string | undefined, boardId: string, targetUserId: string, addedByName: string): Promise<{ ok: boolean; error?: string }> {
   const actor = await resolveActor(actingUserId)
-  if (!(await actorCanAccessBoard(actor, boardId))) {
-    return { ok: false, error: 'Only an admin or an existing member of this board can add members.' }
+  // Gate: root may add to ANY board. A non-root actor needs BOTH the
+  // add_board_members capability AND a real board_members row for THIS board.
+  // STRICT membership: query board_members directly — see_all_boards does NOT
+  // satisfy membership here (so we deliberately avoid actorCanAccessBoard /
+  // visibleBoardIds, which short-circuit on see_all_boards).
+  if (!actor.isRoot) {
+    if (!actor.can('add_board_members')) {
+      return { ok: false, error: 'You do not have permission to add members to boards.' }
+    }
+    const { data: membership, error: mErr } = await cloud
+      .from('board_members').select('board_id')
+      .eq('user_email', actor.email).eq('board_id', boardId).maybeSingle()
+    if (mErr) return { ok: false, error: `membership check failed: ${mErr.message}` }
+    if (!membership) {
+      return { ok: false, error: 'You can only add members to boards you belong to.' }
+    }
   }
   // Resolve target (local id OR email) → stable email
   const targetEmail = resolveEmail(targetUserId)

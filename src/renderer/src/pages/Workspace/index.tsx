@@ -49,6 +49,16 @@ interface BoardMemberAvatarsProps {
 function BoardMemberAvatars({ boardId, boardName, isAdmin, currentUserId, currentUserName }: BoardMemberAvatarsProps) {
   const [members, setMembers] = useState<AvatarMember[]>([])
   const [showPanel, setShowPanel] = useState(false)
+  const { isRoot, can, localUser } = useAuth()
+  // STRICT membership of THIS board, by email (the cloud board_members key),
+  // derived from the already-loaded member list — no extra IPC. see_all_boards
+  // does NOT count: such a user simply has no row in `members`.
+  const myEmail = localUser?.email?.toLowerCase()
+  const isMemberOfThisBoard = !!myEmail && members.some(m => m.email.toLowerCase() === myEmail)
+  // Reacts to permsVersion: AuthContext rebuilds `can` on every permissions
+  // refresh, re-rendering this consumer, so a live grant/revoke shows/hides the
+  // add control without a reload.
+  const canAddMembers = isRoot || (can('add_board_members') && isMemberOfThisBoard)
 
   const loadMembers = useCallback(() => {
     window.api.boardMembers.list(boardId).then(setMembers).catch(() => {})
@@ -98,8 +108,8 @@ function BoardMemberAvatars({ boardId, boardName, isAdmin, currentUserId, curren
           )}
         </div>
 
-        {/* Add member button (admin only) */}
-        {isAdmin && (
+        {/* Add member button (root, or a scoped member of THIS board) */}
+        {canAddMembers && (
           <button
             onClick={() => setShowPanel(true)}
             className="titlebar-no-drag w-6 h-6 rounded-full border border-dashed border-gray-300 dark:border-white/25 flex items-center justify-center text-gray-400 dark:text-white/40 hover:border-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition"
@@ -117,6 +127,7 @@ function BoardMemberAvatars({ boardId, boardName, isAdmin, currentUserId, curren
           boardId={boardId}
           boardName={boardName}
           isAdmin={isAdmin}
+          canAddMembers={canAddMembers}
           currentUserId={currentUserId}
           currentUserName={currentUserName}
           onClose={() => { setShowPanel(false); loadMembers() }}
@@ -773,6 +784,7 @@ export default function Workspace() {
           boardId={setupPanelBoard.id}
           boardName={setupPanelBoard.name}
           isAdmin={true}
+          canAddMembers={true}
           currentUserId={localUser?.id ?? 'local-admin'}
           currentUserName={localUser?.name ?? 'Admin'}
           onClose={() => {

@@ -46,7 +46,8 @@ interface TeamMemberRow {
 interface Props {
   boardId: string
   boardName: string
-  isAdmin: boolean
+  isAdmin: boolean        // root: gates member REMOVAL + admin affordances
+  canAddMembers: boolean  // root OR scoped add_board_members member: gates the ADD section
   currentUserId: string
   currentUserName: string
   onClose: () => void
@@ -54,7 +55,7 @@ interface Props {
 
 // ── Panel ──────────────────────────────────────────────────────────────────
 
-export default function BoardMembersPanel({ boardId, boardName, isAdmin, currentUserId, currentUserName, onClose }: Props) {
+export default function BoardMembersPanel({ boardId, boardName, isAdmin, canAddMembers, currentUserId, currentUserName, onClose }: Props) {
   const [members, setMembers] = useState<BoardMember[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -232,8 +233,8 @@ export default function BoardMembersPanel({ boardId, boardName, isAdmin, current
           )}
         </div>
 
-        {/* Add member checklist (admin only) */}
-        {isAdmin && (
+        {/* Add member checklist (root, or a scoped add_board_members member) */}
+        {canAddMembers && (
           <div className="flex-1 flex flex-col min-h-0 px-4 py-3 gap-2">
             <p className="text-xs font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wider">Add Members</p>
 

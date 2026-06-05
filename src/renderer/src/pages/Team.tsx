@@ -81,6 +81,7 @@ export default function Team() {
     see_all_boards:    'See all boards',
     delete_attachment: 'Delete attachments',
     invite_members:    'Invite members',
+    add_board_members: 'Add members to boards',
   }
   const PERM_KEYS = Object.keys(PERM_LABELS)
 
