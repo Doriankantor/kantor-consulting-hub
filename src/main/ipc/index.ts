@@ -338,8 +338,7 @@ function registerCommentHandlers() {
     return entry
   })
   ipcMain.handle('comments:delete', async (_e, id: string, deletedById?: string, deletedByName?: string) => {
-    await boardsCloud.deleteComment(id, deletedById, deletedByName)
-    return true
+    return boardsCloud.deleteComment(currentActingUserId, id, deletedById, deletedByName)
   })
 }
 
@@ -2777,7 +2776,11 @@ function registerIntelligenceHandlers(): void {
 
   // Admin: remove a tag from the registry. Existing article chips are preserved
   // (articles keep their stored JSON) but the tag won't appear in autocomplete.
-  ipcMain.handle('intelligence:deleteTag', (_e, name: string, type: string) => {
+  ipcMain.handle('intelligence:deleteTag', async (_e, name: string, type: string) => {
+    const actor = await boardsCloud.resolveActor(currentActingUserId)
+    if (!actor.isRoot && !actor.can('delete_intel_tag')) {
+      return { ok: false, error: 'You do not have permission to delete intelligence tags.' }
+    }
     const t = type === 'disposition' ? 'disposition' : 'thematic'
     db().prepare('DELETE FROM known_tags WHERE name=? AND type=?').run(name, t)
     return { ok: true }
@@ -2827,7 +2830,19 @@ function registerIntelligenceHandlers(): void {
     return { ok: true }
   })
 
-  ipcMain.handle('intelligence:deleteSource', (_e, id: string) => {
+  ipcMain.handle('intelligence:deleteSource', async (_e, id: string) => {
+    // Type-aware gate: the row's `type` selects which permission is required.
+    const row = db().prepare('SELECT type FROM intelligence_sources WHERE id=?').get(id) as { type?: string } | undefined
+    if (!row) return { ok: true } // already gone
+    const key = row.type === 'document' ? 'delete_intel_doc'
+              : row.type === 'article'  ? 'delete_intel_news'
+              : row.type === 'social'   ? 'delete_intel_social'
+              : null
+    const actor = await boardsCloud.resolveActor(currentActingUserId)
+    // Unknown/unmapped type → root-only (key is null, so non-root is denied).
+    if (!actor.isRoot && (!key || !actor.can(key))) {
+      return { ok: false, error: 'You do not have permission to delete this item.' }
+    }
     db().prepare('DELETE FROM intelligence_sources WHERE id=?').run(id)
     return { ok: true }
   })

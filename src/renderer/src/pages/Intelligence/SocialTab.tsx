@@ -58,7 +58,7 @@ const EMPTY_FORM = {
 }
 
 export default function SocialTab({ onApprove }: Props) {
-  const { localUser, isRoot } = useAuth()
+  const { localUser, isRoot, can } = useAuth()
   const [posts, setPosts] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -377,7 +377,7 @@ export default function SocialTab({ onApprove }: Props) {
                     Reject
                   </button>
                 )}
-                {isRoot && (
+                {(can('delete_intel_social') || isRoot) && (
                   <button
                     onClick={() => handleDelete(post.id)}
                     className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition"

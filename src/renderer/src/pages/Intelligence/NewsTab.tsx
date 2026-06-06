@@ -214,7 +214,7 @@ interface Props {
 }
 
 export default function NewsTab({ onApprove }: Props) {
-  const { localUser, isRoot } = useAuth()
+  const { localUser, isRoot, can } = useAuth()
   const [sources, setSources] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -814,8 +814,8 @@ export default function NewsTab({ onApprove }: Props) {
                       }}
                       onRemove={tag => handleSetTags(source.id, 'thematic', themaTags.filter(t => t !== tag))}
                       onCreate={name => handleCreateTag(source.id, 'thematic', themaTags, name)}
-                      onDelete={isRoot ? tag => handleDeleteTag('thematic', tag) : undefined}
-                      isAdmin={isRoot}
+                      onDelete={(can('delete_intel_tag') || isRoot) ? tag => handleDeleteTag('thematic', tag) : undefined}
+                      isAdmin={can('delete_intel_tag') || isRoot}
                       forceOpen={forceOpenTopicId === source.id}
                     />
                   </div>
@@ -921,7 +921,7 @@ export default function NewsTab({ onApprove }: Props) {
                   </button>
                 )}
                 {/* Delete */}
-                {isRoot && (
+                {(can('delete_intel_news') || isRoot) && (
                   <button
                     onClick={() => handleDelete(source.id)}
                     className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition"

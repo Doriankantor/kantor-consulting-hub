@@ -522,15 +522,24 @@ export async function updateComment(id: string, content: string): Promise<{ ok: 
   return { ok: true }
 }
 
-export async function deleteComment(id: string, deletedById?: string, deletedByName?: string): Promise<{ ok: boolean }> {
+export async function deleteComment(actingUserId: string | undefined, id: string, deletedById?: string, deletedByName?: string): Promise<{ ok: boolean; error?: string }> {
   const { data: comment } = await cloud.from('task_comments').select('*').eq('id', id).maybeSingle()
-  if (comment) {
-    try {
-      getDatabase().prepare(`INSERT INTO trash (id,item_type,item_id,item_name,item_data_json,deleted_by_id,deleted_by_name,expires_at)
-        VALUES (?,?,?,?,?,?,?,datetime('now','+30 days'))`)
-        .run(randomUUID(), 'comment', id, String((comment as Record<string, unknown>).content ?? '').slice(0, 80), JSON.stringify(comment), deletedById ?? null, deletedByName ?? null)
-    } catch { /* */ }
+  if (!comment) return { ok: true } // already gone
+  // Gate: the comment's author, a permitted member, or root. Uses the AMBIENT
+  // acting user (NOT the renderer-supplied deletedById, which is only for the
+  // trash audit). NOTE: author_id is a per-device local id, so the author
+  // override is reliable only on the device the comment was written on (known
+  // limitation; a future author_email migration would make it cross-device).
+  const actor = await resolveActor(actingUserId)
+  const isAuthor = !!actingUserId && (comment as Record<string, unknown>).author_id === actingUserId
+  if (!isAuthor && !actor.can('delete_comment') && !actor.isRoot) {
+    return { ok: false, error: 'You do not have permission to delete this comment.' }
   }
+  try {
+    getDatabase().prepare(`INSERT INTO trash (id,item_type,item_id,item_name,item_data_json,deleted_by_id,deleted_by_name,expires_at)
+      VALUES (?,?,?,?,?,?,?,datetime('now','+30 days'))`)
+      .run(randomUUID(), 'comment', id, String((comment as Record<string, unknown>).content ?? '').slice(0, 80), JSON.stringify(comment), deletedById ?? null, deletedByName ?? null)
+  } catch { /* */ }
   const { error } = await cloud.from('task_comments').delete().eq('id', id)
   if (error) throw new Error(`comment delete failed: ${error.message}`)
   return { ok: true }

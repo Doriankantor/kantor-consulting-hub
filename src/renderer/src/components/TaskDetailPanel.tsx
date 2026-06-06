@@ -1451,7 +1451,7 @@ export default function TaskDetailPanel() {
                     <div className="space-y-3">
                       {comments.map(c => {
                         const canEdit   = c.author_id === currentUserId
-                        const canDelete = c.author_id === currentUserId || isRoot
+                        const canDelete = c.author_id === currentUserId || can('delete_comment') || isRoot
                         const isEditing = editingCommentId === c.id
                         return (
                           <div key={c.id} className="flex gap-2.5 group">

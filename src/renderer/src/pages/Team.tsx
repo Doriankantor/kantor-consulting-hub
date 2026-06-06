@@ -80,6 +80,11 @@ export default function Team() {
   const PERM_LABELS: Record<string, string> = {
     delete_attachment: 'Delete attachments',
     add_board_members: 'Add members to boards',
+    delete_comment:    'Delete others’ comments',
+    delete_intel_tag:  'Delete intelligence tags',
+    delete_intel_doc:  'Delete intelligence documents',
+    delete_intel_news: 'Delete intelligence news sources',
+    delete_intel_social: 'Delete intelligence social posts',
   }
   const PERM_KEYS = Object.keys(PERM_LABELS)
 

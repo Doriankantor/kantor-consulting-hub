@@ -11,5 +11,10 @@ export const CLOUD_ADMIN_EMAIL = 'doriankantor@gmail.com'
 export const PERMISSION_KEYS = {
   DELETE_ATTACHMENT: 'delete_attachment',
   ADD_BOARD_MEMBERS: 'add_board_members',
+  DELETE_COMMENT:    'delete_comment',
+  DELETE_INTEL_TAG:  'delete_intel_tag',
+  DELETE_INTEL_DOC:  'delete_intel_doc',
+  DELETE_INTEL_NEWS: 'delete_intel_news',
+  DELETE_INTEL_SOCIAL: 'delete_intel_social',
 } as const
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS]
