@@ -456,6 +456,7 @@ export default function TaskDetailPanel() {
     window.api.comments.get(selectedTask.id).then(data => setComments(data)).catch(() => {})
     window.api.activity.get(selectedTask.id).then(data => setActivity(data)).catch(() => {})
     loadChecklists(selectedTask.id)
+    loadAttachments(selectedTask.id)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardContentVersion])
 

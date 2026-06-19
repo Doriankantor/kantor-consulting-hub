@@ -356,14 +356,19 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setTasks(taskList)
       setCloudError(null)
       loadTaskMeta(taskList)
+      // If the open card's task was deleted on another machine, clear the panel.
+      setSelectedTask(prev => prev && taskList.some(t => t.id === prev.id) ? prev : null)
     }
     async function handle(d: { boardId: string | null; scope: 'list' | 'board' }) {
       try {
         if (d.scope === 'list') {
           await loadBoards()
-        } else if (d.boardId && d.boardId === activeBoardIdRef.current) {
+        } else if (d.scope === 'board' && (d.boardId === null || d.boardId === activeBoardIdRef.current)) {
+          // boardId===null means a thin DELETE payload (REPLICA IDENTITY didn't reach
+          // the wire) — we can't scope to a specific board, so refresh whatever's open.
+          // boardId===activeBoardIdRef.current is the normal in-band case.
           await reloadOpenBoard()
-          // Signal the open card to re-fetch its live contents (comments/activity/checklists).
+          // Signal the open card to re-fetch its live contents (comments/activity/checklists/attachments).
           setBoardContentVersion(v => v + 1)
         } else {
           // Change on a board that isn't open: refresh the list only (counts /

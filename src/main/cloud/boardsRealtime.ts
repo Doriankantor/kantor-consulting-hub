@@ -29,7 +29,11 @@ async function resolveBoardId(table: string, row: Record<string, unknown>, _e: R
   // child tables: map task_id → board (board-level change).
   if (CHILD_TABLES.has(table)) {
     const taskId = row.task_id as string | undefined
-    if (!taskId) return null
+    // DELETE payloads may be thin (only PK) when REPLICA IDENTITY FULL hasn't
+    // reached the wire. Fall back to { boardId: null } so the renderer re-fetches
+    // the open card regardless — the re-fetch is a cloud full-replace that drops
+    // the deleted row from the UI.
+    if (!taskId) return { boardId: null, scope: 'board' as const }
     const boardId = await boardIdOfTask(taskId)
     return boardId ? { boardId, scope: 'board' } : null
   }
@@ -43,6 +47,10 @@ async function isRelevant(resolved: ResolvedScope, table: string, row: Record<st
   if (table === 'board_members') {
     return boardMembersRelevant(actor, row)
   }
+  // null boardId means a thin DELETE payload (no task_id / board_id) — we can't
+  // scope to a specific board. Allow through so the renderer re-fetches the open
+  // card. The re-fetch is membership-gated (getTasks / getComments filter by actor).
+  if (!resolved.boardId) return true
   // Everything else: only if the acting user can see the resolved board.
   return isBoardVisible(actor, resolved.boardId)
 }
@@ -68,11 +76,12 @@ export function registerBoardsRealtime(): void {
     tables: ['task_attachments'],
     async resolveBoardId(_table, row) {
       const taskId = row.task_id as string | undefined
-      if (!taskId) return null
+      if (!taskId) return { boardId: null, scope: 'board' as const }
       const boardId = await boardIdOfTask(taskId)
       return boardId ? { boardId, scope: 'board' as const } : null
     },
     async isRelevant(resolved, _table, _row) {
+      if (!resolved.boardId) return true
       return isBoardVisible(getActingUserId(), resolved.boardId)
     },
     pushChannel: 'workspace:remoteChange',

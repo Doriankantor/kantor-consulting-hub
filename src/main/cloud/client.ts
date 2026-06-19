@@ -26,6 +26,12 @@ export const cloud: SupabaseClient = createClient(
     realtime: { transport: ws as unknown as typeof WebSocket },
   }
 )
+// Authenticate the Realtime WebSocket with the service-role key so postgres_changes
+// events bypass RLS filtering — DELETE events arrive regardless of thin old-row
+// payloads. Enforcement stays in main (resolveActor / can() / isRelevant).
+// Must execute before startRealtime() subscribes channels; module-level execution
+// order guarantees that (this file is imported first, startRealtime fires later).
+cloud.realtime.setAuth(process.env.SUPABASE_SERVICE_ROLE_KEY ?? '')
 
 // The system admin is the logged-in owner, not a team member / chat participant.
 // Re-exported from the canonical source so cloud/* files that already import
