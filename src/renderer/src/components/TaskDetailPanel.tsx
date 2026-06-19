@@ -309,7 +309,7 @@ function ClientPicker({ clientId, clientName, clientOrg, createdBy, onChange }: 
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function TaskDetailPanel() {
-  const { selectedTask, selectTask, updateTask, deleteTask, columns, members, areas, labels, refreshTaskMeta, pendingSection, setPendingSection } = useWorkspace()
+  const { selectedTask, selectTask, updateTask, deleteTask, columns, members, areas, labels, refreshTaskMeta, pendingSection, setPendingSection, boardContentVersion } = useWorkspace()
   const { localUser, isRoot, can } = useAuth()
   const currentUserId   = localUser?.id   ?? 'local-admin'
   const currentUserName = localUser?.name ?? 'Dorian Kantor'
@@ -442,6 +442,22 @@ export default function TaskDetailPanel() {
     loadChecklists(selectedTask.id)
     loadTaskLabels(selectedTask.id)
   }, [selectedTask?.id])
+
+  // Live refresh: when a board-scope realtime change arrives for the open board
+  // (WorkspaceContext bumps boardContentVersion), re-fetch the open card's live
+  // contents — comments, activity, checklists — without a reopen. Skips the
+  // initial mount (the effect above already loads on open) and only fires on
+  // SUBSEQUENT bumps. Not a second remoteChange listener — driven by context state.
+  const lastContentVersion = useRef(boardContentVersion)
+  useEffect(() => {
+    if (boardContentVersion === lastContentVersion.current) return
+    lastContentVersion.current = boardContentVersion
+    if (!selectedTask) return
+    window.api.comments.get(selectedTask.id).then(data => setComments(data)).catch(() => {})
+    window.api.activity.get(selectedTask.id).then(data => setActivity(data)).catch(() => {})
+    loadChecklists(selectedTask.id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardContentVersion])
 
   // Sync recurring toggles to editing state (after init to avoid dirty on load)
   useEffect(() => {

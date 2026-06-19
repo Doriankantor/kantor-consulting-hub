@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-06
-  Current version: v2.0.6   |   174 commits   |   ~31,300 lines of TS/TSX
+  Current version: v2.0.7   |   177 commits   |   ~31,350 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -451,6 +451,39 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       result.error strings in a red banner below the upload zone. Previously any
       failure (auth rejection, storage error, network error) was silently swallowed
       and the spinner just stopped with no feedback.
+
+  v2.0.7 (Jun 6) -- DELETE CAPABILITIES (SERVER-ENFORCED) + LIVE CARD REFRESH
+    * Five new toggleable permissions, each enforced in MAIN (these were real
+      enforcement holes — the delete handlers were ungated):
+      - delete_comment: deleteComment now resolves the ambient actor and gates on
+        author (same-device) OR can('delete_comment') OR isRoot. Uses
+        currentActingUserId, NOT the renderer-supplied deletedById. (Known limit:
+        author override is same-device — author_id is a per-device local id; a
+        future author_email migration would make it cross-device.)
+      - delete_intel_tag: intelligence:deleteTag now async, gates on
+        can('delete_intel_tag') OR isRoot.
+      - delete_intel_doc / delete_intel_news / delete_intel_social: the shared
+        intelligence:deleteSource is now TYPE-AWARE — it reads the row's `type`
+        (document/article/social) and requires the matching permission; unknown
+        type falls back to isRoot-only. So one handler enforces three separate
+        keys without cross-gating News/Social/Docs.
+    * Renderer delete controls (TaskDetailPanel comments, Intelligence
+      Docs/News/Social tabs, News tag picker) gate on can(key) || isRoot and react
+      live to permsVersion.
+    * Keys added to constants.ts PERMISSION_KEYS + labels to Team.tsx PERM_LABELS.
+    * LIVE CARD REFRESH: the open card (TaskDetailPanel) previously loaded
+      comments/activity/checklists once on open and never refreshed (had to
+      close/reopen). WorkspaceContext now exposes boardContentVersion, bumped on
+      every board-scope realtime change for the OPEN board; TaskDetailPanel
+      re-fetches comments + activity + checklists when it changes. Driven by
+      context state (no second workspace:remoteChange listener, which would clobber
+      WorkspaceContext's via removeAllListeners). Skips the initial mount.
+    * Cleanup SQL (hub project): DELETE FROM member_permissions WHERE
+      permission_key IN ('see_all_boards','invite_members'); — orphaned keys from
+      the v2.0.6 model simplification.
+    * Dev note: after `npm run release`, run `npm run rebuild` before `npm run dev`
+      on the same machine — electron-builder rebuilds better-sqlite3 for packaging,
+      leaving the dev Electron unable to load it ("slice is not valid mach-o file").
 
   v2.0.6 (Jun 6) -- PERMISSIONS MODEL: PHASE 1b + SIMPLIFICATION TO isRoot + 2 TOGGLES
     * Phase 1b per-member permissions: cloud member_permissions table (email-keyed,

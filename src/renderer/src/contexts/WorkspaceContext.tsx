@@ -72,6 +72,11 @@ interface WorkspaceContextType {
   deleteBoard:    (id: string) => Promise<void>
   duplicateBoard: (id: string, newName: string) => Promise<string> // returns new id
   refreshBoards:  () => Promise<void>
+
+  // Bumps on every board-scope realtime change for the OPEN board, so the open
+  // card (TaskDetailPanel) can re-fetch its live contents (comments/activity/
+  // checklists) without its own remoteChange listener.
+  boardContentVersion: number
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined)
@@ -101,6 +106,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [activeBoardId, setActiveBoardIdState] = useState<string>(() =>
     localStorage.getItem('activeBoard') ?? 'board-main'
   )
+  // Bumps on each board-scope realtime change for the open board (see the
+  // workspace:remoteChange handler). The open card depends on it to re-fetch.
+  const [boardContentVersion, setBoardContentVersion] = useState(0)
   // Ref to skip the columns-reload effect on first mount (initial load handles it)
   const columnsFirstRender = useRef(true)
 
@@ -355,6 +363,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
           await loadBoards()
         } else if (d.boardId && d.boardId === activeBoardIdRef.current) {
           await reloadOpenBoard()
+          // Signal the open card to re-fetch its live contents (comments/activity/checklists).
+          setBoardContentVersion(v => v + 1)
         } else {
           // Change on a board that isn't open: refresh the list only (counts /
           // indicators). Do NOT fetch tasks for a board the user isn't viewing.
@@ -619,6 +629,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       deleteBoard,
       duplicateBoard,
       refreshBoards,
+      boardContentVersion,
     }}>
       {children}
     </WorkspaceContext.Provider>
