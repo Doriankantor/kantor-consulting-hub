@@ -1,7 +1,8 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-06-06
-  Current version: v2.0.7   |   177 commits   |   ~31,350 lines of TS/TSX
+  Generated: 2026-06-20
+  Current version: v2.0.7 (v2.0.8 pending two-machine test + publish)
+  178 commits   |   ~30,976 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -451,6 +452,41 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       result.error strings in a red banner below the upload zone. Previously any
       failure (auth rejection, storage error, network error) was silently swallowed
       and the spinner just stopped with no feedback.
+
+  v2.0.8 (PENDING — committed 2026-06-20, awaiting two-machine test + publish)
+  -- REALTIME DELETE PROPAGATION FIX (ALL DIRECTIONS, ALL DELETE TYPES)
+    * Root-cause fix for DELETE events never propagating live to observing machines.
+      Two-layer problem: (a) supabase_realtime publication had pubdelete=false
+      (fixed via SQL); (b) RLS USING clause evaluated against thin old-row payloads
+      (only PK id, not task_id) blocked non-root subscribers even with REPLICA
+      IDENTITY FULL set, because the Elixir schema cache hadn't flushed.
+    * PART 1 — service-role Realtime socket auth: cloud.realtime.setAuth() called
+      immediately after createClient() in client.ts with the service-role key.
+      Forces the Realtime WebSocket to authenticate as service-role, bypassing RLS
+      filtering for event delivery. Enforcement stays exclusively in main
+      (resolveActor / can() / isRelevant — unchanged). Fixes the asymmetry where
+      root received all DELETE events but non-root members received none.
+    * PART 2 — thin-payload-robust routing (boardsRealtime.ts):
+      - resolveBoardId for CHILD_TABLES and task_attachments: when task_id is absent
+        on the old-row (thin DELETE payload), returns { boardId: null, scope: 'board' }
+        instead of null, so the event is not silently dropped.
+      - isRelevant for boards and attachments: null boardId (thin DELETE) passes
+        through as true — re-fetch is membership-gated; no spurious data leaks.
+      - WorkspaceContext handle(): treats boardId===null the same as
+        boardId===activeBoardId (triggers reloadOpenBoard + boardContentVersion bump).
+        Full cloud re-fetch drops the deleted row from the UI naturally.
+    * PART 3 — attachment refresh gap + stale open-card clearing:
+      - TaskDetailPanel boardContentVersion effect now also calls
+        loadAttachments(selectedTask.id) — attachment add/remove on remote machine
+        previously never refreshed the attachment list.
+      - reloadOpenBoard() now clears selectedTask if the task was deleted on another
+        machine: setSelectedTask(prev => prev && taskList.some(t=>t.id===prev.id)
+        ? prev : null). Previously the panel stayed open showing stale data.
+    * No second workspace:remoteChange or permissions:invalidate listeners added
+      (removeAllListeners would clobber the single owner in WorkspaceContext /
+      AuthContext respectively). boardContentVersion is the safe signal path.
+    * 4 files changed: src/main/cloud/client.ts, boardsRealtime.ts,
+      src/renderer/src/contexts/WorkspaceContext.tsx, TaskDetailPanel.tsx
 
   v2.0.7 (Jun 6) -- DELETE CAPABILITIES (SERVER-ENFORCED) + LIVE CARD REFRESH
     * Five new toggleable permissions, each enforced in MAIN (these were real
