@@ -34,7 +34,7 @@ const TASK_ROW_H = 44
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function TimelineView() {
-  const { tasks, columns, selectTask, updateTask } = useWorkspace()
+  const { boardTasks: tasks, columns, selectTask, updateTask } = useWorkspace()
   const [zoom, setZoom] = useState<Zoom>('month')
   const cfg = ZOOM_CONFIG[zoom]
 

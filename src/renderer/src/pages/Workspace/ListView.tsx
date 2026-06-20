@@ -119,7 +119,7 @@ function Th({ label, sortKey, current, dir, onClick }: {
 // ── Main ───────────────────────────────────────────────────────────────────
 
 export default function ListView() {
-  const { tasks, columns, selectTask, archiveTask } = useWorkspace()
+  const { boardTasks: tasks, columns, selectTask, archiveTask } = useWorkspace()
   const [sortKey, setSortKey] = useState<SortKey>('due_date')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [filters, setFilters] = useState<Filters>({

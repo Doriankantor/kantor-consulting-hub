@@ -80,7 +80,7 @@ function DayCell({
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function CalendarView() {
-  const { tasks, selectTask, updateTask } = useWorkspace()
+  const { boardTasks: tasks, selectTask, updateTask } = useWorkspace()
   const today = new Date()
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())

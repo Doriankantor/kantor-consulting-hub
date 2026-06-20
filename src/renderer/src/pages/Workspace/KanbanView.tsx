@@ -299,7 +299,7 @@ function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart 
   autoEdit?: boolean
   onEditStart?: () => void
 }) {
-  const { columns, tasks, renameColumn, createTask } = useWorkspace()
+  const { columns, boardTasks: tasks, renameColumn, createTask } = useWorkspace()
   const col = columns.find(c => c.id === columnId)!
   const colTasks = tasks
     .filter(t => t.column_id === columnId)
@@ -562,7 +562,7 @@ function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart 
 // ── Board ──────────────────────────────────────────────────────────────────
 
 export default function KanbanView() {
-  const { columns, tasks, moveTask, reorderWithinColumn, addColumn, areas, activeBoard } = useWorkspace()
+  const { columns, boardTasks: tasks, moveTask, reorderWithinColumn, addColumn, areas, activeBoard } = useWorkspace()
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   // Track the id of the column just added so we can auto-focus its name for editing
   const [newColumnId, setNewColumnId] = useState<string | null>(null)

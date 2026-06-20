@@ -2,6 +2,7 @@ import React, {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useCallback,
@@ -17,6 +18,7 @@ interface WorkspaceContextType {
   // Data
   columns: Column[]
   tasks: Task[]
+  boardTasks: Task[]
   members: TeamMember[]
   areas: Area[]
   labels: Label[]
@@ -113,6 +115,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const columnsFirstRender = useRef(true)
 
   const activeBoard = boards.find(b => b.id === activeBoardId) ?? boards[0] ?? null
+  const boardTasks = useMemo(
+    () => (activeBoard ? tasks.filter(t => t.board_id === activeBoard.id) : tasks),
+    [tasks, activeBoard]
+  )
 
   // ── Load areas ──────────────────────────────────────────────────────────
 
@@ -595,6 +601,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     <WorkspaceContext.Provider value={{
       columns,
       tasks,
+      boardTasks,
       members,
       areas,
       labels,
