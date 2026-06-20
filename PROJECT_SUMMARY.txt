@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-20
-  Current version: v2.0.10  |   188 commits   |   ~31,023 lines of TS/TSX
+  Current version: v2.0.11  |   190 commits   |   ~31,023 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -151,6 +151,27 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
   iCloud setup: project lives in iCloud Drive. node_modules/dist/out are symlinks
   to *.nosync folders so iCloud skips them. Run `bash setup-new-device.sh` once
   on a new Mac after iCloud syncs the folder.
+
+───────────────────────────────────────────────────────────────────────────────
+DESIGN PRINCIPLES / CONVENTIONS
+───────────────────────────────────────────────────────────────────────────────
+  • Realtime convention. Any feature backed by SHARED, CLOUD-STORED data must
+    be registered as a consumer of the realtime manager
+    (src/main/cloud/realtimeManager.ts) so changes propagate live across
+    machines — the "plug in as config, not new mechanism" pattern; boards
+    (boardsRealtime.ts) is the reference implementation. Full cost per shared
+    feature: cloud table + RLS + main-process enforcement + realtime
+    registration + one-time SQL (publication + replica identity) +
+    two-machine verify. LOCAL/per-device data (e.g. notifications today) is
+    exempt — nothing to propagate. When adding a feature, decide first whether
+    its data is shared; if yes, realtime is part of "done", not optional.
+  • Realtime DB setup requires an app RESTART to take effect. Adding tables to
+    the supabase_realtime publication only affects sockets that subscribe
+    AFTER the change. A running app subscribed before the tables were added
+    will NOT receive their events until fully quit and relaunched (not just
+    reloaded). Symptom if missed: writes land and a navigate-away/back shows
+    them, but nothing updates live. Always restart both machines after a
+    publication change before testing.
 
 ───────────────────────────────────────────────────────────────────────────────
 9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-06-01)
@@ -451,6 +472,36 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       result.error strings in a red banner below the upload zone. Previously any
       failure (auth rejection, storage error, network error) was silently swallowed
       and the spinner just stopped with no feedback.
+
+  v2.0.11 (Jun 21) -- CONTACTS REALTIME (live cross-machine sync) + BADGE FIX
+    * Contacts are now registered with the realtime manager: a new
+      src/main/cloud/contactsRealtime.ts consumer watches contacts,
+      contact_interactions, contact_task_links, clients, client_contacts
+      (scope 'list', team-wide isRelevant=true, channel
+      'contacts:remoteChange'); registered in src/main/index.ts; preload
+      contacts.onRemoteChange/removeRemoteChangeListeners bridge + env.d.ts
+      types; Contacts.tsx subscribes and re-runs loadContacts() on push.
+      Edits on one machine now appear on others live (list refreshes;
+      detail panel re-fetches on open by design).
+    * FIX: contact-type badges (partner/prospect etc.) showed stale on the
+      EDITING machine. handleSaveEdit's optimistic merge spread the array
+      fields but not their *_json display strings; the list card reads
+      contact_types_json. Now regenerates contact_types_json, languages_json,
+      and expertise_areas_json in the optimistic object (cloud payload
+      unchanged; cloud remains the sole serializer).
+    * One-time Supabase SQL applied this session (ad-hoc in the SQL editor;
+      recorded here for reproducibility on any future environment rebuild):
+        alter publication supabase_realtime add table
+          public.contacts, public.contact_interactions,
+          public.contact_task_links, public.clients, public.client_contacts;
+        alter table public.contacts             replica identity full;
+        alter table public.contact_interactions replica identity full;
+        alter table public.contact_task_links   replica identity full;
+        alter table public.clients              replica identity full;
+        alter table public.client_contacts      replica identity full;
+      NOTE: after adding tables to the publication, both apps must be fully
+      restarted before live sync works (see Design Principles).
+    * Added a Design Principles / Conventions section to this file.
 
   v2.0.10 (Jun 21) -- CONTACTS REALTIME + STALE-BADGE FIX
     * Contacts (CRM) now sync live across machines via Supabase Realtime.
