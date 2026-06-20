@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-20
-  Current version: v2.0.8   |   180 commits   |   ~30,976 lines of TS/TSX
+  Current version: v2.0.9   |   184 commits   |   ~30,983 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -451,6 +451,21 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       result.error strings in a red banner below the upload zone. Previously any
       failure (auth rejection, storage error, network error) was silently swallowed
       and the spinner just stopped with no feedback.
+
+  v2.0.9 (Jun 20) -- FIX: WORKSPACE VIEWS NOW SCOPED TO THE ACTIVE BOARD
+    * Calendar, List, and Timeline (and Kanban, which shares literal column
+      IDs across boards) were reading the context's all-boards `tasks` array
+      directly, so a board's views showed tasks from every visible board.
+    * Fix: WorkspaceContext now derives boardTasks (tasks filtered to
+      activeBoard.id) and exposes it alongside the unchanged all-boards
+      `tasks`. The four Workspace views destructure boardTasks (aliased to
+      `tasks` locally); their bodies are unchanged.
+    * `tasks` is deliberately left untouched for the cross-board consumers
+      (Dashboard latest-changes feed, Contacts task list, TeamMember profile
+      panel), which need all boards -- additive change, no regression there.
+    * Workspace/index.tsx retains its own local boardTasks useMemo (unchanged)
+      which powers the board header stats (task count, in-progress count).
+    * No DB, IPC, or realtime changes. Renderer-only.
 
   v2.0.8 (Jun 20) -- REALTIME DELETE PROPAGATION FIX (ALL DIRECTIONS, ALL DELETE TYPES)
     * Root-cause fix for DELETE events never propagating live to observing machines.
