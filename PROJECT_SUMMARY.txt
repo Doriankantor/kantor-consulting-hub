@@ -1,8 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-20
-  Current version: v2.0.7 (v2.0.8 pending two-machine test + publish)
-  178 commits   |   ~30,976 lines of TS/TSX
+  Current version: v2.0.8   |   180 commits   |   ~30,976 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -453,8 +452,7 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       failure (auth rejection, storage error, network error) was silently swallowed
       and the spinner just stopped with no feedback.
 
-  v2.0.8 (PENDING — committed 2026-06-20, awaiting two-machine test + publish)
-  -- REALTIME DELETE PROPAGATION FIX (ALL DIRECTIONS, ALL DELETE TYPES)
+  v2.0.8 (Jun 20) -- REALTIME DELETE PROPAGATION FIX (ALL DIRECTIONS, ALL DELETE TYPES)
     * Root-cause fix for DELETE events never propagating live to observing machines.
       Two-layer problem: (a) supabase_realtime publication had pubdelete=false
       (fixed via SQL); (b) RLS USING clause evaluated against thin old-row payloads
