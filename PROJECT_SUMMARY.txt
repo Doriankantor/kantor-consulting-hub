@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-20
-  Current version: v2.0.9   |   184 commits   |   ~30,983 lines of TS/TSX
+  Current version: v2.0.10  |   188 commits   |   ~31,023 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -451,6 +451,25 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
       result.error strings in a red banner below the upload zone. Previously any
       failure (auth rejection, storage error, network error) was silently swallowed
       and the spinner just stopped with no feedback.
+
+  v2.0.10 (Jun 21) -- CONTACTS REALTIME + STALE-BADGE FIX
+    * Contacts (CRM) now sync live across machines via Supabase Realtime.
+      New src/main/cloud/contactsRealtime.ts registers the 'contacts' source
+      with the existing realtimeManager, watching all 5 tables: contacts,
+      contact_interactions, contact_task_links, clients, client_contacts.
+      Every change resolves to { boardId: null, scope: 'list' } (team-wide,
+      no per-member filtering); isRelevant always true.
+    * Renderer subscription: Contacts.tsx subscribes via
+      window.api.contacts.onRemoteChange(() => loadContacts()) on mount,
+      with removeRemoteChangeListeners() cleanup. Preload bridge and
+      env.d.ts types added to match the workspace.onRemoteChange pattern.
+    * Stale-badge fix: handleSaveEdit's optimistic onUpdated merge now
+      regenerates contact_types_json, languages_json, and expertise_areas_json
+      from the arrays being saved, so type badges (Partner/Prospect/etc.) on
+      the list card update immediately after save — no reload required.
+      Cloud payload unchanged; main process remains the sole serializer.
+    * No DB, IPC channel, or realtime architecture changes beyond the new
+      contactsRealtime consumer.
 
   v2.0.9 (Jun 20) -- FIX: WORKSPACE VIEWS NOW SCOPED TO THE ACTIVE BOARD
     * Calendar, List, and Timeline (and Kanban, which shares literal column
