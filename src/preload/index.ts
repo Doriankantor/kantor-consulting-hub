@@ -179,6 +179,9 @@ const api = {
     deleteInteraction: (id: string)                                   => ipcRenderer.invoke('contacts:deleteInteraction', id),
     linkTask:          (contactId: string, taskId: string)            => ipcRenderer.invoke('contacts:linkTask', contactId, taskId),
     unlinkTask:        (contactId: string, taskId: string)            => ipcRenderer.invoke('contacts:unlinkTask', contactId, taskId),
+    onRemoteChange:              (cb: (d: { boardId: string | null; scope: 'list' | 'board' }) => void) =>
+      ipcRenderer.on('contacts:remoteChange', (_e, d) => cb(d)),
+    removeRemoteChangeListeners: () => ipcRenderer.removeAllListeners('contacts:remoteChange'),
   },
   boards: {
     list:         (includeArchived?: boolean, actorId?: string) => ipcRenderer.invoke('boards:list', includeArchived, actorId),

@@ -1215,6 +1215,11 @@ export default function Contacts() {
     if (view === 'trash') loadTrash()
   }, [view, loadTrash])
 
+  useEffect(() => {
+    window.api.contacts.onRemoteChange(() => { loadContacts() })
+    return () => { window.api.contacts.removeRemoteChangeListeners() }
+  }, [loadContacts])
+
   async function handleRestore(id: string) {
     setTrashError(null)
     try {

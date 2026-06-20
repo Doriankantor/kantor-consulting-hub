@@ -640,6 +640,8 @@ interface Window {
       deleteInteraction: (id: string)                                   => Promise<{ ok?: boolean }>
       linkTask:          (contactId: string, taskId: string)            => Promise<{ ok?: boolean }>
       unlinkTask:        (contactId: string, taskId: string)            => Promise<{ ok?: boolean }>
+      onRemoteChange:              (cb: (d: { boardId: string | null; scope: 'list' | 'board' }) => void) => void
+      removeRemoteChangeListeners: () => void
     }
     trash: {
       list:              ()           => Promise<TrashItem[]>

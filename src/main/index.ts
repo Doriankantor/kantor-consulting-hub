@@ -9,6 +9,7 @@ import { initDatabase, getDatabase } from './db'
 import { registerIpcHandlers, startIntelligenceAutoRefresh, triggerInitialNewsFetch } from './ipc'
 import { initRealtime, teardownAll as teardownRealtime } from './cloud/realtimeManager'
 import { registerBoardsRealtime } from './cloud/boardsRealtime'
+import { registerContactsRealtime } from './cloud/contactsRealtime'
 
 // Module-level reference so the updater can push events to the window
 let mainWindow: BrowserWindow | null = null
@@ -75,6 +76,7 @@ app.whenReady().then(() => {
   // startRealtime), and are re-scoped on user switch / torn down on logout/quit.
   initRealtime(() => mainWindow)
   registerBoardsRealtime()
+  registerContactsRealtime()
 
   // ── Intelligence: start auto-refresh and trigger initial fetch ─────────
   startIntelligenceAutoRefresh()
