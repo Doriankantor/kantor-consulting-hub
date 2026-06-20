@@ -485,7 +485,13 @@ function ContactDetail({
     await window.api.contacts.update(contact.id, payload)
     setEditing(false)
     await load()
-    if (contact) onUpdated({ ...contact, ...(payload as Partial<Contact>) })
+    if (contact) onUpdated({
+      ...contact,
+      ...(payload as Partial<Contact>),
+      contact_types_json:   JSON.stringify(editData.contact_types   ?? []),
+      languages_json:       JSON.stringify(editData.languages       ?? []),
+      expertise_areas_json: JSON.stringify(editData.expertise_areas ?? []),
+    })
   }
 
   async function handleDelete() {
