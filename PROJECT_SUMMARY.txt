@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-20
-  Current version: v2.0.11  |   190 commits   |   ~31,023 lines of TS/TSX
+  Current version: v2.0.12  |   193 commits   |   ~31,023 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -169,9 +169,12 @@ DESIGN PRINCIPLES / CONVENTIONS
     the supabase_realtime publication only affects sockets that subscribe
     AFTER the change. A running app subscribed before the tables were added
     will NOT receive their events until fully quit and relaunched (not just
-    reloaded). Symptom if missed: writes land and a navigate-away/back shows
-    them, but nothing updates live. Always restart both machines after a
-    publication change before testing.
+    reloaded). Symptom if missed: writes land and navigate-away/back shows
+    them, but nothing updates live. Restart both machines after a publication
+    change before testing.
+  • Database schema is documented in /sql (catalog baseline + realtime config),
+    forward-from-today. When you run schema SQL in the Supabase editor, also
+    save it as a dated file in /sql and commit it.
 
 ───────────────────────────────────────────────────────────────────────────────
 9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-06-01)
@@ -472,6 +475,27 @@ DESIGN PRINCIPLES / CONVENTIONS
       result.error strings in a red banner below the upload zone. Previously any
       failure (auth rejection, storage error, network error) was silently swallowed
       and the spinner just stopped with no feedback.
+
+  v2.0.12 (Jun 21) -- CONTACTS REALTIME (live cross-machine sync) + BADGE FIX
+    * Contacts registered with the realtime manager: new
+      src/main/cloud/contactsRealtime.ts watches contacts,
+      contact_interactions, contact_task_links, clients, client_contacts
+      (scope 'list', team-wide isRelevant=true, channel
+      'contacts:remoteChange'); registered in src/main/index.ts; preload
+      contacts.onRemoteChange/removeRemoteChangeListeners bridge + env.d.ts
+      types; Contacts.tsx subscribes and re-runs loadContacts() on push.
+      List refreshes live; detail panel re-fetches on open by design.
+    * FIX: contact-type badges showed stale on the EDITING machine.
+      handleSaveEdit's optimistic merge spread the array fields but not
+      their *_json display strings. Now regenerates contact_types_json,
+      languages_json, expertise_areas_json in the optimistic object (cloud
+      payload unchanged; cloud remains sole serializer).
+    * One-time Supabase SQL applied this session (now also recorded in
+      /sql/realtime_config.sql): added the 5 contacts tables to the
+      supabase_realtime publication + replica identity full on each.
+      Requires app restart to take effect (see Design Principles).
+    * Added /sql baseline (schema + realtime config) and a Design
+      Principles section to this file.
 
   v2.0.11 (Jun 21) -- CONTACTS REALTIME (live cross-machine sync) + BADGE FIX
     * Contacts are now registered with the realtime manager: a new
