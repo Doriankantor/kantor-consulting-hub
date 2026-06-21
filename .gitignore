@@ -9,3 +9,5 @@ out
 .env.local
 .env.production
 .claude/
+# Supabase CLI local/temp files (machine-specific, auto-generated)
+supabase/.temp/
