@@ -20,6 +20,10 @@ const CONTACT_TYPE_COLORS: Record<ContactType, string> = {
   prospect:   'bg-rose-500/15 text-rose-600 border-rose-500/30 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40',
 }
 
+const LANGUAGES = ['English', 'Spanish', 'German', 'Hungarian', 'Portuguese',
+  'French', 'Italian', 'Dutch', 'Polish', 'Czech', 'Romanian', 'Ukrainian',
+  'Russian', 'Arabic', 'Turkish'] as const
+
 const ORG_TYPES = ['Government', 'Think Tank', 'Media', 'NGO', 'Private Sector', 'Academic', 'Other']
 const HOW_MET_OPTIONS = ['Conference', 'Referral', 'Cold Outreach', 'Event', 'Introduction', 'Other']
 const INTERACTION_TYPES = ['Call', 'Email', 'Meeting', 'Conference', 'Message', 'Other']
@@ -456,6 +460,15 @@ function ContactDetail({
     setEditing(true)
   }
 
+  function toggleLanguage(l: string) {
+    setEditData(p => ({
+      ...p,
+      languages: (p.languages ?? []).includes(l)
+        ? (p.languages ?? []).filter(x => x !== l)
+        : [...(p.languages ?? []), l],
+    }))
+  }
+
   async function handleSaveEdit() {
     if (!contact || !editData.full_name?.trim()) return
     const payload: Record<string, unknown> = {
@@ -725,12 +738,21 @@ function ContactDetail({
                   ))}
                   <div className="col-span-2">
                     <p className="text-[10px] text-gray-400 dark:text-white/45 mb-1">Languages</p>
-                    <input
-                      value={(editData.languages ?? []).join(', ')}
-                      onChange={e => setEditData(p => ({ ...p, languages: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }))}
-                      placeholder="English, Spanish, French…"
-                      className={inputCls}
-                    />
+                    <div className="flex flex-wrap gap-1.5">
+                      {LANGUAGES.map(l => (
+                        <button
+                          key={l}
+                          onClick={() => toggleLanguage(l)}
+                          className={`titlebar-no-drag px-2 py-0.5 rounded-full text-[10px] font-semibold border transition ${
+                            (editData.languages ?? []).includes(l)
+                              ? 'bg-sky-500/15 text-sky-600 border-sky-500/30 dark:bg-sky-500/20 dark:text-sky-300 dark:border-sky-500/40'
+                              : 'border-gray-200 dark:border-white/[0.1] text-gray-400 dark:text-white/40'
+                          }`}
+                        >
+                          {l}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1177,8 +1199,8 @@ export default function Contacts() {
   // Add contact modal
   const [showAdd, setShowAdd] = useState(false)
 
-  const loadContacts = useCallback(async () => {
-    setLoading(true)
+  const loadContacts = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const data = await window.api.contacts.list()
       setCloudError(null)
@@ -1196,7 +1218,7 @@ export default function Contacts() {
       // Cloud unreachable — surface inline; do NOT silently fall back to stale local data.
       setCloudError(`Couldn't reach the server — contacts may be out of date. (${e?.message ?? 'network error'})`)
     }
-    setLoading(false)
+    if (!silent) setLoading(false)
   }, [isRoot, localUser])
 
   const loadTrash = useCallback(async () => {
@@ -1222,7 +1244,7 @@ export default function Contacts() {
   }, [view, loadTrash])
 
   useEffect(() => {
-    window.api.contacts.onRemoteChange(() => { loadContacts() })
+    window.api.contacts.onRemoteChange(() => { loadContacts(true) })
     return () => { window.api.contacts.removeRemoteChangeListeners() }
   }, [loadContacts])
 

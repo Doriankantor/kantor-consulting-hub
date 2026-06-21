@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-06-20
-  Current version: v2.0.12  |   193 commits   |   ~31,023 lines of TS/TSX
+  Current version: v2.0.13  |   194 commits   |   ~32,619 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -475,6 +475,23 @@ DESIGN PRINCIPLES / CONVENTIONS
       result.error strings in a red banner below the upload zone. Previously any
       failure (auth rejection, storage error, network error) was silently swallowed
       and the spinner just stopped with no feedback.
+
+  v2.0.13 (Jun 21) -- CONTACTS UI: LANGUAGE CHIPS + STABLE LIST SCROLL
+    * Languages field in the contact edit form is now a fixed-list toggle-chip
+      selector (15 languages: English, Spanish, German, Hungarian, Portuguese,
+      French, Italian, Dutch, Polish, Czech, Romanian, Ukrainian, Russian,
+      Arabic, Turkish), replacing the comma-separated text input. Mirrors the
+      contact_types chip pattern. Data model unchanged (string[] via
+      languages_json). A stored language not in the list stays in the data but
+      won't render as a selected chip.
+    * FIX: the contacts list snapped back to the top after saving an edit. Root
+      cause: loadContacts() set loading=true on every refresh — including the
+      realtime/post-save background sync — which unmounted the list and reset
+      its scroll to 0. loadContacts now takes a `silent` flag; realtime/
+      background refreshes call loadContacts(true) and skip the spinner, so the
+      list updates in place and scroll position holds. (Contact stayed in its
+      alphabetical spot already; only the view was jumping.)
+    AddContactModal unchanged. No DB/IPC/realtime config changes.
 
   v2.0.12 (Jun 21) -- CONTACTS REALTIME (live cross-machine sync) + BADGE FIX
     * Contacts registered with the realtime manager: new
