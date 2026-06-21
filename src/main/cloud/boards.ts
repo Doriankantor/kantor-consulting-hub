@@ -342,12 +342,33 @@ export async function updateTask(taskId: string, partial: Record<string, unknown
     'due_date','start_date','priority','description','notes','sources_json','position','recurrence_json']
   for (const f of fields) { if (f in partial) patch[f] = partial[f] }
   if ('assignee_ids' in partial) patch.assignees_json = JSON.stringify(partial.assignee_ids)
+
+  // Pre-fetch current column_id before the update so we can detect real transitions.
+  // Only fetched when a column change is incoming — no overhead on other update types.
+  let prevCol: string | undefined
+  if ('column_id' in partial) {
+    const { data: existing } = await cloud.from('workspace_tasks').select('column_id').eq('id', taskId).maybeSingle()
+    prevCol = (existing as Record<string, unknown> | null)?.column_id as string | undefined
+  }
+
+  // Stamp published_at into the same patch (one atomic write, one realtime event).
+  // Reorders within Published (prevCol === newCol === 'col-published') add nothing.
+  if ('column_id' in partial) {
+    const newCol = partial.column_id as string
+    if (newCol === 'col-published' && prevCol !== 'col-published') {
+      patch.published_at = now()
+    } else if (newCol !== 'col-published' && prevCol === 'col-published') {
+      patch.published_at = null
+    }
+  }
+
   const { error } = await cloud.from('workspace_tasks').update(patch).eq('id', taskId)
   if (error) throw new Error(`task update failed: ${error.message}`)
 
   // Recurring task auto-copy when moved to delivery/published (mirrors local)
   if ('column_id' in partial) {
     const newCol = partial.column_id as string
+
     if (newCol === 'col-delivery' || newCol === 'col-published') {
       const { data: task } = await cloud.from('workspace_tasks').select('*').eq('id', taskId).maybeSingle()
       const tk = task as Record<string, unknown> | null
