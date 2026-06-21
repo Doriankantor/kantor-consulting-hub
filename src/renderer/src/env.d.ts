@@ -578,6 +578,11 @@ interface Window {
       archiveTask:      (id: string) => Promise<{ ok?: boolean }>
       getArchivedTasks: (actorId?: string) => Promise<unknown[]>
       restoreTask:      (id: string) => Promise<{ ok?: boolean }>
+      markForDeletion:           (id: string)       => Promise<{ ok?: boolean }>
+      undeleteTask:              (id: string)       => Promise<{ ok?: boolean }>
+      markCompleteNow:           (id: string)       => Promise<{ ok?: boolean }>
+      getCompletedTasks:         (actorId?: string) => Promise<unknown[]>
+      getMarkedForDeletionTasks: (actorId?: string) => Promise<unknown[]>
       addColumn:    (c: Record<string, unknown>)              => Promise<{ ok?: boolean }>
       updateColumn: (id: string, p: Record<string, unknown>)  => Promise<{ ok?: boolean }>
       onRemoteChange: (cb: (d: { boardId: string | null; scope: 'list' | 'board' }) => void) => void

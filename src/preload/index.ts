@@ -142,6 +142,11 @@ const api = {
     archiveTask:      (id: string) => ipcRenderer.invoke('workspace:archiveTask', id),
     getArchivedTasks: (actorId?: string) => ipcRenderer.invoke('workspace:getArchivedTasks', actorId),
     restoreTask:      (id: string) => ipcRenderer.invoke('workspace:restoreTask', id),
+    markForDeletion:              (id: string)      => ipcRenderer.invoke('workspace:markForDeletion', id),
+    undeleteTask:                 (id: string)      => ipcRenderer.invoke('workspace:undeleteTask', id),
+    markCompleteNow:              (id: string)      => ipcRenderer.invoke('workspace:markCompleteNow', id),
+    getCompletedTasks:            (actorId?: string) => ipcRenderer.invoke('workspace:getCompletedTasks', actorId),
+    getMarkedForDeletionTasks:    (actorId?: string) => ipcRenderer.invoke('workspace:getMarkedForDeletionTasks', actorId),
     addColumn:    (c: Record<string, unknown>)            => ipcRenderer.invoke('workspace:addColumn', c),
     updateColumn: (id: string, p: Record<string, unknown>) => ipcRenderer.invoke('workspace:updateColumn', id, p),
     // Realtime invalidate push from main (reuses the existing event-bridge pattern).

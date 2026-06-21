@@ -1087,5 +1087,8 @@ export function initDatabase(): void {
   try { db.exec('ALTER TABLE workspace_tasks ADD COLUMN published_at DATETIME;') } catch {}
   try { db.exec('ALTER TABLE workspace_tasks ADD COLUMN deletion_scheduled_at DATETIME;') } catch {}
 
+  // Completed Projects stage 1 (mark-for-deletion): remember archived state before marking for deletion
+  try { db.exec('ALTER TABLE workspace_tasks ADD COLUMN pre_deletion_archived INTEGER;') } catch {}
+
   console.log(`[DB] Initialized at ${dbPath}`)
 }

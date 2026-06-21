@@ -318,6 +318,69 @@ export async function restoreTask(taskId: string): Promise<{ ok: boolean }> {
   return { ok: true }
 }
 
+// ── Completed Projects: mark-for-deletion + completion data layer ─────────────
+
+export async function markForDeletion(taskId: string): Promise<{ ok: boolean }> {
+  // Snapshot current archived flag so undelete can return the task to the right place.
+  const { data: existing } = await cloud.from('workspace_tasks').select('archived').eq('id', taskId).maybeSingle()
+  const wasArchived = (existing as Record<string, unknown> | null)?.archived ?? 0
+  const { error } = await cloud.from('workspace_tasks').update({
+    deletion_scheduled_at: now(),
+    pre_deletion_archived: wasArchived,
+    archived: 1,
+    updated_at: now(),
+  }).eq('id', taskId)
+  if (error) throw new Error(`mark for deletion failed: ${error.message}`)
+  return { ok: true }
+}
+
+export async function undeleteTask(taskId: string): Promise<{ ok: boolean }> {
+  // Restore archived state from the snapshot taken at mark time.
+  const { data: existing } = await cloud.from('workspace_tasks').select('pre_deletion_archived').eq('id', taskId).maybeSingle()
+  const restoreArchived = (existing as Record<string, unknown> | null)?.pre_deletion_archived ?? 0
+  const { error } = await cloud.from('workspace_tasks').update({
+    archived: restoreArchived,
+    deletion_scheduled_at: null,
+    pre_deletion_archived: null,
+    updated_at: now(),
+  }).eq('id', taskId)
+  if (error) throw new Error(`undelete task failed: ${error.message}`)
+  return { ok: true }
+}
+
+export async function markCompleteNow(taskId: string): Promise<{ ok: boolean }> {
+  // Archive the task and stamp published_at if not already set (idempotent on published_at).
+  const { data: existing } = await cloud.from('workspace_tasks').select('published_at').eq('id', taskId).maybeSingle()
+  const alreadyPublished = (existing as Record<string, unknown> | null)?.published_at
+  const patch: Record<string, unknown> = { archived: 1, updated_at: now() }
+  if (!alreadyPublished) patch.published_at = now()
+  const { error } = await cloud.from('workspace_tasks').update(patch).eq('id', taskId)
+  if (error) throw new Error(`mark complete now failed: ${error.message}`)
+  return { ok: true }
+}
+
+export async function getCompletedTasks(actingUserId?: string): Promise<Record<string, unknown>[]> {
+  const actor = await resolveActor(actingUserId)
+  const visible = await visibleBoardIds(actor)
+  const { data, error } = await cloud.from('workspace_tasks').select('*')
+    .eq('archived', 1)
+    .not('published_at', 'is', null)
+    .is('deletion_scheduled_at', null)
+    .order('published_at', { ascending: false })
+  if (error) throw new Error(`completed tasks get failed: ${error.message}`)
+  return (data ?? []).filter((t: { board_id: string }) => actor.isRoot || visible.has(t.board_id)).map(mapTask)
+}
+
+export async function getMarkedForDeletionTasks(actingUserId?: string): Promise<Record<string, unknown>[]> {
+  const actor = await resolveActor(actingUserId)
+  const visible = await visibleBoardIds(actor)
+  const { data, error } = await cloud.from('workspace_tasks').select('*')
+    .not('deletion_scheduled_at', 'is', null)
+    .order('deletion_scheduled_at', { ascending: true })
+  if (error) throw new Error(`marked for deletion tasks get failed: ${error.message}`)
+  return (data ?? []).filter((t: { board_id: string }) => actor.isRoot || visible.has(t.board_id)).map(mapTask)
+}
+
 export async function createTask(t: {
   id: string; board_id?: string; column_id: string; title: string; content_type: string;
   client: string | null; area_of_analysis: string | null; assignee_ids: string[];
