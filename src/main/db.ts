@@ -1083,5 +1083,9 @@ export function initDatabase(): void {
     );
   `)
 
+  // Completed Projects stage 1: timestamp columns
+  try { db.exec('ALTER TABLE workspace_tasks ADD COLUMN published_at DATETIME;') } catch {}
+  try { db.exec('ALTER TABLE workspace_tasks ADD COLUMN deletion_scheduled_at DATETIME;') } catch {}
+
   console.log(`[DB] Initialized at ${dbPath}`)
 }
