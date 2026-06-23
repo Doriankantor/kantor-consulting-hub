@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-06-20
-  Current version: v2.0.13  |   194 commits   |   ~32,619 lines of TS/TSX
+  Generated: 2026-06-23
+  Current version: v2.0.14  |   206 commits   |   ~31,400 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -177,8 +177,30 @@ DESIGN PRINCIPLES / CONVENTIONS
     save it as a dated file in /sql and commit it.
 
 ───────────────────────────────────────────────────────────────────────────────
-9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-06-01)
+9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-06-23)
 ───────────────────────────────────────────────────────────────────────────────
+  v2.0.14 (Jun 23) -- COMPLETED PROJECTS: ARCHIVE, PURGATORY & AUTO-SWEEP
+    * New two-group Archived view: "Completed" (kept indefinitely, revivable)
+      and "Marked for deletion" (30-day countdown, recoverable).
+    * Card corner button is now contextual: a check-mark on Published cards
+      (mark complete → Completed), a trash icon elsewhere (mark for deletion).
+    * Published cards auto-move to Completed after 30 days (launch-time sweep);
+      a "mark complete now" check-mark does it immediately.
+    * Mark-for-deletion gives a 30-day recoverable grace period (soft-delete
+      that tasks never had before). Undelete returns a card to its exact origin.
+    * Revive a Completed card back to its origin board, with navigate-and-highlight
+      (pending-highlight pattern: arms ref before async restore, fires once card
+      reappears in tasks).
+    * Admin-only: marking a Completed card for deletion, and permanent "delete now"
+      (cloud-enforced isRoot gate + confirm dialog on both actions).
+    * Launch-time sweep (6s after ready): auto-completes stale Published cards
+      (>30d in Published) and permanently hard-deletes overdue purgatory cards;
+      logs verbosely, errors per-card, idempotent/safe to re-run.
+    * Three new workspace_tasks columns: published_at (stamped on Published
+      entry/exit), deletion_scheduled_at, pre_deletion_archived.
+    * refreshTasks extracted as a reusable context helper; restoreTask delegates
+      to it (no duplication).
+
   FOUNDATION (v0 → v1.0, May 25)
     • Initial Kantor Consulting Hub baseline
     • Login restriction, Google Drive backup, admin team panel, first-login flow
