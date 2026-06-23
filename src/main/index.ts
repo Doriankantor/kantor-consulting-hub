@@ -10,6 +10,7 @@ import { registerIpcHandlers, startIntelligenceAutoRefresh, triggerInitialNewsFe
 import { initRealtime, teardownAll as teardownRealtime } from './cloud/realtimeManager'
 import { registerBoardsRealtime } from './cloud/boardsRealtime'
 import { registerContactsRealtime } from './cloud/contactsRealtime'
+import { runCompletedProjectsSweep } from './cloud/completedSweep'
 
 // Module-level reference so the updater can push events to the window
 let mainWindow: BrowserWindow | null = null
@@ -81,6 +82,7 @@ app.whenReady().then(() => {
   // ── Intelligence: start auto-refresh and trigger initial fetch ─────────
   startIntelligenceAutoRefresh()
   setTimeout(() => triggerInitialNewsFetch(), 5000)
+  setTimeout(() => { runCompletedProjectsSweep() }, 6000)
 
   // ── Auto-updater (production only) ──────────────────────────────────────
   function saveLastChecked() {
