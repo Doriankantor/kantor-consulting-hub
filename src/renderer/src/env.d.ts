@@ -579,6 +579,7 @@ interface Window {
       getArchivedTasks: (actorId?: string) => Promise<unknown[]>
       restoreTask:      (id: string) => Promise<{ ok?: boolean }>
       markForDeletion:           (id: string)       => Promise<{ ok?: boolean }>
+      adminMarkForDeletion:      (id: string)       => Promise<{ ok: boolean; error?: string }>
       undeleteTask:              (id: string)       => Promise<{ ok?: boolean }>
       markCompleteNow:           (id: string)       => Promise<{ ok?: boolean }>
       getCompletedTasks:         (actorId?: string) => Promise<unknown[]>

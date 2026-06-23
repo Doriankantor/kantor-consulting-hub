@@ -311,6 +311,19 @@ export default function Workspace() {
     }
   }
 
+  async function handleAdminMarkForDeletion(task: import('../../types').Task) {
+    await window.api.workspace.adminMarkForDeletion(task.id)
+    setCompletedTasks(prev => prev.filter(t => t.id !== task.id))
+    loadMarked()
+  }
+
+  async function handleDeleteNow(task: import('../../types').Task) {
+    const ok = window.confirm(`Permanently delete "${task.title}"? This cannot be undone.`)
+    if (!ok) return
+    await window.api.workspace.deleteTask(task.id, localUser?.id, localUser?.name)
+    setMarkedTasks(prev => prev.filter(t => t.id !== task.id))
+  }
+
   async function handleRevive(task: import('../../types').Task) {
     const originExists = boards.some(b => b.id === task.board_id)
     if (!originExists) {
@@ -717,6 +730,14 @@ export default function Workspace() {
                   >
                     Revive
                   </button>
+                  {isRoot && (
+                    <button
+                      onClick={() => handleAdminMarkForDeletion(task)}
+                      className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-medium transition"
+                    >
+                      Mark for deletion
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -749,6 +770,14 @@ export default function Workspace() {
                     >
                       Undelete
                     </button>
+                    {isRoot && (
+                      <button
+                        onClick={() => handleDeleteNow(t)}
+                        className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium transition"
+                      >
+                        Delete permanently
+                      </button>
+                    )}
                   </div>
                 )
               })}

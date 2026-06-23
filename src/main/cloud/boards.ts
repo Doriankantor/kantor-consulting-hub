@@ -335,6 +335,12 @@ export async function markForDeletion(taskId: string): Promise<{ ok: boolean }> 
   return { ok: true }
 }
 
+export async function adminMarkForDeletion(taskId: string, actingUserId?: string): Promise<{ ok: boolean; error?: string }> {
+  const actor = await resolveActor(actingUserId)
+  if (!actor.isRoot) return { ok: false, error: 'Only an admin can delete completed projects.' }
+  return markForDeletion(taskId)
+}
+
 export async function undeleteTask(taskId: string): Promise<{ ok: boolean }> {
   // Restore archived state from the snapshot taken at mark time.
   const { data: existing } = await cloud.from('workspace_tasks').select('pre_deletion_archived').eq('id', taskId).maybeSingle()

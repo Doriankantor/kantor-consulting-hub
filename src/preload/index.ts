@@ -143,6 +143,7 @@ const api = {
     getArchivedTasks: (actorId?: string) => ipcRenderer.invoke('workspace:getArchivedTasks', actorId),
     restoreTask:      (id: string) => ipcRenderer.invoke('workspace:restoreTask', id),
     markForDeletion:              (id: string)      => ipcRenderer.invoke('workspace:markForDeletion', id),
+    adminMarkForDeletion:         (id: string)      => ipcRenderer.invoke('workspace:adminMarkForDeletion', id),
     undeleteTask:                 (id: string)      => ipcRenderer.invoke('workspace:undeleteTask', id),
     markCompleteNow:              (id: string)      => ipcRenderer.invoke('workspace:markCompleteNow', id),
     getCompletedTasks:            (actorId?: string) => ipcRenderer.invoke('workspace:getCompletedTasks', actorId),

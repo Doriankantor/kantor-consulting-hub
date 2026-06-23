@@ -1002,6 +1002,7 @@ function registerWorkspaceHandlers() {
   ipcMain.handle('workspace:getArchivedTasks', (_e, actorId?: string) => boardsCloud.getArchivedTasks(actorId ?? currentActingUserId))
   ipcMain.handle('workspace:restoreTask', (_e, taskId: string) => boardsCloud.restoreTask(taskId))
   ipcMain.handle('workspace:markForDeletion', (_e, taskId: string) => boardsCloud.markForDeletion(taskId))
+  ipcMain.handle('workspace:adminMarkForDeletion', (_e, taskId: string) => boardsCloud.adminMarkForDeletion(taskId, currentActingUserId))
   ipcMain.handle('workspace:undeleteTask', (_e, taskId: string) => boardsCloud.undeleteTask(taskId))
   ipcMain.handle('workspace:markCompleteNow', (_e, taskId: string) => boardsCloud.markCompleteNow(taskId))
   ipcMain.handle('workspace:getCompletedTasks', (_e, actorId?: string) => boardsCloud.getCompletedTasks(actorId ?? currentActingUserId))
