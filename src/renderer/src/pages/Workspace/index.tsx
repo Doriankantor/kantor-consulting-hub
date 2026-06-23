@@ -194,7 +194,7 @@ export default function Workspace() {
   const {
     viewMode, setViewMode, tasks, columns, selectedTask, createTask, selectTask,
     boards, activeBoard, archiveBoard, deleteBoard, duplicateBoard, renameBoard,
-    createBoard, setActiveBoardId, archivedBoards, restoreBoard, restoreTask, cloudError,
+    createBoard, setActiveBoardId, archivedBoards, restoreBoard, cloudError,
   } = useWorkspace()
   const { localUser, isRoot, can } = useAuth()
 
@@ -271,28 +271,39 @@ export default function Workspace() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRoot])
 
-  // Archived tasks drawer
+  // Completed / marked-for-deletion drawer
   const [showArchivedTasks, setShowArchivedTasks] = useState(false)
-  const [archivedTasks, setArchivedTasks] = useState<import('../../types').Task[]>([])
-  const [archivedTasksLoading, setArchivedTasksLoading] = useState(false)
+  const [completedTasks, setCompletedTasks] = useState<import('../../types').Task[]>([])
+  const [completedLoading, setCompletedLoading] = useState(false)
+  const [markedTasks, setMarkedTasks] = useState<import('../../types').Task[]>([])
+  const [markedLoading, setMarkedLoading] = useState(false)
 
-  async function loadArchivedTasks() {
-    setArchivedTasksLoading(true)
+  async function loadCompleted() {
+    setCompletedLoading(true)
     try {
-      const rows = await window.api.workspace.getArchivedTasks() as import('../../types').Task[]
-      // filter to active board only
-      setArchivedTasks(rows.filter(t => t.board_id === activeBoard?.id))
+      const rows = await window.api.workspace.getCompletedTasks() as import('../../types').Task[]
+      setCompletedTasks(rows.filter(t => t.board_id === activeBoard?.id))
     } catch {}
-    setArchivedTasksLoading(false)
+    setCompletedLoading(false)
   }
 
-  async function handleRestoreTask(taskId: string) {
-    await restoreTask(taskId)
-    setArchivedTasks(prev => prev.filter(t => t.id !== taskId))
+  async function loadMarked() {
+    setMarkedLoading(true)
+    try {
+      const rows = await window.api.workspace.getMarkedForDeletionTasks() as import('../../types').Task[]
+      setMarkedTasks(rows.filter(t => t.board_id === activeBoard?.id))
+    } catch {}
+    setMarkedLoading(false)
+  }
+
+  async function handleUndelete(id: string) {
+    await window.api.workspace.undeleteTask(id)
+    setMarkedTasks(prev => prev.filter(t => t.id !== id))
+    loadCompleted()
   }
 
   useEffect(() => {
-    if (showArchivedTasks) loadArchivedTasks()
+    if (showArchivedTasks) { loadCompleted(); loadMarked() }
   }, [showArchivedTasks, activeBoard?.id])
 
   // Board menu state
@@ -453,7 +464,7 @@ export default function Workspace() {
               onClick={() => setShowArchivedTasks(v => !v)}
               className="underline underline-offset-2 hover:text-gray-600 dark:hover:text-white/70 transition"
             >
-              {showArchivedTasks ? 'Hide archived' : 'Show archived'}
+              {showArchivedTasks ? 'Hide completed & deleted' : 'Show completed & deleted'}
             </button>
           </p>
         </div>
@@ -648,37 +659,71 @@ export default function Workspace() {
         )}
       </div>
 
-      {/* Archived tasks drawer */}
+      {/* Completed & marked-for-deletion drawer */}
       {showArchivedTasks && (
         <div className="shrink-0 border-t border-gray-200 dark:border-white/[0.08] bg-white/60 dark:bg-black/20 max-h-64 overflow-y-auto">
           <div className="px-5 py-3 flex items-center justify-between sticky top-0 bg-white/90 dark:bg-[#1a2233]/90 backdrop-blur-sm border-b border-gray-100 dark:border-white/[0.06]">
             <p className="text-xs font-semibold text-gray-500 dark:text-white/60 uppercase tracking-wider">
-              Archived tasks {archivedTasks.length > 0 ? `(${archivedTasks.length})` : ''}
+              Completed &amp; deleted
             </p>
             <button onClick={() => setShowArchivedTasks(false)} className="titlebar-no-drag text-gray-400 hover:text-gray-600 dark:hover:text-white/60 transition">
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
             </button>
           </div>
-          {archivedTasksLoading ? (
-            <p className="text-sm text-gray-400 dark:text-white/50 text-center py-6">Loading…</p>
-          ) : archivedTasks.length === 0 ? (
-            <p className="text-sm text-gray-400 dark:text-white/50 text-center py-6">No archived tasks in this board.</p>
+
+          {/* ── Completed group ───────────────────────────────────────── */}
+          <div className="px-5 pt-3 pb-1">
+            <p className="text-[10px] font-semibold text-gray-400 dark:text-white/35 uppercase tracking-wider mb-1">
+              Completed {completedTasks.length > 0 ? `(${completedTasks.length})` : ''}
+            </p>
+          </div>
+          {completedLoading ? (
+            <p className="text-xs text-gray-400 dark:text-white/50 text-center py-3">Loading…</p>
+          ) : completedTasks.length === 0 ? (
+            <p className="text-xs text-gray-400 dark:text-white/40 px-5 pb-3">No completed projects in this board.</p>
           ) : (
-            <div className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-              {archivedTasks.map(task => (
+            <div className="divide-y divide-gray-100 dark:divide-white/[0.05] mb-1">
+              {completedTasks.map(task => (
                 <div key={task.id} className="flex items-center gap-3 px-5 py-2.5 group hover:bg-gray-50 dark:hover:bg-white/[0.04] transition">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-600 dark:text-white/65 truncate">{task.title}</p>
                     {task.client && <p className="text-xs text-gray-400 dark:text-white/40 truncate">{task.client}</p>}
                   </div>
-                  <button
-                    onClick={() => handleRestoreTask(task.id)}
-                    className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-medium transition"
-                  >
-                    Restore
-                  </button>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ── Marked for deletion group ─────────────────────────────── */}
+          <div className="px-5 pt-2 pb-1 border-t border-gray-100 dark:border-white/[0.05]">
+            <p className="text-[10px] font-semibold text-gray-400 dark:text-white/35 uppercase tracking-wider mb-1">
+              Marked for deletion {markedTasks.length > 0 ? `(${markedTasks.length})` : ''}
+            </p>
+          </div>
+          {markedLoading ? (
+            <p className="text-xs text-gray-400 dark:text-white/50 text-center py-3">Loading…</p>
+          ) : markedTasks.length === 0 ? (
+            <p className="text-xs text-gray-400 dark:text-white/40 px-5 pb-3">Nothing marked for deletion.</p>
+          ) : (
+            <div className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+              {markedTasks.map(t => {
+                const daysLeft = Math.max(0, Math.ceil((new Date(t.deletion_scheduled_at as string).getTime() - Date.now()) / 86400000))
+                return (
+                  <div key={t.id} className="flex items-center gap-3 px-5 py-2.5 group hover:bg-gray-50 dark:hover:bg-white/[0.04] transition">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-600 dark:text-white/65 truncate">{t.title}</p>
+                      {t.client && <p className="text-xs text-gray-400 dark:text-white/40 truncate">{t.client}</p>}
+                    </div>
+                    <span className="text-xs text-amber-500/70 dark:text-amber-400/60 shrink-0 mr-2">Deletes in {daysLeft}d</span>
+                    <button
+                      onClick={() => handleUndelete(t.id)}
+                      className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-medium transition"
+                    >
+                      Undelete
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

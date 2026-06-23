@@ -61,6 +61,9 @@ export interface Task {
   position: number
   created_at: string
   updated_at: string
+  completed_at: string | null
+  published_at: string | null
+  deletion_scheduled_at: string | null
 }
 
 // ── Source (stored as JSON array in task.sources_json) ────────────────────

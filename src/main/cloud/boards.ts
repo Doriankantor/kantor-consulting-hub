@@ -324,8 +324,9 @@ export async function markForDeletion(taskId: string): Promise<{ ok: boolean }> 
   // Snapshot current archived flag so undelete can return the task to the right place.
   const { data: existing } = await cloud.from('workspace_tasks').select('archived').eq('id', taskId).maybeSingle()
   const wasArchived = (existing as Record<string, unknown> | null)?.archived ?? 0
+  const thirtyDaysOut = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
   const { error } = await cloud.from('workspace_tasks').update({
-    deletion_scheduled_at: now(),
+    deletion_scheduled_at: thirtyDaysOut,
     pre_deletion_archived: wasArchived,
     archived: 1,
     updated_at: now(),
