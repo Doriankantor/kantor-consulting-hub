@@ -99,8 +99,16 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
 
   const hasFooter = commentCount > 0 || (clSummary && clSummary.total > 0) || assigneeMembers.length > 0
 
+  const cardRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (highlightTaskId === task.id) {
+      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+    }
+  }, [highlightTaskId, task.id])
+
   return (
     <div
+      ref={cardRef}
       onClick={() => !isDragging && selectTask(task)}
       style={{ borderTopColor: areaColor }}
       className={`group relative bg-white dark:bg-[#1e2235] border border-transparent dark:border-white/[0.06]

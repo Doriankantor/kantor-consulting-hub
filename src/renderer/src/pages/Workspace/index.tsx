@@ -194,7 +194,7 @@ export default function Workspace() {
   const {
     viewMode, setViewMode, tasks, columns, selectedTask, createTask, selectTask,
     boards, activeBoard, archiveBoard, deleteBoard, duplicateBoard, renameBoard,
-    createBoard, setActiveBoardId, archivedBoards, restoreBoard, cloudError, boardContentVersion,
+    createBoard, setActiveBoardId, archivedBoards, restoreBoard, cloudError, boardContentVersion, openTask, restoreTask, requestHighlight, refreshTasks,
   } = useWorkspace()
   const { localUser, isRoot, can } = useAuth()
 
@@ -296,10 +296,32 @@ export default function Workspace() {
     setMarkedLoading(false)
   }
 
-  async function handleUndelete(id: string) {
-    await window.api.workspace.undeleteTask(id)
-    setMarkedTasks(prev => prev.filter(t => t.id !== id))
-    loadCompleted()
+  async function handleUndelete(task: import('../../types').Task) {
+    await window.api.workspace.undeleteTask(task.id)
+    setMarkedTasks(prev => prev.filter(t => t.id !== task.id))
+    if ((task.pre_deletion_archived ?? 0) === 0) {
+      // Card returns to board — navigate, arm highlight, then refresh tasks
+      setActiveBoardId(task.board_id!)
+      setShowArchivedTasks(false)
+      requestHighlight(task.id)
+      await refreshTasks()
+    } else {
+      // Card returns to Completed — just reload that list
+      loadCompleted()
+    }
+  }
+
+  async function handleRevive(task: import('../../types').Task) {
+    const originExists = boards.some(b => b.id === task.board_id)
+    if (!originExists) {
+      alert('The original board for this card no longer exists. Reviving to a chosen board will be added soon.')
+      return
+    }
+    setActiveBoardId(task.board_id!)         // switch board first
+    setShowArchivedTasks(false)              // close drawer
+    requestHighlight(task.id)               // arm highlight for when card appears in tasks
+    await restoreTask(task.id)              // context restoreTask: archived=0 + refetch tasks
+    setCompletedTasks(prev => prev.filter(t => t.id !== task.id))
   }
 
   useEffect(() => {
@@ -689,6 +711,12 @@ export default function Workspace() {
                     <p className="text-sm text-gray-600 dark:text-white/65 truncate">{task.title}</p>
                     {task.client && <p className="text-xs text-gray-400 dark:text-white/40 truncate">{task.client}</p>}
                   </div>
+                  <button
+                    onClick={() => handleRevive(task)}
+                    className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-medium transition"
+                  >
+                    Revive
+                  </button>
                 </div>
               ))}
             </div>
@@ -716,7 +744,7 @@ export default function Workspace() {
                     </div>
                     <span className="text-xs text-amber-500/70 dark:text-amber-400/60 shrink-0 mr-2">Deletes in {daysLeft}d</span>
                     <button
-                      onClick={() => handleUndelete(t.id)}
+                      onClick={() => handleUndelete(t)}
                       className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-medium transition"
                     >
                       Undelete

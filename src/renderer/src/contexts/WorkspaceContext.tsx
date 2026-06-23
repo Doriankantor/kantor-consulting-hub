@@ -35,6 +35,7 @@ interface WorkspaceContextType {
   setPendingSection: (s: string | null) => void
   highlightTaskId: string | null
   openTask: (taskId: string, section?: string) => void
+  requestHighlight: (taskId: string) => void
 
   // View state
   viewMode: ViewMode
@@ -63,6 +64,7 @@ interface WorkspaceContextType {
   refreshAreas: () => Promise<void>
   refreshLabels: () => Promise<void>
   refreshTaskMeta: (taskId?: string) => Promise<void>
+  refreshTasks: () => Promise<void>
 
   // Boards
   boards: Board[]
@@ -99,6 +101,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [taskLabelMap, setTaskLabelMap] = useState<Record<string, Label[]>>({})
   const [pendingSection, setPendingSection] = useState<string | null>(null)
   const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null)
+  const pendingHighlightRef = useRef<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [cloudError, setCloudError] = useState<string | null>(null)
   const [viewMode, setViewModeState] = useState<ViewMode>(() => {
@@ -436,6 +439,20 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => setHighlightTaskId(null), 2200)
   }, [tasks])
 
+  const requestHighlight = useCallback((taskId: string) => {
+    pendingHighlightRef.current = taskId
+  }, [])
+
+  // Fire the pending highlight once the card actually appears in tasks.
+  useEffect(() => {
+    const pid = pendingHighlightRef.current
+    if (pid && tasks.some(t => t.id === pid)) {
+      setHighlightTaskId(pid)
+      setTimeout(() => setHighlightTaskId(null), 2200)
+      pendingHighlightRef.current = null
+    }
+  }, [tasks])
+
   // ── setActiveBoardId helper ────────────────────────────────────────────────
 
   const setActiveBoardId = useCallback((id: string) => {
@@ -527,16 +544,19 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     await window.api.workspace.markCompleteNow(taskId)
   }, [])
 
-  const restoreTask = useCallback(async (taskId: string) => {
-    await window.api.workspace.restoreTask(taskId)
-    // Re-fetch all tasks to bring the restored task back into the board
+  const refreshTasks = useCallback(async () => {
     const rows = await window.api.workspace.getTasks(localUser?.id) as Task[]
     const taskList = rows.map((r: Record<string, unknown>) => ({
       ...(r as unknown as Task),
       assignee_ids: Array.isArray(r.assignee_ids) ? r.assignee_ids : [],
     }))
     setTasks(taskList)
-  }, [])
+  }, [localUser?.id])
+
+  const restoreTask = useCallback(async (taskId: string) => {
+    await window.api.workspace.restoreTask(taskId)
+    await refreshTasks()
+  }, [refreshTasks])
 
   // ── Board CRUD operations ──────────────────────────────────────────────────
 
@@ -642,10 +662,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       refreshAreas,
       refreshLabels,
       refreshTaskMeta,
+      refreshTasks,
       pendingSection,
       setPendingSection,
       highlightTaskId,
       openTask,
+      requestHighlight,
       boards,
       archivedBoards,
       activeBoard,
