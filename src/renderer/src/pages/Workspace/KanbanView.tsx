@@ -77,7 +77,7 @@ function getAreaColor(areaId: string | null, areas: Area[]): string {
 // ── Task card (display) ────────────────────────────────────────────────────
 
 function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDragging?: boolean; areas: Area[] }) {
-  const { selectTask, commentCounts, checklistSummaries, taskLabelMap, members, highlightTaskId, archiveTask } = useWorkspace()
+  const { selectTask, commentCounts, checklistSummaries, taskLabelMap, members, highlightTaskId, archiveTask, markForDeletion, markCompleteNow } = useWorkspace()
   const overdue = isOverdue(task.due_date, task.column_id)
   const areaColor = getAreaColor(task.area_of_analysis, areas)
   const commentCount = commentCounts[task.id] ?? 0
@@ -116,17 +116,28 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
           {CONTENT_TYPE_LABELS[task.content_type]}
         </span>
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={e => { e.stopPropagation(); archiveTask(task.id) }}
-            title="Archive"
-            className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-300 dark:text-white/25 hover:text-amber-500 dark:hover:text-amber-400 transition-all"
-          >
-            <svg width="12" height="12" viewBox="0 0 13 13" fill="none">
-              <rect x="1" y="3.5" width="11" height="8.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
-              <path d="M1 3.5l1.5-2.5h8L12 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
-              <path d="M4.5 7h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-            </svg>
-          </button>
+          {task.column_id === 'col-published' ? (
+            <button
+              onClick={e => { e.stopPropagation(); markCompleteNow(task.id) }}
+              title="Mark completed"
+              className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-300 dark:text-white/25 hover:text-emerald-500 dark:hover:text-emerald-400 transition-all"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={e => { e.stopPropagation(); markForDeletion(task.id) }}
+              title="Mark for deletion"
+              className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-300 dark:text-white/25 hover:text-red-400 dark:hover:text-red-400 transition-all"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2 3h8M5 3V2h2v1M4.5 3v6.5h3V3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                <rect x="3" y="3" width="6" height="7" rx="0.5" stroke="currentColor" strokeWidth="1.3"/>
+              </svg>
+            </button>
+          )}
           <div className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[task.priority]}`} title={task.priority} />
         </div>
       </div>

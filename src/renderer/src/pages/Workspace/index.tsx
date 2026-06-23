@@ -194,7 +194,7 @@ export default function Workspace() {
   const {
     viewMode, setViewMode, tasks, columns, selectedTask, createTask, selectTask,
     boards, activeBoard, archiveBoard, deleteBoard, duplicateBoard, renameBoard,
-    createBoard, setActiveBoardId, archivedBoards, restoreBoard, cloudError,
+    createBoard, setActiveBoardId, archivedBoards, restoreBoard, cloudError, boardContentVersion,
   } = useWorkspace()
   const { localUser, isRoot, can } = useAuth()
 
@@ -304,7 +304,7 @@ export default function Workspace() {
 
   useEffect(() => {
     if (showArchivedTasks) { loadCompleted(); loadMarked() }
-  }, [showArchivedTasks, activeBoard?.id])
+  }, [showArchivedTasks, activeBoard?.id, boardContentVersion])
 
   // Board menu state
   const [boardMenuOpen, setBoardMenuOpen] = useState(false)
@@ -661,7 +661,7 @@ export default function Workspace() {
 
       {/* Completed & marked-for-deletion drawer */}
       {showArchivedTasks && (
-        <div className="shrink-0 border-t border-gray-200 dark:border-white/[0.08] bg-white/60 dark:bg-black/20 max-h-64 overflow-y-auto">
+        <div className="shrink-0 border-t border-gray-200 dark:border-white/[0.08] bg-white/60 dark:bg-black/20 max-h-96 overflow-y-auto">
           <div className="px-5 py-3 flex items-center justify-between sticky top-0 bg-white/90 dark:bg-[#1a2233]/90 backdrop-blur-sm border-b border-gray-100 dark:border-white/[0.06]">
             <p className="text-xs font-semibold text-gray-500 dark:text-white/60 uppercase tracking-wider">
               Completed &amp; deleted

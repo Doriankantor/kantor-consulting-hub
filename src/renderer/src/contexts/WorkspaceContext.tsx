@@ -52,6 +52,8 @@ interface WorkspaceContextType {
   deleteTask: (taskId: string) => Promise<void>
   archiveTask: (taskId: string) => Promise<void>
   restoreTask: (taskId: string) => Promise<void>
+  markForDeletion: (taskId: string) => Promise<void>
+  markCompleteNow: (taskId: string) => Promise<void>
 
   // Column actions
   renameColumn: (columnId: string, name: string) => Promise<void>
@@ -513,6 +515,18 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     await window.api.workspace.archiveTask(taskId)
   }, [])
 
+  const markForDeletion = useCallback(async (taskId: string) => {
+    setTasks(prev => prev.filter(t => t.id !== taskId))
+    setSelectedTask(prev => prev?.id === taskId ? null : prev)
+    await window.api.workspace.markForDeletion(taskId)
+  }, [])
+
+  const markCompleteNow = useCallback(async (taskId: string) => {
+    setTasks(prev => prev.filter(t => t.id !== taskId))
+    setSelectedTask(prev => prev?.id === taskId ? null : prev)
+    await window.api.workspace.markCompleteNow(taskId)
+  }, [])
+
   const restoreTask = useCallback(async (taskId: string) => {
     await window.api.workspace.restoreTask(taskId)
     // Re-fetch all tasks to bring the restored task back into the board
@@ -621,6 +635,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       deleteTask,
       archiveTask,
       restoreTask,
+      markForDeletion,
+      markCompleteNow,
       renameColumn,
       addColumn,
       refreshAreas,

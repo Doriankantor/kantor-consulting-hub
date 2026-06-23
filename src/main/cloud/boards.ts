@@ -365,9 +365,8 @@ export async function getCompletedTasks(actingUserId?: string): Promise<Record<s
   const visible = await visibleBoardIds(actor)
   const { data, error } = await cloud.from('workspace_tasks').select('*')
     .eq('archived', 1)
-    .not('published_at', 'is', null)
     .is('deletion_scheduled_at', null)
-    .order('published_at', { ascending: false })
+    .order('updated_at', { ascending: false })
   if (error) throw new Error(`completed tasks get failed: ${error.message}`)
   return (data ?? []).filter((t: { board_id: string }) => actor.isRoot || visible.has(t.board_id)).map(mapTask)
 }
