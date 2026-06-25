@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-06-23
-  Current version: v2.0.14  |   206 commits   |   ~31,400 lines of TS/TSX
+  Generated: 2026-06-25
+  Current version: v2.0.15  |   209 commits   |   ~31,400 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -179,6 +179,13 @@ DESIGN PRINCIPLES / CONVENTIONS
 ───────────────────────────────────────────────────────────────────────────────
 9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-06-23)
 ───────────────────────────────────────────────────────────────────────────────
+  v2.0.15 (Jun 25) -- ARCHIVED DRAWER: DRAG-TO-RESIZE
+    * The Completed & deleted drawer is now drag-resizable: grab the thin handle
+      at the top edge, drag up to grow / down to shrink. Resets to 384px (the
+      old max-h-96) each session. Growing the drawer shrinks the Kanban area
+      above it (correct flex behavior). Min 120px, max 70% viewport height.
+      Pure UI — no persistence, no data changes.
+
   v2.0.14 (Jun 23) -- COMPLETED PROJECTS: ARCHIVE, PURGATORY & AUTO-SWEEP
     * New two-group Archived view: "Completed" (kept indefinitely, revivable)
       and "Marked for deletion" (30-day countdown, recoverable).
