@@ -273,6 +273,7 @@ export default function Workspace() {
 
   // Completed / marked-for-deletion drawer
   const [showArchivedTasks, setShowArchivedTasks] = useState(false)
+  const [drawerHeight, setDrawerHeight] = useState(384)
   const [completedTasks, setCompletedTasks] = useState<import('../../types').Task[]>([])
   const [completedLoading, setCompletedLoading] = useState(false)
   const [markedTasks, setMarkedTasks] = useState<import('../../types').Task[]>([])
@@ -696,7 +697,26 @@ export default function Workspace() {
 
       {/* Completed & marked-for-deletion drawer */}
       {showArchivedTasks && (
-        <div className="shrink-0 border-t border-gray-200 dark:border-white/[0.08] bg-white/60 dark:bg-black/20 max-h-96 overflow-y-auto">
+        <div className="shrink-0 border-t border-gray-200 dark:border-white/[0.08] bg-white/60 dark:bg-black/20 overflow-y-auto" style={{ height: drawerHeight }}>
+          <div
+            className="shrink-0 h-1.5 cursor-ns-resize hover:bg-indigo-400/30 transition"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              const startY = e.clientY
+              const startH = drawerHeight
+              const onMove = (ev: MouseEvent) => {
+                const next = startH - (ev.clientY - startY)
+                const clamped = Math.max(120, Math.min(next, window.innerHeight * 0.7))
+                setDrawerHeight(clamped)
+              }
+              const onUp = () => {
+                document.removeEventListener('mousemove', onMove)
+                document.removeEventListener('mouseup', onUp)
+              }
+              document.addEventListener('mousemove', onMove)
+              document.addEventListener('mouseup', onUp)
+            }}
+          />
           <div className="px-5 py-3 flex items-center justify-between sticky top-0 bg-white/90 dark:bg-[#1a2233]/90 backdrop-blur-sm border-b border-gray-100 dark:border-white/[0.06]">
             <p className="text-xs font-semibold text-gray-500 dark:text-white/60 uppercase tracking-wider">
               Completed &amp; deleted
