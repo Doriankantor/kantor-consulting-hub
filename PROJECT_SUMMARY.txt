@@ -177,8 +177,13 @@ DESIGN PRINCIPLES / CONVENTIONS
     save it as a dated file in /sql and commit it.
 
 ───────────────────────────────────────────────────────────────────────────────
-9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-06-23)
+9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-07-02)
 ───────────────────────────────────────────────────────────────────────────────
+  (Jul 2, repo-side fix, no app release) -- trump-immigration-study/index.html
+    * Recovered the standalone immigration-study page: the unversioned
+      @babel/standalone CDN script started resolving to Babel 8 (breaking
+      in-browser JSX for UMD pages); pinned it to @babel/standalone@7.
+
   v2.0.15 (Jun 25) -- ARCHIVED DRAWER: DRAG-TO-RESIZE
     * The Completed & deleted drawer is now drag-resizable: grab the thin handle
       at the top edge, drag up to grow / down to shrink. Resets to 384px (the
