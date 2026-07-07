@@ -204,6 +204,7 @@ const api = {
     undelete:           (id: string)                         => ipcRenderer.invoke('boards:undelete', id),
     duplicate:          (id: string, newName: string)        => ipcRenderer.invoke('boards:duplicate', id, newName),
     taskCount:    (id: string)                         => ipcRenderer.invoke('boards:taskCount', id),
+    getTasks:     (boardId: string, actorId?: string)  => ipcRenderer.invoke('boards:getTasks', boardId, actorId),
     seedToCloud:  (requestEmail: string)               => ipcRenderer.invoke('boards:seedToCloud', requestEmail),
   },
   analytics: {

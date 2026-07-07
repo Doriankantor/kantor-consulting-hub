@@ -1,13 +1,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import type { Board } from '../types'
+import type { Board, Column, Task } from '../types'
+import KanbanView from './Workspace/KanbanView'
 
 export default function Archive() {
-  const { isRoot } = useAuth()
+  const { isRoot, localUser } = useAuth()
   const [boards, setBoards] = useState<Board[]>([])
   const [taskCounts, setTaskCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+
+  // Read-only Visualize viewer state
+  const [viewBoard, setViewBoard] = useState<Board | null>(null)
+  const [viewColumns, setViewColumns] = useState<Column[]>([])
+  const [viewTasks, setViewTasks] = useState<Task[]>([])
+  const [viewLoading, setViewLoading] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -38,6 +45,38 @@ export default function Archive() {
     setBoards(prev => prev.filter(b => b.id !== id))
     flash('ok', `"${name}" restored successfully.`)
   }
+
+  async function handleVisualize(board: Board) {
+    setViewBoard(board)
+    setViewLoading(true)
+    try {
+      const [cols, tasks] = await Promise.all([
+        window.api.workspace.getColumns(board.id, localUser?.id),
+        window.api.boards.getTasks(board.id, localUser?.id),
+      ])
+      setViewColumns(cols)
+      setViewTasks(tasks)
+    } catch {
+      flash('err', `Couldn't load "${board.name}" — check your connection and try again.`)
+      setViewBoard(null)
+    } finally {
+      setViewLoading(false)
+    }
+  }
+
+  function closeViewer() {
+    setViewBoard(null)
+    setViewColumns([])
+    setViewTasks([])
+  }
+
+  // Close the viewer on Escape
+  useEffect(() => {
+    if (!viewBoard) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeViewer() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [viewBoard])
 
   async function handleMoveToTrash(id: string, name: string) {
     if (!confirm(`Move "${name}" to Trash?\n\nYou can restore it from Trash, or delete it permanently there.`)) return
@@ -126,6 +165,16 @@ export default function Archive() {
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
                           <button
+                            onClick={() => handleVisualize(board)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-medium transition"
+                          >
+                            <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                              <path d="M1 6s1.8-3.5 5-3.5S11 6 11 6s-1.8 3.5-5 3.5S1 6 1 6z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+                              <circle cx="6" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
+                            </svg>
+                            Visualize
+                          </button>
+                          <button
                             onClick={() => handleRestore(board.id, board.name)}
                             className="px-2.5 py-1.5 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-medium transition"
                           >
@@ -156,6 +205,63 @@ export default function Archive() {
           Completed Projects
         </h2>
       </section> */}
+
+      {/* ── Read-only board viewer (Visualize) ──────────────────────────────── */}
+      {viewBoard && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm" onClick={closeViewer}>
+          <div
+            className="flex flex-col flex-1 m-4 sm:m-6 rounded-2xl overflow-hidden bg-gray-100 dark:bg-[#141828] border border-black/10 dark:border-white/10 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Viewer header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-black/[0.06] dark:border-white/[0.08] bg-white/70 dark:bg-white/[0.04] shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <h2 className="text-base font-bold text-gray-900 dark:text-white truncate">{viewBoard.name}</h2>
+                <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+                  <svg width="9" height="9" viewBox="0 0 12 12" fill="none">
+                    <path d="M1 6s1.8-3.5 5-3.5S11 6 11 6s-1.8 3.5-5 3.5S1 6 1 6z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+                    <circle cx="6" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
+                  </svg>
+                  Archived · Read-only
+                </span>
+                {viewBoard.archived_at && (
+                  <span className="shrink-0 text-xs text-gray-400 dark:text-white/40">
+                    Archived {new Date(viewBoard.archived_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => { const b = viewBoard; closeViewer(); handleRestore(b.id, b.name) }}
+                  className="px-3 py-1.5 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-medium transition"
+                >
+                  Restore board
+                </button>
+                <button
+                  onClick={closeViewer}
+                  title="Close (Esc)"
+                  className="p-2 rounded-lg text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/80 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition"
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Viewer body */}
+            <div className="flex-1 min-h-0">
+              {viewLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="w-6 h-6 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+                </div>
+              ) : (
+                <KanbanView readOnly columnsOverride={viewColumns} tasksOverride={viewTasks} />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

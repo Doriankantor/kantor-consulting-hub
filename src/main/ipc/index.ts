@@ -988,6 +988,7 @@ function registerBoardHandlers() {
   ipcMain.handle('boards:undelete', (_e, id: string) => boardsCloud.undeleteBoard(id))
   ipcMain.handle('boards:duplicate', (_e, id: string, newName: string) => boardsCloud.duplicateBoard(currentActingUserId, id, newName))
   ipcMain.handle('boards:taskCount', (_e, id: string) => boardsCloud.boardTaskCount(id))
+  ipcMain.handle('boards:getTasks', (_e, boardId: string, actorId?: string) => boardsCloud.getBoardTasks(actorId ?? currentActingUserId, boardId))
 }
 
 // ── Workspace (local SQLite — columns + tasks) ────────────────────────────

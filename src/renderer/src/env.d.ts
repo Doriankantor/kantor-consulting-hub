@@ -620,6 +620,7 @@ interface Window {
       undelete:          (id: string)                         => Promise<{ ok: boolean }>
       duplicate:         (id: string, newName: string)        => Promise<{ ok: boolean; id: string }>
       taskCount:         (id: string)                         => Promise<number>
+      getTasks:          (boardId: string, actorId?: string)  => Promise<import('./types').Task[]>
       seedToCloud:       (requestEmail: string)               => Promise<{ ok: boolean; counts?: Record<string, number>; reason?: string }>
     }
     updater: {

@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-07
-  Current version: v2.0.18  |   218 commits   |   ~31,900 lines of TS/TSX
+  Current version: v2.0.19  |   220 commits   |   ~32,200 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -177,12 +177,29 @@ DESIGN PRINCIPLES / CONVENTIONS
     save it as a dated file in /sql and commit it.
 
 ───────────────────────────────────────────────────────────────────────────────
-9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-07-02)
+9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-07-07)
 ───────────────────────────────────────────────────────────────────────────────
   (Jul 2, repo-side fix, no app release) -- trump-immigration-study/index.html
     * Recovered the standalone immigration-study page: the unversioned
       @babel/standalone CDN script started resolving to Babel 8 (breaking
       in-browser JSX for UMD pages); pinned it to @babel/standalone@7.
+
+  v2.0.19 (Jul 7) -- READ-ONLY "VISUALIZE" MODE FOR ARCHIVED BOARDS
+    * New "Visualize" button on each /archive row opens the archived board in a
+      full-screen read-only Kanban modal (board name + "Archived · Read-only"
+      badge + archive date + Restore-board shortcut; closes via X / backdrop / Esc).
+    * KanbanView now accepts readOnly + columnsOverride/tasksOverride props.
+      Read-only mode disables ALL edit affordances: task + column drag (sensors
+      removed, useSortable disabled), card corner buttons (mark-complete /
+      mark-for-deletion), column rename + delete + grip handle, "Add engagement",
+      "Add stage", and card click-to-open (cards render cursor-default).
+    * Live Workspace board behavior is unchanged — all gates default off.
+    * New cloud fn getBoardTasks(actingUserId, boardId) in cloud/boards.ts:
+      fetches one board's tasks regardless of the BOARD's archived flag (getTasks
+      excludes archived boards), same visibility rules + task archived filter.
+      Exposed as boards:getTasks IPC → window.api.boards.getTasks(boardId, actorId?).
+    * Settings → Archived Projects section intentionally left in place until the
+      standalone /archive page is verified in the app.
 
   v2.0.18 (Jul 7) -- ARCHIVE PAGE + BOARD-DELETE COPY FIXES
     * New /archive sidebar page (Archive.tsx): standalone view for archived boards,

@@ -23,7 +23,7 @@ import {
 } from '@dnd-kit/sortable'
 import { useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
-import type { Task, Area } from '../../types'
+import type { Task, Area, Column } from '../../types'
 import {
   CONTENT_TYPE_COLORS, CONTENT_TYPE_LABELS,
   PRIORITY_DOT, DEFAULT_COLUMNS,
@@ -80,7 +80,7 @@ function getAreaColor(areaId: string | null, areas: Area[]): string {
 
 // ── Task card (display) ────────────────────────────────────────────────────
 
-function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDragging?: boolean; areas: Area[] }) {
+function TaskCardDisplay({ task, isDragging = false, areas, readOnly = false }: { task: Task; isDragging?: boolean; areas: Area[]; readOnly?: boolean }) {
   const { selectTask, commentCounts, checklistSummaries, taskLabelMap, members, highlightTaskId, archiveTask, markForDeletion, markCompleteNow } = useWorkspace()
   const overdue = isOverdue(task.due_date, task.column_id)
   const areaColor = getAreaColor(task.area_of_analysis, areas)
@@ -113,12 +113,12 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
   return (
     <div
       ref={cardRef}
-      onClick={() => !isDragging && selectTask(task)}
+      onClick={() => !isDragging && !readOnly && selectTask(task)}
       style={{ borderTopColor: areaColor }}
       className={`group relative bg-white dark:bg-[#1e2235] border border-transparent dark:border-white/[0.06]
-        border-t-[3px] rounded-2xl p-3.5 cursor-pointer
+        border-t-[3px] rounded-2xl p-3.5
         shadow-[0_4px_16px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.45)]
-        card-lift active:scale-[0.99]
+        ${readOnly ? 'cursor-default' : 'cursor-pointer card-lift active:scale-[0.99]'}
         ${isDragging ? 'opacity-60 shadow-2xl rotate-1 scale-105' : ''}
         ${highlightTaskId === task.id ? 'ring-2 ring-hub-gold ring-offset-2 dark:ring-offset-[#1a2233] animate-card-flash' : ''}`}
     >
@@ -128,7 +128,7 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
           {CONTENT_TYPE_LABELS[task.content_type]}
         </span>
         <div className="flex items-center gap-1.5">
-          {task.column_id === 'col-published' ? (
+          {!readOnly && (task.column_id === 'col-published' ? (
             <button
               onClick={e => { e.stopPropagation(); markCompleteNow(task.id) }}
               title="Mark completed"
@@ -149,7 +149,7 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
                 <rect x="3" y="3" width="6" height="7" rx="0.5" stroke="currentColor" strokeWidth="1.3"/>
               </svg>
             </button>
-          )}
+          ))}
           <div className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[task.priority]}`} title={task.priority} />
         </div>
       </div>
@@ -289,17 +289,18 @@ function TaskCardDisplay({ task, isDragging = false, areas }: { task: Task; isDr
 
 // ── Sortable card wrapper ──────────────────────────────────────────────────
 
-function SortableCard({ task, areas }: { task: Task; areas: Area[] }) {
+function SortableCard({ task, areas, readOnly = false }: { task: Task; areas: Area[]; readOnly?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { type: 'task', task },
+    disabled: readOnly,
   })
 
   const style = { transform: CSS.Transform.toString(transform), transition }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <TaskCardDisplay task={task} isDragging={isDragging} areas={areas} />
+    <div ref={setNodeRef} style={style} {...(readOnly ? {} : attributes)} {...(readOnly ? {} : listeners)}>
+      <TaskCardDisplay task={task} isDragging={isDragging} areas={areas} readOnly={readOnly} />
     </div>
   )
 }
@@ -315,17 +316,21 @@ const CONTENT_TYPE_LABELS_SHORT: Record<string, string> = {
   'client-advisory':       'Client Advisory',
 }
 
-function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart, dragHandleListeners }: {
+function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart, dragHandleListeners, readOnly = false, colOverride, tasksOverride }: {
   columnId: string
   areas: Area[]
   boardId?: string
   autoEdit?: boolean
   onEditStart?: () => void
   dragHandleListeners?: React.HTMLAttributes<HTMLElement>
+  readOnly?: boolean
+  colOverride?: Column
+  tasksOverride?: Task[]
 }) {
-  const { columns, boardTasks: tasks, renameColumn, createTask, deleteColumn } = useWorkspace()
+  const { columns, boardTasks, renameColumn, createTask, deleteColumn } = useWorkspace()
   const { isRoot } = useAuth()
-  const col = columns.find(c => c.id === columnId)!
+  const tasks = tasksOverride ?? boardTasks
+  const col = colOverride ?? columns.find(c => c.id === columnId)!
   const isSystemColumn = DEFAULT_COLUMNS.some(c => c.id === columnId)
   const colTasks = tasks
     .filter(t => t.column_id === columnId)
@@ -545,7 +550,7 @@ function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart,
             </div>
           )}
           {/* Pencil icon — visible on header hover */}
-          {!editingName && (
+          {!readOnly && !editingName && (
             <button
               onClick={() => { setEditingName(true); setNameValue(col.name) }}
               title="Rename stage"
@@ -557,7 +562,7 @@ function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart,
             </button>
           )}
           {/* Trash icon — admin only, non-system columns */}
-          {isRoot && !isSystemColumn && !editingName && (
+          {!readOnly && isRoot && !isSystemColumn && !editingName && (
             <button
               onClick={async () => {
                 if (colTasks.length > 0) {
@@ -586,10 +591,10 @@ function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart,
           }`}
         >
           <SortableContext items={colTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-            {colTasks.map(task => <SortableCard key={task.id} task={task} areas={areas} />)}
+            {colTasks.map(task => <SortableCard key={task.id} task={task} areas={areas} readOnly={readOnly} />)}
           </SortableContext>
 
-          {addingTask ? (
+          {readOnly ? null : addingTask ? (
             <div className="bg-white dark:bg-white/10 border border-gray-200 dark:border-white/20 rounded-2xl p-3">
               <input
                 autoFocus
@@ -624,23 +629,26 @@ function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart,
 
 // ── Sortable column wrapper ────────────────────────────────────────────────
 
-function SortableColumnWrapper({ col, areas, boardId, autoEdit, onEditStart }: {
-  col: import('../../types').Column
+function SortableColumnWrapper({ col, areas, boardId, autoEdit, onEditStart, readOnly = false, tasksOverride }: {
+  col: Column
   areas: Area[]
   boardId?: string
   autoEdit?: boolean
   onEditStart?: () => void
+  readOnly?: boolean
+  tasksOverride?: Task[]
 }) {
   const { isRoot } = useAuth()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: col.id,
     data: { type: 'column' },
+    disabled: readOnly,
   })
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.35 : 1, zIndex: isDragging ? 50 : undefined }}
-      {...attributes}
+      {...(readOnly ? {} : attributes)}
     >
       <KanbanColumn
         columnId={col.id}
@@ -648,7 +656,10 @@ function SortableColumnWrapper({ col, areas, boardId, autoEdit, onEditStart }: {
         boardId={boardId}
         autoEdit={autoEdit}
         onEditStart={onEditStart}
-        dragHandleListeners={isRoot ? listeners : undefined}
+        dragHandleListeners={!readOnly && isRoot ? listeners : undefined}
+        readOnly={readOnly}
+        colOverride={readOnly ? col : undefined}
+        tasksOverride={tasksOverride}
       />
     </div>
   )
@@ -656,18 +667,26 @@ function SortableColumnWrapper({ col, areas, boardId, autoEdit, onEditStart }: {
 
 // ── Board ──────────────────────────────────────────────────────────────────
 
-export default function KanbanView() {
-  const { columns, boardTasks: tasks, moveTask, reorderWithinColumn, reorderColumns, addColumn, areas, activeBoard } = useWorkspace()
+export default function KanbanView({ readOnly = false, columnsOverride, tasksOverride }: {
+  readOnly?: boolean
+  columnsOverride?: Column[]
+  tasksOverride?: Task[]
+} = {}) {
+  const { columns: ctxColumns, boardTasks, moveTask, reorderWithinColumn, reorderColumns, addColumn, areas, activeBoard } = useWorkspace()
   const { isRoot } = useAuth()
+  const columns = columnsOverride ?? ctxColumns
+  const tasks = tasksOverride ?? boardTasks
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null)
   // Track the id of the column just added so we can auto-focus its name for editing
   const [newColumnId, setNewColumnId] = useState<string | null>(null)
 
-  const sensors = useSensors(
+  const liveSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
+  // No sensors in read-only mode — drags can never start
+  const sensors = readOnly ? [] : liveSensors
 
   // When dragging a COLUMN, restrict collision candidates to column-level droppables
   // so the outer SortableContext always sees a column as `over` (enabling shift-aside
@@ -769,11 +788,13 @@ export default function KanbanView() {
                     boardId={activeBoard?.id}
                     autoEdit={col.id === newColumnId}
                     onEditStart={() => setNewColumnId(null)}
+                    readOnly={readOnly}
+                    tasksOverride={tasksOverride}
                   />
                 ))}
             </SortableContext>
 
-            {isRoot && (
+            {isRoot && !readOnly && (
               <button
                 onClick={async () => {
                   const id = await addColumn()

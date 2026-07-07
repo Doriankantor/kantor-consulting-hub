@@ -333,6 +333,20 @@ export async function getTasks(actingUserId?: string): Promise<Record<string, un
   return (data ?? []).map(mapTask)
 }
 
+export async function getBoardTasks(actingUserId: string | undefined, boardId: string): Promise<Record<string, unknown>[]> {
+  // Unlike getTasks, this fetches a single board's tasks regardless of the
+  // board's archived flag — used by the read-only Visualize view for archived
+  // boards. Same visibility rules and same task-level archived filter.
+  const actor = await resolveActor(actingUserId)
+  const visible = await visibleBoardIds(actor)
+  if (!actor.isRoot && !visible.has(boardId)) return []
+  const { data, error } = await cloud.from('workspace_tasks').select('*')
+    .eq('board_id', boardId).or('archived.is.null,archived.eq.0')
+    .order('position', { ascending: true })
+  if (error) throw new Error(`board tasks get failed: ${error.message}`)
+  return (data ?? []).map(mapTask)
+}
+
 export async function getArchivedTasks(actingUserId?: string): Promise<Record<string, unknown>[]> {
   const actor = await resolveActor(actingUserId)
   const visible = await visibleBoardIds(actor)
