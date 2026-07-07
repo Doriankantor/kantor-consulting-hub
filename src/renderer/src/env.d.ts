@@ -608,16 +608,19 @@ interface Window {
       delete: (id: string)                                   => Promise<{ ok?: boolean }>
     }
     boards: {
-      list:         (includeArchived?: boolean, actorId?: string) => Promise<import('./types').Board[]>
-      listArchived: (actorId?: string)                   => Promise<import('./types').Board[]>
-      create:       (name: string)                       => Promise<{ ok: boolean; id: string }>
-      rename:       (id: string, name: string)           => Promise<{ ok: boolean }>
-      archive:      (id: string, archivedBy: string)     => Promise<{ ok: boolean }>
-      restore:      (id: string)                         => Promise<{ ok: boolean }>
-      delete:       (id: string, deletedById?: string, deletedByName?: string) => Promise<{ ok: boolean }>
-      duplicate:    (id: string, newName: string)        => Promise<{ ok: boolean; id: string }>
-      taskCount:    (id: string)                         => Promise<number>
-      seedToCloud:  (requestEmail: string)               => Promise<{ ok: boolean; counts?: Record<string, number>; reason?: string }>
+      list:              (includeArchived?: boolean, actorId?: string) => Promise<import('./types').Board[]>
+      listArchived:      (actorId?: string)                   => Promise<import('./types').Board[]>
+      create:            (name: string)                       => Promise<{ ok: boolean; id: string }>
+      rename:            (id: string, name: string)           => Promise<{ ok: boolean }>
+      archive:           (id: string, archivedBy: string)     => Promise<{ ok: boolean }>
+      restore:           (id: string)                         => Promise<{ ok: boolean }>
+      delete:            (id: string, deletedById?: string, deletedByName?: string) => Promise<{ ok: boolean }>
+      listTrashed:       ()                                   => Promise<Record<string, unknown>[]>
+      permanentlyDelete: (id: string)                         => Promise<{ ok: boolean; reason?: string }>
+      undelete:          (id: string)                         => Promise<{ ok: boolean }>
+      duplicate:         (id: string, newName: string)        => Promise<{ ok: boolean; id: string }>
+      taskCount:         (id: string)                         => Promise<number>
+      seedToCloud:       (requestEmail: string)               => Promise<{ ok: boolean; counts?: Record<string, number>; reason?: string }>
     }
     updater: {
       onAvailable:    (cb: (info: { version: string; releaseNotes?: string | null }) => void) => void

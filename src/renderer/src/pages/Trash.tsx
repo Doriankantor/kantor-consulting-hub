@@ -3,6 +3,18 @@ import { useAuth } from '../contexts/AuthContext'
 
 type FilterType = 'all' | 'task' | 'board' | 'contact' | 'comment'
 type SortType = 'date' | 'remaining' | 'name'
+type ItemSource = 'local' | 'cloud-board' | 'cloud-contact'
+
+interface UnifiedItem {
+  _uid: string          // local trash row id (for local) or entity id (for cloud)
+  _source: ItemSource
+  item_type: 'task' | 'board' | 'contact' | 'comment'
+  item_id: string       // the actual entity ID
+  item_name: string
+  deleted_at: string
+  expires_at: string | null   // null = cloud item, no auto-expiry
+  deleted_by_name: string | null
+}
 
 function daysRemaining(expiresAt: string): number {
   return Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86400000))
@@ -16,6 +28,14 @@ function DaysBadge({ days }: { days: number }) {
   return (
     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cls}`}>
       {days}d left
+    </span>
+  )
+}
+
+function CloudBadge() {
+  return (
+    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30">
+      Cloud
     </span>
   )
 }
@@ -40,7 +60,6 @@ function TypeIcon({ type }: { type: string }) {
       <path d="M2 13c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
     </svg>
   )
-  // comment
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-orange-400">
       <path d="M2 2.5h10v7H8l-1.5 2L5 9.5H2v-7z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
@@ -50,7 +69,7 @@ function TypeIcon({ type }: { type: string }) {
 
 export default function Trash() {
   const { localUser, isRoot } = useAuth()
-  const [items, setItems] = useState<TrashItem[]>([])
+  const [items, setItems] = useState<UnifiedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterType>('all')
   const [sort, setSort] = useState<SortType>('date')
@@ -60,39 +79,103 @@ export default function Trash() {
 
   const load = useCallback(async () => {
     try {
-      const data = await window.api.trash.list()
-      setItems(data)
+      const [localRaw, boardsRaw, contactsRaw] = await Promise.all([
+        window.api.trash.list().catch(() => [] as TrashItem[]),
+        isRoot ? window.api.boards.listTrashed().catch(() => [] as Record<string, unknown>[]) : Promise.resolve([] as Record<string, unknown>[]),
+        window.api.contacts.listTrash().catch(() => [] as Contact[]),
+      ])
+
+      // Local items: tasks + comments only (boards are now cloud-managed)
+      const localItems: UnifiedItem[] = (localRaw as TrashItem[])
+        .filter(i => i.item_type !== 'board')
+        .map(i => ({
+          _uid: i.id,
+          _source: 'local',
+          item_type: i.item_type,
+          item_id: i.item_id,
+          item_name: i.item_name,
+          deleted_at: i.deleted_at,
+          expires_at: i.expires_at,
+          deleted_by_name: i.deleted_by_name,
+        }))
+
+      // Cloud boards (soft-deleted)
+      const boardItems: UnifiedItem[] = (boardsRaw as Record<string, unknown>[]).map(b => ({
+        _uid: b.id as string,
+        _source: 'cloud-board',
+        item_type: 'board',
+        item_id: b.id as string,
+        item_name: (b.name as string) ?? 'Untitled board',
+        deleted_at: (b.updated_at as string) ?? new Date().toISOString(),
+        expires_at: null,
+        deleted_by_name: null,
+      }))
+
+      // Cloud contacts (soft-deleted)
+      const contactItems: UnifiedItem[] = (contactsRaw as Contact[])
+        .filter(c => c.deleted_at != null)
+        .map(c => ({
+          _uid: c.id,
+          _source: 'cloud-contact',
+          item_type: 'contact',
+          item_id: c.id,
+          item_name: c.full_name,
+          deleted_at: c.deleted_at!,
+          expires_at: null,
+          deleted_by_name: null,
+        }))
+
+      setItems([...boardItems, ...contactItems, ...localItems])
     } catch {
       setItems([])
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [isRoot])
 
   useEffect(() => { load() }, [load])
 
   const filtered = items.filter(i => filter === 'all' || i.item_type === filter)
 
   const sorted = [...filtered].sort((a, b) => {
-    if (sort === 'date')      return new Date(b.deleted_at).getTime() - new Date(a.deleted_at).getTime()
-    if (sort === 'remaining') return daysRemaining(a.expires_at) - daysRemaining(b.expires_at)
+    if (sort === 'date') return new Date(b.deleted_at).getTime() - new Date(a.deleted_at).getTime()
+    if (sort === 'remaining') {
+      const aD = a.expires_at ? daysRemaining(a.expires_at) : Infinity
+      const bD = b.expires_at ? daysRemaining(b.expires_at) : Infinity
+      return aD - bD
+    }
     return a.item_name.localeCompare(b.item_name)
   })
 
-  async function handleRestore(id: string) {
-    setRestoring(id)
+  // Local-only items (for bulk actions)
+  const localItems = items.filter(i => i._source === 'local')
+
+  async function handleRestore(item: UnifiedItem) {
+    setRestoring(item._uid)
     try {
-      await window.api.trash.restore(id)
+      if (item._source === 'local') {
+        await window.api.trash.restore(item._uid)
+      } else if (item._source === 'cloud-board') {
+        await window.api.boards.undelete(item.item_id)
+      } else if (item._source === 'cloud-contact') {
+        await window.api.contacts.restore(item.item_id)
+      }
       await load()
     } finally {
       setRestoring(null)
     }
   }
 
-  async function handleDeletePerm(id: string) {
-    setDeleting(id)
+  async function handleDeletePerm(item: UnifiedItem) {
+    setDeleting(item._uid)
     try {
-      await window.api.trash.deletePermanently(id)
+      if (item._source === 'local') {
+        await window.api.trash.deletePermanently(item._uid)
+      } else if (item._source === 'cloud-board') {
+        await window.api.boards.permanentlyDelete(item.item_id)
+      } else if (item._source === 'cloud-contact') {
+        await window.api.contacts.permanentDelete(item.item_id, localUser?.email ?? '')
+      }
       await load()
     } finally {
       setDeleting(null)
@@ -126,10 +209,12 @@ export default function Trash() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Trash</h1>
             <p className="text-sm text-gray-500 dark:text-white/50 mt-0.5">
-              {items.length === 0 ? 'No items in trash' : `${items.length} item${items.length !== 1 ? 's' : ''} — deleted items are removed after 30 days`}
+              {items.length === 0
+                ? 'No items in trash'
+                : `${items.length} item${items.length !== 1 ? 's' : ''} — local items removed after 30 days`}
             </p>
           </div>
-          {items.length > 0 && (
+          {localItems.length > 0 && (
             <div className="flex items-center gap-2">
               <button
                 onClick={handleRestoreAll}
@@ -191,16 +276,15 @@ export default function Trash() {
             <path d="M8 12h32M20 8h8M18 20v16M24 20v16M30 20v16M10 12l2 28h24l2-28" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           <p className="text-gray-400 dark:text-white/40 font-medium">Trash is empty</p>
-          <p className="text-gray-300 dark:text-white/25 text-sm mt-1">Deleted items will appear here for 30 days</p>
+          <p className="text-gray-300 dark:text-white/25 text-sm mt-1">Deleted items will appear here</p>
         </div>
       ) : (
         <div className="bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl overflow-hidden">
           {sorted.map((item, idx) => {
-            const days = daysRemaining(item.expires_at)
             const deletedDate = new Date(item.deleted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
             return (
               <div
-                key={item.id}
+                key={item._uid}
                 className={`flex items-center gap-3 px-5 py-3.5 ${idx !== sorted.length - 1 ? 'border-b border-gray-100 dark:border-white/[0.05]' : ''}`}
               >
                 <div className="shrink-0">
@@ -214,21 +298,25 @@ export default function Trash() {
                     {item.deleted_by_name ? `Deleted by ${item.deleted_by_name} · ` : ''}{deletedDate}
                   </span>
                 </div>
-                <DaysBadge days={days} />
+                {item.expires_at != null ? (
+                  <DaysBadge days={daysRemaining(item.expires_at)} />
+                ) : (
+                  <CloudBadge />
+                )}
                 <button
-                  onClick={() => handleRestore(item.id)}
-                  disabled={restoring === item.id}
+                  onClick={() => handleRestore(item)}
+                  disabled={restoring === item._uid}
                   className="px-3 py-1 rounded-lg text-xs font-medium bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 border border-teal-500/20 transition disabled:opacity-50"
                 >
-                  {restoring === item.id ? '…' : 'Restore'}
+                  {restoring === item._uid ? '…' : 'Restore'}
                 </button>
                 {isRoot && (
                   <button
-                    onClick={() => handleDeletePerm(item.id)}
-                    disabled={deleting === item.id}
+                    onClick={() => handleDeletePerm(item)}
+                    disabled={deleting === item._uid}
                     className="px-3 py-1 rounded-lg text-xs font-medium bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 border border-red-500/20 transition disabled:opacity-50"
                   >
-                    {deleting === item.id ? '…' : 'Delete'}
+                    {deleting === item._uid ? '…' : 'Delete'}
                   </button>
                 )}
               </div>
@@ -243,7 +331,7 @@ export default function Trash() {
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/[0.12] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Empty trash?</h3>
             <p className="text-sm text-gray-500 dark:text-white/60 mb-5">
-              This will permanently delete all {items.length} item{items.length !== 1 ? 's' : ''} in the trash. This action cannot be undone.
+              This will permanently remove all {localItems.length} local item{localItems.length !== 1 ? 's' : ''} (tasks and comments). Cloud items (boards and contacts) must be deleted individually. This action cannot be undone.
             </p>
             <div className="flex gap-3 justify-end">
               <button

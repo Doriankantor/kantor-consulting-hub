@@ -203,30 +203,43 @@ export async function restoreBoard(id: string): Promise<{ ok: boolean }> {
   return { ok: true }
 }
 
-// Board hard-delete: ADMIN ONLY (enforced here — service role bypasses RLS).
-// Writes the board to LOCAL trash first (trash not migrated). Cloud FK CASCADE
-// removes columns/tasks/comments/checklists/labels/activity for the board.
-export async function deleteBoard(actingUserId: string | undefined, id: string, deletedById?: string, deletedByName?: string): Promise<{ ok: boolean; reason?: string }> {
+// Board soft-delete: ADMIN ONLY. Sets deleted=1 in cloud; board is recoverable.
+// Blobs are NOT cleaned up here — they survive until permanent deletion.
+export async function deleteBoard(actingUserId: string | undefined, id: string, _deletedById?: string, _deletedByName?: string): Promise<{ ok: boolean; reason?: string }> {
   const actor = await resolveActor(actingUserId)
   if (!actor.isRoot) return { ok: false, reason: 'Only root can delete a board.' }
-  const { data: board } = await cloud.from('workspace_boards').select('*').eq('id', id).maybeSingle()
-  if (board) {
-    try {
-      getDatabase().prepare(`INSERT INTO trash (id,item_type,item_id,item_name,item_data_json,deleted_by_id,deleted_by_name,expires_at)
-        VALUES (?,?,?,?,?,?,?,datetime('now','+30 days'))`)
-        .run(randomUUID(), 'board', id, String((board as Record<string, unknown>).name ?? id), JSON.stringify(board), deletedById ?? null, deletedByName ?? null)
-    } catch { /* trash insert must not block delete */ }
-  }
-  // Cascade blob cleanup: collect all attachment blobs for ALL tasks on this board
-  // BEFORE the board row delete (cascade removes tasks+attachments rows; blobs don't self-delete).
+  const { error } = await cloud.from('workspace_boards').update({ deleted: 1, updated_at: now() }).eq('id', id)
+  if (error) throw new Error(`boards soft-delete failed: ${error.message}`)
+  return { ok: true }
+}
+
+export async function listTrashedBoards(actingUserId: string | undefined): Promise<Record<string, unknown>[]> {
+  const actor = await resolveActor(actingUserId)
+  if (!actor.isRoot) return []
+  const { data, error } = await cloud.from('workspace_boards').select('*').eq('deleted', 1).order('updated_at', { ascending: false })
+  if (error) throw new Error(`boards listTrashed failed: ${error.message}`)
+  return (data ?? []) as Record<string, unknown>[]
+}
+
+// Permanent delete: hard-DELETE from cloud + clean up storage blobs. ADMIN ONLY.
+export async function permanentlyDeleteBoard(actingUserId: string | undefined, id: string): Promise<{ ok: boolean; reason?: string }> {
+  const actor = await resolveActor(actingUserId)
+  if (!actor.isRoot) return { ok: false, reason: 'Only root can permanently delete a board.' }
   try {
     const { storagePathsForBoard, deleteStorageBlobs } = await getBlobHelpers()
     const paths = await storagePathsForBoard(id)
     await deleteStorageBlobs(paths)
-  } catch (e) { console.warn('[boards] attachment blob cascade cleanup failed (board):', (e as Error)?.message) }
-
+  } catch (e) { console.warn('[boards] blob cleanup failed (permanent delete):', (e as Error)?.message) }
   const { error } = await cloud.from('workspace_boards').delete().eq('id', id)
-  if (error) throw new Error(`boards delete failed: ${error.message}`)
+  if (error) throw new Error(`boards permanent delete failed: ${error.message}`)
+  return { ok: true }
+}
+
+export async function undeleteBoard(id: string): Promise<{ ok: boolean }> {
+  const { data: maxRow } = await cloud.from('workspace_boards').select('position').eq('deleted', 0).eq('archived', 0).order('position', { ascending: false }).limit(1).maybeSingle()
+  const pos = ((maxRow?.position as number | undefined) ?? -1) + 1
+  const { error } = await cloud.from('workspace_boards').update({ deleted: 0, position: pos, updated_at: now() }).eq('id', id)
+  if (error) throw new Error(`boards undelete failed: ${error.message}`)
   return { ok: true }
 }
 

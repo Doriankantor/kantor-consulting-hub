@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-07
-  Current version: v2.0.16  |   212 commits   |   ~31,600 lines of TS/TSX
+  Current version: v2.0.17  |   215 commits   |   ~31,700 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -183,6 +183,25 @@ DESIGN PRINCIPLES / CONVENTIONS
     * Recovered the standalone immigration-study page: the unversioned
       @babel/standalone CDN script started resolving to Babel 8 (breaking
       in-browser JSX for UMD pages); pinned it to @babel/standalone@7.
+
+  v2.0.17 (Jul 7) -- PHASE 1 UNIFIED TRASH
+    * Board deletion is now a cloud soft-delete (deleted=1 flag on workspace_boards)
+      instead of a hard DELETE. Boards are recoverable from the Trash view.
+    * New cloud functions: listTrashedBoards, permanentlyDeleteBoard, undeleteBoard.
+      All admin-only. permanentlyDeleteBoard cleans up storage blobs then hard-deletes.
+    * /trash view unified: loads from three sources simultaneously — cloud boards
+      (deleted=1), cloud contacts (deleted_at IS NOT NULL), and local SQLite items
+      (tasks, comments). Normalized to a single UnifiedItem shape.
+    * Cloud items show a "Cloud" badge instead of the 30-day countdown (no auto-expiry).
+    * Per-item restore/delete routes by source: boards → boards:undelete /
+      boards:permanentlyDelete; contacts → contacts:restore / contacts:permanentDelete;
+      tasks/comments → trash:restore / trash:deletePermanently (local SQLite).
+    * "Empty trash" and "Restore all" bulk actions scope to local SQLite items only;
+      the confirm dialog now says so explicitly.
+    * Local board tombstones (pre-Phase-1 hard-deletes) are excluded from the unified
+      view — only cloud-sourced boards appear under Projects.
+    * IPC: boards:listTrashed, boards:permanentlyDelete, boards:undelete added.
+    * Preload + env.d.ts: listTrashed, permanentlyDelete, undelete added to boards API.
 
   v2.0.16 (Jul 7) -- STAGE MANAGEMENT + COLUMN DRAG-REORDER
     * Kanban stages can now be drag-reordered by admins. Grab the six-dot grip

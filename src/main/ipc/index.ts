@@ -980,9 +980,12 @@ function registerBoardHandlers() {
   ipcMain.handle('boards:rename', (_e, id: string, name: string) => boardsCloud.renameBoard(id, name))
   ipcMain.handle('boards:archive', (_e, id: string, archivedBy: string) => boardsCloud.archiveBoard(id, archivedBy))
   ipcMain.handle('boards:restore', (_e, id: string) => boardsCloud.restoreBoard(id))
-  // Hard delete is ADMIN-ONLY (verified in the main process — service role bypasses RLS).
+  // Soft-delete is ADMIN-ONLY (verified in the main process — service role bypasses RLS).
   ipcMain.handle('boards:delete', (_e, id: string, deletedById?: string, deletedByName?: string) =>
     boardsCloud.deleteBoard(currentActingUserId, id, deletedById, deletedByName))
+  ipcMain.handle('boards:listTrashed', () => boardsCloud.listTrashedBoards(currentActingUserId))
+  ipcMain.handle('boards:permanentlyDelete', (_e, id: string) => boardsCloud.permanentlyDeleteBoard(currentActingUserId, id))
+  ipcMain.handle('boards:undelete', (_e, id: string) => boardsCloud.undeleteBoard(id))
   ipcMain.handle('boards:duplicate', (_e, id: string, newName: string) => boardsCloud.duplicateBoard(currentActingUserId, id, newName))
   ipcMain.handle('boards:taskCount', (_e, id: string) => boardsCloud.boardTaskCount(id))
 }
