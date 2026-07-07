@@ -59,6 +59,8 @@ interface WorkspaceContextType {
   // Column actions
   renameColumn: (columnId: string, name: string) => Promise<void>
   addColumn: () => Promise<string>   // returns new column id
+  deleteColumn: (colId: string) => Promise<{ ok: boolean; error?: string }>
+  reorderColumns: (orderedIds: string[]) => Promise<void>
 
   // Refresh actions
   refreshAreas: () => Promise<void>
@@ -631,6 +633,20 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     return newId
   }, [columns, activeBoardId])
 
+  const deleteColumn = useCallback(async (colId: string): Promise<{ ok: boolean; error?: string }> => {
+    const result = await window.api.workspace.deleteColumn(colId)
+    if (result.ok) setColumns(prev => prev.filter(c => c.id !== colId))
+    return result
+  }, [])
+
+  const reorderColumns = useCallback(async (orderedIds: string[]) => {
+    setColumns(prev => {
+      const byId = new Map(prev.map(c => [c.id, c]))
+      return orderedIds.map((id, i) => ({ ...byId.get(id)!, position: i }))
+    })
+    await window.api.workspace.reorderColumns(orderedIds)
+  }, [])
+
   return (
     <WorkspaceContext.Provider value={{
       columns,
@@ -659,6 +675,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       markCompleteNow,
       renameColumn,
       addColumn,
+      deleteColumn,
+      reorderColumns,
       refreshAreas,
       refreshLabels,
       refreshTaskMeta,

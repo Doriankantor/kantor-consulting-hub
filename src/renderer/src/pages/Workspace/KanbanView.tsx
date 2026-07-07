@@ -16,16 +16,19 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
+  horizontalListSortingStrategy,
   useSortable,
+  arrayMove,
 } from '@dnd-kit/sortable'
 import { useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import type { Task, Area } from '../../types'
 import {
   CONTENT_TYPE_COLORS, CONTENT_TYPE_LABELS,
-  PRIORITY_DOT,
+  PRIORITY_DOT, DEFAULT_COLUMNS,
 } from '../../types'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
+import { useAuth } from '../../contexts/AuthContext'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -311,15 +314,18 @@ const CONTENT_TYPE_LABELS_SHORT: Record<string, string> = {
   'client-advisory':       'Client Advisory',
 }
 
-function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart }: {
+function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart, dragHandleListeners }: {
   columnId: string
   areas: Area[]
   boardId?: string
   autoEdit?: boolean
   onEditStart?: () => void
+  dragHandleListeners?: React.HTMLAttributes<HTMLElement>
 }) {
-  const { columns, boardTasks: tasks, renameColumn, createTask } = useWorkspace()
+  const { columns, boardTasks: tasks, renameColumn, createTask, deleteColumn } = useWorkspace()
+  const { isRoot } = useAuth()
   const col = columns.find(c => c.id === columnId)!
+  const isSystemColumn = DEFAULT_COLUMNS.some(c => c.id === columnId)
   const colTasks = tasks
     .filter(t => t.column_id === columnId)
     .sort((a, b) => a.position - b.position)
@@ -520,6 +526,23 @@ function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart 
             )}
             <span className="text-xs text-gray-500 dark:text-white/65 tabular-nums shrink-0">{colTasks.length}</span>
           </div>
+          {/* Grip handle — drag to reorder, admin only */}
+          {dragHandleListeners && !editingName && (
+            <div
+              {...dragHandleListeners}
+              title="Drag to reorder stage"
+              className="titlebar-no-drag opacity-0 group-hover:opacity-60 cursor-grab active:cursor-grabbing p-1 rounded text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/60 transition shrink-0"
+            >
+              <svg width="10" height="12" viewBox="0 0 10 12" fill="none">
+                <circle cx="3" cy="2.5" r="1" fill="currentColor"/>
+                <circle cx="7" cy="2.5" r="1" fill="currentColor"/>
+                <circle cx="3" cy="6" r="1" fill="currentColor"/>
+                <circle cx="7" cy="6" r="1" fill="currentColor"/>
+                <circle cx="3" cy="9.5" r="1" fill="currentColor"/>
+                <circle cx="7" cy="9.5" r="1" fill="currentColor"/>
+              </svg>
+            </div>
+          )}
           {/* Pencil icon — visible on header hover */}
           {!editingName && (
             <button
@@ -529,6 +552,26 @@ function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart 
             >
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
                 <path d="M7.8 1.2l2 2L3 10H1V8L7.8 1.2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          )}
+          {/* Trash icon — admin only, non-system columns */}
+          {isRoot && !isSystemColumn && !editingName && (
+            <button
+              onClick={async () => {
+                if (colTasks.length > 0) {
+                  alert(`Move or archive all cards in "${col.name}" before deleting this stage.`)
+                  return
+                }
+                if (!window.confirm(`Delete stage "${col.name}"? This cannot be undone.`)) return
+                const result = await deleteColumn(columnId)
+                if (!result.ok) alert(result.error ?? 'Failed to delete stage.')
+              }}
+              title="Delete stage"
+              className="titlebar-no-drag opacity-0 group-hover:opacity-100 ml-0.5 p-1 rounded text-red-400/60 hover:text-red-500 hover:bg-red-500/[0.08] transition shrink-0"
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                <path d="M1.5 2.5h8M4 2.5V1.5h3v1M2.5 2.5l.5 7h5l.5-7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
           )}
@@ -578,11 +621,45 @@ function KanbanColumn({ columnId, areas, boardId, autoEdit = false, onEditStart 
   )
 }
 
+// ── Sortable column wrapper ────────────────────────────────────────────────
+
+function SortableColumnWrapper({ col, areas, boardId, autoEdit, onEditStart }: {
+  col: import('../../types').Column
+  areas: Area[]
+  boardId?: string
+  autoEdit?: boolean
+  onEditStart?: () => void
+}) {
+  const { isRoot } = useAuth()
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: col.id,
+    data: { type: 'column' },
+  })
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.35 : 1, zIndex: isDragging ? 50 : undefined }}
+      {...attributes}
+    >
+      <KanbanColumn
+        columnId={col.id}
+        areas={areas}
+        boardId={boardId}
+        autoEdit={autoEdit}
+        onEditStart={onEditStart}
+        dragHandleListeners={isRoot ? listeners : undefined}
+      />
+    </div>
+  )
+}
+
 // ── Board ──────────────────────────────────────────────────────────────────
 
 export default function KanbanView() {
-  const { columns, boardTasks: tasks, moveTask, reorderWithinColumn, addColumn, areas, activeBoard } = useWorkspace()
+  const { columns, boardTasks: tasks, moveTask, reorderWithinColumn, reorderColumns, addColumn, areas, activeBoard } = useWorkspace()
+  const { isRoot } = useAuth()
   const [activeTask, setActiveTask] = useState<Task | null>(null)
+  const [activeColumnId, setActiveColumnId] = useState<string | null>(null)
   // Track the id of the column just added so we can auto-focus its name for editing
   const [newColumnId, setNewColumnId] = useState<string | null>(null)
 
@@ -592,12 +669,19 @@ export default function KanbanView() {
   )
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    setActiveTask(tasks.find(t => t.id === event.active.id) ?? null)
+    if (event.active.data.current?.type === 'column') {
+      setActiveColumnId(event.active.id as string)
+      setActiveTask(null)
+    } else {
+      setActiveTask(tasks.find(t => t.id === event.active.id) ?? null)
+      setActiveColumnId(null)
+    }
   }, [tasks])
 
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const { active, over } = event
     if (!over) return
+    if (active.data.current?.type === 'column') return
     const activeTask = tasks.find(t => t.id === active.id)
     if (!activeTask) return
 
@@ -615,6 +699,20 @@ export default function KanbanView() {
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event
+    if (active.data.current?.type === 'column') {
+      setActiveColumnId(null)
+      if (!over) return
+      const overColId = (over.id as string).replace('droppable-', '')
+      if (active.id !== overColId) {
+        const sorted = [...columns].sort((a, b) => a.position - b.position)
+        const oldIndex = sorted.findIndex(c => c.id === active.id)
+        const newIndex = sorted.findIndex(c => c.id === overColId)
+        if (oldIndex !== -1 && newIndex !== -1) {
+          reorderColumns(arrayMove(sorted, oldIndex, newIndex).map(c => c.id))
+        }
+      }
+      return
+    }
     setActiveTask(null)
     if (!over) return
     const activeTask = tasks.find(t => t.id === active.id as string)
@@ -622,7 +720,7 @@ export default function KanbanView() {
     if (activeTask && overTask && overTask.column_id === activeTask.column_id && active.id !== over.id) {
       reorderWithinColumn(activeTask.column_id, active.id as string, over.id as string)
     }
-  }, [tasks, reorderWithinColumn])
+  }, [tasks, columns, reorderWithinColumn, reorderColumns])
 
   return (
     <div className="h-full flex flex-col">
@@ -635,35 +733,53 @@ export default function KanbanView() {
           onDragEnd={handleDragEnd}
         >
           <div className="flex gap-4 p-5 h-full items-stretch min-w-max">
-            {columns
-              .sort((a, b) => a.position - b.position)
-              .map(col => (
-                <KanbanColumn
-                  key={col.id}
-                  columnId={col.id}
-                  areas={areas}
-                  boardId={activeBoard?.id}
-                  autoEdit={col.id === newColumnId}
-                  onEditStart={() => setNewColumnId(null)}
-                />
-              ))}
-
-            <button
-              onClick={async () => {
-                const id = await addColumn()
-                setNewColumnId(id)
-              }}
-              className="titlebar-no-drag flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-dashed border-gray-300 dark:border-white/20 text-gray-400 dark:text-white/65 hover:text-gray-700 dark:hover:text-white/70 hover:border-gray-400 dark:hover:border-white/40 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition text-sm mt-8 w-56 shrink-0"
+            <SortableContext
+              items={[...columns].sort((a, b) => a.position - b.position).map(c => c.id)}
+              strategy={horizontalListSortingStrategy}
             >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-              Add stage
-            </button>
+              {[...columns]
+                .sort((a, b) => a.position - b.position)
+                .map(col => (
+                  <SortableColumnWrapper
+                    key={col.id}
+                    col={col}
+                    areas={areas}
+                    boardId={activeBoard?.id}
+                    autoEdit={col.id === newColumnId}
+                    onEditStart={() => setNewColumnId(null)}
+                  />
+                ))}
+            </SortableContext>
+
+            {isRoot && (
+              <button
+                onClick={async () => {
+                  const id = await addColumn()
+                  setNewColumnId(id)
+                }}
+                className="titlebar-no-drag flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-dashed border-gray-300 dark:border-white/20 text-gray-400 dark:text-white/65 hover:text-gray-700 dark:hover:text-white/70 hover:border-gray-400 dark:hover:border-white/40 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition text-sm mt-8 w-56 shrink-0"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+                Add stage
+              </button>
+            )}
           </div>
 
           <DragOverlay>
             {activeTask && <TaskCardDisplay task={activeTask} isDragging areas={areas} />}
+            {activeColumnId && (() => {
+              const col = columns.find(c => c.id === activeColumnId)
+              return col ? (
+                <div className="w-64 rounded-2xl bg-white/90 dark:bg-[#1e2235]/90 border border-black/[0.12] dark:border-white/20 shadow-xl">
+                  <div className="flex items-center gap-2 px-3 py-2.5">
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${col.color}`} />
+                    <span className="text-sm font-bold text-gray-900 dark:text-white/90">{col.name}</span>
+                  </div>
+                </div>
+              ) : null
+            })()}
           </DragOverlay>
         </DndContext>
       </div>

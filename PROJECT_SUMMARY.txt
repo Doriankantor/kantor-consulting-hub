@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-06-25
-  Current version: v2.0.15  |   209 commits   |   ~31,400 lines of TS/TSX
+  Generated: 2026-07-07
+  Current version: v2.0.17  |   212 commits   |   ~31,600 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -183,6 +183,31 @@ DESIGN PRINCIPLES / CONVENTIONS
     * Recovered the standalone immigration-study page: the unversioned
       @babel/standalone CDN script started resolving to Babel 8 (breaking
       in-browser JSX for UMD pages); pinned it to @babel/standalone@7.
+
+  v2.0.17 (Jul 7) -- COLUMN DRAG-REORDER
+    * Kanban stages can now be drag-reordered by admins. Grab the six-dot grip
+      icon that appears on column header hover and drag to any position.
+    * `SortableColumnWrapper` wraps each column in a `useSortable` with
+      `{ type: 'column' }` data, enabling a second `SortableContext` (horizontal)
+      alongside the existing per-column task sort contexts.
+    * `handleDragEnd` branches on `active.data.current.type`: column drags call
+      `reorderColumns(arrayMove(...))`, task drags use the original path.
+    * `reorderColumns` cloud function batch-updates all positions in parallel;
+      optimistic update in WorkspaceContext keeps the UI instant.
+    * Drag handle only rendered (and listeners only attached) for `isRoot` admins.
+    * DragOverlay shows a ghost card with column name while dragging.
+    * `handleDragOver` guards against column-type events to prevent task-move
+      interference during a column drag.
+
+  v2.0.16 (Jul 7) -- STAGE MANAGEMENT (FEATURE B)
+    * Admin-only "Add stage": `addColumn` now gated by `resolveActor`/`isRoot`
+      on both cloud and UI sides ("Add stage" button hidden for non-admins).
+    * Admin-only "Delete stage": permanent cloud-enforced delete with three guards:
+      isRoot gate, system-column guard (SYSTEM_COLUMN_IDS set), and non-empty
+      guard (rejects if the column has active tasks). Confirmation dialog in UI.
+    * Trash icon appears in column header on hover for admins on non-system columns.
+    * `deleteColumn` IPC handler, preload entry, WorkspaceContext action, and
+      env.d.ts type all wired end-to-end.
 
   v2.0.15 (Jun 25) -- ARCHIVED DRAWER: DRAG-TO-RESIZE
     * The Completed & deleted drawer is now drag-resizable: grab the thin handle

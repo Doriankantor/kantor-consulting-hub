@@ -255,11 +255,30 @@ export async function getColumns(actingUserId: string | undefined, boardId?: str
   return (data ?? []).filter((c: { board_id: string }) => actor.isRoot || visible.has(c.board_id)) as Record<string, unknown>[]
 }
 
-export async function addColumn(col: { id: string; name: string; position: number; color: string; board_id?: string }): Promise<{ ok: boolean }> {
+const SYSTEM_COLUMN_IDS = new Set([
+  'col-scoping', 'col-research', 'col-drafting', 'col-review', 'col-delivery', 'col-published',
+])
+
+export async function addColumn(col: { id: string; name: string; position: number; color: string; board_id?: string }, actingUserId?: string): Promise<{ ok: boolean; error?: string }> {
+  const actor = await resolveActor(actingUserId)
+  if (!actor.isRoot) return { ok: false, error: 'Only an admin can add stages.' }
   const { error } = await cloud.from('workspace_columns').insert({
     id: col.id, name: col.name, position: col.position, color: col.color, board_id: col.board_id ?? 'board-main',
   })
   if (error) throw new Error(`column add failed: ${error.message}`)
+  return { ok: true }
+}
+
+export async function deleteColumn(colId: string, actingUserId?: string): Promise<{ ok: boolean; error?: string }> {
+  const actor = await resolveActor(actingUserId)
+  if (!actor.isRoot) return { ok: false, error: 'Only an admin can delete stages.' }
+  if (SYSTEM_COLUMN_IDS.has(colId)) return { ok: false, error: 'System stages cannot be deleted.' }
+  const { count } = await cloud.from('workspace_tasks')
+    .select('id', { count: 'exact', head: true })
+    .eq('column_id', colId).eq('archived', 0)
+  if ((count ?? 0) > 0) return { ok: false, error: 'Stage is not empty. Move or archive its cards first.' }
+  const { error } = await cloud.from('workspace_columns').delete().eq('id', colId)
+  if (error) throw new Error(`column delete failed: ${error.message}`)
   return { ok: true }
 }
 
@@ -272,6 +291,10 @@ export async function updateColumn(colId: string, partial: { name?: string; posi
     if (error) throw new Error(`column update failed: ${error.message}`)
   }
   return { ok: true }
+}
+
+export async function reorderColumns(columnIds: string[]): Promise<void> {
+  await Promise.all(columnIds.map((id, index) => updateColumn(id, { position: index })))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

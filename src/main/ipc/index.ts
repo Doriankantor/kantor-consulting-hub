@@ -994,8 +994,10 @@ function registerWorkspaceHandlers() {
   // task lists are membership-filtered via the ambient actor; ordering preserved.
   // Reads carry the acting user explicitly (actorId), ambient as fallback.
   ipcMain.handle('workspace:getColumns', (_e, boardId?: string, actorId?: string) => boardsCloud.getColumns(actorId ?? currentActingUserId, boardId))
-  ipcMain.handle('workspace:addColumn', (_e, col: { id: string; name: string; position: number; color: string; board_id?: string }) => boardsCloud.addColumn(col))
+  ipcMain.handle('workspace:addColumn', (_e, col: { id: string; name: string; position: number; color: string; board_id?: string }) => boardsCloud.addColumn(col, currentActingUserId))
+  ipcMain.handle('workspace:deleteColumn', (_e, colId: string) => boardsCloud.deleteColumn(colId, currentActingUserId))
   ipcMain.handle('workspace:updateColumn', (_e, colId: string, partial: { name?: string; position?: number }) => boardsCloud.updateColumn(colId, partial))
+  ipcMain.handle('workspace:reorderColumns', (_e, ids: string[]) => boardsCloud.reorderColumns(ids))
 
   ipcMain.handle('workspace:getTasks', (_e, actorId?: string) => boardsCloud.getTasks(actorId ?? currentActingUserId))
   ipcMain.handle('workspace:archiveTask', (_e, taskId: string) => boardsCloud.archiveTask(taskId))

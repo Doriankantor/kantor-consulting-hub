@@ -585,7 +585,9 @@ interface Window {
       getCompletedTasks:         (actorId?: string) => Promise<unknown[]>
       getMarkedForDeletionTasks: (actorId?: string) => Promise<unknown[]>
       addColumn:    (c: Record<string, unknown>)              => Promise<{ ok?: boolean }>
-      updateColumn: (id: string, p: Record<string, unknown>)  => Promise<{ ok?: boolean }>
+      deleteColumn:    (id: string)                             => Promise<{ ok: boolean; error?: string }>
+      updateColumn:    (id: string, p: Record<string, unknown>)  => Promise<{ ok?: boolean }>
+      reorderColumns:  (ids: string[])                          => Promise<void>
       onRemoteChange: (cb: (d: { boardId: string | null; scope: 'list' | 'board' }) => void) => void
       removeRemoteChangeListeners: () => void
     }
