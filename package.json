@@ -1,6 +1,6 @@
 {
   "name": "kantor-consulting-hub",
-  "version": "2.0.15",
+  "version": "2.0.16",
   "description": "Project management for journalists and analysts",
   "main": "out/main/index.js",
   "scripts": {
