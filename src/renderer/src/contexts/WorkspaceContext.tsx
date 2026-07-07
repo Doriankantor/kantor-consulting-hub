@@ -624,7 +624,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const newCol: Column = {
       id: newId,
       name: 'New Stage',
-      position: columns.length,
+      position: columns.length > 0 ? Math.max(...columns.map(c => c.position)) + 1 : 0,
       color: 'bg-slate-500',
       board_id: activeBoardId,
     }

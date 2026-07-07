@@ -11,6 +11,7 @@ import {
   type DragStartEvent,
   type DragOverEvent,
   type DragEndEvent,
+  type CollisionDetection,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -668,6 +669,21 @@ export default function KanbanView() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
+  // When dragging a COLUMN, restrict collision candidates to column-level droppables
+  // so the outer SortableContext always sees a column as `over` (enabling shift-aside
+  // preview). Without this, closestCorners can resolve to a task card from an inner
+  // SortableContext and the preview disappears.
+  const collisionDetection = useCallback<CollisionDetection>((args) => {
+    if (args.active.data.current?.type === 'column') {
+      const columnOnly = args.droppableContainers.filter(c => {
+        const stripped = (c.id as string).replace('droppable-', '')
+        return columns.some(col => col.id === stripped)
+      })
+      return closestCorners({ ...args, droppableContainers: columnOnly })
+    }
+    return closestCorners(args)
+  }, [columns])
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
     if (event.active.data.current?.type === 'column') {
       setActiveColumnId(event.active.id as string)
@@ -702,7 +718,13 @@ export default function KanbanView() {
     if (active.data.current?.type === 'column') {
       setActiveColumnId(null)
       if (!over) return
-      const overColId = (over.id as string).replace('droppable-', '')
+      const overRaw = (over.id as string).replace('droppable-', '')
+      let overColId = overRaw
+      if (!columns.some(c => c.id === overColId)) {
+        const overTask = tasks.find(t => t.id === overColId)
+        if (overTask) overColId = overTask.column_id
+      }
+      if (!columns.some(c => c.id === overColId)) return
       if (active.id !== overColId) {
         const sorted = [...columns].sort((a, b) => a.position - b.position)
         const oldIndex = sorted.findIndex(c => c.id === active.id)
@@ -727,7 +749,7 @@ export default function KanbanView() {
       <div className="flex-1 overflow-x-auto overflow-y-hidden">
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={collisionDetection}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
