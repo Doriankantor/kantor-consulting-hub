@@ -114,6 +114,14 @@ const TrashIcon = () => (
   </svg>
 )
 
+const ArchiveIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+    <rect x="1.5" y="5" width="12" height="9" rx="1" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M1.5 5l2-4h7l2 4" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+    <path d="M5.5 9h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+)
+
 const TodoIcon = () => (
   <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
     <rect x="1.5" y="1.5" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
@@ -351,6 +359,7 @@ export default function Sidebar() {
     ...(isRoot ? [{ to: '/analytics', label: 'Analytics', icon: <AnalyticsIcon /> }] : []),
     { to: '/team',      label: 'Team',       icon: <TeamIcon /> },
     { to: '/settings',  label: 'Settings',   icon: <SettingsIcon />, updateDot: updateAvailable },
+    { to: '/archive',   label: 'Archive',    icon: <ArchiveIcon /> },
     { to: '/trash',     label: 'Trash',      icon: <TrashIcon /> },
   ]
 

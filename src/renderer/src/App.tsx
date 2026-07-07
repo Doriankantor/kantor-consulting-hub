@@ -14,6 +14,7 @@ import Inbox        from './pages/Inbox'
 import Contacts     from './pages/Contacts'
 import Analytics    from './pages/Analytics'
 import Trash        from './pages/Trash'
+import Archive      from './pages/Archive'
 import TeamCalendar from './pages/TeamCalendar'
 import Files        from './pages/Files'
 import Todo         from './pages/Todo'
@@ -74,6 +75,7 @@ function AppRoutes() {
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/team"      element={<Team />} />
           <Route path="/settings"  element={<Settings />} />
+          <Route path="/archive"   element={<Archive />} />
           <Route path="/trash"     element={<Trash />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

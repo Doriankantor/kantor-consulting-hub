@@ -508,10 +508,10 @@ export default function Settings() {
   }
 
   async function handleDeleteBoard(id: string, name: string) {
-    if (!confirm(`Permanently delete "${name}"?\n\nThis will delete all tasks, comments, and data. This cannot be undone.`)) return
+    if (!confirm(`Move "${name}" to Trash?\n\nYou can restore it from Trash, or delete it permanently there.`)) return
     await window.api.boards.delete(id)
     setArchivedProjects(prev => prev.filter(b => b.id !== id))
-    setArchiveMsg({ type: 'ok', text: `"${name}" permanently deleted.` })
+    setArchiveMsg({ type: 'ok', text: `"${name}" moved to Trash.` })
     setTimeout(() => setArchiveMsg(null), 3000)
   }
 

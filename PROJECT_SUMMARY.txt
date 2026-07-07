@@ -1,7 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-07
-  Current version: v2.0.17  |   215 commits   |   ~31,700 lines of TS/TSX
+  Current version: v2.0.18  |   218 commits   |   ~31,900 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -183,6 +183,20 @@ DESIGN PRINCIPLES / CONVENTIONS
     * Recovered the standalone immigration-study page: the unversioned
       @babel/standalone CDN script started resolving to Babel 8 (breaking
       in-browser JSX for UMD pages); pinned it to @babel/standalone@7.
+
+  v2.0.18 (Jul 7) -- ARCHIVE PAGE + BOARD-DELETE COPY FIXES
+    * New /archive sidebar page (Archive.tsx): standalone view for archived boards,
+      extracted from Settings → Archived Projects. Table shows board name, task count,
+      archive date, archived-by name. Per-row actions: Restore and Move to Trash (admin).
+    * Archive sidebar nav item added (ArchiveIcon, box SVG) to navItemsAfterWorkspace,
+      between /settings and /trash. Route /archive registered in App.tsx.
+    * Completed Projects section pre-wired as a commented placeholder in Archive.tsx.
+    * Board-delete copy fixes: "Permanently delete" dialogs in the board menu
+      (Workspace/index.tsx) and Settings now correctly say "Move to Trash" with
+      recoverable-action copy. Type-to-name confirm gate moved to Trash.tsx, where
+      permanentlyDeleteBoard (the truly irreversible action) now requires typing the
+      board name. Simple Confirm/Cancel for the soft-delete path.
+    * Settings.tsx archived-projects delete toast updated: "permanently deleted" → "moved to Trash".
 
   v2.0.17 (Jul 7) -- PHASE 1 UNIFIED TRASH
     * Board deletion is now a cloud soft-delete (deleted=1 flag on workspace_boards)

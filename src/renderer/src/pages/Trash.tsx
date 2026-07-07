@@ -74,6 +74,8 @@ export default function Trash() {
   const [filter, setFilter] = useState<FilterType>('all')
   const [sort, setSort] = useState<SortType>('date')
   const [confirmEmpty, setConfirmEmpty] = useState(false)
+  const [confirmPermBoard, setConfirmPermBoard] = useState<UnifiedItem | null>(null)
+  const [permBoardName, setPermBoardName] = useState('')
   const [restoring, setRestoring] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
 
@@ -312,7 +314,14 @@ export default function Trash() {
                 </button>
                 {isRoot && (
                   <button
-                    onClick={() => handleDeletePerm(item)}
+                    onClick={() => {
+                      if (item._source === 'cloud-board') {
+                        setPermBoardName('')
+                        setConfirmPermBoard(item)
+                      } else {
+                        handleDeletePerm(item)
+                      }
+                    }}
                     disabled={deleting === item._uid}
                     className="px-3 py-1 rounded-lg text-xs font-medium bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 border border-red-500/20 transition disabled:opacity-50"
                   >
@@ -322,6 +331,46 @@ export default function Trash() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Permanently delete board confirmation (type-to-confirm gate) */}
+      {confirmPermBoard && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/[0.12] rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 className="text-lg font-semibold text-red-500 mb-2">Permanently delete "{confirmPermBoard.item_name}"?</h3>
+            <p className="text-sm text-gray-500 dark:text-white/60 mb-4 leading-relaxed">
+              This permanently deletes the board and all its tasks, comments, and attachments. This cannot be undone.
+            </p>
+            <p className="text-xs text-gray-400 dark:text-white/55 mb-2">Type the project name to confirm:</p>
+            <input
+              autoFocus
+              value={permBoardName}
+              onChange={e => setPermBoardName(e.target.value)}
+              placeholder={confirmPermBoard.item_name}
+              className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30 mb-4"
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => { setConfirmPermBoard(null); setPermBoardName('') }}
+                className="px-4 py-2 rounded-xl text-sm font-medium border border-gray-200 dark:border-white/[0.12] text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={permBoardName !== confirmPermBoard.item_name}
+                onClick={async () => {
+                  const item = confirmPermBoard
+                  setConfirmPermBoard(null)
+                  setPermBoardName('')
+                  await handleDeletePerm(item)
+                }}
+                className="px-4 py-2 rounded-xl text-sm font-medium bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white transition"
+              >
+                Delete permanently
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

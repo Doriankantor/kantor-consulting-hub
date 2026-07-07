@@ -358,7 +358,6 @@ export default function Workspace() {
 
   // Delete confirm state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [deleteConfirmName, setDeleteConfirmName] = useState('')
 
   // Board tasks (only tasks from the active board)
   const boardTasks = useMemo(() =>
@@ -433,7 +432,6 @@ export default function Workspace() {
 
   function handleDelete() {
     setBoardMenuOpen(false)
-    setDeleteConfirmName('')
     setShowDeleteConfirm(true)
   }
 
@@ -579,7 +577,7 @@ export default function Workspace() {
                       <div className="mx-3 my-1 border-t border-gray-100 dark:border-white/[0.06]"/>
                       <button onClick={handleDelete} className="titlebar-no-drag w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition text-left">
                         <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M1.5 3h10M4.5 3V2h4v1M2.5 3l.7 8.5h6.6L10.5 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        Delete
+                        Move to Trash
                       </button>
                     </>
                   )}
@@ -877,33 +875,24 @@ export default function Workspace() {
         </div>
       )}
 
-      {/* Delete confirmation dialog (admin only) */}
+      {/* Move to Trash confirmation dialog (admin only) */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowDeleteConfirm(false)}>
           <div className="bg-white dark:bg-[#1a2233] rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-200 dark:border-white/[0.1]" onClick={e => e.stopPropagation()}>
-            <h2 className="text-base font-bold text-red-500 mb-2">Permanently delete "{activeBoard?.name}"?</h2>
-            <p className="text-sm text-gray-500 dark:text-white/65 mb-4 leading-relaxed">
-              This will delete all tasks, comments, attachments, and data. This cannot be undone.
+            <h2 className="text-base font-bold text-gray-900 dark:text-white mb-2">Move "{activeBoard?.name}" to Trash?</h2>
+            <p className="text-sm text-gray-500 dark:text-white/65 mb-5 leading-relaxed">
+              This board will be moved to Trash. You can restore it, or delete it permanently from Trash later.
             </p>
-            <p className="text-xs text-gray-400 dark:text-white/55 mb-2">Type the project name to confirm:</p>
-            <input
-              autoFocus
-              value={deleteConfirmName}
-              onChange={e => setDeleteConfirmName(e.target.value)}
-              placeholder={activeBoard?.name}
-              className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/30 mb-4"
-            />
             <div className="flex gap-2.5 justify-end">
-              <button onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmName('') }} className="titlebar-no-drag px-4 py-2 rounded-xl bg-gray-100 dark:bg-white/[0.08] text-gray-700 dark:text-white/75 text-sm font-medium transition">Cancel</button>
+              <button onClick={() => setShowDeleteConfirm(false)} className="titlebar-no-drag px-4 py-2 rounded-xl bg-gray-100 dark:bg-white/[0.08] text-gray-700 dark:text-white/75 text-sm font-medium transition">Cancel</button>
               <button
-                disabled={deleteConfirmName !== activeBoard?.name}
                 onClick={async () => {
-                  if (!activeBoard || deleteConfirmName !== activeBoard.name) return
+                  if (!activeBoard) return
                   await deleteBoard(activeBoard.id)
-                  setShowDeleteConfirm(false); setDeleteConfirmName('')
+                  setShowDeleteConfirm(false)
                 }}
-                className="titlebar-no-drag px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition">
-                Delete permanently
+                className="titlebar-no-drag px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition">
+                Move to Trash
               </button>
             </div>
           </div>
