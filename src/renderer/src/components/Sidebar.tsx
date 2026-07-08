@@ -1,10 +1,27 @@
 import { useState, useEffect, useCallback } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { createPortal } from 'react-dom'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { useUpdate } from '../contexts/UpdateContext'
-import type { ViewMode } from '../types'
+import type { ViewMode, Board } from '../types'
 
 // ── Nav item type ──────────────────────────────────────────────────────────
 
@@ -289,9 +306,57 @@ function NewBoardModal({ areas, onClose, onCreate }: NewBoardModalProps) {
 
 // ── Main sidebar ───────────────────────────────────────────────────────────
 
+// ── Sortable board row (admin drag-reorder) ─────────────────────────────────
+// Mirrors KanbanView's SortableColumnWrapper but vertical: the row is the
+// sortable node (attributes), drag listeners live only on a separate grip handle
+// so the button's click-to-open still works.
+function SortableBoardItem({ board, isActive, onOpen }: {
+  board: Board
+  isActive: boolean
+  onOpen: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: board.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  }
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} className="group relative flex items-center">
+      <button
+        onClick={onOpen}
+        className={`titlebar-no-drag w-full flex items-center gap-2 pl-5 pr-7 py-1.5 rounded-xl text-xs transition ${
+          isActive
+            ? 'bg-[#EEF0FF] dark:bg-white/[0.15] text-[#4338CA] dark:text-white font-semibold'
+            : 'text-[#555] dark:text-white/75 hover:text-[#2d2d2d] dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.08]'
+        }`}
+      >
+        <span className={`w-1 h-1 rounded-full shrink-0 ${isActive ? 'bg-[#4338CA] dark:bg-white' : 'bg-gray-300 dark:bg-white/25'}`} />
+        <span className="truncate text-left">{board.name}</span>
+      </button>
+      {/* Grip handle — drag to reorder */}
+      <div
+        {...listeners}
+        title="Drag to reorder board"
+        className="titlebar-no-drag absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-60 cursor-grab active:cursor-grabbing p-0.5 rounded text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/60 transition"
+      >
+        <svg width="8" height="11" viewBox="0 0 10 12" fill="none">
+          <circle cx="3" cy="2.5" r="1" fill="currentColor"/>
+          <circle cx="7" cy="2.5" r="1" fill="currentColor"/>
+          <circle cx="3" cy="6" r="1" fill="currentColor"/>
+          <circle cx="7" cy="6" r="1" fill="currentColor"/>
+          <circle cx="3" cy="9.5" r="1" fill="currentColor"/>
+          <circle cx="7" cy="9.5" r="1" fill="currentColor"/>
+        </svg>
+      </div>
+    </div>
+  )
+}
+
 export default function Sidebar() {
   const { isRoot, localUser } = useAuth()
-  const { boards, archivedBoards, activeBoard, setActiveBoardId, createBoard, refreshBoards, areas } = useWorkspace()
+  const { boards, archivedBoards, activeBoard, setActiveBoardId, createBoard, refreshBoards, reorderBoards, areas } = useWorkspace()
   const { state: updateState } = useUpdate()
   const updateAvailable = updateState === 'available' || updateState === 'downloading' || updateState === 'ready'
   const navigate = useNavigate()
@@ -312,6 +377,22 @@ export default function Sidebar() {
   }, [isRoot, userId])
 
   const visibleBoards = isRoot ? boards : boards.filter(b => memberBoardIds.includes(b.id))
+
+  // Admin-only board drag-reorder. Sensors mirror KanbanView: a 5px activation
+  // distance so a click isn't swallowed by a drag.
+  const boardSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+  function handleBoardDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const ids = visibleBoards.map(b => b.id)
+    const oldIndex = ids.indexOf(active.id as string)
+    const newIndex = ids.indexOf(over.id as string)
+    if (oldIndex === -1 || newIndex === -1) return
+    reorderBoards(arrayMove(ids, oldIndex, newIndex))
+  }
 
   const refreshInboxCount = useCallback(async () => {
     try {
@@ -410,20 +491,35 @@ export default function Sidebar() {
 
           {/* Board sub-items */}
           <div className="mt-0.5 space-y-0.5 pl-1">
-            {visibleBoards.map(board => (
-              <button
-                key={board.id}
-                onClick={() => { setActiveBoardId(board.id); navigate('/workspace') }}
-                className={`titlebar-no-drag w-full flex items-center gap-2 pl-5 pr-3 py-1.5 rounded-xl text-xs transition ${
-                  activeBoard?.id === board.id && isOnWorkspace
-                    ? 'bg-[#EEF0FF] dark:bg-white/[0.15] text-[#4338CA] dark:text-white font-semibold'
-                    : 'text-[#555] dark:text-white/75 hover:text-[#2d2d2d] dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.08]'
-                }`}
-              >
-                <span className={`w-1 h-1 rounded-full shrink-0 ${activeBoard?.id === board.id && isOnWorkspace ? 'bg-[#4338CA] dark:bg-white' : 'bg-gray-300 dark:bg-white/25'}`} />
-                <span className="truncate text-left">{board.name}</span>
-              </button>
-            ))}
+            {isRoot ? (
+              <DndContext sensors={boardSensors} collisionDetection={closestCenter} onDragEnd={handleBoardDragEnd}>
+                <SortableContext items={visibleBoards.map(b => b.id)} strategy={verticalListSortingStrategy}>
+                  {visibleBoards.map(board => (
+                    <SortableBoardItem
+                      key={board.id}
+                      board={board}
+                      isActive={activeBoard?.id === board.id && isOnWorkspace}
+                      onOpen={() => { setActiveBoardId(board.id); navigate('/workspace') }}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+            ) : (
+              visibleBoards.map(board => (
+                <button
+                  key={board.id}
+                  onClick={() => { setActiveBoardId(board.id); navigate('/workspace') }}
+                  className={`titlebar-no-drag w-full flex items-center gap-2 pl-5 pr-3 py-1.5 rounded-xl text-xs transition ${
+                    activeBoard?.id === board.id && isOnWorkspace
+                      ? 'bg-[#EEF0FF] dark:bg-white/[0.15] text-[#4338CA] dark:text-white font-semibold'
+                      : 'text-[#555] dark:text-white/75 hover:text-[#2d2d2d] dark:hover:text-white hover:bg-black/[0.06] dark:hover:bg-white/[0.08]'
+                  }`}
+                >
+                  <span className={`w-1 h-1 rounded-full shrink-0 ${activeBoard?.id === board.id && isOnWorkspace ? 'bg-[#4338CA] dark:bg-white' : 'bg-gray-300 dark:bg-white/25'}`} />
+                  <span className="truncate text-left">{board.name}</span>
+                </button>
+              ))
+            )}
 
             {/* New Board button — admin only */}
             {isRoot && (

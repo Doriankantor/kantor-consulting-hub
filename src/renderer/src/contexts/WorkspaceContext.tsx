@@ -79,6 +79,7 @@ interface WorkspaceContextType {
   restoreBoard:   (id: string) => Promise<void>
   deleteBoard:    (id: string) => Promise<void>
   duplicateBoard: (id: string, newName: string) => Promise<string> // returns new id
+  reorderBoards:  (orderedIds: string[]) => Promise<void>
   refreshBoards:  () => Promise<void>
 
   // Bumps on every board-scope realtime change for the OPEN board, so the open
@@ -612,6 +613,20 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     return result.id
   }, [loadBoards])
 
+  // Mirrors reorderColumns: optimistic reindex (reuse existing board objects via a
+  // byId map to avoid flicker), then persist. orderedIds is the sidebar's visible
+  // board list; any boards not in it (e.g. filtered out) keep their prior order
+  // after the next loadBoards, and Info Pages are never in this list.
+  const reorderBoards = useCallback(async (orderedIds: string[]) => {
+    setBoards(prev => {
+      const byId = new Map(prev.map(b => [b.id, b]))
+      const reordered = orderedIds.map((id, i) => ({ ...byId.get(id)!, position: i }))
+      const rest = prev.filter(b => !orderedIds.includes(b.id))
+      return [...reordered, ...rest]
+    })
+    await window.api.boards.reorder(orderedIds)
+  }, [])
+
   // ── Column actions ─────────────────────────────────────────────────────────
 
   const renameColumn = useCallback(async (columnId: string, name: string) => {
@@ -696,6 +711,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       restoreBoard,
       deleteBoard,
       duplicateBoard,
+      reorderBoards,
       refreshBoards,
       boardContentVersion,
     }}>

@@ -187,6 +187,17 @@ export async function renameBoard(id: string, name: string): Promise<{ ok: boole
   return { ok: true }
 }
 
+// Mirrors reorderColumns: admin-only, writes dense 0..n-1 positions (also cleans
+// up any legacy sparse/duplicate positions). Callers pass only the boards visible
+// in the sidebar list, so Info Pages are never included here.
+export async function reorderBoards(boardIds: string[], actingUserId?: string): Promise<{ ok: boolean; error?: string }> {
+  const actor = await resolveActor(actingUserId)
+  if (!actor.isRoot) return { ok: false, error: 'Only an admin can reorder boards.' }
+  await Promise.all(boardIds.map((id, index) =>
+    cloud.from('workspace_boards').update({ position: index, updated_at: now() }).eq('id', id)))
+  return { ok: true }
+}
+
 export async function archiveBoard(id: string, archivedBy: string): Promise<{ ok: boolean }> {
   const { error } = await cloud.from('workspace_boards')
     .update({ archived: 1, archived_at: now(), archived_by: archivedBy, updated_at: now() }).eq('id', id)

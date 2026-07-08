@@ -989,6 +989,7 @@ function registerBoardHandlers() {
   ipcMain.handle('boards:duplicate', (_e, id: string, newName: string) => boardsCloud.duplicateBoard(currentActingUserId, id, newName))
   ipcMain.handle('boards:taskCount', (_e, id: string) => boardsCloud.boardTaskCount(id))
   ipcMain.handle('boards:getTasks', (_e, boardId: string, actorId?: string) => boardsCloud.getBoardTasks(actorId ?? currentActingUserId, boardId))
+  ipcMain.handle('boards:reorder', (_e, boardIds: string[]) => boardsCloud.reorderBoards(boardIds, currentActingUserId))
 }
 
 // ── Workspace (local SQLite — columns + tasks) ────────────────────────────

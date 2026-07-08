@@ -621,6 +621,7 @@ interface Window {
       duplicate:         (id: string, newName: string)        => Promise<{ ok: boolean; id: string }>
       taskCount:         (id: string)                         => Promise<number>
       getTasks:          (boardId: string, actorId?: string)  => Promise<import('./types').Task[]>
+      reorder:           (boardIds: string[])                 => Promise<{ ok: boolean; error?: string }>
       seedToCloud:       (requestEmail: string)               => Promise<{ ok: boolean; counts?: Record<string, number>; reason?: string }>
     }
     updater: {
