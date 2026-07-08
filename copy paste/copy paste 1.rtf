@@ -1,0 +1,242 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2870
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\froman\fcharset0 Times-Roman;\f1\fmodern\fcharset0 Courier;\f2\froman\fcharset0 Times-Bold;
+\f3\fmodern\fcharset0 Courier-Bold;\f4\froman\fcharset0 Times-Italic;}
+{\colortbl;\red255\green255\blue255;\red0\green0\blue0;\red0\green0\blue233;}
+{\*\expandedcolortbl;;\cssrgb\c0\c0\c0;\cssrgb\c0\c0\c93333;}
+{\*\listtable{\list\listtemplateid1\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat0\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid1\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid1}
+{\list\listtemplateid2\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat0\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid101\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid2}
+{\list\listtemplateid3\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat0\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid201\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid3}
+{\list\listtemplateid4\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat0\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid301\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid4}}
+{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}{\listoverride\listid2\listoverridecount0\ls2}{\listoverride\listid3\listoverridecount0\ls3}{\listoverride\listid4\listoverridecount0\ls4}}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\deftab720
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\fs24 \cf0 \expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Running the survey to trace the restore\uc0\u8594 tasks gap.\
+Found the gap already \'97 
+\f1\fs26 restoreBoard
+\f0\fs24  calls 
+\f1\fs26 loadBoards()
+\f0\fs24  (board 
+\f2\b list
+\f0\b0  only), never 
+\f1\fs26 refreshTasks()
+\f0\fs24 . Let me confirm the Trash + Archive handlers and the realtime path to complete the trace.\
+Changed nothing \'97 read-only (
+\f1\fs26 grep
+\f0\fs24 , 
+\f1\fs26 Read
+\f0\fs24 ). Full trace of why restored boards come back empty.\
+\pard\pardeftab720\sa298\partightenfactor0
+
+\f2\b\fs36 \cf0 Root cause\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\fs24 \cf0 No restore path ever re-fetches 
+\f3\fs26 workspace_tasks
+\f2\fs24  into the renderer.
+\f0\b0  A board's cards live in WorkspaceContext's 
+\f1\fs26 tasks
+\f0\fs24  state, which is only ever populated by a 
+\f1\fs26 getTasks()
+\f0\fs24  call \'97 from the initial load, 
+\f1\fs26 refreshTasks()
+\f0\fs24 , or 
+\f1\fs26 reloadOpenBoard()
+\f0\fs24 . Every restore path refreshes the board 
+\f2\b list
+\f0\b0  but calls none of those, so the restored board renders its columns with zero cards.\
+The 
+\f1\fs26 tasks
+\f0\fs24  state genuinely lacks the board's cards at restore time, by design:\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls1\ilvl0
+\f3\b\fs26 \cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 getTasks
+\f2\fs24  excludes archived/trashed boards
+\f0\b0  ({\field{\*\fldinst{HYPERLINK "https://claude.ai/epitaxy/src/main/cloud/boards.ts#L335"}}{\fldrslt \cf3 \ul \ulc3 \strokec3 boards.ts:335}}): it only pulls tasks where the board has 
+\f1\fs26 deleted=0 AND archived=0
+\f0\fs24 . So while a board sits in Archive/Trash its tasks are (correctly) absent from every 
+\f1\fs26 getTasks
+\f0\fs24  result.\
+\ls1\ilvl0
+\f3\b\fs26 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 deleteBoard
+\f2\fs24  also purges them locally
+\f0\b0  ({\field{\*\fldinst{HYPERLINK "https://claude.ai/epitaxy/src/renderer/src/contexts/WorkspaceContext.tsx#L599"}}{\fldrslt \cf3 \ul \ulc3 \strokec3 WorkspaceContext.tsx:599}}): 
+\f1\fs26 setTasks(prev => prev.filter(t => t.board_id !== id))
+\f0\fs24 .\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 So on restore, the board becomes eligible again \'97 but only on the 
+\f2\b next
+\f0\b0  
+\f1\fs26 getTasks
+\f0\fs24 , which nobody calls.\
+\pard\pardeftab720\sa298\partightenfactor0
+
+\f2\b\fs36 \cf0 Each restore path, and what it misses\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\fs24 \cf0 1. 
+\f3\fs26 restoreBoard
+\f2\fs24  (context)
+\f0\b0  {\field{\*\fldinst{HYPERLINK "https://claude.ai/epitaxy/src/renderer/src/contexts/WorkspaceContext.tsx#L591"}}{\fldrslt \cf3 \ul \ulc3 \strokec3 WorkspaceContext.tsx:591}}\
+\pard\pardeftab720\partightenfactor0
+
+\f1\fs26 \cf0 await window.api.boards.restore(id)\
+await loadBoards()          // \uc0\u8592  board LIST only\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 loadBoards
+\f0\fs24  ({\field{\*\fldinst{HYPERLINK "https://claude.ai/epitaxy/src/renderer/src/contexts/WorkspaceContext.tsx#L163"}}{\fldrslt \cf3 \ul \ulc3 \strokec3 :163}}) calls just 
+\f1\fs26 boards.list
+\f0\fs24  + 
+\f1\fs26 boards.listArchived
+\f0\fs24  \uc0\u8594  
+\f1\fs26 setBoards
+\f0\fs24 /
+\f1\fs26 setArchivedBoards
+\f0\fs24 . 
+\f2\b No 
+\f3\fs26 getTasks
+\f2\fs24 /
+\f3\fs26 refreshTasks
+\f2\fs24 .
+\f0\b0  Board reappears in the sidebar, but 
+\f1\fs26 boardTasks = tasks.filter(board_id === active)
+\f0\fs24  is empty. \uc0\u8592  the core bug.\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f2\b \cf0 2. Archive 
+\f3\fs26 handleRestore
+\f0\b0\fs24  {\field{\*\fldinst{HYPERLINK "https://claude.ai/epitaxy/src/renderer/src/pages/Archive.tsx#L46"}}{\fldrslt \cf3 \ul \ulc3 \strokec3 Archive.tsx:46}} \'97 worse, it 
+\f2\b bypasses WorkspaceContext entirely
+\f0\b0 :\
+\pard\pardeftab720\partightenfactor0
+
+\f1\fs26 \cf0 await window.api.boards.restore(id)\
+setBoards(prev => prev.filter(b => b.id !== id))   // Archive's OWN local list\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\fs24 \cf0 It never touches the context's board list, tasks, or activeBoard. The restored board won't even show in the sidebar until some other 
+\f1\fs26 loadBoards
+\f0\fs24  fires (realtime or restart), and its tasks are never loaded.\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f2\b \cf0 3. Trash 
+\f3\fs26 handleRestore
+\f0\b0\fs24  {\field{\*\fldinst{HYPERLINK "https://claude.ai/epitaxy/src/renderer/src/pages/Trash.tsx#L160"}}{\fldrslt \cf3 \ul \ulc3 \strokec3 Trash.tsx:160}} \'97 also bypasses the context:\
+\pard\pardeftab720\partightenfactor0
+
+\f1\fs26 \cf0 await window.api.boards.undelete(item.item_id)\
+await load()                // Trash's OWN list reload\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\fs24 \cf0 No context 
+\f1\fs26 undeleteBoard
+\f0\fs24  exists \'97 it calls the API directly, so the workspace board list and tasks are never refreshed. (Same for 
+\f1\fs26 handleRestoreAll
+\f0\fs24 .)\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f2\b \cf0 4. Realtime safety net doesn't cover it
+\f0\b0  {\field{\*\fldinst{HYPERLINK "https://claude.ai/epitaxy/src/renderer/src/contexts/WorkspaceContext.tsx#L378"}}{\fldrslt \cf3 \ul \ulc3 \strokec3 WorkspaceContext.tsx:378}}. A restore mutates 
+\f1\fs26 workspace_boards
+\f0\fs24 , which echoes over realtime \'97 but:\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls2\ilvl0
+\f1\fs26 \cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 scope === 'list'
+\f0\fs24  \uc0\u8594  
+\f1\fs26 loadBoards()
+\f0\fs24  (list only, no tasks).\
+\ls2\ilvl0
+\f1\fs26 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 scope === 'board'
+\f0\fs24  \uc0\u8594  reloads tasks 
+\f2\b only if 
+\f3\fs26 d.boardId === activeBoardIdRef.current
+\f0\b0\fs24  ({\field{\*\fldinst{HYPERLINK "https://claude.ai/epitaxy/src/renderer/src/contexts/WorkspaceContext.tsx#L380"}}{\fldrslt \cf3 \ul \ulc3 \strokec3 :380}}).\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 A board-flag change is list-level metadata, and none of the restore handlers switch 
+\f1\fs26 activeBoard
+\f0\fs24  to the restored board \'97 so the echo lands in the list-only branch and never triggers a 
+\f1\fs26 getTasks
+\f0\fs24 .\
+\pard\pardeftab720\sa298\partightenfactor0
+
+\f2\b\fs36 \cf0 Why "manual add / restart" recovers it\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls3\ilvl0
+\fs24 \cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Restart
+\f0\b0  is definitive: the mount effect runs a fresh 
+\f1\fs26 getTasks()
+\f0\fs24 , and the now-visible board's cards load.\
+\ls3\ilvl0
+\f2\b \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Manual add
+\f0\b0  likely recovers via the realtime path 
+\f4\i because it flips the branch
+\f0\i0 : to add a card you navigate into the board (making it 
+\f1\fs26 activeBoard
+\f0\fs24 ), and the 
+\f1\fs26 createTask
+\f0\fs24  insert echoes as a 
+\f2\b board-scope change for the now-active board
+\f0\b0  \uc0\u8594  
+\f1\fs26 boardId === activeBoardIdRef.current
+\f0\fs24  \uc0\u8594  
+\f1\fs26 reloadOpenBoard()
+\f0\fs24  \uc0\u8594  
+\f1\fs26 getTasks()
+\f0\fs24  \uc0\u8594  all cards reappear. (The new card alone wouldn't do it \'97 
+\f1\fs26 createTask
+\f0\fs24  only pushes that one task into state; it's the realtime refetch it triggers that reloads the rest.)\
+\pard\pardeftab720\sa298\partightenfactor0
+
+\f2\b\fs36 \cf0 The fix (when you want it)\
+\pard\pardeftab720\sa240\partightenfactor0
+
+\f0\b0\fs24 \cf0 Every restore path needs a full tasks refetch:\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls4\ilvl0
+\f3\b\fs26 \cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 restoreBoard
+\f0\b0\fs24 : add 
+\f1\fs26 await refreshTasks()
+\f0\fs24  after 
+\f1\fs26 loadBoards()
+\f0\fs24  \'97 the minimal fix.\
+\pard\tx220\tx720\pardeftab720\li720\fi-720\partightenfactor0
+\ls4\ilvl0
+\f2\b \cf0 \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Add a context 
+\f3\fs26 undeleteBoard
+\f0\b0\fs24  (
+\f1\fs26 boards.undelete
+\f0\fs24  + 
+\f1\fs26 loadBoards
+\f0\fs24  + 
+\f1\fs26 refreshTasks
+\f0\fs24 ) and have 
+\f2\b Trash
+\f0\b0  call it instead of 
+\f1\fs26 window.api.boards.undelete
+\f0\fs24  directly.\
+\ls4\ilvl0
+\f2\b \kerning1\expnd0\expndtw0 \outl0\strokewidth0 {\listtext	\uc0\u8226 	}\expnd0\expndtw0\kerning0
+\outl0\strokewidth0 \strokec2 Archive 
+\f3\fs26 handleRestore
+\f0\b0\fs24 : call the context 
+\f1\fs26 restoreBoard
+\f0\fs24  instead of hitting 
+\f1\fs26 window.api.boards.restore
+\f0\fs24  + a local filter, so it goes through the list+tasks refresh (and actually updates the sidebar).\
+\pard\pardeftab720\sa240\partightenfactor0
+\cf0 Bundling note: this is the same class of bug as the card-revive issue from the earlier survey \'97 a cloud mutation followed by a partial client refresh. If you fix both together, the shared principle is "any restore/undelete must 
+\f1\fs26 refreshTasks()
+\f0\fs24  (or 
+\f1\fs26 reloadOpenBoard
+\f0\fs24 ), not just reload the board list." Ready to implement across all three paths on your go \'97 still read-only until then.\
+}

@@ -77,6 +77,7 @@ interface WorkspaceContextType {
   renameBoard:    (id: string, name: string) => Promise<void>
   archiveBoard:   (id: string, archivedBy: string) => Promise<void>
   restoreBoard:   (id: string) => Promise<void>
+  undeleteBoard:  (id: string) => Promise<void>
   deleteBoard:    (id: string) => Promise<void>
   duplicateBoard: (id: string, newName: string) => Promise<string> // returns new id
   reorderBoards:  (orderedIds: string[]) => Promise<void>
@@ -591,7 +592,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const restoreBoard = useCallback(async (id: string) => {
     await window.api.boards.restore(id)
     await loadBoards()
-  }, [loadBoards])
+    await refreshTasks()   // restored board's cards were excluded from getTasks while archived — refetch
+  }, [loadBoards, refreshTasks])
+
+  const undeleteBoard = useCallback(async (id: string) => {
+    await window.api.boards.undelete(id)
+    await loadBoards()
+    await refreshTasks()   // same as restoreBoard: un-trashing re-includes the board's tasks
+  }, [loadBoards, refreshTasks])
 
   const deleteBoard = useCallback(async (id: string) => {
     await window.api.boards.delete(id)
@@ -709,6 +717,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       renameBoard,
       archiveBoard,
       restoreBoard,
+      undeleteBoard,
       deleteBoard,
       duplicateBoard,
       reorderBoards,

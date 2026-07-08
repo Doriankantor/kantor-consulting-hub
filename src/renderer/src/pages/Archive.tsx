@@ -7,7 +7,7 @@ import TaskDetailPanel from '../components/TaskDetailPanel'
 
 export default function Archive() {
   const { isRoot, localUser } = useAuth()
-  const { selectedTask, selectTask } = useWorkspace()
+  const { selectedTask, selectTask, restoreBoard } = useWorkspace()
   const [boards, setBoards] = useState<Board[]>([])
   const [taskCounts, setTaskCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
@@ -44,7 +44,9 @@ export default function Archive() {
   }
 
   async function handleRestore(id: string, name: string) {
-    await window.api.boards.restore(id)
+    // Route through context so the sidebar board list AND the board's tasks refresh
+    // (bare window.api.boards.restore refreshed neither).
+    await restoreBoard(id)
     setBoards(prev => prev.filter(b => b.id !== id))
     flash('ok', `"${name}" restored successfully.`)
   }

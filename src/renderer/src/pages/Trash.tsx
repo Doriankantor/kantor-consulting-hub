@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useWorkspace } from '../contexts/WorkspaceContext'
 
 type FilterType = 'all' | 'task' | 'board' | 'contact' | 'comment'
 type SortType = 'date' | 'remaining' | 'name'
@@ -69,6 +70,7 @@ function TypeIcon({ type }: { type: string }) {
 
 export default function Trash() {
   const { localUser, isRoot } = useAuth()
+  const { undeleteBoard, refreshTasks } = useWorkspace()
   const [items, setItems] = useState<UnifiedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterType>('all')
@@ -158,7 +160,8 @@ export default function Trash() {
       if (item._source === 'local') {
         await window.api.trash.restore(item._uid)
       } else if (item._source === 'cloud-board') {
-        await window.api.boards.undelete(item.item_id)
+        // Route through context so the board list AND its tasks refresh (sidebar + cards).
+        await undeleteBoard(item.item_id)
       } else if (item._source === 'cloud-contact') {
         await window.api.contacts.restore(item.item_id)
       }
@@ -186,6 +189,7 @@ export default function Trash() {
 
   async function handleRestoreAll() {
     await window.api.trash.restoreAll()
+    await refreshTasks()   // any restored board's cards populate (mirrors per-item restore)
     await load()
   }
 
