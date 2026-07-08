@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { useWorkspace } from '../contexts/WorkspaceContext'
 import type { Board, Column, Task } from '../types'
 import KanbanView from './Workspace/KanbanView'
+import TaskDetailPanel from '../components/TaskDetailPanel'
 
 export default function Archive() {
   const { isRoot, localUser } = useAuth()
+  const { selectedTask, selectTask } = useWorkspace()
   const [boards, setBoards] = useState<Board[]>([])
   const [taskCounts, setTaskCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
@@ -68,15 +71,20 @@ export default function Archive() {
     setViewBoard(null)
     setViewColumns([])
     setViewTasks([])
+    selectTask(null)   // clear the shared global so no card panel lingers
   }
 
-  // Close the viewer on Escape
+  // Escape closes the open card panel first, then the viewer
   useEffect(() => {
     if (!viewBoard) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeViewer() }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (selectedTask) selectTask(null)
+      else closeViewer()
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [viewBoard])
+  }, [viewBoard, selectedTask])
 
   async function handleMoveToTrash(id: string, name: string) {
     if (!confirm(`Move "${name}" to Trash?\n\nYou can restore it from Trash, or delete it permanently there.`)) return
@@ -208,6 +216,7 @@ export default function Archive() {
 
       {/* ── Read-only board viewer (Visualize) ──────────────────────────────── */}
       {viewBoard && (
+        <>
         <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm" onClick={closeViewer}>
           <div
             className="flex flex-col flex-1 m-4 sm:m-6 rounded-2xl overflow-hidden bg-gray-100 dark:bg-[#141828] border border-black/10 dark:border-white/10 shadow-2xl"
@@ -261,6 +270,14 @@ export default function Archive() {
             </div>
           </div>
         </div>
+
+        {/* Read-only card panel — sits above the viewer (z-60 stacking context) */}
+        {selectedTask && (
+          <div className="relative z-[60]">
+            <TaskDetailPanel readOnly />
+          </div>
+        )}
+        </>
       )}
     </div>
   )

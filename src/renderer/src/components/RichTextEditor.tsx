@@ -33,6 +33,7 @@ interface Props {
   onBlur?: () => void
   placeholder?: string
   minHeight?: string
+  readOnly?: boolean
 }
 
 export default function RichTextEditor({
@@ -41,6 +42,7 @@ export default function RichTextEditor({
   onBlur,
   placeholder = 'Start writing…',
   minHeight = '120px',
+  readOnly = false,
 }: Props) {
   const editor = useEditor({
     extensions: [
@@ -48,11 +50,12 @@ export default function RichTextEditor({
       Placeholder.configure({ placeholder }),
     ],
     content: value,
+    editable: !readOnly,
     editorProps: {
       attributes: { class: 'tiptap', style: `min-height: ${minHeight}` },
     },
-    onUpdate: ({ editor }) => onChange(editor.getHTML()),
-    onBlur: () => onBlur?.(),
+    onUpdate: ({ editor }) => { if (!readOnly) onChange(editor.getHTML()) },
+    onBlur: () => { if (!readOnly) onBlur?.() },
   })
 
   // Sync external value changes (e.g. when a different task is selected)
@@ -61,6 +64,11 @@ export default function RichTextEditor({
       editor.commands.setContent(value, false)
     }
   }, [value])  // intentionally omit editor from deps
+
+  // Keep editability in sync if the readOnly prop changes
+  useEffect(() => {
+    if (editor) editor.setEditable(!readOnly)
+  }, [editor, readOnly])
 
   if (!editor) return null
 
@@ -74,7 +82,8 @@ export default function RichTextEditor({
 
   return (
     <div className="rounded-xl bg-white/[0.04] border border-white/[0.08] overflow-hidden focus-within:ring-1 focus-within:ring-hub-gold/30 focus-within:border-hub-gold/30 transition">
-      {/* Toolbar */}
+      {/* Toolbar — hidden in read-only mode */}
+      {!readOnly && (
       <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-white/[0.06]">
         <Btn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={isH1} title="Heading 1">
           H1
@@ -103,6 +112,7 @@ export default function RichTextEditor({
         <Btn onClick={() => editor.chain().focus().undo().run()} title="Undo">↩</Btn>
         <Btn onClick={() => editor.chain().focus().redo().run()} title="Redo">↪</Btn>
       </div>
+      )}
 
       {/* Content */}
       <div className="titlebar-no-drag px-3 py-2.5">

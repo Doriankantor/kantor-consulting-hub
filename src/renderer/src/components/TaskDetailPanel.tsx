@@ -308,7 +308,7 @@ function ClientPicker({ clientId, clientName, clientOrg, createdBy, onChange }: 
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-export default function TaskDetailPanel() {
+export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boolean }) {
   const { selectedTask, selectTask, updateTask, deleteTask, columns, members, areas, labels, refreshTaskMeta, pendingSection, setPendingSection, boardContentVersion } = useWorkspace()
   const { localUser, isRoot, can } = useAuth()
   const currentUserId   = localUser?.id   ?? 'local-admin'
@@ -502,18 +502,21 @@ export default function TaskDetailPanel() {
   }
 
   function set<K extends keyof Task>(key: K, value: Task[K]) {
+    if (readOnly) return
     setEditing(prev => ({ ...prev, [key]: value }))
   }
 
   const isDirty = Object.keys(editing).length > 0
 
   async function handleSave() {
+    if (readOnly) return
     if (!isDirty) return
     await updateTask(selectedTask.id, editing)
     setEditing({})
   }
 
   async function handleDelete() {
+    if (readOnly) return
     if (!confirm('Delete this engagement? This cannot be undone.')) return
     await deleteTask(selectedTask.id)
   }
@@ -521,11 +524,13 @@ export default function TaskDetailPanel() {
   // ── Sources ──────────────────────────────────────────────────────────────
 
   async function persistSources(updated: Source[]) {
+    if (readOnly) return
     setSources(updated)
     await updateTask(selectedTask.id, { sources_json: JSON.stringify(updated) })
   }
 
   async function handleAddSource() {
+    if (readOnly) return
     if (!newSrc.title.trim()) return
     const src: Source = {
       id: crypto.randomUUID(),
@@ -543,6 +548,7 @@ export default function TaskDetailPanel() {
   // ── Comments ─────────────────────────────────────────────────────────────
 
   async function handleAddComment() {
+    if (readOnly) return
     if (!newComment.trim()) return
     const comment = await window.api.comments.add({
       task_id: selectedTask.id,
@@ -565,12 +571,14 @@ export default function TaskDetailPanel() {
   }
 
   async function handleDeleteComment(id: string) {
+    if (readOnly) return
     await window.api.comments.delete(id)
     setComments(prev => prev.filter(c => c.id !== id))
     refreshTaskMeta(selectedTask.id)
   }
 
   async function handleSaveCommentEdit(id: string) {
+    if (readOnly) return
     if (!editingCommentContent.trim()) return
     await window.api.comments.update(id, editingCommentContent.trim())
     setComments(prev => prev.map(c => c.id === id ? { ...c, content: editingCommentContent.trim() } : c))
@@ -581,6 +589,7 @@ export default function TaskDetailPanel() {
   // ── Attachments ───────────────────────────────────────────────────────────
 
   async function handleAddFile() {
+    if (readOnly) return
     setAttLoading(true)
     try {
       const result = await window.api.attachments.addFile(selectedTask.id)
@@ -592,6 +601,7 @@ export default function TaskDetailPanel() {
   }
 
   async function handleAddAttUrl() {
+    if (readOnly) return
     const url = newAttUrl.trim()
     if (!url) return
     const type = url.includes('docs.google.com') ? 'gdoc' : 'url'
@@ -604,6 +614,7 @@ export default function TaskDetailPanel() {
   }
 
   async function handleDeleteAttachment(id: string) {
+    if (readOnly) return
     await window.api.attachments.delete(id)
     setAttachments(prev => prev.filter(a => a.id !== id))
     refreshTaskMeta(selectedTask.id)
@@ -612,6 +623,7 @@ export default function TaskDetailPanel() {
   // ── Checklists ────────────────────────────────────────────────────────────
 
   async function handleCreateChecklist() {
+    if (readOnly) return
     if (!newChecklistTitle.trim()) return
     await window.api.checklists.create(selectedTask.id, newChecklistTitle.trim())
     await loadChecklists(selectedTask.id)
@@ -621,12 +633,14 @@ export default function TaskDetailPanel() {
   }
 
   async function handleDeleteChecklist(checklistId: string) {
+    if (readOnly) return
     await window.api.checklists.delete(checklistId)
     setChecklists(prev => prev.filter(cl => cl.id !== checklistId))
     refreshTaskMeta(selectedTask.id)
   }
 
   async function handleAddChecklistItem(checklistId: string) {
+    if (readOnly) return
     const text = newItemText[checklistId]?.trim()
     if (!text) return
     await window.api.checklistItems.add(checklistId, selectedTask.id, text)
@@ -636,6 +650,7 @@ export default function TaskDetailPanel() {
   }
 
   async function handleToggleItem(itemId: string, checked: boolean) {
+    if (readOnly) return
     await window.api.checklistItems.toggle(itemId, !checked)
     setChecklists(prev => prev.map(cl => ({
       ...cl,
@@ -645,6 +660,7 @@ export default function TaskDetailPanel() {
   }
 
   async function handleDeleteItem(itemId: string) {
+    if (readOnly) return
     await window.api.checklistItems.delete(itemId)
     setChecklists(prev => prev.map(cl => ({
       ...cl,
@@ -656,6 +672,7 @@ export default function TaskDetailPanel() {
   // ── Labels ────────────────────────────────────────────────────────────────
 
   async function handleToggleLabel(labelId: string) {
+    if (readOnly) return
     const isSelected = taskLabels.some(l => l.id === labelId)
     const newIds = isSelected
       ? taskLabels.filter(l => l.id !== labelId).map(l => l.id)
@@ -670,6 +687,7 @@ export default function TaskDetailPanel() {
   const assigneeIds: string[] = (field('assignee_ids') as string[] | null) ?? []
 
   function toggleAssignee(memberId: string) {
+    if (readOnly) return
     const isAdding = !assigneeIds.includes(memberId)
     const updated = isAdding
       ? [...assigneeIds, memberId]
@@ -785,6 +803,7 @@ export default function TaskDetailPanel() {
                   value={field('title')}
                   onChange={e => set('title', e.target.value)}
                   onBlur={handleSave}
+                  readOnly={readOnly}
                   className="titlebar-no-drag w-full bg-transparent text-xl font-bold text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 border-b border-transparent hover:border-gray-200 dark:hover:border-white/10 focus:border-hub-gold/50 outline-none pb-1 transition"
                   placeholder="Engagement title"
                 />
@@ -796,7 +815,9 @@ export default function TaskDetailPanel() {
                     <SectionLabel title="Stage" />
                     <select
                       value={field('column_id')}
+                      disabled={readOnly}
                       onChange={e => {
+                        if (readOnly) return
                         const newColId = e.target.value
                         set('column_id', newColId)
                         updateTask(selectedTask.id, { column_id: newColId })
@@ -824,7 +845,9 @@ export default function TaskDetailPanel() {
                     <SectionLabel title="Priority" />
                     <select
                       value={field('priority')}
+                      disabled={readOnly}
                       onChange={e => {
+                        if (readOnly) return
                         set('priority', e.target.value as Priority)
                         updateTask(selectedTask.id, { priority: e.target.value as Priority })
                       }}
@@ -841,7 +864,9 @@ export default function TaskDetailPanel() {
                     <SectionLabel title="Deliverable Type" />
                     <select
                       value={field('content_type')}
+                      disabled={readOnly}
                       onChange={e => {
+                        if (readOnly) return
                         set('content_type', e.target.value as ContentType)
                         updateTask(selectedTask.id, { content_type: e.target.value as ContentType })
                       }}
@@ -858,7 +883,9 @@ export default function TaskDetailPanel() {
                     <SectionLabel title="Area of Analysis" />
                     <select
                       value={field('area_of_analysis') ?? ''}
+                      disabled={readOnly}
                       onChange={e => {
+                        if (readOnly) return
                         const v = (e.target.value || null) as AreaOfAnalysis | null
                         set('area_of_analysis', v)
                         updateTask(selectedTask.id, { area_of_analysis: v })
@@ -875,16 +902,24 @@ export default function TaskDetailPanel() {
                   {/* Client — searchable Contacts typeahead */}
                   <div>
                     <SectionLabel title="Client" />
-                    <ClientPicker
-                      clientId={field('client_id') ?? null}
-                      clientName={field('client') ?? null}
-                      clientOrg={field('client_org') ?? null}
-                      createdBy={currentUserId}
-                      onChange={sel => {
-                        setEditing(prev => ({ ...prev, client_id: sel.id, client: sel.name, client_org: sel.org }))
-                        updateTask(selectedTask.id, { client_id: sel.id, client: sel.name, client_org: sel.org })
-                      }}
-                    />
+                    {readOnly ? (
+                      <div className="titlebar-no-drag w-full px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm">
+                        {field('client')
+                          ? `${field('client')}${field('client_org') ? ` · ${field('client_org')}` : ''}`
+                          : <span className="text-gray-400 dark:text-white/40">No client</span>}
+                      </div>
+                    ) : (
+                      <ClientPicker
+                        clientId={field('client_id') ?? null}
+                        clientName={field('client') ?? null}
+                        clientOrg={field('client_org') ?? null}
+                        createdBy={currentUserId}
+                        onChange={sel => {
+                          setEditing(prev => ({ ...prev, client_id: sel.id, client: sel.name, client_org: sel.org }))
+                          updateTask(selectedTask.id, { client_id: sel.id, client: sel.name, client_org: sel.org })
+                        }}
+                      />
+                    )}
                   </div>
 
                   {/* Start date */}
@@ -919,6 +954,7 @@ export default function TaskDetailPanel() {
                         type="checkbox"
                         id="recurring-toggle"
                         checked={recurringEnabled}
+                        disabled={readOnly}
                         onChange={e => setRecurringEnabled(e.target.checked)}
                         className="titlebar-no-drag w-3.5 h-3.5 rounded accent-hub-gold cursor-pointer"
                       />
@@ -930,6 +966,7 @@ export default function TaskDetailPanel() {
                       <div className="flex items-center gap-2">
                         <select
                           value={recurringType}
+                          disabled={readOnly}
                           onChange={e => setRecurringType(e.target.value as typeof recurringType)}
                           className="titlebar-no-drag flex-1 px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
                         >
@@ -945,6 +982,7 @@ export default function TaskDetailPanel() {
                               type="number"
                               min={1}
                               value={recurringInterval}
+                              disabled={readOnly}
                               onChange={e => setRecurringInterval(parseInt(e.target.value, 10) || 1)}
                               className="titlebar-no-drag w-16 px-2 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40"
                             />
@@ -979,7 +1017,8 @@ export default function TaskDetailPanel() {
                           <button
                             key={m.id}
                             onClick={() => toggleAssignee(m.id)}
-                            className={`titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition ${
+                            disabled={readOnly}
+                            className={`titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition ${readOnly ? 'cursor-default' : ''} ${
                               assigned
                                 ? 'bg-hub-gold/15 border-hub-gold/30 text-gray-900 dark:text-white'
                                 : 'bg-gray-50 dark:bg-white/[0.04] border-gray-200 dark:border-white/[0.07] text-gray-500 dark:text-white/70 hover:text-gray-700 dark:hover:text-white/85 hover:bg-gray-100 dark:hover:bg-white/[0.07]'
@@ -1006,6 +1045,7 @@ export default function TaskDetailPanel() {
                     onBlur={handleSave}
                     placeholder="Scope of work, objectives, key questions…"
                     minHeight="100px"
+                    readOnly={readOnly}
                   />
                 </div>
 
@@ -1013,6 +1053,7 @@ export default function TaskDetailPanel() {
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <SectionLabel title={`Sources${sources.length ? ` (${sources.length})` : ''}`} />
+                    {!readOnly && (
                     <button
                       onClick={() => setShowAddSource(v => !v)}
                       className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/75 hover:text-hub-gold transition -mt-0.5"
@@ -1022,6 +1063,7 @@ export default function TaskDetailPanel() {
                       </svg>
                       Add source
                     </button>
+                    )}
                   </div>
 
                   {sources.length === 0 && !showAddSource && (
@@ -1131,6 +1173,7 @@ export default function TaskDetailPanel() {
                     onBlur={handleSave}
                     placeholder="Internal notes, follow-ups, sensitivities…"
                     minHeight="80px"
+                    readOnly={readOnly}
                   />
                 </div>
 
@@ -1138,6 +1181,7 @@ export default function TaskDetailPanel() {
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <SectionLabel title="Labels" />
+                    {!readOnly && (
                     <button
                       onClick={() => setShowLabelPicker(v => !v)}
                       className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/75 hover:text-hub-gold transition -mt-0.5"
@@ -1147,6 +1191,7 @@ export default function TaskDetailPanel() {
                       </svg>
                       Manage
                     </button>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-1.5 mb-1">
                     {taskLabels.length === 0 && !showLabelPicker && (
@@ -1159,7 +1204,7 @@ export default function TaskDetailPanel() {
                         className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold text-white shadow-sm"
                       >
                         {lbl.name}
-                        <button onClick={() => handleToggleLabel(lbl.id)} className="titlebar-no-drag ml-0.5 hover:opacity-70 transition">×</button>
+                        {!readOnly && <button onClick={() => handleToggleLabel(lbl.id)} className="titlebar-no-drag ml-0.5 hover:opacity-70 transition">×</button>}
                       </span>
                     ))}
                   </div>
@@ -1188,6 +1233,7 @@ export default function TaskDetailPanel() {
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <SectionLabel title="Checklist" />
+                    {!readOnly && (
                     <button
                       onClick={() => setShowAddChecklist(v => !v)}
                       className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/75 hover:text-hub-gold transition -mt-0.5"
@@ -1197,6 +1243,7 @@ export default function TaskDetailPanel() {
                       </svg>
                       Add checklist
                     </button>
+                    )}
                   </div>
 
                   {checklists.length === 0 && !showAddChecklist && (
@@ -1213,7 +1260,7 @@ export default function TaskDetailPanel() {
                           <span className="text-xs font-semibold text-gray-700 dark:text-white/85">{cl.title}</span>
                           <div className="flex items-center gap-2">
                             <span className="text-[10px] text-gray-400 dark:text-white/50 tabular-nums">{done}/{total}</span>
-                            <button onClick={() => handleDeleteChecklist(cl.id)} className="titlebar-no-drag text-[10px] text-gray-300 dark:text-white/65 hover:text-red-400 transition">✕</button>
+                            {!readOnly && <button onClick={() => handleDeleteChecklist(cl.id)} className="titlebar-no-drag text-[10px] text-gray-300 dark:text-white/65 hover:text-red-400 transition">✕</button>}
                           </div>
                         </div>
                         {total > 0 && (
@@ -1227,16 +1274,18 @@ export default function TaskDetailPanel() {
                               <input
                                 type="checkbox"
                                 checked={!!item.checked}
+                                disabled={readOnly}
                                 onChange={() => handleToggleItem(item.id, !!item.checked)}
-                                className="titlebar-no-drag w-3.5 h-3.5 rounded accent-hub-gold shrink-0 cursor-pointer"
+                                className={`titlebar-no-drag w-3.5 h-3.5 rounded accent-hub-gold shrink-0 ${readOnly ? '' : 'cursor-pointer'}`}
                               />
                               <span className={`flex-1 text-xs leading-relaxed ${item.checked ? 'line-through text-gray-300 dark:text-white/65' : 'text-gray-700 dark:text-white/85'}`}>
                                 {item.text}
                               </span>
-                              <button onClick={() => handleDeleteItem(item.id)} className="titlebar-no-drag shrink-0 text-[10px] text-gray-300 dark:text-white/50 hover:text-red-400 transition opacity-0 group-hover:opacity-100">✕</button>
+                              {!readOnly && <button onClick={() => handleDeleteItem(item.id)} className="titlebar-no-drag shrink-0 text-[10px] text-gray-300 dark:text-white/50 hover:text-red-400 transition opacity-0 group-hover:opacity-100">✕</button>}
                             </div>
                           ))}
                         </div>
+                        {!readOnly && (
                         <div className="flex gap-1.5 mt-1.5">
                           <input
                             type="text"
@@ -1252,6 +1301,7 @@ export default function TaskDetailPanel() {
                             className="titlebar-no-drag px-2.5 py-1 rounded-lg bg-hub-gold/80 hover:bg-hub-gold disabled:opacity-40 text-white text-xs font-semibold transition"
                           >Add</button>
                         </div>
+                        )}
                       </div>
                     )
                   })}
@@ -1277,6 +1327,7 @@ export default function TaskDetailPanel() {
                 <div ref={sectionRefs.attachments}>
                   <div className="flex items-center justify-between mb-1.5">
                     <SectionLabel title={`Attachments${attachments.length ? ` (${attachments.length})` : ''}`} />
+                    {!readOnly && (
                     <button
                       onClick={() => setShowDrivePanel(true)}
                       className="titlebar-no-drag flex items-center gap-1 text-[10px] text-gray-400 dark:text-white/75 hover:text-hub-gold transition"
@@ -1286,6 +1337,7 @@ export default function TaskDetailPanel() {
                       </svg>
                       Add attachment
                     </button>
+                    )}
                   </div>
 
                   {attachments.length === 0 && (
@@ -1308,7 +1360,7 @@ export default function TaskDetailPanel() {
                               </button>
                               <p className="text-[10px] text-gray-400 dark:text-white/65">{att.author_name} · {new Date(att.created_at).toLocaleDateString()}</p>
                             </div>
-                            {canDelete && (
+                            {canDelete && !readOnly && (
                               <button
                                 onClick={() => handleDeleteAttachment(att.id)}
                                 className="titlebar-no-drag shrink-0 p-1 rounded text-gray-300 dark:text-white/65 hover:text-red-400 transition opacity-0 group-hover:opacity-100"
@@ -1332,6 +1384,7 @@ export default function TaskDetailPanel() {
                 <p className="text-[11px] text-gray-300 dark:text-white/65">
                   Created {new Date(selectedTask.created_at).toLocaleDateString()}
                 </p>
+                {!readOnly && (
                 <button
                   onClick={handleDelete}
                   className="titlebar-no-drag flex items-center gap-1.5 text-xs text-red-400/45 hover:text-red-400 transition"
@@ -1341,6 +1394,7 @@ export default function TaskDetailPanel() {
                   </svg>
                   Delete engagement
                 </button>
+                )}
               </div>
             </div>
 
@@ -1357,7 +1411,8 @@ export default function TaskDetailPanel() {
                 </p>
               </div>
 
-              {/* Compose area — always visible */}
+              {/* Compose area — hidden in read-only mode */}
+              {!readOnly && (
               <div className="px-4 pt-3 pb-2 border-b border-gray-100 dark:border-white/[0.06] shrink-0">
                 <div className="relative">
                   <textarea
@@ -1454,6 +1509,7 @@ export default function TaskDetailPanel() {
                   <p className="text-[10px] text-gray-300 dark:text-white/65 mt-1">⌘ + Enter to post · Esc to cancel</p>
                 )}
               </div>
+              )}
 
               {/* Scrollable feed */}
               <div ref={rightPanelRef} className="flex-1 overflow-y-auto">
@@ -1480,13 +1536,13 @@ export default function TaskDetailPanel() {
                                 <span className="text-xs font-semibold text-gray-700 dark:text-white/90">{c.author_name}</span>
                                 <span className="text-[10px] text-gray-400 dark:text-white/65">{fmtDate(c.created_at)}</span>
                                 <div className="ml-auto flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
-                                  {canEdit && !isEditing && (
+                                  {!readOnly && canEdit && !isEditing && (
                                     <button
                                       onClick={() => { setEditingCommentId(c.id); setEditingCommentContent(c.content) }}
                                       className="titlebar-no-drag text-[10px] text-gray-400 dark:text-white/65 hover:text-hub-gold transition"
                                     >Edit</button>
                                   )}
-                                  {canDelete && (
+                                  {!readOnly && canDelete && (
                                     <button
                                       onClick={() => handleDeleteComment(c.id)}
                                       className="titlebar-no-drag text-[10px] text-gray-300 dark:text-white/65 hover:text-red-400 transition"

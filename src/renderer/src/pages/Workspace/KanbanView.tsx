@@ -113,12 +113,12 @@ function TaskCardDisplay({ task, isDragging = false, areas, readOnly = false }: 
   return (
     <div
       ref={cardRef}
-      onClick={() => !isDragging && !readOnly && selectTask(task)}
+      onClick={() => !isDragging && selectTask(task)}
       style={{ borderTopColor: areaColor }}
       className={`group relative bg-white dark:bg-[#1e2235] border border-transparent dark:border-white/[0.06]
-        border-t-[3px] rounded-2xl p-3.5
+        border-t-[3px] rounded-2xl p-3.5 cursor-pointer
         shadow-[0_4px_16px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_20px_rgba(0,0,0,0.45)]
-        ${readOnly ? 'cursor-default' : 'cursor-pointer card-lift active:scale-[0.99]'}
+        card-lift active:scale-[0.99]
         ${isDragging ? 'opacity-60 shadow-2xl rotate-1 scale-105' : ''}
         ${highlightTaskId === task.id ? 'ring-2 ring-hub-gold ring-offset-2 dark:ring-offset-[#1a2233] animate-card-flash' : ''}`}
     >
