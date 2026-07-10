@@ -67,6 +67,9 @@ interface WorkspaceContextType {
   refreshLabels: () => Promise<void>
   refreshTaskMeta: (taskId?: string) => Promise<void>
   refreshTasks: () => Promise<void>
+  // Direct tasks setter — for optimistic UI (e.g. card revive) that mirrors the
+  // markForDeletion/markCompleteNow optimistic pattern before a refetch reconciles.
+  setTasks: React.Dispatch<React.SetStateAction<Task[]>>
 
   // Boards
   boards: Board[]
@@ -704,6 +707,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       refreshLabels,
       refreshTaskMeta,
       refreshTasks,
+      setTasks,
       pendingSection,
       setPendingSection,
       highlightTaskId,

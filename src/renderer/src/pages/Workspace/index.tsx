@@ -194,7 +194,7 @@ export default function Workspace() {
   const {
     viewMode, setViewMode, tasks, columns, selectedTask, createTask, selectTask,
     boards, activeBoard, archiveBoard, deleteBoard, duplicateBoard, renameBoard,
-    createBoard, setActiveBoardId, archivedBoards, restoreBoard, cloudError, boardContentVersion, openTask, restoreTask, requestHighlight, refreshTasks,
+    createBoard, setActiveBoardId, archivedBoards, restoreBoard, cloudError, boardContentVersion, openTask, restoreTask, requestHighlight, refreshTasks, setTasks,
   } = useWorkspace()
   const { localUser, isRoot, can } = useAuth()
 
@@ -278,6 +278,8 @@ export default function Workspace() {
   const [completedLoading, setCompletedLoading] = useState(false)
   const [markedTasks, setMarkedTasks] = useState<import('../../types').Task[]>([])
   const [markedLoading, setMarkedLoading] = useState(false)
+  // In-flight guard for card revive/undelete/delete — prevents multi-fire on slow networks
+  const [reviving, setReviving] = useState<Set<string>>(new Set())
 
   async function loadCompleted() {
     setCompletedLoading(true)
@@ -298,17 +300,28 @@ export default function Workspace() {
   }
 
   async function handleUndelete(task: import('../../types').Task) {
-    await window.api.workspace.undeleteTask(task.id)
-    setMarkedTasks(prev => prev.filter(t => t.id !== task.id))
-    if ((task.pre_deletion_archived ?? 0) === 0) {
-      // Card returns to board — navigate, arm highlight, then refresh tasks
-      setActiveBoardId(task.board_id!)
-      setShowArchivedTasks(false)
-      requestHighlight(task.id)
-      await refreshTasks()
-    } else {
-      // Card returns to Completed — just reload that list
-      loadCompleted()
+    if (reviving.has(task.id)) return                       // in-flight guard — no multi-fire
+    setReviving(prev => new Set(prev).add(task.id))
+    setMarkedTasks(prev => prev.filter(t => t.id !== task.id))  // remove source immediately
+    try {
+      if ((task.pre_deletion_archived ?? 0) === 0) {
+        // Card returns to board — navigate, arm highlight, optimistic insert, persist.
+        setActiveBoardId(task.board_id!)
+        setShowArchivedTasks(false)
+        requestHighlight(task.id)
+        // Optimistic insert so the card appears instantly (mirrors markForDeletion/markCompleteNow, inverted)
+        setTasks(prev => prev.some(t => t.id === task.id)
+          ? prev
+          : [...prev, { ...task, archived: 0, deletion_scheduled_at: null }])
+        await window.api.workspace.undeleteTask(task.id)
+        await refreshTasks()   // single reconciling refetch (see note below)
+      } else {
+        // Card returns to Completed — just reload that list
+        await window.api.workspace.undeleteTask(task.id)
+        loadCompleted()
+      }
+    } finally {
+      setReviving(prev => { const n = new Set(prev); n.delete(task.id); return n })
     }
   }
 
@@ -319,23 +332,39 @@ export default function Workspace() {
   }
 
   async function handleDeleteNow(task: import('../../types').Task) {
+    if (reviving.has(task.id)) return                       // in-flight guard
     const ok = window.confirm(`Permanently delete "${task.title}"? This cannot be undone.`)
     if (!ok) return
-    await window.api.workspace.deleteTask(task.id, localUser?.id, localUser?.name)
-    setMarkedTasks(prev => prev.filter(t => t.id !== task.id))
+    setReviving(prev => new Set(prev).add(task.id))
+    setMarkedTasks(prev => prev.filter(t => t.id !== task.id))  // remove source immediately
+    try {
+      await window.api.workspace.deleteTask(task.id, localUser?.id, localUser?.name)
+    } finally {
+      setReviving(prev => { const n = new Set(prev); n.delete(task.id); return n })
+    }
   }
 
   async function handleRevive(task: import('../../types').Task) {
+    if (reviving.has(task.id)) return                       // in-flight guard — no multi-fire
     const originExists = boards.some(b => b.id === task.board_id)
     if (!originExists) {
       alert('The original board for this card no longer exists. Reviving to a chosen board will be added soon.')
       return
     }
-    setActiveBoardId(task.board_id!)         // switch board first
-    setShowArchivedTasks(false)              // close drawer
-    requestHighlight(task.id)               // arm highlight for when card appears in tasks
-    await restoreTask(task.id)              // context restoreTask: archived=0 + refetch tasks
-    setCompletedTasks(prev => prev.filter(t => t.id !== task.id))
+    setReviving(prev => new Set(prev).add(task.id))
+    setCompletedTasks(prev => prev.filter(t => t.id !== task.id))  // remove source BEFORE await (part 3)
+    try {
+      setActiveBoardId(task.board_id!)         // switch board first
+      setShowArchivedTasks(false)              // close drawer
+      requestHighlight(task.id)                // arm highlight for when card appears in tasks
+      // Optimistic insert so the card appears instantly (mirrors markForDeletion/markCompleteNow, inverted)
+      setTasks(prev => prev.some(t => t.id === task.id)
+        ? prev
+        : [...prev, { ...task, archived: 0, deletion_scheduled_at: null }])
+      await restoreTask(task.id)               // context restoreTask: archived=0 + single reconciling refetch
+    } finally {
+      setReviving(prev => { const n = new Set(prev); n.delete(task.id); return n })
+    }
   }
 
   useEffect(() => {
@@ -744,7 +773,8 @@ export default function Workspace() {
                   </div>
                   <button
                     onClick={() => handleRevive(task)}
-                    className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-medium transition"
+                    disabled={reviving.has(task.id)}
+                    className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-medium transition disabled:opacity-40 disabled:cursor-default"
                   >
                     Revive
                   </button>
@@ -784,14 +814,16 @@ export default function Workspace() {
                     <span className="text-xs text-amber-500/70 dark:text-amber-400/60 shrink-0 mr-2">Deletes in {daysLeft}d</span>
                     <button
                       onClick={() => handleUndelete(t)}
-                      className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-medium transition"
+                      disabled={reviving.has(t.id)}
+                      className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1 rounded-lg bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 text-xs font-medium transition disabled:opacity-40 disabled:cursor-default"
                     >
                       Undelete
                     </button>
                     {isRoot && (
                       <button
                         onClick={() => handleDeleteNow(t)}
-                        className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium transition"
+                        disabled={reviving.has(t.id)}
+                        className="titlebar-no-drag opacity-0 group-hover:opacity-100 px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium transition disabled:opacity-40 disabled:cursor-default"
                       >
                         Delete permanently
                       </button>
