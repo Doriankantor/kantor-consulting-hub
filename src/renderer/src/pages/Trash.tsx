@@ -70,7 +70,7 @@ function TypeIcon({ type }: { type: string }) {
 
 export default function Trash() {
   const { localUser, isRoot } = useAuth()
-  const { undeleteBoard, refreshTasks } = useWorkspace()
+  const { undeleteBoard, refreshTasks, refreshBoards } = useWorkspace()
   const [items, setItems] = useState<UnifiedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterType>('all')
@@ -80,6 +80,8 @@ export default function Trash() {
   const [permBoardName, setPermBoardName] = useState('')
   const [restoring, setRestoring] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [restoringAll, setRestoringAll] = useState(false)
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -188,9 +190,39 @@ export default function Trash() {
   }
 
   async function handleRestoreAll() {
-    await window.api.trash.restoreAll()
-    await refreshTasks()   // any restored board's cards populate (mirrors per-item restore)
-    await load()
+    if (restoringAll) return
+    setRestoringAll(true)
+    setBulkMsg(null)
+    // Route each item by _source, mirroring single-item handleRestore. Use the
+    // UNDERLYING cloud calls in the loop (not context undeleteBoard, which bundles
+    // its own loadBoards+refreshTasks) so we do ONE reconcile after, not N.
+    const failed: string[] = []
+    try {
+      for (const item of items) {
+        try {
+          if (item._source === 'local') {
+            await window.api.trash.restore(item._uid)
+          } else if (item._source === 'cloud-board') {
+            await window.api.boards.undelete(item.item_id)
+          } else if (item._source === 'cloud-contact') {
+            await window.api.contacts.restore(item.item_id)
+          }
+        } catch {
+          failed.push(item.item_name)   // one failure doesn't abort the rest
+        }
+      }
+    } finally {
+      // Guaranteed reconcile — exactly once, even if items errored. load() only
+      // refreshes the Trash lists, so refreshBoards() covers the sidebar board list
+      // and refreshTasks() repopulates restored boards' cards.
+      try { await refreshBoards() } catch {}
+      try { await refreshTasks() } catch {}
+      await load()
+      setRestoringAll(false)
+      if (failed.length > 0) {
+        setBulkMsg(`${failed.length} item${failed.length !== 1 ? 's' : ''} couldn't be restored — try again.`)
+      }
+    }
   }
 
   async function handleEmptyTrash() {
@@ -220,15 +252,17 @@ export default function Trash() {
                 : `${items.length} item${items.length !== 1 ? 's' : ''} — local items removed after 30 days`}
             </p>
           </div>
-          {localItems.length > 0 && (
+          {items.length > 0 && (
             <div className="flex items-center gap-2">
               <button
                 onClick={handleRestoreAll}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 border border-teal-500/20 transition"
+                disabled={restoringAll}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-teal-500/10 hover:bg-teal-500/20 text-teal-600 dark:text-teal-400 border border-teal-500/20 transition disabled:opacity-50 disabled:cursor-default"
               >
-                Restore all
+                {restoringAll && <span className="w-3 h-3 border-2 border-teal-400/30 border-t-teal-500 rounded-full animate-spin" />}
+                {restoringAll ? 'Restoring…' : 'Restore all'}
               </button>
-              {isRoot && (
+              {isRoot && localItems.length > 0 && (
                 <button
                   onClick={() => setConfirmEmpty(true)}
                   className="px-3 py-1.5 rounded-lg text-sm font-medium bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/20 transition"
@@ -240,6 +274,13 @@ export default function Trash() {
           )}
         </div>
       </div>
+
+      {/* Bulk-restore failure notice */}
+      {bulkMsg && (
+        <div className="mb-4 p-3 rounded-xl text-xs font-medium bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400">
+          {bulkMsg}
+        </div>
+      )}
 
       {/* Toolbar */}
       {items.length > 0 && (
