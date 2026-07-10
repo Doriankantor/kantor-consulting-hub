@@ -985,10 +985,9 @@ export function initDatabase(): void {
   // pre-graded by how solid the outlet is (high = wires / major intl / official /
   // top think tanks; medium = credible trade / regional / specialized; low =
   // single-outlet / sensational / advocacy) and inserted as NEW, unreviewed
-  // "articles" the team can re-grade in Intelligence → News before they're pushed
-  // to the live site. All carry queue_section='source-archive' so the existing
-  // pushToContestedSkies renders them into the Source Archive with confidence
-  // badges. Idempotent: INSERT OR IGNORE keyed on the UNIQUE url + a stable id.
+  // "articles" the team can re-grade in Intelligence → News. All carry
+  // queue_section='source-archive'.
+  // Idempotent: INSERT OR IGNORE keyed on the UNIQUE url + a stable id.
   try {
     const csArchive: Array<{
       id: string; date: string; pub: string; title: string; url: string;

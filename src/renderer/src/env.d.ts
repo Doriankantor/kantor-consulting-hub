@@ -431,17 +431,6 @@ interface InfoPageChangeRow {
   source_name: string | null
 }
 
-interface IntelligencePushLog {
-  id: string
-  pushed_at: string
-  pushed_by_id: string
-  pushed_by_name: string | null
-  items_count: number
-  sections_json: string
-  success: number
-  error_message: string | null
-}
-
 interface Window {
   api: {
     auth: {
@@ -781,15 +770,10 @@ interface Window {
       deleteTag:            (name: string, type: string)       => Promise<{ ok: boolean }>
       setArticleTags:       (id: string, type: string, tags: string[]) => Promise<{ ok: boolean; tags: string[] }>
       logDecision:          (payload: { articleId: string; action: string; aiProposed?: unknown; humanFinal?: unknown; reason?: string | null }) => Promise<{ ok: boolean }>
-      updateQueueSection:   (id: string, section: string)      => Promise<{ ok: boolean }>
-      removeFromQueue:      (id: string)                       => Promise<{ ok: boolean }>
       deleteSource:         (id: string)                       => Promise<{ ok: boolean }>
       addSocial:            (post: Record<string, unknown>)    => Promise<{ ok: boolean; id?: string }>
       fetchNews:            ()                                 => Promise<{ ok: boolean; count?: number; error?: string }>
       uploadDocument:       (params: { userId?: string; addedByName?: string }) => Promise<{ ok: boolean; canceled?: boolean; results?: Array<{ id: string; file_name: string }>; error?: string }>
-      getQueue:             ()                                 => Promise<IntelligenceSource[]>
-      pushToContestedSkies: (params: { pushedById: string; pushedByName: string }) => Promise<{ ok: boolean; count?: number; sections?: string[]; error?: string }>
-      getPushLog:           ()                                 => Promise<IntelligencePushLog[]>
       getPipelineStats:     ()                                 => Promise<{ pending: number; sentToPages: number }>
       getStatusCounts:      ()                                 => Promise<{ unreviewed: number; approved: number; rejected: number }>
       getUnscoredCount:     ()                                 => Promise<number>

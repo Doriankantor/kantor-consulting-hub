@@ -6,8 +6,6 @@ import DocumentsTab from './DocumentsTab'
 // Phase 7: the Publish Queue / "Push to Contested Skies" tab has been removed.
 // Approved articles now flow to the linked Info Page's New Sources, where they
 // are committed and (later, with admin approval) pushed live from downstream.
-// The live-site push code (intelligence:pushToContestedSkies + PublishQueue.tsx)
-// is preserved but no longer reachable from here.
 const TABS = [
   { id: 'news',      label: 'News Articles' },
   { id: 'social',    label: 'Social Media' },
