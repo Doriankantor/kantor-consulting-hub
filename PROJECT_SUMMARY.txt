@@ -1,7 +1,8 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-07-07
-  Current version: v2.0.19  |   220 commits   |   ~32,200 lines of TS/TSX
+  Generated: 2026-07-09
+  Current version: v2.0.19  |   223 commits   |   ~32,300 lines of TS/TSX
+  (4 commits landed after the v2.0.19 release — see "post-v2.0.19" below)
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -110,14 +111,19 @@ plus a "Trump Immigration" visual project, with reusable pipelines for future on
   Files / sync    : documents, drive_sync_queue, settings, trash
 
 ───────────────────────────────────────────────────────────────────────────────
-6. IPC SURFACE (201 handlers, by domain)
+6. IPC SURFACE (241 handlers, by domain)
 ───────────────────────────────────────────────────────────────────────────────
-  infoPages 33 · intelligence 17 · team 11 · workspace 10 · contacts 10 ·
-  drive 9 · boards 9 · clients 7 · userGoogle 6 · trash 6 · boardMembers 6 ·
-  todo 5 · personalTodo 5 · notifications 5 · calendar 5 · attachments 5 ·
+  infoPages 40 · intelligence 26 · workspace 18 · boards 15 · contacts 13 ·
+  team 11 · drive 9 · clients 8 · userGoogle 6 · trash 6 · boardMembers 6 ·
+  attachments 6 · todo 5 · personalTodo 5 · notifications 5 · calendar 5 ·
   templates 4 · settings 4 · labels 4 · comments 4 · claude 4 · checklistItems 4 ·
-  areas 4 · checklists 3 · auth 3 · activity 3 · taskLabels 2 · projects 2 ·
-  notificationPrefs 2 · chat 2 · app 2 · analytics 2 · tasks 1 · files 1 · dialog 1
+  areas 4 · permissions 3 · checklists 3 · chat 3 · auth 3 · app 3 · activity 3 ·
+  taskLabels 2 · projects 2 · notificationPrefs 2 · analytics 2 · tasks 1 ·
+  files 1 · dialog 1
+
+  Recent boards additions: boards:getTasks (read one board's tasks regardless of
+  the board's archived flag — powers the read-only Visualize viewer) and
+  boards:reorder (admin-only dense 0..n-1 position write for sidebar drag-reorder).
 
 ───────────────────────────────────────────────────────────────────────────────
 7. INTELLIGENCE PIPELINE (automated, outside the app)
@@ -177,8 +183,78 @@ DESIGN PRINCIPLES / CONVENTIONS
     save it as a dated file in /sql and commit it.
 
 ───────────────────────────────────────────────────────────────────────────────
-9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-07-07)
+9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-07-09)
 ───────────────────────────────────────────────────────────────────────────────
+  (post-v2.0.19, Jul 7-9 -- committed, NOT yet released/version-bumped)
+
+  d9b70d9 -- CARD-REVIVE HARDENING (in-flight guard + optimistic insert)
+    * handleRevive / handleUndelete / handleDeleteNow in Workspace/index.tsx now
+      share a `reviving: Set<string>` in-flight guard: early-return if the id is
+      already in flight, add on entry, remove in a finally. The Revive, Undelete
+      and Delete-permanently buttons are disabled while their card is in flight —
+      this kills the multi-fire that slow networks caused.
+    * Optimistic insert on restore: the card is pushed into `tasks` BEFORE the
+      await ({...task, archived: 0, deletion_scheduled_at: null}, deduped by id),
+      mirroring the markForDeletion/markCompleteNow optimistic pattern inverted.
+      The card now appears instantly instead of waiting on a full getTasks.
+    * Source card is removed from the drawer BEFORE the await in all three paths
+      (handleRevive previously removed it after, leaving it clickable mid-flight).
+    * WorkspaceContext now exposes `setTasks` for this optimistic UI.
+    * One explicit refreshTasks() is deliberately KEPT as the guaranteed reconcile
+      (the realtime reloadOpenBoard echo is not guaranteed in dev/offline).
+
+  9e2f91c -- FIX: RESTORING A BOARD NEVER RELOADED ITS CARDS
+    * Root cause: every restore path refreshed the board LIST (loadBoards) but
+      never re-ran getTasks, so a restored board showed zero cards until a manual
+      add or an app restart (getTasks excludes archived/deleted boards, and
+      deleteBoard also purges their tasks from local state).
+    * WorkspaceContext.restoreBoard now awaits refreshTasks() after loadBoards().
+    * New WorkspaceContext.undeleteBoard (boards.undelete + loadBoards +
+      refreshTasks) — Trash previously called window.api.boards.undelete directly,
+      bypassing the context entirely.
+    * Trash.tsx handleRestore routes cloud-board items through undeleteBoard;
+      handleRestoreAll also refreshes tasks. Archive.tsx handleRestore routes
+      through context restoreBoard instead of the bare API + local list filter,
+      so the sidebar updates AND the cards load.
+    * Unifying principle: every restore/undelete refreshes tasks, not just the list.
+
+  7cf8938 -- VISUALIZER BLOCK 2: OPEN ARCHIVED CARDS READ-ONLY
+    * TaskDetailPanel takes a `readOnly` prop (defaults false — live board and
+      Contacts panels are unchanged and fully editable).
+    * Write-level gate (the safety net): every mutation path early-returns when
+      readOnly — set(), handleSave(), handleDelete(), persistSources/handleAddSource,
+      the 5 inline direct-updateTask controls (stage — guarded before its assignee
+      notification loop — priority, deliverable type, area, client), and all 13
+      sub-entity handlers (comments x3, checklists x5, attachments x3, label
+      toggle, assignee toggle).
+    * Visual gate: title read-only; selects disabled; client rendered as static
+      text (so the Add-Contact modal can't trigger); dates/recurrence/assignees
+      disabled; description + notes editors read-only; the sources/labels/checklist/
+      attachment "add" triggers, every delete-x, the Delete-engagement button and
+      the whole comment composer + per-comment Edit/Delete are hidden.
+    * RichTextEditor gained a `readOnly` prop (TipTap `editable: !readOnly`,
+      onChange/onBlur no-ops, setEditable sync effect, toolbar hidden).
+    * KanbanView: read-only cards can now be CLICKED to open (the panel enforces
+      read-only); drag and card corner buttons stay gated.
+    * Archive.tsx renders {selectedTask && <TaskDetailPanel readOnly />} in a
+      z-[60] stacking context above the z-50 viewer; closeViewer clears the shared
+      global selectedTask; Esc closes the card panel first, then the board viewer.
+
+  16c053b -- BOARD REORDERING: ADMIN-ONLY SIDEBAR DRAG-AND-DROP
+    * New cloud fn reorderBoards(boardIds, actingUserId) in cloud/boards.ts:
+      admin-gated (resolveActor -> isRoot), writes dense 0..n-1 positions (also
+      cleans up legacy sparse/duplicate positions). Mirrors reorderColumns exactly.
+    * IPC boards:reorder -> preload window.api.boards.reorder(boardIds) -> types.
+    * WorkspaceContext.reorderBoards: optimistic setBoards reindex via a byId map
+      (reuses existing board objects, no flicker), then persists.
+    * Sidebar.tsx: SortableBoardItem (dnd-kit, verticalListSortingStrategy,
+      closestCenter, 5px PointerSensor activation so a click isn't swallowed).
+      Drag listeners live on a separate hover-revealed grip handle, so
+      click-to-open still works. Admin-only — members get the original plain list.
+    * Only the sidebar's visibleBoards reorder; Info Pages (board_type='info-page')
+      are structurally excluded since they never appear in that list.
+    * Restore-to-end behavior left as-is — drag is how you fix placement.
+
   (Jul 2, repo-side fix, no app release) -- trump-immigration-study/index.html
     * Recovered the standalone immigration-study page: the unversioned
       @babel/standalone CDN script started resolving to Babel 8 (breaking
