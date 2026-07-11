@@ -1,8 +1,7 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-07-09
-  Current version: v2.0.19  |   223 commits   |   ~32,300 lines of TS/TSX
-  (4 commits landed after the v2.0.19 release — see "post-v2.0.19" below)
+  Generated: 2026-07-11
+  Current version: v2.0.21  |   231 commits   |   ~32,300 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -183,9 +182,27 @@ DESIGN PRINCIPLES / CONVENTIONS
     save it as a dated file in /sql and commit it.
 
 ───────────────────────────────────────────────────────────────────────────────
-9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-07-09)
+9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-07-11)
 ───────────────────────────────────────────────────────────────────────────────
-  (post-v2.0.19, Jul 7-9 -- committed, NOT yet released/version-bumped)
+  v2.0.21 (Jul 11) -- FIX: KEYWORD MATCHER WORD-BOUNDARY MATCHING
+    * sourceMatchesKeywords (src/main/ipc/index.ts) now matches info-page
+      board_config keywords on word/phrase boundaries instead of naked substring.
+      New escapeRegex helper; per-keyword test is
+      new RegExp('(?:^|[^a-z0-9])'+escapeRegex(k)+'(?:[^a-z0-9]|$)').test(haystack).
+    * Fixes short keywords leaking: "ICE" (immigration) previously matched inside
+      "office"/"police"/"services", mis-routing LATAM drone articles onto the
+      Immigration Undone info page via the syncSources auto-collect poll. Phrases
+      and hyphen/digit keywords ("anti-drone systems", "h-1b", "title 42") still
+      match as whole phrases. Haystack fields + keywords.some() semantics unchanged.
+    * Validated: Contested Skies match count 4->4 (no real matches lost),
+      Immigration Undone 5->0 (false positives eliminated).
+
+  v2.0.20 (Jul 9-11) -- BOARD REORDER, VISUALIZER BLOCK 2, RESTORE + REVIVE FIXES
+    * (Released) Board reordering (admin sidebar drag), read-only Visualize card
+      panel, board-restore refetch fix, card-revive hardening, PublishQueue dead-
+      code removal, Restore-all route-by-source fix. See commits below.
+
+  (pre-v2.0.20 detail, Jul 7-9)
 
   d9b70d9 -- CARD-REVIVE HARDENING (in-flight guard + optimistic insert)
     * handleRevive / handleUndelete / handleDeleteNow in Workspace/index.tsx now

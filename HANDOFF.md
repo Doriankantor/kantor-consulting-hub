@@ -1,6 +1,20 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-09 · v2.0.20_
+_Last updated: 2026-07-11 · v2.0.21_
+
+## v2.0.21 — keyword matcher word-boundary fix
+
+`sourceMatchesKeywords` (`src/main/ipc/index.ts`) now matches info-page keywords on
+word/phrase boundaries (regex `(?:^|[^a-z0-9])<escaped-kw>(?:[^a-z0-9]|$)`) instead
+of naked substring. This stops short keywords like `ICE` from matching inside
+`office`/`police`/`services`, which had been mis-routing LATAM drone articles onto
+the **Immigration Undone** info page via the `syncSources` auto-collect poll.
+Validated: Contested Skies 4→4 matches, Immigration Undone 5→0. Phrases and
+hyphen/digit keywords (`anti-drone systems`, `h-1b`, `title 42`) still match whole.
+
+**Why this needed a release:** the installed production app shares the local SQLite
+DB. Until v2.0.21 is installed, an *old* production instance running the substring
+matcher will keep re-polluting Immigration Undone even after a manual DB cleanup.
 
 ## Where things stand
 
