@@ -47,7 +47,7 @@ export async function seedBoardsToCloud(requestEmail: string): Promise<{
   const all = (sql: string) => db.prepare(sql).all() as Record<string, unknown>[]
 
   // 1. parents (no board FK dependencies)
-  counts.workspace_boards = await upsertBatch('workspace_boards', all('SELECT id,name,position,archived,archived_at,archived_by,created_at,updated_at,deleted FROM workspace_boards'), 'id')
+  counts.workspace_boards = await upsertBatch('workspace_boards', all('SELECT id,name,position,archived,archived_at,archived_by,created_at,updated_at,deleted,board_type,board_config FROM workspace_boards'), 'id')
   counts.areas    = await upsertBatch('areas',    all('SELECT id,name,color,is_default,position,created_at FROM areas'), 'id')
   counts.projects = await upsertBatch('projects', all('SELECT id,title,description,status,owner_id,created_at,updated_at FROM projects'), 'id')
   counts.labels   = await upsertBatch('labels',   all('SELECT id,name,color,position,created_at FROM labels'), 'id')

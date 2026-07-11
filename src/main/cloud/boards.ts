@@ -168,7 +168,12 @@ export async function listArchivedBoards(actingUserId?: string): Promise<Record<
   return (data ?? []).filter((b: { id: string }) => actor.isRoot || visible.has(b.id)) as Record<string, unknown>[]
 }
 
-export async function createBoard(actingUserId: string | undefined, name: string): Promise<{ ok: boolean; id: string; error?: string }> {
+export async function createBoard(
+  actingUserId: string | undefined,
+  name: string,
+  boardType?: string,
+  boardConfig?: string | null,
+): Promise<{ ok: boolean; id: string; error?: string }> {
   const actor = await resolveActor(actingUserId)
   // Board creation is admin-only. Root sees all boards via isRoot and needs no
   // board_members row; non-root members cannot create boards.
@@ -176,7 +181,15 @@ export async function createBoard(actingUserId: string | undefined, name: string
   const id = randomUUID()
   const { data: maxRow } = await cloud.from('workspace_boards').select('position').eq('deleted', 0).order('position', { ascending: false }).limit(1).maybeSingle()
   const pos = ((maxRow?.position as number | undefined) ?? -1) + 1
-  const { error } = await cloud.from('workspace_boards').insert({ id, name, position: pos, created_at: now(), updated_at: now() })
+  // board_type/board_config are optional: when omitted, a standard board is created
+  // exactly as before (board_type 'standard', board_config null). Info-page boards
+  // pass their type/config through (see B0.4/B0.6).
+  const { error } = await cloud.from('workspace_boards').insert({
+    id, name, position: pos,
+    board_type: boardType ?? 'standard',
+    board_config: boardConfig ?? null,
+    created_at: now(), updated_at: now(),
+  })
   if (error) throw new Error(`boards create failed: ${error.message}`)
   return { ok: true, id }
 }
@@ -254,9 +267,18 @@ export async function undeleteBoard(id: string): Promise<{ ok: boolean }> {
   return { ok: true }
 }
 
-export async function duplicateBoard(actingUserId: string | undefined, _id: string, newName: string): Promise<{ ok: boolean; id: string }> {
+export async function duplicateBoard(actingUserId: string | undefined, id: string, newName: string): Promise<{ ok: boolean; id: string }> {
   // Mirrors the local behavior: creates a new empty board (does not copy cards).
-  return createBoard(actingUserId, newName)
+  // Carry the source board's type/config so duplicating an info-page board keeps
+  // its board_type/board_config (falls back to standard/null if the source is gone).
+  const { data: src } = await cloud.from('workspace_boards')
+    .select('board_type,board_config').eq('id', id).maybeSingle()
+  return createBoard(
+    actingUserId,
+    newName,
+    src?.board_type as string | undefined,
+    src?.board_config as string | null | undefined,
+  )
 }
 
 export async function boardTaskCount(id: string): Promise<number> {
