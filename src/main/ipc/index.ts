@@ -2366,6 +2366,9 @@ function keywordsForInfoPage(boardConfig: string | null | undefined): string[] {
 
 // Does an intelligence source match any of an info page's keywords?
 // Returns false when there are no keywords — pages without keywords don't auto-collect.
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')
+}
 function sourceMatchesKeywords(src: Record<string, unknown>, keywords: string[]): boolean {
   if (!keywords.length) return false
   const haystack = [
@@ -2373,7 +2376,10 @@ function sourceMatchesKeywords(src: Record<string, unknown>, keywords: string[])
     src.location_mentioned, src.actors_mentioned, src.handle, src.file_name,
   ].filter(Boolean).join(' ').toLowerCase()
   if (!haystack) return false
-  return keywords.some(k => haystack.includes(k))
+  // Boundary-anchored match (not naked substring): short keywords like "ice" must
+  // match the standalone word, not "office"/"police". Internal spaces/hyphens/
+  // digits in phrases ("anti-drone systems", "h-1b", "title 42") stay literal.
+  return keywords.some(k => new RegExp('(?:^|[^a-z0-9])' + escapeRegex(k) + '(?:[^a-z0-9]|$)').test(haystack))
 }
 
 // Insert a 'ready_for_analysis' source item into an info page's Sources tab.
