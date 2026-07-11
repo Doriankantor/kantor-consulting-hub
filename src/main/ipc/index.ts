@@ -1611,23 +1611,34 @@ function registerBoardMembersHandlers() {
         actor_name: addedByName,
       })
 
+      // Notification email — FIRE-AND-FORGET. The member row is already written
+      // above; the email must never block (or hang) the IPC response. A stalled
+      // Gmail SMTP send previously left this handler unsettled forever, sticking
+      // the "Adding…" button. We run it detached and, as a backstop, give the
+      // transport connection/greeting/socket timeouts so a dead socket can't hang.
       if (userRow?.email) {
-        try {
-          const gmailPass = getSetting('gmail_app_password')
-          if (gmailPass) {
+        const recipientEmail = userRow.email
+        const recipientName = userRow.full_name ?? userRow.email
+        void (async () => {
+          try {
+            const gmailPass = getSetting('gmail_app_password')
+            if (!gmailPass) return
             const nodemailer = await import('nodemailer')
             const transporter = nodemailer.default.createTransport({
               service: 'gmail',
               auth: { user: 'kantorconsulting.hub@gmail.com', pass: gmailPass },
+              connectionTimeout: 10000,
+              greetingTimeout: 10000,
+              socketTimeout: 15000,
             })
             await transporter.sendMail({
               from: '"Kantor Consulting Hub" <kantorconsulting.hub@gmail.com>',
-              to: userRow.email,
+              to: recipientEmail,
               subject: `You now have access to ${boardName}`,
               html: `
                 <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px">
                   <h2 style="color:#1a2233">You've been added to ${boardName}</h2>
-                  <p style="color:#555">Hi ${userRow.full_name ?? userRow.email},</p>
+                  <p style="color:#555">Hi ${recipientName},</p>
                   <p style="color:#555">
                     ${addedByName} has added you to the <strong>${boardName}</strong> board on Kantor Consulting Hub.
                     You now have access to view and manage deliverables on this board.
@@ -1636,10 +1647,10 @@ function registerBoardMembersHandlers() {
                 </div>
               `,
             })
+          } catch (emailErr) {
+            console.warn('[boardMembers:add] email send failed:', emailErr)
           }
-        } catch (emailErr) {
-          console.warn('[boardMembers:add] email send failed:', emailErr)
-        }
+        })()
       }
     } catch (sideErr) {
       console.warn('[boardMembers:add] notification side-effect failed:', sideErr)
