@@ -1,7 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import NewsTab from './NewsTab'
 import SocialTab from './SocialTab'
 import DocumentsTab from './DocumentsTab'
+import ProjectSelect from './ProjectSelect'
+import FrameworkPanel from './FrameworkPanel'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
 
 // Phase 7: the Publish Queue / "Push to Contested Skies" tab has been removed.
 // Approved articles now flow to the linked Info Page's New Sources, where they
@@ -15,6 +18,20 @@ const TABS = [
 export default function Intelligence() {
   const [activeTab, setActiveTab] = useState<'news' | 'social' | 'documents'>('news')
   const [stats, setStats] = useState<{ pending: number; sentToPages: number }>({ pending: 0, sentToPages: 0 })
+  // Slice 1: project scope selector + read-only framework panel. The 4 projects
+  // are the cloud info-page boards (same source as InfoPages/index.tsx). Selecting
+  // a project sets context + drives the framework panel ONLY — per decision A it
+  // does NOT filter the source list (per-project filtering is Slice 3), so
+  // selectedProjectId is intentionally never threaded into the tab reads.
+  const { boards } = useWorkspace()
+  const projects = useMemo(
+    () => boards.filter(b => b.board_type === 'info-page').sort((a, b) => a.position - b.position),
+    [boards],
+  )
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('all')
+  const selectedProject = selectedProjectId === 'all'
+    ? null
+    : projects.find(p => p.id === selectedProjectId) || null
   const [toast, setToast] = useState<string | null>(null)
   // Re-score button state
   const [unscoredCount, setUnscoredCount] = useState(0)
@@ -144,6 +161,25 @@ export default function Intelligence() {
               </span>
             </button>
           </div>
+        </div>
+        {/* Slice 1: project scope selector + read-only data-gathering framework panel.
+            Additive context only — does NOT filter the source list below (Slice 3). */}
+        <div className="mb-4 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-500 dark:text-white/50 shrink-0">Project</span>
+            <ProjectSelect
+              projects={projects}
+              selectedProjectId={selectedProjectId}
+              onChange={setSelectedProjectId}
+            />
+          </div>
+          {selectedProject ? (
+            <FrameworkPanel board={selectedProject} />
+          ) : (
+            <p className="text-[11px] text-gray-400 dark:text-white/35">
+              Showing all sources across projects. Select a project to view its data-gathering framework.
+            </p>
+          )}
         </div>
         {/* Tabs */}
         <div className="flex gap-1">
