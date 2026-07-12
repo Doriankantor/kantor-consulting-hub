@@ -169,11 +169,14 @@ ${body}`,
     system,
     user: `${context}
 
-Assess how relevant the following source is to THIS project's framework.
+Assess how relevant the following source is to THIS project's framework. You MUST always justify
+the score in relation to this project — even when the source is highly relevant OR clearly
+irrelevant, state the project-specific reason (which of the project's keywords/scope it matches,
+or exactly why it falls outside the framework).
 Return ONLY JSON with exactly these keys:
 {
   "relevance_score": <integer 0-10>,
-  "relevance_reasoning": "<one or two sentences explaining the score against this project>",
+  "relevance_reasoning": "<ALWAYS explain WHY this IS or IS NOT relevant to this specific project — name the keyword/scope it matches, or the reason it falls outside the framework. Never leave empty. E.g. 'Relevant to the project: describes UAS procurement by a state actor in the LATAM region' or 'Not relevant: consumer drone photography, no security/proliferation dimension'.>",
   "suggested_tags": ["<short topical tag>", "..."]
 }
 
