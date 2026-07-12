@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import NewsTab from './NewsTab'
 import SocialTab from './SocialTab'
 import DocumentsTab from './DocumentsTab'
+import InterviewsTab from './InterviewsTab'
 import ProjectSelect from './ProjectSelect'
 import FrameworkPanel from './FrameworkPanel'
 import { parseConfig } from './frameworkConfig'
@@ -11,13 +12,14 @@ import { useWorkspace } from '../../contexts/WorkspaceContext'
 // Approved articles now flow to the linked Info Page's New Sources, where they
 // are committed and (later, with admin approval) pushed live from downstream.
 const TABS = [
-  { id: 'news',      label: 'News Articles' },
-  { id: 'social',    label: 'Social Media' },
-  { id: 'documents', label: 'Documents' },
+  { id: 'news',       label: 'News Articles' },
+  { id: 'social',     label: 'Social Media' },
+  { id: 'documents',  label: 'Documents' },
+  { id: 'interviews', label: 'Interviews' },
 ]
 
 export default function Intelligence() {
-  const [activeTab, setActiveTab] = useState<'news' | 'social' | 'documents'>('news')
+  const [activeTab, setActiveTab] = useState<'news' | 'social' | 'documents' | 'interviews'>('news')
   const [stats, setStats] = useState<{ pending: number; sentToPages: number }>({ pending: 0, sentToPages: 0 })
   // Slice 1: project scope selector + read-only framework panel. The 4 projects
   // are the cloud info-page boards (same source as InfoPages/index.tsx). Selecting
@@ -210,6 +212,7 @@ export default function Intelligence() {
         {activeTab === 'news'      && <NewsTab onApprove={handleApproved} />}
         {activeTab === 'social'    && <SocialTab onApprove={handleApproved} />}
         {activeTab === 'documents' && <DocumentsTab onApprove={handleApproved} project={selectedProjectConfig} />}
+        {activeTab === 'interviews' && <InterviewsTab onApprove={handleApproved} project={selectedProjectConfig} />}
       </div>
     </div>
   )

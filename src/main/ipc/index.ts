@@ -11,6 +11,7 @@ import { cloud } from '../cloud/client'
 import { driveSync } from '../google/drive'
 import { sendEmail, inviteEmailHtml } from '../google/gmail'
 import { analyzeWithClaude, type AnalyzeOpts } from '../ai/analyze'
+import { fetchUrlMetadata } from '../social/fetchUrlMetadata'
 import { connectUserGoogle, getUserGoogleStatus, disconnectUserGoogle, getUserCalendars, getUserCalendarEvents, diagnoseUserGoogle } from '../google/userGoogle'
 import { listChatMessages, sendChatMessage, seedChatToCloud } from '../cloud/chat'
 import {
@@ -2939,10 +2940,34 @@ function registerIntelligenceHandlers(): void {
     return { ok: true, id }
   })
 
+  // 2c: manual interview capture. Transcript is stored as PLAIN TEXT in `content`
+  // (NOT JSON-wrapped) so the deferred per-span annotation slice can anchor to
+  // character offsets. Reuses the 2b compose columns (intel_notes / analysis_json /
+  // reconciled_notes) via the shared updateNotes / saveAiAnalysis / saveReconciled /
+  // updateReconciledNotes handlers — no new type table, just type='interview'.
+  ipcMain.handle('intelligence:addInterview', (_e, iv: {
+    title: string; transcript: string; date?: string;
+    added_by_id?: string; added_by_name?: string;
+  }) => {
+    const { randomUUID } = require('crypto')
+    const id = randomUUID()
+    db().prepare(`
+      INSERT INTO intelligence_sources
+        (id, type, title, content, published_at, added_by_id, added_by_name)
+      VALUES (?, 'interview', ?, ?, ?, ?, ?)
+    `).run(id, (iv.title || '').trim() || 'Untitled interview', iv.transcript || '',
+           iv.date || null, iv.added_by_id || null, iv.added_by_name || null)
+    return { ok: true, id }
+  })
+
   // Intelligence restructure 2a: thin IPC over the shared project-aware AI helper.
   // Not yet wired to any tab — this exists to test analyzeWithClaude in isolation.
   // The renderer will call window.api.intelligence.analyzeText(opts).
   ipcMain.handle('intelligence:analyzeText', (_e, opts: AnalyzeOpts) => analyzeWithClaude(opts))
+
+  // Social-a: thin IPC over the URL metadata fetcher. Not yet wired to any tab —
+  // this exists to test fetchUrlMetadata in isolation (paste-URL flow comes later).
+  ipcMain.handle('intelligence:fetchUrlMetadata', (_e, url: string) => fetchUrlMetadata(url))
 
   ipcMain.handle('intelligence:fetchNews', async () => {
     try {

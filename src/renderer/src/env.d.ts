@@ -346,7 +346,7 @@ interface FileRecord {
 
 interface IntelligenceSource {
   id: string
-  type: 'article' | 'social' | 'document'
+  type: 'article' | 'social' | 'document' | 'interview'
   title: string | null
   content: string | null
   url: string | null
@@ -766,6 +766,8 @@ interface Window {
       getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number }) => Promise<IntelligenceSource[]>
       // Intelligence restructure 2a: shared project-aware AI helper (not yet wired to a tab).
       analyzeText:          (opts: { task: 'summarize' | 'relevance' | 'reconcile'; text: string; projectConfig?: { name?: string; keywords?: string; scope?: string } | null; userNotes?: string | null }) => Promise<{ ok: true; result: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[] } } | { ok: false; error: string }>
+      // Social-a: URL metadata fetcher (OpenGraph/meta tags). Not yet wired to a tab.
+      fetchUrlMetadata:     (url: string) => Promise<{ ok: true; metadata: { title?: string; description?: string; site_name?: string; author?: string; published?: string; image?: string; url: string; platform?: string } } | { ok: false; error: string; reason: 'blocked' | 'timeout' | 'not_html' | 'fetch_failed' | 'invalid_url' }>
       // 2b (human-first): researcher notes, on-demand AI read, editable reconciled read.
       updateNotes:          (id: string, notesHtml: string)   => Promise<{ ok: boolean }>
       saveAiAnalysis:       (id: string, ai: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[] }) => Promise<{ ok: true; ai: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]; analyzed_at: string } } | { ok: false; error: string }>
@@ -782,6 +784,8 @@ interface Window {
       logDecision:          (payload: { articleId: string; action: string; aiProposed?: unknown; humanFinal?: unknown; reason?: string | null }) => Promise<{ ok: boolean }>
       deleteSource:         (id: string)                       => Promise<{ ok: boolean }>
       addSocial:            (post: Record<string, unknown>)    => Promise<{ ok: boolean; id?: string }>
+      // 2c: manual interview capture — transcript stored plain-text in content, type='interview'.
+      addInterview:         (iv: { title: string; transcript: string; date?: string; added_by_id?: string; added_by_name?: string }) => Promise<{ ok: boolean; id?: string }>
       fetchNews:            ()                                 => Promise<{ ok: boolean; count?: number; error?: string }>
       uploadDocument:       (params: { userId?: string; addedByName?: string }) => Promise<{ ok: boolean; canceled?: boolean; results?: Array<{ id: string; file_name: string }>; error?: string }>
       getPipelineStats:     ()                                 => Promise<{ pending: number; sentToPages: number }>

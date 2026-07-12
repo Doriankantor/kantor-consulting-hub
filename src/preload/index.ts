@@ -268,6 +268,7 @@ const api = {
   intelligence: {
     getSources:           (params?: Record<string, unknown>) => ipcRenderer.invoke('intelligence:getSources', params),
     analyzeText:          (opts: Record<string, unknown>)    => ipcRenderer.invoke('intelligence:analyzeText', opts),
+    fetchUrlMetadata:     (url: string)                      => ipcRenderer.invoke('intelligence:fetchUrlMetadata', url),
     getUnreviewedCount:   ()                                 => ipcRenderer.invoke('intelligence:getUnreviewedCount'),
     updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => ipcRenderer.invoke('intelligence:updateStatus', id, status, notes, byId, byName),
     updateConfidence:     (id: string, confidence: string)   => ipcRenderer.invoke('intelligence:updateConfidence', id, confidence),
@@ -283,6 +284,7 @@ const api = {
     logDecision:          (payload: Record<string, unknown>)        => ipcRenderer.invoke('intelligence:logDecision', payload),
     deleteSource:         (id: string)                       => ipcRenderer.invoke('intelligence:deleteSource', id),
     addSocial:            (post: Record<string, unknown>)    => ipcRenderer.invoke('intelligence:addSocial', post),
+    addInterview:         (iv: Record<string, unknown>)      => ipcRenderer.invoke('intelligence:addInterview', iv),
     fetchNews:            ()                                 => ipcRenderer.invoke('intelligence:fetchNews'),
     uploadDocument:       (params: Record<string, unknown>)  => ipcRenderer.invoke('intelligence:uploadDocument', params),
     getPipelineStats:     ()                                 => ipcRenderer.invoke('intelligence:getPipelineStats'),
