@@ -10,6 +10,7 @@ import { CLOUD_ADMIN_EMAIL, PERMISSION_KEYS } from '../constants'
 import { cloud } from '../cloud/client'
 import { driveSync } from '../google/drive'
 import { sendEmail, inviteEmailHtml } from '../google/gmail'
+import { analyzeWithClaude, type AnalyzeOpts } from '../ai/analyze'
 import { connectUserGoogle, getUserGoogleStatus, disconnectUserGoogle, getUserCalendars, getUserCalendarEvents, diagnoseUserGoogle } from '../google/userGoogle'
 import { listChatMessages, sendChatMessage, seedChatToCloud } from '../cloud/chat'
 import {
@@ -2428,7 +2429,7 @@ function insertSourceItemForPage(pageId: string, src: Record<string, any>): stri
 
 // Resolve the Anthropic API key to use: prefer the current user's key, then the
 // global admin key in settings, then fall back to the admin account's stored key.
-function resolveAnthropicKey(userId?: string): string | undefined {
+export function resolveAnthropicKey(userId?: string): string | undefined {
   const db = getDatabase()
   const keyForUser = (id?: string): string | undefined => {
     if (!id) return undefined
@@ -2889,6 +2890,11 @@ function registerIntelligenceHandlers(): void {
            post.added_by_id || null, post.added_by_name || null)
     return { ok: true, id }
   })
+
+  // Intelligence restructure 2a: thin IPC over the shared project-aware AI helper.
+  // Not yet wired to any tab — this exists to test analyzeWithClaude in isolation.
+  // The renderer will call window.api.intelligence.analyzeText(opts).
+  ipcMain.handle('intelligence:analyzeText', (_e, opts: AnalyzeOpts) => analyzeWithClaude(opts))
 
   ipcMain.handle('intelligence:fetchNews', async () => {
     try {

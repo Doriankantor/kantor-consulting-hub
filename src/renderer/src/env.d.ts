@@ -762,6 +762,8 @@ interface Window {
     }
     intelligence: {
       getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number }) => Promise<IntelligenceSource[]>
+      // Intelligence restructure 2a: shared project-aware AI helper (not yet wired to a tab).
+      analyzeText:          (opts: { task: 'summarize' | 'relevance' | 'reconcile'; text: string; projectConfig?: { name?: string; keywords?: string; scope?: string } | null; userNotes?: string | null }) => Promise<{ ok: true; result: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[] } } | { ok: false; error: string }>
       getUnreviewedCount:   ()                                 => Promise<number>
       updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => Promise<{ ok: boolean; addedToPages?: string[] }>
       updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean }>

@@ -267,6 +267,7 @@ const api = {
   },
   intelligence: {
     getSources:           (params?: Record<string, unknown>) => ipcRenderer.invoke('intelligence:getSources', params),
+    analyzeText:          (opts: Record<string, unknown>)    => ipcRenderer.invoke('intelligence:analyzeText', opts),
     getUnreviewedCount:   ()                                 => ipcRenderer.invoke('intelligence:getUnreviewedCount'),
     updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => ipcRenderer.invoke('intelligence:updateStatus', id, status, notes, byId, byName),
     updateConfidence:     (id: string, confidence: string)   => ipcRenderer.invoke('intelligence:updateConfidence', id, confidence),
