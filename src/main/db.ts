@@ -977,6 +977,12 @@ export function initDatabase(): void {
   // Feedback loop: mark an intelligence source as published/used in an info page.
   try { db.exec("ALTER TABLE intelligence_sources ADD COLUMN used_in_page TEXT;") } catch {}
   try { db.exec("ALTER TABLE intelligence_sources ADD COLUMN used_in_page_at TEXT;") } catch {}
+  // Intelligence restructure 2b: optional researcher rich-text notes (HTML). Distinct
+  // from review_notes (which the approve/reject workflow owns) — never touched by it.
+  try { db.exec("ALTER TABLE intelligence_sources ADD COLUMN intel_notes TEXT;") } catch {}
+  // 2b (human-first): the EDITABLE reconciled read (HTML) the researcher can amend
+  // before commit. The AI's raw reads live in analysis_json (.ai / .reconciled).
+  try { db.exec("ALTER TABLE intelligence_sources ADD COLUMN reconciled_notes TEXT;") } catch {}
 
   // ── Seed the Contested Skies Source Archive into Source Intelligence ──────────
   // The sources the live Contested Skies page is built on. FRAMEWORK references

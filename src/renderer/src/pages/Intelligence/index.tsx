@@ -4,6 +4,7 @@ import SocialTab from './SocialTab'
 import DocumentsTab from './DocumentsTab'
 import ProjectSelect from './ProjectSelect'
 import FrameworkPanel from './FrameworkPanel'
+import { parseConfig } from './frameworkConfig'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 
 // Phase 7: the Publish Queue / "Push to Contested Skies" tab has been removed.
@@ -32,6 +33,11 @@ export default function Intelligence() {
   const selectedProject = selectedProjectId === 'all'
     ? null
     : projects.find(p => p.id === selectedProjectId) || null
+  // 2b: the selected project's config (name + collection keywords) threaded into
+  // DocumentsTab so its reconcile call is project-aware. null when "All sources".
+  const selectedProjectConfig = selectedProject
+    ? { id: selectedProject.id, name: selectedProject.name, keywords: parseConfig(selectedProject.board_config).keywords }
+    : null
   const [toast, setToast] = useState<string | null>(null)
   // Re-score button state
   const [unscoredCount, setUnscoredCount] = useState(0)
@@ -203,7 +209,7 @@ export default function Intelligence() {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'news'      && <NewsTab onApprove={handleApproved} />}
         {activeTab === 'social'    && <SocialTab onApprove={handleApproved} />}
-        {activeTab === 'documents' && <DocumentsTab onApprove={handleApproved} />}
+        {activeTab === 'documents' && <DocumentsTab onApprove={handleApproved} project={selectedProjectConfig} />}
       </div>
     </div>
   )

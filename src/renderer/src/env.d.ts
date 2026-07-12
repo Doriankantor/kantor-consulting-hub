@@ -373,6 +373,8 @@ interface IntelligenceSource {
   reviewed_by_name: string | null
   reviewed_at: string | null
   review_notes: string | null
+  intel_notes: string | null
+  reconciled_notes: string | null
   queue_section: string | null
   queued_at: string | null
   queued_by_id: string | null
@@ -764,6 +766,11 @@ interface Window {
       getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number }) => Promise<IntelligenceSource[]>
       // Intelligence restructure 2a: shared project-aware AI helper (not yet wired to a tab).
       analyzeText:          (opts: { task: 'summarize' | 'relevance' | 'reconcile'; text: string; projectConfig?: { name?: string; keywords?: string; scope?: string } | null; userNotes?: string | null }) => Promise<{ ok: true; result: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[] } } | { ok: false; error: string }>
+      // 2b (human-first): researcher notes, on-demand AI read, editable reconciled read.
+      updateNotes:          (id: string, notesHtml: string)   => Promise<{ ok: boolean }>
+      saveAiAnalysis:       (id: string, ai: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[] }) => Promise<{ ok: true; ai: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]; analyzed_at: string } } | { ok: false; error: string }>
+      saveReconciled:       (id: string, reconciled: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[] }) => Promise<{ ok: true; reconciled: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]; reconciled_at: string } } | { ok: false; error: string }>
+      updateReconciledNotes:(id: string, html: string)        => Promise<{ ok: boolean }>
       getUnreviewedCount:   ()                                 => Promise<number>
       updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => Promise<{ ok: boolean; addedToPages?: string[] }>
       updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean }>

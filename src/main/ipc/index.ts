@@ -2780,6 +2780,54 @@ function registerIntelligenceHandlers(): void {
     return { ok: true }
   })
 
+  // 2b: persist the researcher's rich-text notes (HTML) for a source. Separate
+  // column from review_notes — approve/reject never touches this. Empty → null.
+  ipcMain.handle('intelligence:updateNotes', (_e, id: string, notesHtml: string) => {
+    const html = (notesHtml ?? '').trim()
+    db().prepare('UPDATE intelligence_sources SET intel_notes=? WHERE id=?').run(html || null, id)
+    return { ok: true }
+  })
+
+  // 2b: store a reconciled AI read UNDER analysis_json.reconciled, leaving the
+  // original top-level analysis untouched. Stamps reconciled_at server-side and
+  // returns the stored block so the renderer can merge it without a refetch.
+  ipcMain.handle('intelligence:saveReconciled', (_e, id: string, reconciled: {
+    relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]
+  }) => {
+    const row = db().prepare('SELECT analysis_json FROM intelligence_sources WHERE id=?').get(id) as { analysis_json: string | null } | undefined
+    if (!row) return { ok: false, error: 'Source not found.' }
+    let analysis: Record<string, unknown> = {}
+    try { analysis = row.analysis_json ? JSON.parse(row.analysis_json) : {} } catch { analysis = {} }
+    const block = { ...reconciled, reconciled_at: new Date().toISOString() }
+    analysis.reconciled = block
+    db().prepare('UPDATE intelligence_sources SET analysis_json=? WHERE id=?').run(JSON.stringify(analysis), id)
+    return { ok: true, reconciled: block }
+  })
+
+  // 2b (human-first): store the on-demand "Analyze with AI" read UNDER
+  // analysis_json.ai (separate box from the researcher's notes). Re-running
+  // replaces .ai only. Stamps analyzed_at server-side; returns the stored block.
+  ipcMain.handle('intelligence:saveAiAnalysis', (_e, id: string, ai: {
+    relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]
+  }) => {
+    const row = db().prepare('SELECT analysis_json FROM intelligence_sources WHERE id=?').get(id) as { analysis_json: string | null } | undefined
+    if (!row) return { ok: false, error: 'Source not found.' }
+    let analysis: Record<string, unknown> = {}
+    try { analysis = row.analysis_json ? JSON.parse(row.analysis_json) : {} } catch { analysis = {} }
+    const block = { ...ai, analyzed_at: new Date().toISOString() }
+    analysis.ai = block
+    db().prepare('UPDATE intelligence_sources SET analysis_json=? WHERE id=?').run(JSON.stringify(analysis), id)
+    return { ok: true, ai: block }
+  })
+
+  // 2b (human-first): persist the EDITABLE reconciled read (HTML) the researcher
+  // can amend before commit — its own column, never overwrites intel_notes. Empty → null.
+  ipcMain.handle('intelligence:updateReconciledNotes', (_e, id: string, html: string) => {
+    const h = (html ?? '').trim()
+    db().prepare('UPDATE intelligence_sources SET reconciled_notes=? WHERE id=?').run(h || null, id)
+    return { ok: true }
+  })
+
   // ── Phase 4: disposition + thematic tag registry & per-article tagging ───────
   // Normalize a free-text tag: trim, lowercase, collapse whitespace → hyphens.
   function normalizeTag(name: string): string {
@@ -2944,48 +2992,11 @@ function registerIntelligenceHandlers(): void {
           } catch { textContent = '[DOCX text extraction unavailable]' }
         }
 
-        // Run Claude analysis if we have text
-        let analysisJson: string | null = null
-        if (textContent && textContent.length > 50) {
-          try {
-            const userRow = params.userId
-              ? db().prepare("SELECT preferences_json FROM local_users WHERE id=?").get(params.userId) as { preferences_json: string } | undefined
-              : undefined
-            const prefs = userRow?.preferences_json ? JSON.parse(userRow.preferences_json) : {}
-            const globalKey = db().prepare("SELECT value FROM settings WHERE key='anthropic_api_key'").get() as { value: string } | undefined
-            const apiKey = prefs.anthropicApiKey || globalKey?.value
-            if (apiKey) {
-              const AnthropicLib = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk')
-              const client = new AnthropicLib({ apiKey })
-              const msg = await client.messages.create({
-                model: 'claude-opus-4-5',
-                max_tokens: 1024,
-                messages: [{
-                  role: 'user',
-                  content: `Analyze this document and extract structured intelligence. Return ONLY valid JSON with these exact keys:
-{
-  "key_findings": ["finding 1", "finding 2", ...],
-  "named_actors": ["actor 1", ...],
-  "locations": ["location 1", ...],
-  "dates_events": ["date/event 1", ...],
-  "platforms_systems": ["platform 1", ...],
-  "suggested_categories": ["category from: Incident, Investment & Procurement, Innovation & Technology, Policy & Regulation, Criminal & VNSA Activity, Counter-drone / C-UAS, State Military Activity, Finance & Sanctions, Extra-regional Supplier"],
-  "confidence": "high|medium|low",
-  "confidence_reasoning": "brief explanation"
-}
-
-Document:
-${textContent.slice(0, 8000)}`
-                }]
-              })
-              const responseText = msg.content[0]?.type === 'text' ? msg.content[0].text : ''
-              const jsonMatch = responseText.match(/\{[\s\S]*\}/)
-              if (jsonMatch) analysisJson = jsonMatch[0]
-            }
-          } catch (e) {
-            console.warn('[Intelligence] Claude analysis failed:', e)
-          }
-        }
+        // 2b (human-first): AI does NOT auto-run on upload. The document just
+        // uploads + extracts text; AI analysis is produced only by the explicit
+        // "Analyze with AI" button in the Documents compose view (token discipline).
+        // The former upload-time Claude pass has been removed from this flow.
+        const analysisJson: string | null = null
 
         const analysis = analysisJson ? JSON.parse(analysisJson) : null
         const { randomUUID: newUUID } = require('crypto')

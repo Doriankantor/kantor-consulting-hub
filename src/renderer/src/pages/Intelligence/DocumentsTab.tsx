@@ -1,5 +1,23 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import RichTextEditor from '../../components/RichTextEditor'
+
+// 2b: the selected project's config, threaded from the Intelligence container so
+// the reconcile call is project-aware. null when "All sources" is selected.
+type ProjectInfo = { id: string; name: string; keywords?: string } | null
+
+// Strip TipTap HTML to plain text — for the reconcile userNotes payload and the
+// "has notes?" emptiness check. Good enough for both (not for rendering).
+function stripHtml(html: string): string {
+  return (html || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
 
 const CONFIDENCE_COLORS = {
   high:   { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', dot: 'bg-green-500' },
@@ -15,14 +33,16 @@ const STATUS_COLORS: Record<string, string> = {
   pushed:     'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
 }
 
-interface Props { onApprove: (addedToPages?: string[]) => void }
+interface Props {
+  onApprove: (addedToPages?: string[]) => void
+  project?: ProjectInfo   // 2b: selected project for project-aware reconcile
+}
 
-export default function DocumentsTab({ onApprove }: Props) {
+export default function DocumentsTab({ onApprove, project = null }: Props) {
   const { localUser, isRoot, can } = useAuth()
   const [documents, setDocuments] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
-  const [expandedAnalysis, setExpandedAnalysis] = useState<Record<string, boolean>>({})
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
   const [fadingIds, setFadingIds] = useState<Set<string>>(new Set())
 
@@ -71,9 +91,11 @@ export default function DocumentsTab({ onApprove }: Props) {
     setDocuments(prev => prev.filter(d => d.id !== id))
   }
 
-  function toggleAnalysis(id: string) {
-    setExpandedAnalysis(prev => ({ ...prev, [id]: !prev[id] }))
-  }
+  // 2b: patch one document in local state (notes / analysis_json / reconciled_notes)
+  // so saves + AI results re-render in place without a full refetch.
+  const patchDoc = useCallback((id: string, patch: Partial<IntelligenceSource>) => {
+    setDocuments(prev => prev.map(d => d.id === id ? { ...d, ...patch } : d))
+  }, [])
 
   function formatDate(dateStr: string | null) {
     if (!dateStr) return ''
@@ -115,7 +137,7 @@ export default function DocumentsTab({ onApprove }: Props) {
           {uploading ? (
             <>
               <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Analyzing with Claude...
+              Uploading…
             </>
           ) : (
             <>
@@ -127,7 +149,7 @@ export default function DocumentsTab({ onApprove }: Props) {
           )}
         </button>
         <span className="text-xs text-gray-400 dark:text-white/30">
-          Accepts PDF, DOCX, TXT — Claude AI will analyze content automatically
+          Accepts PDF, DOCX, TXT — text is extracted on upload; AI analysis runs only when you ask
         </span>
         <span className="ml-auto text-xs text-gray-400 dark:text-white/30">{documents.length} documents</span>
       </div>
@@ -157,8 +179,6 @@ export default function DocumentsTab({ onApprove }: Props) {
           const conf = doc.confidence || 'low'
           const confStyle = CONFIDENCE_COLORS[conf as keyof typeof CONFIDENCE_COLORS] || CONFIDENCE_COLORS.low
           const cats: string[] = (() => { try { return JSON.parse(doc.categories_json || '[]') } catch { return [] } })()
-          const analysis: Record<string, any> = (() => { try { return doc.analysis_json ? JSON.parse(doc.analysis_json) : null } catch { return null } })()
-          const isExpanded = expandedAnalysis[doc.id]
           const isPending = pendingStatus[doc.id]
 
           const isFading = fadingIds.has(doc.id)
@@ -200,74 +220,10 @@ export default function DocumentsTab({ onApprove }: Props) {
                 </div>
               )}
 
-              {/* Analysis panel */}
-              {analysis && (
-                <div className="mt-3">
-                  <button
-                    onClick={() => toggleAnalysis(doc.id)}
-                    className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition"
-                  >
-                    <svg
-                      width="10" height="10" viewBox="0 0 10 10" fill="none"
-                      className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                    >
-                      <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    {isExpanded ? 'Hide' : 'Show'} Claude analysis
-                    {analysis.confidence_reasoning && (
-                      <span className="text-gray-400 dark:text-white/30 font-normal ml-1">— {analysis.confidence_reasoning}</span>
-                    )}
-                  </button>
-
-                  {isExpanded && (
-                    <div className="mt-2 p-3 rounded-lg bg-gray-50 dark:bg-white/[0.03] border border-gray-100 dark:border-white/[0.06] space-y-2.5 text-xs">
-                      {analysis.key_findings?.length > 0 && (
-                        <div>
-                          <p className="font-semibold text-gray-700 dark:text-white/70 mb-1">Key Findings</p>
-                          <ul className="space-y-0.5">
-                            {analysis.key_findings.map((f: string, i: number) => (
-                              <li key={i} className="flex gap-1.5 text-gray-600 dark:text-white/60">
-                                <span className="text-indigo-500 shrink-0 mt-0.5">•</span>
-                                {f}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      <div className="grid grid-cols-2 gap-2">
-                        {analysis.named_actors?.length > 0 && (
-                          <div>
-                            <p className="font-semibold text-gray-700 dark:text-white/70 mb-1">Actors</p>
-                            <p className="text-gray-600 dark:text-white/60">{analysis.named_actors.join(', ')}</p>
-                          </div>
-                        )}
-                        {analysis.locations?.length > 0 && (
-                          <div>
-                            <p className="font-semibold text-gray-700 dark:text-white/70 mb-1">Locations</p>
-                            <p className="text-gray-600 dark:text-white/60">{analysis.locations.join(', ')}</p>
-                          </div>
-                        )}
-                        {analysis.platforms_systems?.length > 0 && (
-                          <div>
-                            <p className="font-semibold text-gray-700 dark:text-white/70 mb-1">Platforms / Systems</p>
-                            <p className="text-gray-600 dark:text-white/60">{analysis.platforms_systems.join(', ')}</p>
-                          </div>
-                        )}
-                        {analysis.dates_events?.length > 0 && (
-                          <div>
-                            <p className="font-semibold text-gray-700 dark:text-white/70 mb-1">Dates / Events</p>
-                            <p className="text-gray-600 dark:text-white/60">{analysis.dates_events.join(', ')}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {!analysis && (
-                <p className="text-xs text-gray-400 dark:text-white/30 mt-2">No Claude analysis available (no API key configured, or analysis failed)</p>
-              )}
+              {/* 2b (human-first): notes-primary compose. Researcher notes come FIRST;
+                  AI is on-demand (never auto-runs) in a separate box; reconcile is an
+                  editable merged read. See DocumentCompose. */}
+              <DocumentCompose doc={doc} project={project} onPatch={patchDoc} formatDate={formatDate} />
 
               {/* Actions */}
               <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
@@ -314,4 +270,236 @@ export default function DocumentsTab({ onApprove }: Props) {
       </div>
     </div>
   )
+}
+
+// 2b (human-first): the Documents compose area for one card. Order top→bottom:
+//   (1) RESEARCHER NOTES — primary, editable, autosaved to intel_notes.
+//   (2) AI ANALYSIS — on-demand ONLY (explicit "Analyze with AI"), shown in its own
+//       box under analysis_json.ai. Nothing runs until the button is pressed.
+//   (3) RECONCILE — once AI + notes exist, an editable merged read (reconciled_notes),
+//       seeded from the AI reconcile but freely editable before commit.
+// One instance per card (keyed by doc.id), holding its own editor/AI state.
+function DocumentCompose({
+  doc, project, onPatch, formatDate,
+}: {
+  doc: IntelligenceSource
+  project: ProjectInfo
+  onPatch: (id: string, patch: Partial<IntelligenceSource>) => void
+  formatDate: (d: string | null) => string
+}) {
+  const [notes, setNotes] = useState<string>(doc.intel_notes || '')
+  const [reconciledText, setReconciledText] = useState<string>(doc.reconciled_notes || '')
+  const [analyzing, setAnalyzing] = useState(false)
+  const [reconciling, setReconciling] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const analysis = parseAnalysis(doc.analysis_json)
+  const ai = analysis.ai as Record<string, any> | undefined
+  const reconciledMeta = analysis.reconciled as Record<string, any> | undefined
+  const hasAi = !!ai
+  const plain = stripHtml(notes)
+  const hasNotes = plain.length > 0
+
+  // Autosave researcher notes on blur (only when changed).
+  async function saveNotes() {
+    if (notes === (doc.intel_notes || '')) return
+    try {
+      await window.api.intelligence.updateNotes(doc.id, notes)
+      onPatch(doc.id, { intel_notes: notes || null })
+    } catch { /* transient — next blur retries */ }
+  }
+
+  // Autosave the editable reconciled read on blur (only when changed).
+  async function saveReconciledText() {
+    if (reconciledText === (doc.reconciled_notes || '')) return
+    try {
+      await window.api.intelligence.updateReconciledNotes(doc.id, reconciledText)
+      onPatch(doc.id, { reconciled_notes: reconciledText || null })
+    } catch { /* transient — next blur retries */ }
+  }
+
+  // Explicit, on-demand AI read (task='relevance', project-aware). Never auto-runs.
+  async function analyze() {
+    if (analyzing) return
+    setAnalyzing(true)
+    setError(null)
+    try {
+      const res = await window.api.intelligence.analyzeText({
+        task: 'relevance',
+        text: doc.content || '',
+        projectConfig: project ? { name: project.name, keywords: project.keywords } : null,
+      })
+      if (!res.ok) { setError(res.error); return }
+      const saved = await window.api.intelligence.saveAiAnalysis(doc.id, res.result)
+      if (!saved.ok) { setError(saved.error); return }
+      onPatch(doc.id, { analysis_json: withAnalysisKey(doc.analysis_json, 'ai', saved.ai) })
+    } catch (e) {
+      setError((e as Error)?.message || 'Analysis failed.')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  // Reconcile: merge notes + doc into a new read the researcher can then EDIT.
+  async function reconcile() {
+    if (!hasAi || !hasNotes || reconciling) return
+    setReconciling(true)
+    setError(null)
+    try {
+      if (notes !== (doc.intel_notes || '')) {
+        await window.api.intelligence.updateNotes(doc.id, notes)
+        onPatch(doc.id, { intel_notes: notes || null })
+      }
+      const res = await window.api.intelligence.analyzeText({
+        task: 'reconcile',
+        text: doc.content || '',
+        userNotes: plain,
+        projectConfig: project ? { name: project.name, keywords: project.keywords } : null,
+      })
+      if (!res.ok) { setError(res.error); return }
+      const savedMeta = await window.api.intelligence.saveReconciled(doc.id, res.result)
+      if (!savedMeta.ok) { setError(savedMeta.error); return }
+      // Seed the editable field from the AI's reconciled summary (researcher can amend).
+      const seeded = res.result.summary ? `<p>${escapeHtml(res.result.summary)}</p>` : (reconciledText || '')
+      await window.api.intelligence.updateReconciledNotes(doc.id, seeded)
+      setReconciledText(seeded)
+      onPatch(doc.id, {
+        analysis_json: withAnalysisKey(doc.analysis_json, 'reconciled', savedMeta.reconciled),
+        reconciled_notes: seeded || null,
+      })
+    } catch (e) {
+      setError((e as Error)?.message || 'Reconcile failed.')
+    } finally {
+      setReconciling(false)
+    }
+  }
+
+  const showReconciledField = reconciledText.trim() !== '' || !!reconciledMeta
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06] space-y-4">
+      {/* (1) PRIMARY — researcher notes, first */}
+      <div>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[9px] font-bold uppercase tracking-wide">Primary</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-white/40">Researcher notes — your interpretation</span>
+          <span className="text-[10px] font-normal text-gray-300 dark:text-white/25">· optional</span>
+        </div>
+        <RichTextEditor
+          value={notes}
+          onChange={setNotes}
+          onBlur={saveNotes}
+          placeholder="Your interpretation, context the AI missed, why this matters for the project…"
+          minHeight="80px"
+        />
+      </div>
+
+      {/* (2) AI — on-demand, separate box; nothing runs until pressed */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30">AI analysis — suggestions</span>
+          <button
+            onClick={analyze}
+            disabled={analyzing}
+            title="Run the AI analysis on demand (project-aware). Nothing runs until you press this."
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium transition disabled:opacity-50"
+          >
+            {analyzing ? (
+              <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analyzing…</>
+            ) : (
+              <>✦ {hasAi ? 'Re-analyze' : 'Analyze with AI'}</>
+            )}
+          </button>
+        </div>
+        {hasAi ? (
+          <div className="p-3 rounded-lg bg-indigo-50/60 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/25 space-y-2 text-xs">
+            {typeof ai!.relevance_score === 'number' && (
+              <span className="inline-block px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 font-bold text-[10px]">relevance {ai!.relevance_score}/10</span>
+            )}
+            {ai!.summary && <p className="text-gray-700 dark:text-white/70">{ai!.summary}</p>}
+            {ai!.relevance_reasoning && <p className="text-gray-500 dark:text-white/50 italic">{ai!.relevance_reasoning}</p>}
+            {Array.isArray(ai!.suggested_tags) && ai!.suggested_tags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {ai!.suggested_tags.map((t: string, i: number) => (
+                  <span key={`${t}-${i}`} className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-medium">{t}</span>
+                ))}
+              </div>
+            )}
+            {ai!.analyzed_at && <p className="text-[10px] text-indigo-500/60 dark:text-indigo-400/40">Analyzed {formatDate(ai!.analyzed_at)}</p>}
+          </div>
+        ) : (
+          <div className="p-3 rounded-lg border border-dashed border-gray-200 dark:border-white/10 text-[11px] text-gray-400 dark:text-white/30">
+            Press <span className="font-medium">Analyze with AI</span> to generate analysis — nothing runs until you ask.
+          </div>
+        )}
+      </div>
+
+      {/* (3) RECONCILE — editable merged read; appears once an AI read exists */}
+      {hasAi && (
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">Reconciled — editable before commit</span>
+            <div className="flex items-center gap-2">
+              {!hasNotes && <span className="text-[10px] text-gray-300 dark:text-white/25">add notes first</span>}
+              <button
+                onClick={reconcile}
+                disabled={!hasNotes || reconciling}
+                title={hasNotes ? 'Merge your notes with the AI read into an editable version' : 'Add notes to enable reconcile'}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {reconciling ? (
+                  <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Reconciling…</>
+                ) : (
+                  <>⟲ Reconcile with my notes</>
+                )}
+              </button>
+            </div>
+          </div>
+          {reconciledMeta && (
+            <div className="flex items-center flex-wrap gap-1 mb-1.5">
+              {typeof reconciledMeta.relevance_score === 'number' && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold text-[10px]">relevance {reconciledMeta.relevance_score}/10</span>
+              )}
+              {Array.isArray(reconciledMeta.suggested_tags) && reconciledMeta.suggested_tags.map((t: string, i: number) => (
+                <span key={`${t}-${i}`} className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-medium">{t}</span>
+              ))}
+              {reconciledMeta.reconciled_at && (
+                <span className="text-[10px] text-amber-600/60 dark:text-amber-400/40 ml-1">Reconciled {formatDate(reconciledMeta.reconciled_at)}</span>
+              )}
+            </div>
+          )}
+          {showReconciledField ? (
+            <RichTextEditor
+              value={reconciledText}
+              onChange={setReconciledText}
+              onBlur={saveReconciledText}
+              placeholder="The reconciled read — edit freely before commit…"
+              minHeight="80px"
+            />
+          ) : (
+            <p className="text-[11px] text-gray-400 dark:text-white/30">Press <span className="font-medium">Reconcile with my notes</span> to generate an editable merged read.</p>
+          )}
+        </div>
+      )}
+
+      {error && <p className="text-[11px] text-red-500 dark:text-red-400">{error}</p>}
+    </div>
+  )
+}
+
+// Parse analysis_json to an object (never throws; {} on missing/invalid).
+function parseAnalysis(raw: string | null): Record<string, unknown> {
+  if (!raw) return {}
+  try { const o = JSON.parse(raw); return o && typeof o === 'object' ? o : {} } catch { return {} }
+}
+
+// Return analysis_json with one top-level key replaced, preserving the rest.
+function withAnalysisKey(raw: string | null, key: string, block: unknown): string {
+  const o = parseAnalysis(raw)
+  o[key] = block
+  return JSON.stringify(o)
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
