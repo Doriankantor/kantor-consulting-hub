@@ -976,8 +976,9 @@ function registerBoardHandlers() {
   ipcMain.handle('boards:list', (_e, includeArchived: boolean = false, actorId?: string) =>
     boardsCloud.listBoards(actorId ?? currentActingUserId, includeArchived))
   ipcMain.handle('boards:listArchived', (_e, actorId?: string) => boardsCloud.listArchivedBoards(actorId ?? currentActingUserId))
-  ipcMain.handle('boards:create', (_e, name: string) => boardsCloud.createBoard(currentActingUserId, name))
+  ipcMain.handle('boards:create', (_e, name: string, boardType?: string, boardConfig?: string | null) => boardsCloud.createBoard(currentActingUserId, name, boardType, boardConfig))
   ipcMain.handle('boards:rename', (_e, id: string, name: string) => boardsCloud.renameBoard(id, name))
+  ipcMain.handle('boards:updateConfig', (_e, id: string, config: string | null) => boardsCloud.updateBoardConfig(currentActingUserId, id, config))
   ipcMain.handle('boards:archive', (_e, id: string, archivedBy: string) => boardsCloud.archiveBoard(id, archivedBy))
   ipcMain.handle('boards:restore', (_e, id: string) => boardsCloud.restoreBoard(id))
   // Soft-delete is ADMIN-ONLY (verified in the main process — service role bypasses RLS).

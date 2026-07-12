@@ -599,8 +599,9 @@ interface Window {
     boards: {
       list:              (includeArchived?: boolean, actorId?: string) => Promise<import('./types').Board[]>
       listArchived:      (actorId?: string)                   => Promise<import('./types').Board[]>
-      create:            (name: string)                       => Promise<{ ok: boolean; id: string }>
+      create:            (name: string, boardType?: string, boardConfig?: string | null) => Promise<{ ok: boolean; id: string; error?: string }>
       rename:            (id: string, name: string)           => Promise<{ ok: boolean }>
+      updateConfig:      (id: string, config: string | null)  => Promise<{ ok: boolean; error?: string }>
       archive:           (id: string, archivedBy: string)     => Promise<{ ok: boolean }>
       restore:           (id: string)                         => Promise<{ ok: boolean }>
       delete:            (id: string, deletedById?: string, deletedByName?: string) => Promise<{ ok: boolean }>

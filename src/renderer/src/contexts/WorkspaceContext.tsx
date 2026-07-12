@@ -76,8 +76,9 @@ interface WorkspaceContextType {
   archivedBoards: Board[]
   activeBoard: Board | null
   setActiveBoardId: (id: string) => void
-  createBoard:    (name: string) => Promise<string>   // returns new board id
+  createBoard:    (name: string, boardType?: string, boardConfig?: string | null) => Promise<string>   // returns new board id
   renameBoard:    (id: string, name: string) => Promise<void>
+  updateBoardConfig: (id: string, config: string | null) => Promise<void>
   archiveBoard:   (id: string, archivedBy: string) => Promise<void>
   restoreBoard:   (id: string) => Promise<void>
   undeleteBoard:  (id: string) => Promise<void>
@@ -567,8 +568,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   // ── Board CRUD operations ──────────────────────────────────────────────────
 
-  const createBoard = useCallback(async (name: string): Promise<string> => {
-    const result = await window.api.boards.create(name)
+  const createBoard = useCallback(async (name: string, boardType?: string, boardConfig?: string | null): Promise<string> => {
+    const result = await window.api.boards.create(name, boardType, boardConfig)
     await loadBoards()
     return result.id
   }, [loadBoards])
@@ -577,6 +578,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setBoards(prev => prev.map(b => b.id === id ? { ...b, name } : b))
     await window.api.boards.rename(id, name)
   }, [])
+
+  const updateBoardConfig = useCallback(async (id: string, config: string | null) => {
+    await window.api.boards.updateConfig(id, config)
+    await loadBoards()   // refetch so board_config (and the derived Info Pages list) updates
+  }, [loadBoards])
 
   const archiveBoard = useCallback(async (id: string, archivedBy: string) => {
     await window.api.boards.archive(id, archivedBy)
@@ -719,6 +725,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setActiveBoardId,
       createBoard,
       renameBoard,
+      updateBoardConfig,
       archiveBoard,
       restoreBoard,
       undeleteBoard,

@@ -200,6 +200,16 @@ export async function renameBoard(id: string, name: string): Promise<{ ok: boole
   return { ok: true }
 }
 
+// Admin-gated board_config update (used by the Info Pages edit form). Mirrors
+// renameBoard; the only board_config WRITE path besides createBoard's insert.
+export async function updateBoardConfig(actingUserId: string | undefined, id: string, boardConfig: string | null): Promise<{ ok: boolean; error?: string }> {
+  const actor = await resolveActor(actingUserId)
+  if (!actor.isRoot) return { ok: false, error: 'Only an admin can edit board settings.' }
+  const { error } = await cloud.from('workspace_boards').update({ board_config: boardConfig, updated_at: now() }).eq('id', id)
+  if (error) return { ok: false, error: `board config update failed: ${error.message}` }
+  return { ok: true }
+}
+
 // Mirrors reorderColumns: admin-only, writes dense 0..n-1 positions (also cleans
 // up any legacy sparse/duplicate positions). Callers pass only the boards visible
 // in the sidebar list, so Info Pages are never included here.

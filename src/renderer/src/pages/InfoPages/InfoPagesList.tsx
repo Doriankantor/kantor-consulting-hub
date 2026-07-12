@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
 
 interface Props {
   pages: InfoPage[]
@@ -23,14 +24,13 @@ function PageFormModal({
 }: {
   title: string
   submitLabel: string
-  initial: { name: string; repo: string; liveUrl: string; keywords: string; file: string }
+  initial: { name: string; repo: string; liveUrl: string; file: string }
   onClose: () => void
   onSubmit: (name: string, config: Record<string,unknown>) => Promise<void>
 }) {
   const [name, setName] = useState(initial.name)
   const [repo, setRepo] = useState(initial.repo)
   const [liveUrl, setLiveUrl] = useState(initial.liveUrl)
-  const [keywords, setKeywords] = useState(initial.keywords)
   const [file, setFile] = useState(initial.file)
   const [saving, setSaving] = useState(false)
 
@@ -38,12 +38,13 @@ function PageFormModal({
     if (!name.trim()) return
     setSaving(true)
     try {
+      // Hosting fields only. Keywords are admin-managed via Claude Code (locked
+      // design), so they are NOT edited here; on edit they're preserved by the
+      // merge in handleEdit.
       await onSubmit(name.trim(), {
         repo: repo.trim(),
         live_url: liveUrl.trim(),
-        keywords: keywords.trim(),
         file: file.trim(),
-        status: 'active',
       })
       onClose()
     } finally {
@@ -83,12 +84,6 @@ function PageFormModal({
               className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
             <p className="text-[10px] text-gray-400 dark:text-white/30 mt-1">File that gets updated on publish. Defaults to index.html.</p>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Keywords (comma-separated)</label>
-            <textarea value={keywords} onChange={e => setKeywords(e.target.value)} rows={2}
-              placeholder="e.g. drone proliferation, UAV, loitering munitions"
-              className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-white/[0.1] bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
-          </div>
         </div>
         <div className="flex gap-2 mt-5">
           <button onClick={onClose} className="flex-1 px-4 py-2 rounded-xl text-sm border border-gray-200 dark:border-white/[0.1] text-gray-600 dark:text-white/65 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition">Cancel</button>
@@ -109,6 +104,7 @@ export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefre
   const [lastCommits, setLastCommits] = useState<Record<string, { date: string; message: string } | null>>({})
   const [sourceStats, setSourceStats] = useState<Record<string, { newAvailable: number; inAnalysis: number }>>({})
   const [menuOpen, setMenuOpen] = useState<string | null>(null)
+  const { createBoard, renameBoard, updateBoardConfig, deleteBoard } = useWorkspace()
 
   useEffect(() => {
     async function loadCommits() {
@@ -151,19 +147,31 @@ export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefre
     return () => { cancelled = true; clearInterval(interval) }
   }, [pages])
 
+  // B0.6: create/edit/delete are now CLOUD-authoritative (reuse the context board
+  // mutations, which each refetch the cloud board list). onRefresh() is redundant
+  // with that auto-refresh but kept as a belt-and-suspenders trigger for the list.
   async function handleAdd(name: string, config: Record<string,unknown>) {
-    await window.api.infoPages.create({ name, config })
+    await createBoard(name, 'info-page', JSON.stringify(config))
     onRefresh()
   }
 
   async function handleEdit(pageId: string, name: string, config: Record<string,unknown>) {
-    await window.api.infoPages.updateMeta(pageId, { name, config })
+    // Merge hosting fields over the EXISTING board_config so keywords (and pipeline,
+    // etc.) are preserved — editing hosting settings must not wipe the keyword list.
+    const page = pages.find(p => p.id === pageId)
+    let existing: Record<string, unknown> = {}
+    try { existing = page?.board_config ? JSON.parse(page.board_config) : {} } catch { existing = {} }
+    const merged = { ...existing, ...config }
+    await renameBoard(pageId, name)
+    await updateBoardConfig(pageId, JSON.stringify(merged))
     onRefresh()
   }
 
   async function handleDelete(pageId: string) {
-    if (!confirm('Delete this info page and all its data?')) return
-    await window.api.infoPages.delete(pageId)
+    // Soft-delete (moves the board to Trash, recoverable). Local info_page_* content
+    // is intentionally left intact so an undelete restores the page with its data.
+    if (!confirm('Move this info page to Trash? You can restore it from Trash later.')) return
+    await deleteBoard(pageId)
     setMenuOpen(null)
     onRefresh()
   }
@@ -182,7 +190,7 @@ export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefre
           const isPending = config.status === 'setup-pending'
 
           return (
-            <div key={page.id} className="relative">
+            <div key={page.id} className="relative group">
               <button
                 onClick={() => onSelect(page.id)}
                 className={`w-full flex items-start gap-2 px-3 py-2.5 text-left transition ${
@@ -286,7 +294,7 @@ export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefre
         <PageFormModal
           title="New Info Page"
           submitLabel="Create Page"
-          initial={{ name: '', repo: '', liveUrl: '', keywords: '', file: '' }}
+          initial={{ name: '', repo: '', liveUrl: '', file: '' }}
           onClose={() => setAddModal(false)}
           onSubmit={handleAdd}
         />
@@ -302,7 +310,6 @@ export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefre
               name: editPage.name,
               repo: cfg.repo || '',
               liveUrl: cfg.live_url || '',
-              keywords: cfg.keywords || '',
               file: cfg.file || '',
             }}
             onClose={() => setEditPage(null)}

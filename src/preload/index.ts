@@ -194,8 +194,9 @@ const api = {
   boards: {
     list:         (includeArchived?: boolean, actorId?: string) => ipcRenderer.invoke('boards:list', includeArchived, actorId),
     listArchived: (actorId?: string)                   => ipcRenderer.invoke('boards:listArchived', actorId),
-    create:       (name: string)                       => ipcRenderer.invoke('boards:create', name),
+    create:       (name: string, boardType?: string, boardConfig?: string | null) => ipcRenderer.invoke('boards:create', name, boardType, boardConfig),
     rename:       (id: string, name: string)           => ipcRenderer.invoke('boards:rename', id, name),
+    updateConfig: (id: string, config: string | null)  => ipcRenderer.invoke('boards:updateConfig', id, config),
     archive:            (id: string, archivedBy: string)     => ipcRenderer.invoke('boards:archive', id, archivedBy),
     restore:            (id: string)                         => ipcRenderer.invoke('boards:restore', id),
     delete:             (id: string, deletedById?: string, deletedByName?: string) => ipcRenderer.invoke('boards:delete', id, deletedById, deletedByName),
