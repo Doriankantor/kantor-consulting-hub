@@ -207,6 +207,16 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
                     <span className="text-xs text-gray-400 dark:text-white/30">{formatDate(doc.added_at)}</span>
                   </div>
                 </div>
+                {/* Delete — always available (any status), mirrors InterviewsTab's header delete */}
+                {(can('delete_intel_doc') || isRoot) && (
+                  <button
+                    onClick={() => handleDelete(doc.id)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition shrink-0"
+                    title="Delete document"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 3h8M5 3V2h2v1M4.5 3l.5 7h3l.5-7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </button>
+                )}
               </div>
 
               {/* Category badges */}
@@ -253,14 +263,6 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
                     className="px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-medium transition disabled:opacity-50"
                   >
                     Reject
-                  </button>
-                )}
-                {(can('delete_intel_doc') || isRoot) && (
-                  <button
-                    onClick={() => handleDelete(doc.id)}
-                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 3h8M5 3V2h2v1M4.5 3l.5 7h3l.5-7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </button>
                 )}
               </div>
