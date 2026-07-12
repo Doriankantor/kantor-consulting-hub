@@ -650,6 +650,56 @@ export async function removeMember(actingUserId: string | undefined, boardId: st
   return { ok: true }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INFO-PAGE OWNERS ("project heads") — email-keyed, mirrors board_members.
+// Root-only assignment; isOwner gates the publication side (canApprove).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function addOwner(actingUserId: string | undefined, pageId: string, targetUserId: string): Promise<{ ok: boolean; error?: string }> {
+  const actor = await resolveActor(actingUserId)
+  if (!actor.isRoot) return { ok: false, error: 'Only an admin can assign project heads.' }
+  const email = resolveEmail(targetUserId)
+  if (!email) return { ok: false, error: 'Could not resolve the user to assign.' }
+  const { error } = await cloud.from('info_page_owners').upsert(
+    { page_id: pageId, user_email: email, assigned_by_email: actor.email, assigned_at: now() },
+    { onConflict: 'page_id,user_email', ignoreDuplicates: true }
+  )
+  if (error) return { ok: false, error: `owner add failed: ${error.message}` }
+  return { ok: true }
+}
+
+export async function removeOwner(actingUserId: string | undefined, pageId: string, targetUserId: string): Promise<{ ok: boolean; error?: string }> {
+  const actor = await resolveActor(actingUserId)
+  if (!actor.isRoot) return { ok: false, error: 'Only an admin can change project heads.' }
+  const email = resolveEmail(targetUserId)
+  if (!email) return { ok: false, error: 'Could not resolve the user.' }
+  const { error } = await cloud.from('info_page_owners').delete().eq('page_id', pageId).eq('user_email', email)
+  if (error) return { ok: false, error: `owner remove failed: ${error.message}` }
+  return { ok: true }
+}
+
+export async function isOwner(actingUserId: string | undefined, pageId: string): Promise<boolean> {
+  const actor = await resolveActor(actingUserId)
+  if (actor.isRoot) return true   // root approves everything anyway (canApprove = isRoot || isOwner)
+  if (!actor.email) return false
+  const { data } = await cloud.from('info_page_owners').select('page_id').eq('page_id', pageId).eq('user_email', actor.email).maybeSingle()
+  return !!data
+}
+
+// List a page's heads, enriched with full_name from local_users by email (mirrors listMembers).
+export async function getOwners(pageId: string): Promise<{ user_email: string; full_name: string | null; assigned_at: string }[]> {
+  const { data, error } = await cloud.from('info_page_owners').select('*').eq('page_id', pageId).order('assigned_at', { ascending: true })
+  if (error) throw new Error(`owners list failed: ${error.message}`)
+  return ((data ?? []) as { user_email: string; assigned_at: string }[]).map(o => {
+    let full_name: string | null = null
+    try {
+      const lu = getDatabase().prepare('SELECT full_name FROM local_users WHERE LOWER(email)=LOWER(?)').get(o.user_email) as { full_name?: string } | undefined
+      full_name = lu?.full_name ?? null
+    } catch { /* name resolution best-effort */ }
+    return { user_email: o.user_email, full_name, assigned_at: o.assigned_at }
+  })
+}
+
 export async function getBoardName(boardId: string): Promise<string> {
   const { data } = await cloud.from('workspace_boards').select('name').eq('id', boardId).maybeSingle()
   return (data?.name as string | undefined) ?? boardId

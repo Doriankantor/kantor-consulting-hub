@@ -1,8 +1,12 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-11
-  Current version: v2.0.21  |   231 commits   |   ~32,300 lines of TS/TSX
+  Current version: v2.0.21 (released)  |   234 commits   |   ~31,900 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
+  NOTE: post-v2.0.21 work (member-add hang fix + Phase B B0.3/B0.5/B0.6) is COMMITTED
+  but unreleased; Phase B B1 (info-page owners → cloud/email + Settings heads toggle),
+  the member-checkmark render fix, and the "head implies member" invariant are BUILT
+  but UNCOMMITTED (test-then-commit). See HANDOFF.md "Start here" for the resume point.
 ═══════════════════════════════════════════════════════════════════════════════
 
 ───────────────────────────────────────────────────────────────────────────────
@@ -184,6 +188,46 @@ DESIGN PRINCIPLES / CONVENTIONS
 ───────────────────────────────────────────────────────────────────────────────
 9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-07-11)
 ───────────────────────────────────────────────────────────────────────────────
+  PHASE B — CLOUD BRIDGE FOR INFO PAGES (post-v2.0.21; needs a v2.0.22 to ship)
+    Goal: make the 4 info-page projects real cloud boards (membership/heads work),
+    then migrate info-page content tables to cloud. Full detail in HANDOFF.md.
+    * B0.3 (committed a1ca0d4) -- cloud createBoard + boardsSeed carry
+      board_type/board_config (optional params; standard boards unchanged).
+    * B0.4 (cloud/DB) -- materialized all 4 projects as cloud info-page rows:
+      Contested Skies (board-info-latam, 50), Immigration Undone (board-info-trump,
+      51), Hollow Border (board-info-hollowborder, 52, repo Doriankantor/hollow-border),
+      The Stated Order (board-info-statedorder, 53, repo Doriankantor/statedorder).
+      Hollow Border + Stated Order are grayed/Phase-2 (no collection); only Contested
+      Skies has the live news pull (pipeline:true).
+    * B0.5 (committed f9a5db4) -- Info Pages list reads the CLOUD board list (all 4
+      show); Workspace sidebar EXCLUDES board_type='info-page' (they leaked in after
+      B0.4). Added optional board_type/board_config to the renderer Board type.
+    * B0.6 (committed a0a67b3) -- info-page create/edit/delete are cloud-authoritative
+      (reuse createBoard + new updateBoardConfig + soft-delete deleteBoard). Edit form
+      is hosting-fields-only (name/repo/live_url/file); keywords reserved for Claude
+      Code, preserved on edit via config merge. Fixed the hover-kebab reveal (missing
+      'group' class). Local infoPages:create/updateMeta/delete handlers left unused.
+    * B1 (BUILT, UNCOMMITTED) -- info_page_owners ("project heads") is now cloud +
+      email-keyed (identity spine, aligned with email-keyed board_members). 4 cloud
+      fns in cloud/boards.ts (addOwner/removeOwner/isOwner/getOwners, root-gated);
+      infoPages owner IPC repointed to cloud; Settings Board Access matrix gained a
+      root-only "Head" toggle on info-page columns. Cloud public.info_page_owners
+      already created.
+    * MEMBER-CHECKMARK FIX (built, uncommitted) -- Board Access matrix green MEMBER
+      checkmarks vanished on reload (id-vs-email key mismatch: member Set held emails
+      from listMembers, but render/toggles keyed on m.id UUID). Data was never lost.
+      Fixed: member Set, render, single toggle, and grant/revoke-all all key on
+      member.email.toLowerCase() (mirrors heads). IPC still passes m.id.
+    * HEAD-IMPLIES-MEMBER INVARIANT (built, uncommitted) -- a head must be a member.
+      Three cascade points in Settings.tsx: toggleHead ON auto-adds membership before
+      addOwner; toggleBoardAccess removing membership also removeOwners (info-page);
+      revokeAllBoards also removes heads. grantAllBoards does NOT auto-add heads.
+      After any op, nobody is a head of a board they aren't a member of.
+
+  (member-add hang fix, committed 81e9eea, post-v2.0.21) -- boardMembers:add no longer
+    awaits the notification email (fire-and-forget + SMTP timeouts); the member write
+    already succeeds before the email, so the "Adding…" button no longer hangs.
+
   v2.0.21 (Jul 11) -- FIX: KEYWORD MATCHER WORD-BOUNDARY MATCHING
     * sourceMatchesKeywords (src/main/ipc/index.ts) now matches info-page
       board_config keywords on word/phrase boundaries instead of naked substring.

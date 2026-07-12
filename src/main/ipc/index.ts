@@ -3115,29 +3115,15 @@ export function registerInfoPageHandlers(): void {
     } catch { return null }
   })
 
-  ipcMain.handle('infoPages:getOwners', (_e, pageId: string) => {
-    return db().prepare(`
-      SELECT ipo.user_id, lu.full_name, lu.email, ipo.assigned_at
-      FROM info_page_owners ipo
-      LEFT JOIN local_users lu ON lu.id = ipo.user_id
-      WHERE ipo.page_id=?
-    `).all(pageId)
-  })
-
-  ipcMain.handle('infoPages:addOwner', (_e, pageId: string, userId: string, assignedBy: string) => {
-    db().prepare("INSERT OR IGNORE INTO info_page_owners (page_id,user_id,assigned_by) VALUES (?,?,?)").run(pageId, userId, assignedBy)
-    return { ok: true }
-  })
-
-  ipcMain.handle('infoPages:removeOwner', (_e, pageId: string, userId: string) => {
-    db().prepare("DELETE FROM info_page_owners WHERE page_id=? AND user_id=?").run(pageId, userId)
-    return { ok: true }
-  })
-
-  ipcMain.handle('infoPages:isOwner', (_e, pageId: string, userId: string) => {
-    const row = db().prepare("SELECT 1 FROM info_page_owners WHERE page_id=? AND user_id=?").get(pageId, userId)
-    return !!row
-  })
+  // B1: info-page owners ("project heads") are CLOUD + email-keyed (identity spine,
+  // shared with email-keyed board_members). The local info_page_owners table stays
+  // in place, unused. addOwner/removeOwner are root-gated in the cloud fn; isOwner
+  // resolves the acting user to email (the renderer still passes localUser.id, which
+  // the cloud path ignores in favor of the acting user).
+  ipcMain.handle('infoPages:getOwners', (_e, pageId: string) => boardsCloud.getOwners(pageId))
+  ipcMain.handle('infoPages:addOwner', (_e, pageId: string, userId: string) => boardsCloud.addOwner(currentActingUserId, pageId, userId))
+  ipcMain.handle('infoPages:removeOwner', (_e, pageId: string, userId: string) => boardsCloud.removeOwner(currentActingUserId, pageId, userId))
+  ipcMain.handle('infoPages:isOwner', (_e, pageId: string) => boardsCloud.isOwner(currentActingUserId, pageId))
 
   ipcMain.handle('infoPages:getItems', (_e, pageId: string, tab?: string) => {
     if (tab) return db().prepare('SELECT * FROM info_page_items WHERE page_id=? AND tab=? ORDER BY created_at DESC').all(pageId, tab)

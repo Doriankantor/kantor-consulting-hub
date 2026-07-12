@@ -725,10 +725,10 @@ interface Window {
       create:            (params: { name: string; config: Record<string,unknown> }) => Promise<{ ok: boolean; id: string }>
       delete:            (pageId: string)                                      => Promise<{ ok: boolean }>
       getLastCommit:     (repo: string)                                        => Promise<{ date: string; message: string } | null>
-      getOwners:         (pageId: string)                                      => Promise<Array<{ user_id: string; full_name: string | null; email: string; assigned_at: string }>>
-      addOwner:          (pageId: string, userId: string, by: string)          => Promise<{ ok: boolean }>
-      removeOwner:       (pageId: string, userId: string)                      => Promise<{ ok: boolean }>
-      isOwner:           (pageId: string, userId: string)                      => Promise<boolean>
+      getOwners:         (pageId: string)                                      => Promise<Array<{ user_email: string; full_name: string | null; assigned_at: string }>>
+      addOwner:          (pageId: string, userId: string, by?: string)         => Promise<{ ok: boolean; error?: string }>
+      removeOwner:       (pageId: string, userId: string)                      => Promise<{ ok: boolean; error?: string }>
+      isOwner:           (pageId: string, userId?: string)                     => Promise<boolean>
       getItems:          (pageId: string, tab?: string)                        => Promise<InfoPageItem[]>
       addItem:           (item: Record<string,unknown>)                        => Promise<{ ok: boolean; id: string }>
       updateItem:        (id: string, updates: Record<string,unknown>)         => Promise<{ ok: boolean }>
