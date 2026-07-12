@@ -121,6 +121,10 @@ export interface Board {
   archived_by: string | null
   created_at: string
   updated_at: string
+  // Present on cloud rows (select('*')). Optional here so display-layer filters
+  // (sidebar exclusion, Info Pages list) can read them without a cast.
+  board_type?: string
+  board_config?: string | null
 }
 
 // ── Label / color maps ────────────────────────────────────────────────────

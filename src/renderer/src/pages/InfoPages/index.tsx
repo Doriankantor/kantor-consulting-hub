@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useWorkspace } from '../../contexts/WorkspaceContext'
 import InfoPagesList from './InfoPagesList'
 import InfoPageStatus from './InfoPageStatus'
 import SourcesTab from './tabs/SourcesTab'
@@ -40,26 +41,33 @@ function parseConfig(raw: string | null | undefined): InfoPageConfig {
 
 export default function InfoPages() {
   const { isRoot, localUser } = useAuth()
-  const [pages, setPages] = useState<InfoPage[]>([])
+  const { boards, refreshBoards } = useWorkspace()
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('sources')
   const [isOwner, setIsOwner] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
   const [pipelineCounts, setPipelineCounts] = useState<{ new: number; review: number; committed: number }>({ new: 0, review: 0, committed: 0 })
 
+  // B0.5: source the Info Pages list from the CLOUD board list (already loaded for
+  // the sidebar via useWorkspace) filtered to info-page boards, so ALL projects show
+  // here — not just the ones that also exist in local SQLite (the old infoPages:list).
+  // Per-page content reads stay local + unchanged; the selected page's board_config
+  // comes from this (cloud) board object, which is the correct source.
+  const pages = useMemo(
+    () => (boards as unknown as InfoPage[])
+      .filter(b => b.board_type === 'info-page')
+      .sort((a, b) => a.position - b.position),
+    [boards],
+  )
+
   const selectedPage = pages.find(p => p.id === selectedPageId) || null
   const isPipeline = !!parseConfig(selectedPage?.board_config).pipeline
   const tabs = isPipeline ? [...PIPELINE_TABS, ...BASE_TABS] : BASE_TABS
 
-  const loadPages = useCallback(async () => {
-    try {
-      const list = await window.api.infoPages.list()
-      setPages(list)
-      if (list.length && !selectedPageId) setSelectedPageId(list[0].id)
-    } catch {}
-  }, [selectedPageId])
-
-  useEffect(() => { loadPages() }, [])
+  // Auto-select the first page once the list is available (unchanged behavior).
+  useEffect(() => {
+    if (pages.length && !selectedPageId) setSelectedPageId(pages[0].id)
+  }, [pages, selectedPageId])
 
   // Reset to the first relevant tab whenever the selected page changes, so a
   // pipeline page opens on New Sources and a standard page on Sources.
@@ -107,7 +115,7 @@ export default function InfoPages() {
         pages={pages}
         selectedPageId={selectedPageId}
         onSelect={setSelectedPageId}
-        onRefresh={loadPages}
+        onRefresh={refreshBoards}
         isAdmin={isRoot}
       />
 

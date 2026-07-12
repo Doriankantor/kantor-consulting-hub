@@ -376,7 +376,12 @@ export default function Sidebar() {
     window.api.boardMembers.listForUser(userId).then(ids => setMemberBoardIds(ids)).catch(() => {})
   }, [isRoot, userId])
 
-  const visibleBoards = isRoot ? boards : boards.filter(b => memberBoardIds.includes(b.id))
+  // B0.5: info-page boards are cloud rows now (post-B0.4) and would otherwise leak
+  // into the Workspace board list. Exclude them here (display-only) — they live on
+  // the Info Pages page. This does NOT touch the context board list, so board
+  // reorder below (which maps visibleBoards) now only touches standard boards.
+  const visibleBoards = (isRoot ? boards : boards.filter(b => memberBoardIds.includes(b.id)))
+    .filter(b => b.board_type !== 'info-page')
 
   // Admin-only board drag-reorder. Sensors mirror KanbanView: a 5px activation
   // distance so a click isn't swallowed by a drag.
