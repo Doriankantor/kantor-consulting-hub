@@ -962,9 +962,11 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                       }
                       // Clear any gate error.
                       setGateError(prev => { const n = { ...prev }; delete n[source.id]; return n })
-                      // Auto-save project to disposition_tags if not yet persisted.
-                      if (dispoTags.length === 0 && projectSel) {
-                        await handleSetTags(source.id, 'disposition', [projectSel])
+                      // 3c: ensure the reliable board-id project association is persisted
+                      // BEFORE routing, so the server routes this source to the right
+                      // project's New sources. (Replaces the legacy disposition auto-save.)
+                      if (!source.project_board_id && projectBoardSel) {
+                        await handleProjectSelect(source.id, projectBoardSel)
                       }
                       handleStatus(source.id, 'approved')
                     }}

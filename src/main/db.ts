@@ -923,7 +923,11 @@ export function initDatabase(): void {
       );
     `)
   } catch {}
-  // info_page_changes: append-only audit log of every stage transition.
+  // 3c: carry the intel source TYPE (article/social/document/interview) on the
+  // routed pipeline row so New sources can badge it without a JOIN. The durable
+  // link back to the intel row is article_id; content/analysis/notes stay LIVE
+  // via that reference (no copy), so the item remains editable + move-back-able.
+  try { db.exec("ALTER TABLE info_page_sources ADD COLUMN source_type TEXT;") } catch {}
   try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS info_page_changes (

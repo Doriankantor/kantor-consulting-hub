@@ -2561,6 +2561,39 @@ function addToInfoPagePipeline(sourceId: string): void {
   }
 }
 
+// 3c: route an intel source into a project's "New sources" (info_page_sources,
+// stage='new'), keyed by the RELIABLE board id (project_board_id). Type-agnostic —
+// any intel type works, so 3d's compose "Send" reuses this. The routed row is a
+// durable pointer: article_id links back to the intel row (content/analysis/notes
+// stay LIVE via that reference — no copy — so the item remains editable and
+// move-back-able); source_type is denormalized for display. Idempotent via
+// UNIQUE(article_id, info_page) + INSERT OR IGNORE — re-approving never duplicates
+// or resets a row already at new/review/committed. Returns the target page name.
+function routeToNewSources(
+  intelSourceId: string,
+  boardId: string | null | undefined,
+): { ok: boolean; id?: number; pageName?: string; error?: string } {
+  const db = getDatabase()
+  const bid = (boardId ?? '').trim()
+  if (!bid) return { ok: false, error: 'No project assigned to this source.' }
+  const src = db.prepare('SELECT id, type FROM intelligence_sources WHERE id=?').get(intelSourceId) as { id: string; type: string } | undefined
+  if (!src) return { ok: false, error: 'Source not found.' }
+  const board = db.prepare("SELECT name FROM workspace_boards WHERE id=? AND board_type='info-page'").get(bid) as { name?: string } | undefined
+  const now = new Date().toISOString()
+  const r = db.prepare(
+    "INSERT OR IGNORE INTO info_page_sources (article_id, info_page, stage, source_type, added_at) VALUES (?,?,'new',?,?)"
+  ).run(intelSourceId, bid, src.type, now)
+  if (r.changes > 0) {
+    db.prepare(
+      "INSERT INTO info_page_changes (article_id, info_page, from_stage, to_stage, created_at) VALUES (?,?,NULL,'new',?)"
+    ).run(intelSourceId, bid, now)
+  }
+  const row = db.prepare('SELECT id FROM info_page_sources WHERE article_id=? AND info_page=?').get(intelSourceId, bid) as { id: number } | undefined
+  return { ok: true, id: row?.id, pageName: board?.name ?? bid }
+}
+
+// Retired in 3c: keyword-match fan-out into info_page_items (replaced by
+// routeToNewSources' reliable board-id routing). Kept defined but no longer called.
 function addApprovedSourceToInfoPages(sourceId: string): string[] {
   const db = getDatabase()
   const src = db.prepare('SELECT * FROM intelligence_sources WHERE id=?').get(sourceId) as Record<string, any> | undefined
@@ -2630,7 +2663,7 @@ function registerIntelligenceHandlers(): void {
     // The article URL is the join key for mirroring this verdict to cs_articles.
     const meta = db().prepare('SELECT url FROM intelligence_sources WHERE id=?').get(id) as { url?: string } | undefined
     if (status === 'approved') {
-      const row = db().prepare('SELECT categories_json FROM intelligence_sources WHERE id=?').get(id) as { categories_json: string } | undefined
+      const row = db().prepare('SELECT categories_json, project_board_id FROM intelligence_sources WHERE id=?').get(id) as { categories_json: string; project_board_id: string | null } | undefined
       const cats: string[] = JSON.parse(row?.categories_json || '[]')
       let section = 'source-archive'
       if (cats.includes('Incident')) section = 'incident-feed'
@@ -2640,11 +2673,16 @@ function registerIntelligenceHandlers(): void {
       db().prepare(`
         UPDATE intelligence_sources SET status=?, review_notes=?, reviewed_by_id=?, reviewed_by_name=?, reviewed_at=?, queue_section=? WHERE id=?
       `).run(status, notes ?? null, reviewedById ?? null, reviewedByName ?? null, now2, section, id)
-      // Pipeline: fan this approved source out into matching Info Pages' Sources tabs.
+      // 3c: route this approved source into its project's "New sources"
+      // (info_page_sources, stage='new') by its reliable board id (project_board_id).
+      // RETIRES the old keyword fan-out (addApprovedSourceToInfoPages → info_page_items)
+      // and the disposition-based addToInfoPagePipeline — neither is called anymore.
       let addedToPages: string[] = []
-      try { addedToPages = addApprovedSourceToInfoPages(id) } catch (e) { console.warn('[Pipeline] fan-out failed', e) }
-      // Source pipeline: create/ensure an info_page_sources row for this article.
-      try { addToInfoPagePipeline(id) } catch (e) { console.warn('[Pipeline] info_page_sources insert failed', e) }
+      try {
+        const routed = routeToNewSources(id, row?.project_board_id)
+        if (routed.ok && routed.pageName) addedToPages = [routed.pageName]
+        else if (!routed.ok) console.warn('[3c] routeToNewSources skipped:', routed.error)
+      } catch (e) { console.warn('[3c] routing failed', e) }
       // Learning loop: mirror the verdict up to Supabase (fire-and-forget).
       void pushVerdictToSupabase(meta?.url, status, reviewedByName)
       return { ok: true, addedToPages }
@@ -3113,7 +3151,7 @@ function registerIntelligenceHandlers(): void {
   }) => {
     const conf = params.confidence || 'medium'
     const now2 = new Date().toISOString()
-    const rows = db().prepare("SELECT id, url FROM intelligence_sources WHERE status='imported'").all() as { id: string; url?: string }[]
+    const rows = db().prepare("SELECT id, url, project_board_id FROM intelligence_sources WHERE status='imported'").all() as { id: string; url?: string; project_board_id?: string | null }[]
     const addedAll = new Set<string>()
     const upd = db().prepare(`
       UPDATE intelligence_sources
@@ -3123,7 +3161,12 @@ function registerIntelligenceHandlers(): void {
     `)
     for (const r of rows) {
       upd.run(conf, params.reviewedById || null, params.reviewedByName || null, now2, r.id)
-      try { addApprovedSourceToInfoPages(r.id).forEach(p => addedAll.add(p)) } catch (e) { console.warn('[Pipeline] confirmImported fan-out failed', e) }
+      // 3c: bulk-confirm is also an approve path — route via the reliable board id
+      // (retires the keyword fan-out here too).
+      try {
+        const routed = routeToNewSources(r.id, r.project_board_id)
+        if (routed.ok && routed.pageName) addedAll.add(routed.pageName)
+      } catch (e) { console.warn('[3c] confirmImported routing failed', e) }
     }
     // Learning loop: mirror this bulk approval up to Supabase (fire-and-forget).
     void pushVerdictsToSupabase(rows.map((r) => r.url), 'approved', params.reviewedByName)
