@@ -94,6 +94,13 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
         addedByName: localUser?.name,
       })
       if (result.ok && !result.canceled) {
+        // T5: stamp the selected project onto each new doc so it shows under that
+        // project (not only "All"). No stamp when "All" is selected (project null).
+        if (project?.id && Array.isArray(result.results)) {
+          for (const r of result.results) {
+            if (r?.id) await window.api.intelligence.setProject(r.id, project.id)
+          }
+        }
         await load()
       }
     } finally {
@@ -198,6 +205,12 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
     )
   }
 
+  // T5: project-scoped view — mirror NewsTab. When a project is selected (project not
+  // null / "All"), show only that project's items; changing a card's project (which
+  // patches project_board_id in state) makes it drop out here with no refetch.
+  const projectScoped = !!project?.id
+  const visible = documents.filter(d => !projectScoped || d.project_board_id === project?.id)
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Upload bar */}
@@ -224,7 +237,7 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
         <span className="text-xs text-gray-400 dark:text-white/30">
           Accepts PDF, DOCX, TXT — text is extracted on upload; AI analysis runs only when you ask
         </span>
-        <span className="ml-auto text-xs text-gray-400 dark:text-white/30">{documents.length} documents</span>
+        <span className="ml-auto text-xs text-gray-400 dark:text-white/30">{visible.length} documents</span>
       </div>
 
       {/* Document list */}
@@ -235,7 +248,7 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
           </div>
         )}
 
-        {!loading && documents.length === 0 && (
+        {!loading && visible.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-white/[0.06] flex items-center justify-center mb-3">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="text-gray-400 dark:text-white/30">
@@ -248,7 +261,7 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
           </div>
         )}
 
-        {!loading && documents.map(doc => {
+        {!loading && visible.map(doc => {
           const conf = doc.confidence || 'low'
           const confStyle = CONFIDENCE_COLORS[conf as keyof typeof CONFIDENCE_COLORS] || CONFIDENCE_COLORS.low
           const cats: string[] = (() => { try { return JSON.parse(doc.categories_json || '[]') } catch { return [] } })()

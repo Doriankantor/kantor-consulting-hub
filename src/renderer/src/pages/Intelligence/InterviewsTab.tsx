@@ -103,6 +103,11 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
         added_by_name: localUser?.name,
       })
       if (!res.ok) { setFormError('Could not save the interview.'); return }
+      // T5: stamp the selected project onto the new interview so it shows under that
+      // project (not only "All"). No stamp when "All" is selected (project null).
+      if (res.id && project?.id) {
+        await window.api.intelligence.setProject(res.id, project.id)
+      }
       setTitle('')
       setTranscript('')
       await load()
@@ -186,6 +191,12 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
     catch { return dateStr }
   }
 
+  // T5: project-scoped view — mirror NewsTab. When a project is selected (project not
+  // null / "All"), show only that project's items; changing a card's project (which
+  // patches project_board_id in state) makes it drop out here with no refetch.
+  const projectScoped = !!project?.id
+  const visible = interviews.filter(iv => !projectScoped || iv.project_board_id === project?.id)
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Capture bar */}
@@ -216,7 +227,7 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
             )}
           </button>
           {formError && <span className="text-xs text-red-500 dark:text-red-400">{formError}</span>}
-          <span className="ml-auto text-xs text-gray-400 dark:text-white/30">{interviews.length} interviews</span>
+          <span className="ml-auto text-xs text-gray-400 dark:text-white/30">{visible.length} interviews</span>
         </div>
       </div>
 
@@ -228,14 +239,14 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
           </div>
         )}
 
-        {!loading && interviews.length === 0 && (
+        {!loading && visible.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <p className="text-sm font-medium text-gray-500 dark:text-white/40">No interviews yet</p>
             <p className="text-xs text-gray-400 dark:text-white/25 mt-1">Paste a transcript above to capture one.</p>
           </div>
         )}
 
-        {!loading && interviews.map(iv => {
+        {!loading && visible.map(iv => {
           const isPending = pendingStatus[iv.id]
           // 3d: picker default — the interview's project, else the top-dropdown selected project.
           const projectBoardSel = iv.project_board_id || (project?.id ?? '')

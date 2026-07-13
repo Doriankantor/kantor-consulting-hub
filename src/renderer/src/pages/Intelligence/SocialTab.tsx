@@ -193,7 +193,7 @@ export default function SocialTab({ onApprove, project = null }: Props) {
 
     setSaving(true)
     try {
-      await window.api.intelligence.addSocial({
+      const res = await window.api.intelligence.addSocial({
         platform: form.platform,
         handle: form.handle.trim(),
         post_date: form.post_date,
@@ -206,6 +206,11 @@ export default function SocialTab({ onApprove, project = null }: Props) {
         added_by_id: localUser?.id,
         added_by_name: localUser?.name,
       })
+      // T5: stamp the selected project onto the new post so it shows under that
+      // project (not only "All"). No stamp when "All" is selected (project null).
+      if (res?.ok && res.id && project?.id) {
+        await window.api.intelligence.setProject(res.id, project.id)
+      }
       setForm({ ...EMPTY_FORM })
       setErrors({})
       setUrlInput('')
@@ -288,6 +293,12 @@ export default function SocialTab({ onApprove, project = null }: Props) {
     try { return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
     catch { return dateStr }
   }
+
+  // T5: project-scoped view — mirror NewsTab. When a project is selected (project not
+  // null / "All"), show only that project's items; changing a card's project (which
+  // patches project_board_id in state) makes it drop out here with no refetch.
+  const projectScoped = !!project?.id
+  const visible = posts.filter(p => !projectScoped || p.project_board_id === project?.id)
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -467,14 +478,14 @@ export default function SocialTab({ onApprove, project = null }: Props) {
           </div>
         )}
 
-        {!loading && posts.length === 0 && (
+        {!loading && visible.length === 0 && (
           <div className="text-center py-8">
             <p className="text-sm text-gray-500 dark:text-white/40">No social media posts yet</p>
             <p className="text-xs text-gray-400 dark:text-white/25 mt-1">Add posts using the form above</p>
           </div>
         )}
 
-        {!loading && posts.map(post => {
+        {!loading && visible.map(post => {
           const conf = post.confidence || 'low'
           const confStyle = CONFIDENCE_COLORS[conf as keyof typeof CONFIDENCE_COLORS] || CONFIDENCE_COLORS.low
           const cats: string[] = (() => { try { return JSON.parse(post.categories_json || '[]') } catch { return [] } })()
