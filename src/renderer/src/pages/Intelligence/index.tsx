@@ -210,7 +210,12 @@ export default function Intelligence() {
       {/* Tab content */}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'news'      && <NewsTab onApprove={handleApproved} />}
-        {activeTab === 'social'    && <SocialTab onApprove={handleApproved} />}
+        {/* SocialTab stays MOUNTED (hidden, not unmounted) so its in-progress add-form +
+            description survive a tab switch. News/Documents/Interviews keep conditional
+            mount, so their on-mount loads are unchanged. */}
+        <div className={activeTab === 'social' ? 'h-full' : 'hidden'}>
+          <SocialTab onApprove={handleApproved} project={selectedProjectConfig} />
+        </div>
         {activeTab === 'documents' && <DocumentsTab onApprove={handleApproved} project={selectedProjectConfig} />}
         {activeTab === 'interviews' && <InterviewsTab onApprove={handleApproved} project={selectedProjectConfig} />}
       </div>

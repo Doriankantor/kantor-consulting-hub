@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import RichTextEditor from '../../components/RichTextEditor'
 
 const PLATFORMS = ['X / Twitter', 'Telegram', 'LinkedIn', 'Facebook', 'Instagram', 'Other']
 
@@ -43,7 +44,13 @@ const STATUS_COLORS: Record<string, string> = {
   pushed:     'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
 }
 
-interface Props { onApprove: (addedToPages?: string[]) => void }
+// Selected project, threaded from the Intelligence container (Slice 1/2b).
+type ProjectInfo = { id: string; name: string; keywords?: string } | null
+
+interface Props {
+  onApprove: (addedToPages?: string[]) => void
+  project?: ProjectInfo
+}
 
 const EMPTY_FORM = {
   platform: 'X / Twitter',
@@ -57,7 +64,27 @@ const EMPTY_FORM = {
   categories: [] as string[],
 }
 
-export default function SocialTab({ onApprove }: Props) {
+// Map fetcher platform label → the existing Platform dropdown values.
+function mapPlatform(p?: string): string {
+  if (!p) return 'Other'
+  const v = p.toLowerCase()
+  if (v === 'x' || v.includes('twitter')) return 'X / Twitter'
+  if (v === 'telegram') return 'Telegram'
+  if (v === 'linkedin') return 'LinkedIn'
+  if (v === 'facebook') return 'Facebook'
+  if (v === 'instagram') return 'Instagram'
+  return 'Other'
+}
+
+// ISO/date string → yyyy-mm-dd for <input type="date">, or undefined if unparseable.
+function toDateInput(s?: string): string | undefined {
+  if (!s) return undefined
+  const d = new Date(s)
+  if (isNaN(d.getTime())) return undefined
+  return d.toISOString().slice(0, 10)
+}
+
+export default function SocialTab({ onApprove, project = null }: Props) {
   const { localUser, isRoot, can } = useAuth()
   const [posts, setPosts] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
@@ -65,14 +92,19 @@ export default function SocialTab({ onApprove }: Props) {
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
-  const [fadingIds, setFadingIds] = useState<Set<string>>(new Set())
+  const [fadingIds] = useState<Set<string>>(new Set())
+  // URL-paste autofill (Social-a fetcher).
+  const [urlInput, setUrlInput] = useState('')
+  const [fetching, setFetching] = useState(false)
+  const [fetchNote, setFetchNote] = useState<{ type: 'ok' | 'warn'; text: string } | null>(null)
+  const handleRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const data = await window.api.intelligence.getSources({ type: 'social' })
       setPosts(data)
-    } catch {}
+    } catch { /* ignore */ }
     setLoading(false)
   }, [])
 
@@ -85,6 +117,41 @@ export default function SocialTab({ onApprove }: Props) {
         ? f.categories.filter(c => c !== cat)
         : [...f.categories, cat],
     }))
+  }
+
+  // Paste a URL → try the metadata fetcher. ok → autofill the (editable) fields;
+  // not-ok → a NORMAL fallback: message + focus the manual form. Never crashes.
+  async function handleReadLink() {
+    const u = urlInput.trim()
+    if (!u) return
+    setFetching(true)
+    setFetchNote(null)
+    try {
+      const res = await window.api.intelligence.fetchUrlMetadata(u)
+      if (res.ok) {
+        const m = res.metadata
+        setForm(f => ({
+          ...f,
+          platform: mapPlatform(m.platform),
+          handle: m.author || m.site_name || f.handle,
+          content: m.description || m.title || f.content,
+          url: m.url || u,
+          post_date: toDateInput(m.published) || f.post_date,
+        }))
+        setFetchNote({ type: 'ok', text: 'Filled from link ✓ — review and edit the fields below.' })
+      } else {
+        const msg = res.reason === 'invalid_url'
+          ? "That's not a valid URL."
+          : "Couldn't read this link — fill in the details below."
+        setFetchNote({ type: 'warn', text: msg })
+        setForm(f => ({ ...f, url: u }))         // keep what they pasted
+        setTimeout(() => handleRef.current?.focus(), 0)
+      }
+    } catch {
+      setFetchNote({ type: 'warn', text: "Couldn't read this link — fill in the details below." })
+    } finally {
+      setFetching(false)
+    }
   }
 
   async function handleSubmit() {
@@ -112,6 +179,8 @@ export default function SocialTab({ onApprove }: Props) {
       })
       setForm({ ...EMPTY_FORM })
       setErrors({})
+      setUrlInput('')
+      setFetchNote(null)
       await load()
     } finally {
       setSaving(false)
@@ -122,10 +191,7 @@ export default function SocialTab({ onApprove }: Props) {
     setPendingStatus(p => ({ ...p, [id]: true }))
     try {
       const res = await window.api.intelligence.updateStatus(id, status, undefined, localUser?.id, localUser?.name)
-      // Update badge in-place — preserves scroll position
       setPosts(prev => prev.map(p => p.id === id ? { ...p, status: status as any } : p))
-      // Social tab has no status filter, so no fade-out needed — badge just updates in place.
-      // If a filter is ever added, add fade logic here similarly to NewsTab.
       if (status === 'approved') onApprove(res?.addedToPages)
       else onApprove()
     } finally {
@@ -139,11 +205,10 @@ export default function SocialTab({ onApprove }: Props) {
     setPosts(prev => prev.filter(p => p.id !== id))
   }
 
-  function formatDate(dateStr: string | null) {
-    if (!dateStr) return ''
-    try { return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
-    catch { return dateStr }
-  }
+  // Patch one post in local state so notes/AI results re-render in place.
+  const patchDoc = useCallback((id: string, patch: Partial<IntelligenceSource>) => {
+    setPosts(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p))
+  }, [])
 
   function formatDate(dateStr: string | null) {
     if (!dateStr) return ''
@@ -157,6 +222,37 @@ export default function SocialTab({ onApprove }: Props) {
         {/* Add form */}
         <div className="bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Add Social Media Post</h3>
+
+          {/* URL paste — convenience autofill on top of the manual form (not a gate) */}
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Paste a post URL (optional)</label>
+            <div className="flex gap-2">
+              <input
+                value={urlInput}
+                onChange={e => setUrlInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleReadLink() } }}
+                placeholder="https://…  — we'll try to auto-fill the fields"
+                className="flex-1 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] text-sm bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+              />
+              <button
+                onClick={handleReadLink}
+                disabled={fetching || !urlInput.trim()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium transition disabled:opacity-50 shrink-0"
+              >
+                {fetching ? (
+                  <><span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />Reading…</>
+                ) : (
+                  <>✦ Read link</>
+                )}
+              </button>
+            </div>
+            {fetchNote && (
+              <p className={`text-xs mt-1 ${fetchNote.type === 'ok' ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                {fetchNote.text}
+              </p>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             {/* Platform */}
             <div>
@@ -173,6 +269,7 @@ export default function SocialTab({ onApprove }: Props) {
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Handle / Account *</label>
               <input
+                ref={handleRef}
                 value={form.handle}
                 onChange={e => setForm(f => ({ ...f, handle: e.target.value }))}
                 placeholder="@username or channel name"
@@ -203,9 +300,21 @@ export default function SocialTab({ onApprove }: Props) {
                 <option value="low">Low</option>
               </select>
             </div>
-            {/* URL */}
+            {/* URL + View original */}
             <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">URL (optional)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-gray-500 dark:text-white/50">URL (optional)</label>
+                {form.url.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => window.open(form.url.trim(), '_blank')}
+                    title="Open the original post in your browser"
+                    className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    View original ↗
+                  </button>
+                )}
+              </div>
               <input
                 value={form.url}
                 onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
@@ -266,7 +375,8 @@ export default function SocialTab({ onApprove }: Props) {
               </div>
             </div>
           </div>
-          <div className="flex justify-end mt-3">
+          <div className="flex items-center justify-between mt-3">
+            <p className="text-[11px] text-gray-400 dark:text-white/30">Add the post, then describe what's happening and analyze it on its card below.</p>
             <button
               onClick={handleSubmit}
               disabled={saving}
@@ -297,7 +407,6 @@ export default function SocialTab({ onApprove }: Props) {
           const cats: string[] = (() => { try { return JSON.parse(post.categories_json || '[]') } catch { return [] } })()
           const PlatformIcon = PLATFORM_ICONS[post.platform || '']
           const isPending = pendingStatus[post.id]
-
           const isFading = fadingIds.has(post.id)
           return (
             <div key={post.id} className={`bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4 transition-all duration-300 ${isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
@@ -319,6 +428,24 @@ export default function SocialTab({ onApprove }: Props) {
                     </span>
                   </div>
                 </div>
+                {post.url && (
+                  <button
+                    onClick={() => window.open(post.url!, '_blank')}
+                    title="View original post"
+                    className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline shrink-0"
+                  >
+                    View original ↗
+                  </button>
+                )}
+                {(can('delete_intel_social') || isRoot) && (
+                  <button
+                    onClick={() => handleDelete(post.id)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition shrink-0"
+                    title="Delete post"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 3h8M5 3V2h2v1M4.5 3l.5 7h3l.5-7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </button>
+                )}
               </div>
 
               <p className="text-sm text-gray-700 dark:text-white/80 whitespace-pre-wrap line-clamp-4">{post.content}</p>
@@ -348,42 +475,23 @@ export default function SocialTab({ onApprove }: Props) {
                 </div>
               )}
 
+              {/* Human-first compose: describe → on-demand AI → editable reconcile */}
+              <SocialCompose doc={post} project={project} onPatch={patchDoc} formatDate={formatDate} />
+
+              {/* Status actions */}
               <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
                 <div className="flex-1" />
                 {post.status !== 'approved' && post.status !== 'pushed' && (
-                  <button
-                    onClick={() => handleStatus(post.id, 'approved')}
-                    disabled={isPending}
-                    className="px-2.5 py-1 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-medium transition disabled:opacity-50"
-                  >
-                    Approve
-                  </button>
+                  <button onClick={() => handleStatus(post.id, 'approved')} disabled={isPending}
+                    className="px-2.5 py-1 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-medium transition disabled:opacity-50">Approve</button>
                 )}
                 {post.status !== 'saved' && post.status !== 'approved' && post.status !== 'pushed' && (
-                  <button
-                    onClick={() => handleStatus(post.id, 'saved')}
-                    disabled={isPending}
-                    className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition disabled:opacity-50"
-                  >
-                    Save
-                  </button>
+                  <button onClick={() => handleStatus(post.id, 'saved')} disabled={isPending}
+                    className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition disabled:opacity-50">Save</button>
                 )}
                 {post.status !== 'rejected' && (
-                  <button
-                    onClick={() => handleStatus(post.id, 'rejected')}
-                    disabled={isPending}
-                    className="px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-medium transition disabled:opacity-50"
-                  >
-                    Reject
-                  </button>
-                )}
-                {(can('delete_intel_social') || isRoot) && (
-                  <button
-                    onClick={() => handleDelete(post.id)}
-                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 3h8M5 3V2h2v1M4.5 3l.5 7h3l.5-7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  </button>
+                  <button onClick={() => handleStatus(post.id, 'rejected')} disabled={isPending}
+                    className="px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-medium transition disabled:opacity-50">Reject</button>
                 )}
               </div>
             </div>
@@ -392,4 +500,244 @@ export default function SocialTab({ onApprove }: Props) {
       </div>
     </div>
   )
+}
+
+// Social-b: the human-first compose area for one post — replicates the Documents
+// (2b) / Interviews (2c) pattern. "Describe what's happening" is the PRIMARY layer,
+// always present, saved to intel_notes. AI is on-demand only (→ analysis_json.ai);
+// reconcile is an editable merged read (→ reconciled_notes). Every AI call is an
+// explicit button. The relevance AI reads the post text + the researcher's take.
+function SocialCompose({
+  doc, project, onPatch, formatDate,
+}: {
+  doc: IntelligenceSource
+  project: ProjectInfo
+  onPatch: (id: string, patch: Partial<IntelligenceSource>) => void
+  formatDate: (d: string | null) => string
+}) {
+  const [notes, setNotes] = useState<string>(doc.intel_notes || '')
+  const [reconciledText, setReconciledText] = useState<string>(doc.reconciled_notes || '')
+  const [analyzing, setAnalyzing] = useState(false)
+  const [reconciling, setReconciling] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const analysis = parseAnalysis(doc.analysis_json)
+  const ai = analysis.ai as Record<string, any> | undefined
+  const reconciledMeta = analysis.reconciled as Record<string, any> | undefined
+  const hasAi = !!ai
+  const plain = stripHtml(notes)
+  const hasNotes = plain.length > 0
+  const content = doc.content || ''
+  // The relevance AI sees the post text plus the researcher's description.
+  const analyzeInput = content + (plain ? `\n\nResearcher's take: ${plain}` : '')
+
+  async function saveNotes() {
+    if (notes === (doc.intel_notes || '')) return
+    try {
+      await window.api.intelligence.updateNotes(doc.id, notes)
+      onPatch(doc.id, { intel_notes: notes || null })
+    } catch { /* transient — next blur retries */ }
+  }
+
+  async function saveReconciledText() {
+    if (reconciledText === (doc.reconciled_notes || '')) return
+    try {
+      await window.api.intelligence.updateReconciledNotes(doc.id, reconciledText)
+      onPatch(doc.id, { reconciled_notes: reconciledText || null })
+    } catch { /* transient — next blur retries */ }
+  }
+
+  async function analyze() {
+    if (analyzing) return
+    setAnalyzing(true)
+    setError(null)
+    try {
+      const res = await window.api.intelligence.analyzeText({
+        task: 'relevance',
+        text: analyzeInput,
+        projectConfig: project ? { name: project.name, keywords: project.keywords } : null,
+      })
+      if (!res.ok) { setError(res.error); return }
+      const saved = await window.api.intelligence.saveAiAnalysis(doc.id, res.result)
+      if (!saved.ok) { setError(saved.error); return }
+      onPatch(doc.id, { analysis_json: withAnalysisKey(doc.analysis_json, 'ai', saved.ai) })
+    } catch (e) {
+      setError((e as Error)?.message || 'Analysis failed.')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  async function reconcile() {
+    if (!hasAi || !hasNotes || reconciling) return
+    setReconciling(true)
+    setError(null)
+    try {
+      if (notes !== (doc.intel_notes || '')) {
+        await window.api.intelligence.updateNotes(doc.id, notes)
+        onPatch(doc.id, { intel_notes: notes || null })
+      }
+      const res = await window.api.intelligence.analyzeText({
+        task: 'reconcile',
+        text: content,
+        userNotes: plain,
+        projectConfig: project ? { name: project.name, keywords: project.keywords } : null,
+      })
+      if (!res.ok) { setError(res.error); return }
+      const savedMeta = await window.api.intelligence.saveReconciled(doc.id, res.result)
+      if (!savedMeta.ok) { setError(savedMeta.error); return }
+      const seeded = res.result.summary ? `<p>${escapeHtml(res.result.summary)}</p>` : (reconciledText || '')
+      await window.api.intelligence.updateReconciledNotes(doc.id, seeded)
+      setReconciledText(seeded)
+      onPatch(doc.id, {
+        analysis_json: withAnalysisKey(doc.analysis_json, 'reconciled', savedMeta.reconciled),
+        reconciled_notes: seeded || null,
+      })
+    } catch (e) {
+      setError((e as Error)?.message || 'Reconcile failed.')
+    } finally {
+      setReconciling(false)
+    }
+  }
+
+  const showReconciledField = reconciledText.trim() !== '' || !!reconciledMeta
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06] space-y-4">
+      {/* PRIMARY — describe what's happening */}
+      <div>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[9px] font-bold uppercase tracking-wide">Primary</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-white/40">Describe what's happening (your take)</span>
+          <span className="text-[10px] font-normal text-gray-300 dark:text-white/25">· optional</span>
+        </div>
+        <RichTextEditor
+          value={notes}
+          onChange={setNotes}
+          onBlur={saveNotes}
+          placeholder="What is this post, who's involved, why it matters for the project…"
+          minHeight="80px"
+        />
+      </div>
+
+      {/* AI — on-demand, separate box */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30">AI analysis — suggestions</span>
+          <button
+            onClick={analyze}
+            disabled={analyzing}
+            title="Run the AI analysis on demand (project-aware). Nothing runs until you press this."
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium transition disabled:opacity-50"
+          >
+            {analyzing ? (
+              <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analyzing…</>
+            ) : (
+              <>✦ {hasAi ? 'Re-analyze' : 'Analyze with AI'}</>
+            )}
+          </button>
+        </div>
+        {hasAi ? (
+          <div className="p-3 rounded-lg bg-indigo-50/60 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/25 space-y-2 text-xs">
+            {typeof ai!.relevance_score === 'number' && (
+              <span className="inline-block px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 font-bold text-[10px]">relevance {ai!.relevance_score}/10</span>
+            )}
+            {ai!.summary && <p className="text-gray-700 dark:text-white/70">{ai!.summary}</p>}
+            {ai!.relevance_reasoning && <p className="text-gray-500 dark:text-white/50 italic">{ai!.relevance_reasoning}</p>}
+            {Array.isArray(ai!.suggested_tags) && ai!.suggested_tags.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {ai!.suggested_tags.map((t: string, i: number) => (
+                  <span key={`${t}-${i}`} className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-medium">{t}</span>
+                ))}
+              </div>
+            )}
+            {ai!.analyzed_at && <p className="text-[10px] text-indigo-500/60 dark:text-indigo-400/40">Analyzed {formatDate(ai!.analyzed_at)}</p>}
+          </div>
+        ) : (
+          <div className="p-3 rounded-lg border border-dashed border-gray-200 dark:border-white/10 text-[11px] text-gray-400 dark:text-white/30">
+            Press <span className="font-medium">Analyze with AI</span> to generate analysis — nothing runs until you ask.
+          </div>
+        )}
+      </div>
+
+      {/* RECONCILE — editable merged read; appears once an AI read exists */}
+      {hasAi && (
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">Reconciled — editable before commit</span>
+            <div className="flex items-center gap-2">
+              {!hasNotes && <span className="text-[10px] text-gray-300 dark:text-white/25">add a description first</span>}
+              <button
+                onClick={reconcile}
+                disabled={!hasNotes || reconciling}
+                title={hasNotes ? 'Merge your description with the AI read into an editable version' : 'Add a description to enable reconcile'}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {reconciling ? (
+                  <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Reconciling…</>
+                ) : (
+                  <>⟲ Reconcile with my notes</>
+                )}
+              </button>
+            </div>
+          </div>
+          {reconciledMeta && (
+            <div className="flex items-center flex-wrap gap-1 mb-1.5">
+              {typeof reconciledMeta.relevance_score === 'number' && (
+                <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold text-[10px]">relevance {reconciledMeta.relevance_score}/10</span>
+              )}
+              {Array.isArray(reconciledMeta.suggested_tags) && reconciledMeta.suggested_tags.map((t: string, i: number) => (
+                <span key={`${t}-${i}`} className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-medium">{t}</span>
+              ))}
+              {reconciledMeta.reconciled_at && (
+                <span className="text-[10px] text-amber-600/60 dark:text-amber-400/40 ml-1">Reconciled {formatDate(reconciledMeta.reconciled_at)}</span>
+              )}
+            </div>
+          )}
+          {showReconciledField ? (
+            <RichTextEditor
+              value={reconciledText}
+              onChange={setReconciledText}
+              onBlur={saveReconciledText}
+              placeholder="The reconciled read — edit freely before commit…"
+              minHeight="80px"
+            />
+          ) : (
+            <p className="text-[11px] text-gray-400 dark:text-white/30">Press <span className="font-medium">Reconcile with my notes</span> to generate an editable merged read.</p>
+          )}
+        </div>
+      )}
+
+      {error && <p className="text-[11px] text-red-500 dark:text-red-400">{error}</p>}
+    </div>
+  )
+}
+
+// Parse analysis_json to an object (never throws; {} on missing/invalid).
+function parseAnalysis(raw: string | null): Record<string, unknown> {
+  if (!raw) return {}
+  try { const o = JSON.parse(raw); return o && typeof o === 'object' ? o : {} } catch { return {} }
+}
+
+// Return analysis_json with one top-level key replaced, preserving the rest.
+function withAnalysisKey(raw: string | null, key: string, block: unknown): string {
+  const o = parseAnalysis(raw)
+  o[key] = block
+  return JSON.stringify(o)
+}
+
+// Strip TipTap HTML to plain text — for the reconcile userNotes payload + emptiness check.
+function stripHtml(html: string): string {
+  return (html || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
