@@ -355,7 +355,7 @@ interface IntelligenceSource {
   added_at: string
   added_by_id: string | null
   added_by_name: string | null
-  status: 'unreviewed' | 'approved' | 'rejected' | 'saved' | 'pushed' | 'imported'
+  status: 'unreviewed' | 'approved' | 'rejected' | 'saved' | 'pushed' | 'imported' | 'routed'
   confidence: 'high' | 'medium' | 'low' | null
   confidence_override: number
   categories_json: string
@@ -786,6 +786,7 @@ interface Window {
       updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean }>
       updateGeography:      (id: string, geography: string)    => Promise<{ ok: boolean }>
       setProject:           (id: string, boardId: string | null) => Promise<{ ok: boolean }>   // 3a: board-id project association
+      routeToProject:       (sourceId: string, boardId: string) => Promise<{ ok: boolean; pageName?: string; error?: string }>   // 3d: Send to New sources
       getKnownTags:         (type: string)                     => Promise<string[]>
       createTag:            (name: string, type: string)       => Promise<{ ok: boolean; name: string }>
       deleteTag:            (name: string, type: string)       => Promise<{ ok: boolean }>

@@ -274,6 +274,7 @@ const api = {
     updateConfidence:     (id: string, confidence: string)   => ipcRenderer.invoke('intelligence:updateConfidence', id, confidence),
     updateGeography:      (id: string, geography: string)    => ipcRenderer.invoke('intelligence:updateGeography', id, geography),
     setProject:           (id: string, boardId: string | null) => ipcRenderer.invoke('intelligence:setProject', id, boardId),
+    routeToProject:       (sourceId: string, boardId: string) => ipcRenderer.invoke('intelligence:routeToProject', sourceId, boardId),
     updateNotes:          (id: string, notesHtml: string)    => ipcRenderer.invoke('intelligence:updateNotes', id, notesHtml),
     saveAiAnalysis:       (id: string, ai: Record<string, unknown>)         => ipcRenderer.invoke('intelligence:saveAiAnalysis', id, ai),
     saveReconciled:       (id: string, reconciled: Record<string, unknown>) => ipcRenderer.invoke('intelligence:saveReconciled', id, reconciled),

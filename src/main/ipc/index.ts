@@ -2828,6 +2828,21 @@ function registerIntelligenceHandlers(): void {
     return { ok: true }
   })
 
+  // 3d: explicit "Send to New sources" for composed items (documents/social/interviews).
+  // Decoupled from the approve/verdict path: sets project_board_id, routes via
+  // routeToNewSources, marks the source status='routed' so it leaves the compose
+  // queue (its home is now the pipeline; move-back sets it back to 'unreviewed').
+  // No queue_section calc, no pushVerdictToSupabase, no review_notes.
+  ipcMain.handle('intelligence:routeToProject', (_e, sourceId: string, boardId: string) => {
+    const bid = (boardId ?? '').trim()
+    if (!bid) return { ok: false, error: 'No project selected.' }
+    db().prepare('UPDATE intelligence_sources SET project_board_id=? WHERE id=?').run(bid, sourceId)
+    const routed = routeToNewSources(sourceId, bid)
+    if (!routed.ok) return routed
+    db().prepare("UPDATE intelligence_sources SET status='routed' WHERE id=?").run(sourceId)
+    return { ok: true, pageName: routed.pageName }
+  })
+
   // 2b: persist the researcher's rich-text notes (HTML) for a source. Separate
   // column from review_notes — approve/reject never touches this. Empty → null.
   ipcMain.handle('intelligence:updateNotes', (_e, id: string, notesHtml: string) => {

@@ -45,17 +45,30 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
   const [uploading, setUploading] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
   const [fadingIds, setFadingIds] = useState<Set<string>>(new Set())
+  // 3d: the info-page projects (for the per-item project picker + Send target).
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const data = await window.api.intelligence.getSources({ type: 'document' })
-      setDocuments(data)
+      // 3d: sent items (status='routed') live in the pipeline now — drop from compose.
+      setDocuments(data.filter(d => d.status !== 'routed'))
     } catch {}
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // 3d: load the info-page projects once for the picker/Send target.
+  useEffect(() => {
+    (async () => {
+      try {
+        const boards = await window.api.infoPages.list()
+        setProjects((boards as Array<{ id: string; name: string }>).map(b => ({ id: b.id, name: b.name })))
+      } catch (e) { console.warn('[DocumentsTab] projects load failed:', e) }
+    })()
+  }, [])
 
   async function handleUpload() {
     setUploading(true)
@@ -89,6 +102,24 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
     if (!confirm('Delete this document?')) return
     await window.api.intelligence.deleteSource(id)
     setDocuments(prev => prev.filter(d => d.id !== id))
+  }
+
+  // 3d: persist the reliable board-id project association (picker change).
+  const handleProjectSelect = async (id: string, boardId: string) => {
+    await window.api.intelligence.setProject(id, boardId || null)
+    setDocuments(prev => prev.map(d => d.id === id ? { ...d, project_board_id: boardId || null } : d))
+  }
+
+  // 3d: Send to New sources — route into the selected project's pipeline (stage='new')
+  // and drop the item from the compose list (status='routed').
+  const handleSend = async (id: string, boardId: string) => {
+    const res = await window.api.intelligence.routeToProject(id, boardId)
+    if (res?.ok) {
+      setDocuments(prev => prev.filter(d => d.id !== id))
+      onApprove(res.pageName ? [res.pageName] : [])
+    } else if (res?.error) {
+      console.warn('[3d] send failed:', res.error)
+    }
   }
 
   // 2b: patch one document in local state (notes / analysis_json / reconciled_notes)
@@ -180,6 +211,8 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
           const confStyle = CONFIDENCE_COLORS[conf as keyof typeof CONFIDENCE_COLORS] || CONFIDENCE_COLORS.low
           const cats: string[] = (() => { try { return JSON.parse(doc.categories_json || '[]') } catch { return [] } })()
           const isPending = pendingStatus[doc.id]
+          // 3d: picker default — the doc's project, else the top-dropdown selected project.
+          const projectBoardSel = doc.project_board_id || (project?.id ?? '')
 
           const isFading = fadingIds.has(doc.id)
           return (
@@ -236,7 +269,23 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
               <DocumentCompose doc={doc} project={project} onPatch={patchDoc} formatDate={formatDate} />
 
               {/* Actions */}
-              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
+              <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
+                {/* 3d: project picker (reliable board-id association) */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30">Project</span>
+                  {projects.length > 0 ? (
+                    <select
+                      value={projectBoardSel}
+                      onChange={e => handleProjectSelect(doc.id, e.target.value)}
+                      className="px-2 py-0.5 rounded text-[11px] border border-gray-200 dark:border-white/[0.15] bg-white dark:bg-gray-900 text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                    >
+                      {!projectBoardSel && <option value="">— select project —</option>}
+                      {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  ) : (
+                    <span className="text-[11px] text-gray-400 dark:text-white/30">Loading…</span>
+                  )}
+                </div>
                 <div className="flex-1" />
                 {doc.status !== 'approved' && doc.status !== 'pushed' && (
                   <button
@@ -265,6 +314,15 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
                     Reject
                   </button>
                 )}
+                {/* 3d: Send to New sources — routes into the selected project's pipeline */}
+                <button
+                  onClick={() => handleSend(doc.id, projectBoardSel)}
+                  disabled={!projectBoardSel}
+                  title={projectBoardSel ? 'Route this document into the project’s New sources' : 'Select a project first'}
+                  className="px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ➤ Send to New sources
+                </button>
               </div>
             </div>
           )
