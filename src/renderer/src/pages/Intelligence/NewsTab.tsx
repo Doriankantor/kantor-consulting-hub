@@ -485,11 +485,16 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     catch { return dateStr }
   }
 
-  // Client-side minimum-relevance filter + sort: relevance_score DESC (NULL last), then published_at DESC.
+  // 3b: scope by the top dropdown's selected project (board id). "all"/unset → no scope.
+  const projectScoped = !!selectedProjectId && selectedProjectId !== 'all'
+
+  // Client-side filters (combine with the server-side status/search filters already
+  // applied in load()): minimum-relevance AND selected project. Then sort:
+  // relevance_score DESC (NULL last), then published_at DESC.
   const visible = useMemo(() => {
-    const filtered = minRelevance > 0
-      ? sources.filter(s => (s.relevance_score ?? -1) >= minRelevance)
-      : sources
+    let filtered = sources
+    if (minRelevance > 0) filtered = filtered.filter(s => (s.relevance_score ?? -1) >= minRelevance)
+    if (projectScoped) filtered = filtered.filter(s => s.project_board_id === selectedProjectId)
     return [...filtered].sort((a, b) => {
       const sa = a.relevance_score, sb = b.relevance_score
       if (sa == null && sb != null) return 1
@@ -499,7 +504,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       const tb = b.published_at ? new Date(b.published_at).getTime() : 0
       return tb - ta
     })
-  }, [sources, minRelevance])
+  }, [sources, minRelevance, projectScoped, selectedProjectId])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -618,10 +623,13 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
               </svg>
             </div>
             <p className="text-sm font-medium text-gray-500 dark:text-white/40">
-              {statusFilter === 'unreviewed' ? 'Queue is empty' : 'No articles found'}
+              {projectScoped ? 'No articles for this project yet'
+                : statusFilter === 'unreviewed' ? 'Queue is empty' : 'No articles found'}
             </p>
             <p className="text-xs text-gray-400 dark:text-white/25 mt-1">
-              {statusFilter || confidenceFilter || categoryFilter || search || minRelevance > 0
+              {projectScoped
+                ? 'Switch the project dropdown to “All sources” to see every article.'
+                : statusFilter || confidenceFilter || categoryFilter || search || minRelevance > 0
                 ? 'Try adjusting your filters'
                 : 'Click "Refresh now" to fetch the latest news'}
             </p>
