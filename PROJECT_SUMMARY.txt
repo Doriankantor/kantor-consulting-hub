@@ -1,15 +1,18 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-13
-  Current version: v2.0.21 (released)  |   252 commits   |   ~34,300 lines of TS/TSX
+  Current version: v2.0.21 (released)  |   259 commits   |   ~34,500 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
   NOTE: large post-v2.0.21 work stream is COMMITTED but UNRELEASED (needs a v2.0.22):
   Phase B B0.3/B0.5/B0.6 + B1 + member-add hang fix, AND the INTELLIGENCE RESTRUCTURE
-  (Slices 1, 2a–2c, Social-a/b, News human layer, 3a, 3b, the 3c commit pipeline, and
-  3d-1/3d-2 Send-to-New-sources across Documents + Social + Interviews). The routing
-  engine is now proven type-agnostic (article/document/social/interview). Working tree
-  is otherwise CLEAN (docs only). Next: Slice 3d-3 (compose action-row cleanup, pending
-  a design decision). See HANDOFF.md "Start here" for the resume point.
+  (Slices 1, 2a–2c, Social-a/b, News human layer, 3a, 3b, the 3c commit pipeline,
+  3d-1/3d-2/3d-3 Send-to-New-sources + action-row cleanup across Documents + Social +
+  Interviews), AND the TAG/SCOPING SERIES T1–T5 (project-scoped topic tags + shared
+  TagPicker + project-scoped compose views). All four source types (News/Documents/
+  Social/Interviews) are now human-first with Send-to-pipeline, project-scoped topic
+  tags, and bidirectional New-sources (route in / move back). Working tree is otherwise
+  CLEAN (docs only). Next: downstream Info Pages editorial stages (Analysis & design →
+  Publish → Sources). See HANDOFF.md "Start here" for the resume point.
 ═══════════════════════════════════════════════════════════════════════════════
 
 ───────────────────────────────────────────────────────────────────────────────
@@ -255,10 +258,50 @@ DESIGN PRINCIPLES / CONVENTIONS
       'social'/'interview' matching the intel type, status='routed'. The routing engine is now
       proven TYPE-AGNOSTIC across all four source types (article/document/social/interview) —
       source_type travels from the intel row rather than being hard-coded per tab.
-    * NEXT — Slice 3d-3: compose action-row cleanup across Documents + Social + Interviews
-      (drop the vestigial Approve/Reject; target [project picker] · [Save draft] · [Send] with
-      Delete in the card header) — pending a design decision. Then the rest of the Info Pages
-      restructure: the downstream editorial stages Analysis & design → Publish → Sources.
+    * Slice 3d-3 (7f91ba7) -- compose action-row cleanup: dropped the now-vestigial
+      Approve/Reject verdict buttons from Documents/Social/Interviews (superseded by
+      Send-to-project). Action row is now [project picker] · [Save] · [Send to New sources];
+      removal is the header Delete. Save condition simplified to status!=='saved';
+      handleStatus retained (Save still uses it). Renderer-only.
+
+  TAG / SCOPING SERIES T1–T5 (post-v2.0.21; needs a v2.0.22 to ship)
+    Goal: project-scoped topic tags across all four source types + project-scoped compose
+    views, so each card's tag vocabulary matches its project and the compose tabs behave
+    like News.
+    * T1 (af9a651) -- PROJECT-SCOPE THEMATIC TAGS. Idempotent db.ts startup migration adds
+      known_tags.project_board_id, backfills all 34 existing thematic tags to Contested Skies
+      (board-info-latam), and re-keys the uniqueness index from (name,type) to
+      (name,type,project_board_id); disposition tags left untouched (project_board_id NULL).
+      boardId threaded through getKnownTags/createTag/deleteTag (+ preload + env.d.ts).
+      NewsTab loads the SELECTED project's vocabulary and reloads on project change; creation
+      open to members, deletion admin-gated (can('delete_intel_tag')||isRoot). Migration
+      record committed at sql/2026-07-13-known-tags-project-scope.sql. SQL-verified end-to-end
+      (34 thematic → board-info-latam, index re-keyed, UI creation writes correctly scoped).
+      known_tags is LOCAL SQLite (no cloud). Article tags are stored BY VALUE (thematic_tags
+      JSON array on intelligence_sources), independent of the registry.
+    * T2 (c67b2b9) -- extracted the shared TagPicker component out of NewsTab into
+      src/renderer/src/pages/Intelligence/TagPicker.tsx (exported TagPickerProps interface),
+      so compose tabs can reuse it. The normalizeTagClient helper + createPortal import (both
+      TagPicker-only) moved with it. Pure refactor — NewsTab imports instead of defining.
+    * T3 (9a1a187) -- wired the shared TagPicker into Documents/Social/Interviews with
+      per-project scoping (getKnownTags('thematic', project?.id), reloads on project change),
+      gated on a project being selected ("Select a project to tag" otherwise); admin trash
+      gated by can('delete_intel_tag')||isRoot, matching NewsTab. No backend change (T1 made
+      the handlers project-aware). Tags flow through to the New-sources cards.
+    * T4 (3787d87) -- TagPicker dropdown FLIPS UPWARD when it would clip the bottom screen
+      edge. A useLayoutEffect measures the panel's real offsetHeight after mount and
+      repositions: downward-in-situ if it fits, flips up snugly (bottom-aligned to trigger) if
+      not, or caps+scrolls on the larger side when it fits neither. Loop-guarded (deps
+      [open, value.length, known.length], not panelPos). max-h-60 replaced by inline maxHeight.
+    * T5 (83a9180) -- PROJECT-SCOPE THE COMPOSE TABS. Mirror News's client-side project filter:
+      visible = items where project_board_id === project?.id (all when "All sources", i.e.
+      project null). Changing a card's project removes it from the current view (moves it to
+      that project) — no refetch, the existing handleProjectSelect state patch drives it.
+      Newly-created items INHERIT the selected project: uploadDocument/addSocial/addInterview
+      stamp project?.id via the existing setProject IPC (unstamped under "All sources"). Count
+      badges + empty-state point at visible. Net: every visible compose card belongs to the
+      selected project, so its TagPicker vocabulary always matches — resolving the
+      cross-project tag-scoping bug. Renderer-only (no backend/IPC/preload change).
 
   PHASE B — CLOUD BRIDGE FOR INFO PAGES (post-v2.0.21; needs a v2.0.22 to ship)
     Goal: make the 4 info-page projects real cloud boards (membership/heads work),

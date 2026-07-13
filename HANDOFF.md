@@ -1,18 +1,28 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-13 · v2.0.21 released; Intelligence restructure through Slice 3d-2 committed + pushed (HEAD 9021518); docs-only edits pending_
+_Last updated: 2026-07-13 · v2.0.21 released; Intelligence restructure through 3d-3 + tag/scoping series (Slices T1–T5) committed + pushed (HEAD 83a9180); docs-only edits pending_
 
 ## ▶ Start here — resume point for the next session
 
 **Where we are:** the **INTELLIGENCE RESTRUCTURE** (human-first capture → project
-commit pipeline). Slices 1 → 3d-2 are **committed + pushed** (HEAD = `9021518`,
-`origin/main` up to date); the only working-tree changes are these two docs. The
-commit pipeline works end-to-end and is now **proven type-agnostic across all four
-source types** — News Approve **and** the Documents / Social / Interviews "Send" all
-route into a project's "New sources" (all SQL-verified: `source_type` travels from the
-intel row, so article/document/social/interview each land with the matching badge),
-those cards show the full item, and move-back returns a source to the intel queue.
-**Immediate next step: Slice 3d-3 (compose action-row cleanup across all three tabs).**
+commit pipeline) plus a **tag/scoping series (T1–T5)** are **committed + pushed**
+(HEAD = `83a9180`, `origin/main` up to date); the only working-tree changes are these
+two docs. Net state of the four source types (**News / Documents / Social / Interviews**):
+- **Human-first capture** — researcher notes primary, on-demand AI (never auto-run),
+  editable reconcile — on all four.
+- **Send-to-pipeline** — each routes into a project's "New sources" via the shared,
+  type-agnostic `routeToProject` → `routeToNewSources` (`source_type` travels from the
+  intel row; SQL-verified for all four). New-sources cards show the full item, and
+  **move-back** returns a source to the intel queue (bidirectional).
+- **Project-scoped topic tags** — a shared `TagPicker` with a per-project vocabulary
+  (`known_tags.project_board_id`) on all four.
+- **Project-scoped views** — the three compose tabs now filter by the selected project
+  like News, and newly-created items inherit the selected project; every visible card
+  belongs to the selected project, so its tag vocabulary always matches.
+
+**Immediate next step: the downstream Info Pages editorial stages** (Analysis & design →
+Publish → Sources) — the New-sources → committed → published lifecycle *beyond* capture.
+The capture/routing/tagging front-end is now feature-complete for all four types.
 
 **The arc (why):** make Source Intelligence human-first (researcher notes + on-demand
 AI, never auto-run) and route items into a specific project's Info Pages "New sources"
@@ -48,23 +58,55 @@ fan-out.
   Approve/Save/Reject and the action-row layout left **untouched** (cleanup is 3d-3).
   SQL-verified: Send from each tab creates an `info_page_sources` row `stage='new'` with
   `source_type` `social`/`interview` matching the intel `type`, and flips `status='routed'`.
+- **3d-3** (`7f91ba7`) — compose action-row cleanup: dropped the now-vestigial
+  **Approve / Reject** verdict buttons from Documents/Social/Interviews (superseded by
+  Send-to-project). Action row is now **[project picker] · [Save] · [Send to New
+  sources]**; removal is the header **Delete**. Save condition simplified to
+  `status !== 'saved'`; `handleStatus` retained (Save uses it).
 
 **Why this matters:** the routing engine (`routeToProject` → `routeToNewSources`) is now
 proven **type-agnostic** — the same IPC drives article, document, social, and interview
 Sends, and `source_type` is read from the intel row rather than hard-coded per tab.
 
-**Immediate next task — Slice 3d-3 (compose action-row cleanup).** Rework the per-item
-action row consistently across **Documents / Social / Interviews**: today Approve / Save /
-Reject / Send are crowded on one line. Target layout **[project picker] · [Save draft] ·
-[Send]** with **Delete in the card header**, dropping the now-vestigial **Approve / Reject**
-verdict buttons (the verdict is superseded by the Send-to-project pipeline). **Pending a
-design decision** — confirm the target row before touching source. Then continue the rest
-of the **Info Pages restructure**: the downstream editorial stages **Analysis & design →
-Publish → Sources** (the New-sources → committed → published lifecycle beyond capture).
+**The tag/scoping series (T1–T5, all committed + pushed):** project-scoped topic tags on
+all four source types, plus project-scoped compose views.
+- **T1** (`af9a651`) — **project-scope thematic tags.** Idempotent `db.ts` startup
+  migration adds `known_tags.project_board_id`, backfills all 34 existing thematic tags to
+  Contested Skies (`board-info-latam`), and re-keys the uniqueness index to
+  `(name, type, project_board_id)`; disposition tags left untouched. `boardId` threaded
+  through `getKnownTags`/`createTag`/`deleteTag` (+ preload + `env.d.ts`). NewsTab loads
+  the **selected project's** vocabulary and reloads on project change; creation open to
+  members, deletion admin-gated (`can('delete_intel_tag') || isRoot`). Migration record
+  committed at `sql/2026-07-13-known-tags-project-scope.sql`. SQL-verified end-to-end.
+- **T2** (`c67b2b9`) — extracted the shared **`TagPicker`** component out of NewsTab into
+  `src/renderer/src/pages/Intelligence/TagPicker.tsx` (exported `TagPickerProps`). Pure
+  refactor; `normalizeTagClient` + `createPortal` moved with it.
+- **T3** (`9a1a187`) — wired the shared `TagPicker` into **Documents/Social/Interviews**
+  with per-project scoping (`getKnownTags('thematic', project?.id)`, reloads on project
+  change), gated on a project being selected ("Select a project to tag" otherwise); admin
+  trash gated the same way. Tags flow through to the New-sources cards.
+- **T4** (`3787d87`) — `TagPicker` dropdown **flips upward** when it would clip the bottom
+  edge: a `useLayoutEffect` measures the panel's real `offsetHeight` after mount and
+  positions downward-in-situ / flips-up-snugly / caps+scrolls (loop-guarded on
+  `[open, value.length, known.length]`).
+- **T5** (`83a9180`) — **project-scope the compose tabs.** Mirror News's client-side
+  filter (`visible = items where project_board_id === project?.id`; all when "All
+  sources"); changing a card's project removes it from the current view (moves projects).
+  Newly-created items **inherit** the selected project (`uploadDocument`/`addSocial`/
+  `addInterview` → reuse `setProject` when `project?.id` set). Count badges + empty-state
+  point at `visible`. This makes every visible compose card match the selected project,
+  **resolving the cross-project tag-scoping bug** (a card's TagPicker vocabulary always
+  matches its project).
+
+**Immediate next task — the downstream Info Pages editorial stages.** Capture, routing,
+and tagging are done for all four source types; the next arc is the **New-sources →
+committed → published** lifecycle on the Info Pages side: **Analysis & design → Publish →
+Sources**. (Scope TBD — start by mapping the existing `getSourcePipeline` stages
+`new → review → committed` and the editorial tabs against what's still stubbed.)
 
 **Then, eventually:** cut a **v2.0.22** release so installed apps get everything
 committed since the v2.0.21 tag (member-add hang fix + Phase-B B0.3/B0.5/B0.6/B1 +
-the whole Intelligence restructure through 3d-2).
+the whole Intelligence restructure through 3d-3 + the tag/scoping series T1–T5).
 
 ## Release status at a glance
 
@@ -79,10 +121,13 @@ the whole Intelligence restructure through 3d-2).
   (`60a5d45`), **2b** (`b231b2a`), Documents-delete (`be9101e`), **2c+Social-a**
   (`9ce37a9`), AI-relevance (`335d3a8`), **Social-b** (`dcda557`), News-human-layer
   (`ff50233` + `69fac5c`), **3a** (`0a4585e`), **3b** (`17448c0`), **3c-1** (`41d0acb`),
-  **3c-2a** (`8010183`), **3c-2b** (`588ac91`), **3d-1** (`14d9386`), **3d-2** (`9021518`).
+  **3c-2a** (`8010183`), **3c-2b** (`588ac91`), **3d-1** (`14d9386`), **3d-2** (`9021518`),
+  **3d-3** (`7f91ba7`); and the **tag/scoping series** **T1** (`af9a651`), **T2**
+  (`c67b2b9`), **T3** (`9a1a187`), **T4** (`3787d87`), **T5** (`83a9180`). (Docs commit
+  `faf9b79` sits between 3d-2 and 3d-3.)
 - **Working tree:** only these two docs (`HANDOFF.md`, `PROJECT_SUMMARY.txt`) are
-  modified — no source changes pending. Next unbuilt work is **Slice 3d-3** (compose
-  action-row cleanup, pending a design decision). See "Start here" above.
+  modified — no source changes pending. Next unbuilt work is the **downstream Info Pages
+  editorial stages** (Analysis & design → Publish → Sources). See "Start here" above.
 
 ## v2.0.21 — keyword matcher word-boundary fix (released)
 
