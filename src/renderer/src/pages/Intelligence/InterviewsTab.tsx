@@ -49,17 +49,30 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
   const [transcript, setTranscript] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
+  // 3d: the info-page projects (for the per-item project picker + Send target).
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const data = await window.api.intelligence.getSources({ type: 'interview' })
-      setInterviews(data)
+      // 3d: sent items (status='routed') live in the pipeline now — drop from compose.
+      setInterviews(data.filter((d: any) => d.status !== 'routed'))
     } catch { /* ignore */ }
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // 3d: load the info-page projects once for the picker/Send target.
+  useEffect(() => {
+    (async () => {
+      try {
+        const boards = await window.api.infoPages.list()
+        setProjects((boards as Array<{ id: string; name: string }>).map(b => ({ id: b.id, name: b.name })))
+      } catch (e) { console.warn('[InterviewsTab] projects load failed:', e) }
+    })()
+  }, [])
 
   // Capture a new interview: transcript goes to `content` as PLAIN TEXT.
   async function handleAdd() {
@@ -100,6 +113,24 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
     if (!confirm('Delete this interview?')) return
     await window.api.intelligence.deleteSource(id)
     setInterviews(prev => prev.filter(iv => iv.id !== id))
+  }
+
+  // 3d: persist the reliable board-id project association (picker change).
+  const handleProjectSelect = async (id: string, boardId: string) => {
+    await window.api.intelligence.setProject(id, boardId || null)
+    setInterviews(prev => prev.map(iv => iv.id === id ? { ...iv, project_board_id: boardId || null } : iv))
+  }
+
+  // 3d: Send to New sources — route into the selected project's pipeline (stage='new')
+  // and drop the item from the compose list (status='routed').
+  const handleSend = async (id: string, boardId: string) => {
+    const res = await window.api.intelligence.routeToProject(id, boardId)
+    if (res?.ok) {
+      setInterviews(prev => prev.filter(iv => iv.id !== id))
+      onApprove(res.pageName ? [res.pageName] : [])
+    } else if (res?.error) {
+      console.warn('[3d] send failed:', res.error)
+    }
   }
 
   // Patch one interview in local state so notes/AI results re-render in place.
@@ -164,6 +195,8 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
 
         {!loading && interviews.map(iv => {
           const isPending = pendingStatus[iv.id]
+          // 3d: picker default — the interview's project, else the top-dropdown selected project.
+          const projectBoardSel = iv.project_board_id || (project?.id ?? '')
           return (
             <div key={iv.id} className="bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4">
               {/* Header */}
@@ -195,6 +228,22 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
               {/* Actions */}
               <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
                 <div className="flex-1" />
+                {/* 3d: project picker (reliable board-id association) */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30">Project</span>
+                  {projects.length > 0 ? (
+                    <select
+                      value={projectBoardSel}
+                      onChange={e => handleProjectSelect(iv.id, e.target.value)}
+                      className="px-2 py-0.5 rounded text-[11px] border border-gray-200 dark:border-white/[0.15] bg-white dark:bg-gray-900 text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                    >
+                      {!projectBoardSel && <option value="">— select project —</option>}
+                      {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  ) : (
+                    <span className="text-[11px] text-gray-400 dark:text-white/30">Loading…</span>
+                  )}
+                </div>
                 {iv.status !== 'approved' && iv.status !== 'pushed' && (
                   <button onClick={() => handleStatus(iv.id, 'approved')} disabled={isPending}
                     className="px-2.5 py-1 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-medium transition disabled:opacity-50">Approve</button>
@@ -207,6 +256,15 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
                   <button onClick={() => handleStatus(iv.id, 'rejected')} disabled={isPending}
                     className="px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-medium transition disabled:opacity-50">Reject</button>
                 )}
+                {/* 3d: Send to New sources — routes into the selected project's pipeline */}
+                <button
+                  onClick={() => handleSend(iv.id, projectBoardSel)}
+                  disabled={!projectBoardSel}
+                  title={projectBoardSel ? 'Route this interview into the project’s New sources' : 'Select a project first'}
+                  className="px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ➤ Send to New sources
+                </button>
               </div>
             </div>
           )

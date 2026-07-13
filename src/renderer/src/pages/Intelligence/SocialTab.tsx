@@ -97,18 +97,31 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   const [urlInput, setUrlInput] = useState('')
   const [fetching, setFetching] = useState(false)
   const [fetchNote, setFetchNote] = useState<{ type: 'ok' | 'warn'; text: string } | null>(null)
+  // 3d: the info-page projects (for the per-item project picker + Send target).
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
   const handleRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const data = await window.api.intelligence.getSources({ type: 'social' })
-      setPosts(data)
+      // 3d: sent items (status='routed') live in the pipeline now — drop from compose.
+      setPosts(data.filter((d: any) => d.status !== 'routed'))
     } catch { /* ignore */ }
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // 3d: load the info-page projects once for the picker/Send target.
+  useEffect(() => {
+    (async () => {
+      try {
+        const boards = await window.api.infoPages.list()
+        setProjects((boards as Array<{ id: string; name: string }>).map(b => ({ id: b.id, name: b.name })))
+      } catch (e) { console.warn('[SocialTab] projects load failed:', e) }
+    })()
+  }, [])
 
   function toggleCategory(cat: string) {
     setForm(f => ({
@@ -203,6 +216,24 @@ export default function SocialTab({ onApprove, project = null }: Props) {
     if (!confirm('Delete this post?')) return
     await window.api.intelligence.deleteSource(id)
     setPosts(prev => prev.filter(p => p.id !== id))
+  }
+
+  // 3d: persist the reliable board-id project association (picker change).
+  const handleProjectSelect = async (id: string, boardId: string) => {
+    await window.api.intelligence.setProject(id, boardId || null)
+    setPosts(prev => prev.map(p => p.id === id ? { ...p, project_board_id: boardId || null } : p))
+  }
+
+  // 3d: Send to New sources — route into the selected project's pipeline (stage='new')
+  // and drop the item from the compose list (status='routed').
+  const handleSend = async (id: string, boardId: string) => {
+    const res = await window.api.intelligence.routeToProject(id, boardId)
+    if (res?.ok) {
+      setPosts(prev => prev.filter(p => p.id !== id))
+      onApprove(res.pageName ? [res.pageName] : [])
+    } else if (res?.error) {
+      console.warn('[3d] send failed:', res.error)
+    }
   }
 
   // Patch one post in local state so notes/AI results re-render in place.
@@ -407,6 +438,8 @@ export default function SocialTab({ onApprove, project = null }: Props) {
           const cats: string[] = (() => { try { return JSON.parse(post.categories_json || '[]') } catch { return [] } })()
           const PlatformIcon = PLATFORM_ICONS[post.platform || '']
           const isPending = pendingStatus[post.id]
+          // 3d: picker default — the post's project, else the top-dropdown selected project.
+          const projectBoardSel = post.project_board_id || (project?.id ?? '')
           const isFading = fadingIds.has(post.id)
           return (
             <div key={post.id} className={`bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4 transition-all duration-300 ${isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
@@ -481,6 +514,22 @@ export default function SocialTab({ onApprove, project = null }: Props) {
               {/* Status actions */}
               <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
                 <div className="flex-1" />
+                {/* 3d: project picker (reliable board-id association) */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30">Project</span>
+                  {projects.length > 0 ? (
+                    <select
+                      value={projectBoardSel}
+                      onChange={e => handleProjectSelect(post.id, e.target.value)}
+                      className="px-2 py-0.5 rounded text-[11px] border border-gray-200 dark:border-white/[0.15] bg-white dark:bg-gray-900 text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                    >
+                      {!projectBoardSel && <option value="">— select project —</option>}
+                      {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  ) : (
+                    <span className="text-[11px] text-gray-400 dark:text-white/30">Loading…</span>
+                  )}
+                </div>
                 {post.status !== 'approved' && post.status !== 'pushed' && (
                   <button onClick={() => handleStatus(post.id, 'approved')} disabled={isPending}
                     className="px-2.5 py-1 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-medium transition disabled:opacity-50">Approve</button>
@@ -493,6 +542,15 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                   <button onClick={() => handleStatus(post.id, 'rejected')} disabled={isPending}
                     className="px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-medium transition disabled:opacity-50">Reject</button>
                 )}
+                {/* 3d: Send to New sources — routes into the selected project's pipeline */}
+                <button
+                  onClick={() => handleSend(post.id, projectBoardSel)}
+                  disabled={!projectBoardSel}
+                  title={projectBoardSel ? 'Route this post into the project’s New sources' : 'Select a project first'}
+                  className="px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ➤ Send to New sources
+                </button>
               </div>
             </div>
           )
