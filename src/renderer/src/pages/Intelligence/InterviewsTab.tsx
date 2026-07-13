@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import RichTextEditor from '../../components/RichTextEditor'
+import TagPicker from './TagPicker'
 
 // 2c: Intelligence "Interviews" tab — human-first, mirroring the Documents (2b)
 // compose flow. type='interview' rows on intelligence_sources; the transcript is
@@ -40,6 +41,11 @@ interface Props {
   project?: ProjectInfo
 }
 
+// T3: parse a thematic_tags JSON array safely (mirrors NewsTab's readTags).
+function readTags(raw: string | null): string[] {
+  try { const a = JSON.parse(raw || '[]'); return Array.isArray(a) ? a : [] } catch { return [] }
+}
+
 export default function InterviewsTab({ onApprove, project = null }: Props) {
   const { localUser, isRoot, can } = useAuth()
   const [interviews, setInterviews] = useState<IntelligenceSource[]>([])
@@ -51,6 +57,8 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
   // 3d: the info-page projects (for the per-item project picker + Send target).
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
+  // T3: the selected project's thematic tag vocabulary (project-scoped, from T1).
+  const [knownThematic, setKnownThematic] = useState<string[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -73,6 +81,14 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
       } catch (e) { console.warn('[InterviewsTab] projects load failed:', e) }
     })()
   }, [])
+
+  // T3: load the selected project's thematic tag vocabulary; reload on project change.
+  useEffect(() => {
+    const boardId = project?.id
+    if (!boardId) { setKnownThematic([]); return }
+    window.api.intelligence.getKnownTags('thematic', boardId)
+      .then(setKnownThematic).catch(() => setKnownThematic([]))
+  }, [project?.id])
 
   // Capture a new interview: transcript goes to `content` as PLAIN TEXT.
   async function handleAdd() {
@@ -131,6 +147,32 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
     } else if (res?.error) {
       console.warn('[3d] send failed:', res.error)
     }
+  }
+
+  // T3: project-scoped topic tags on the compose item (mirrors NewsTab).
+  const handleSetTags = async (id: string, tags: string[]) => {
+    try {
+      const res = await window.api.intelligence.setArticleTags(id, 'thematic', tags)
+      const final = res?.tags ?? tags
+      setInterviews(prev => prev.map(iv => iv.id === id ? { ...iv, thematic_tags: JSON.stringify(final) } : iv))
+    } catch (e) { console.warn('[InterviewsTab] setArticleTags failed:', e) }
+  }
+  const handleCreateTag = async (id: string, current: string[], name: string, boardId: string) => {
+    if (!boardId) return
+    try {
+      const res = await window.api.intelligence.createTag(name, 'thematic', boardId)
+      if (!res?.ok || !res.name) return
+      setKnownThematic(prev => prev.includes(res.name) ? prev : [...prev, res.name].sort((a, b) => a.localeCompare(b)))
+      if (!current.includes(res.name)) await handleSetTags(id, [...current, res.name])
+    } catch (e) { console.warn('[InterviewsTab] createTag failed:', e) }
+  }
+  const handleDeleteTag = async (name: string, boardId: string) => {
+    if (!boardId) return
+    if (!confirm(`Delete tag "${name}" from this project's registry?`)) return
+    try {
+      await window.api.intelligence.deleteTag(name, 'thematic', boardId)
+      setKnownThematic(prev => prev.filter(t => t !== name))
+    } catch (e) { console.warn('[InterviewsTab] deleteTag failed:', e) }
   }
 
   // Patch one interview in local state so notes/AI results re-render in place.
@@ -197,6 +239,8 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
           const isPending = pendingStatus[iv.id]
           // 3d: picker default — the interview's project, else the top-dropdown selected project.
           const projectBoardSel = iv.project_board_id || (project?.id ?? '')
+          // T3: this item's topic tags (project-scoped write target = projectBoardSel).
+          const themaTags = readTags(iv.thematic_tags)
           return (
             <div key={iv.id} className="bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4">
               {/* Header */}
@@ -244,6 +288,22 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
                     <span className="text-[11px] text-gray-400 dark:text-white/30">Loading…</span>
                   )}
                 </div>
+                {/* T3: project-scoped topic tags */}
+                {projectBoardSel ? (
+                  <TagPicker
+                    label="Topic"
+                    value={themaTags}
+                    known={knownThematic}
+                    chipClass="bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-300"
+                    onAdd={tag => handleSetTags(iv.id, [...themaTags, tag])}
+                    onRemove={tag => handleSetTags(iv.id, themaTags.filter(t => t !== tag))}
+                    onCreate={name => handleCreateTag(iv.id, themaTags, name, projectBoardSel)}
+                    onDelete={(can('delete_intel_tag') || isRoot) ? tag => handleDeleteTag(tag, projectBoardSel) : undefined}
+                    isAdmin={can('delete_intel_tag') || isRoot}
+                  />
+                ) : (
+                  <span className="text-[10px] text-gray-400 dark:text-white/30 italic">Select a project to tag</span>
+                )}
                 {iv.status !== 'saved' && (
                   <button onClick={() => handleStatus(iv.id, 'saved')} disabled={isPending}
                     className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition disabled:opacity-50">Save</button>
