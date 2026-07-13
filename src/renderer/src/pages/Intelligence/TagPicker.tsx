@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
 // Mirror the backend tag normalization for live previews (trim, lowercase, spaces→hyphens).
@@ -35,7 +35,7 @@ export interface TagPickerProps {
 export default function TagPicker({ label, value, known, chipClass, onAdd, onRemove, onCreate, onDelete, isAdmin, forceOpen }: TagPickerProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [panelPos, setPanelPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number; maxHeight: number }>({ top: 0, left: 0, maxHeight: 240 })
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -44,14 +44,46 @@ export default function TagPicker({ label, value, known, chipClass, onAdd, onRem
   const matches = norm ? available.filter(t => t.includes(norm)) : available
   const exactExists = known.includes(norm)
 
-  // Compute panel position from the trigger button, then open.
+  // Anchor downward at the trigger; a useLayoutEffect re-measures after the panel
+  // mounts and flips upward (using the panel's REAL height) only if it won't fit below.
   function openPanel() {
     if (triggerRef.current) {
       const r = triggerRef.current.getBoundingClientRect()
-      setPanelPos({ top: r.bottom + 4, left: r.left })
+      setPanelPos({ top: r.bottom + 4, left: r.left, maxHeight: 240 })
     }
     setOpen(true)
   }
+
+  // After the panel mounts, measure its REAL height and reposition: keep it
+  // downward if it fits, flip up snugly if it doesn't, or cap+scroll on the larger
+  // side when it fits neither. Keyed on [open, value.length, known.length] (NOT
+  // panelPos) so setPanelPos here can't retrigger it into a loop.
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current || !panelRef.current) return
+    const GAP = 4
+    const VIEWPORT_MARGIN = 8 // keep a little gap from the screen edge
+    const r = triggerRef.current.getBoundingClientRect()
+    const panelH = panelRef.current.offsetHeight // REAL rendered height
+    const spaceBelow = window.innerHeight - r.bottom - GAP - VIEWPORT_MARGIN
+    const spaceAbove = r.top - GAP - VIEWPORT_MARGIN
+    // Fits below at its real height? stay downward, in situ.
+    if (panelH <= spaceBelow) {
+      setPanelPos(p => ({ ...p, top: r.bottom + GAP, left: r.left, maxHeight: Math.min(240, spaceBelow) }))
+      return
+    }
+    // Doesn't fit below. If it fits above at real height, flip up SNUGLY (bottom-aligned to trigger top).
+    if (panelH <= spaceAbove) {
+      setPanelPos(p => ({ ...p, top: r.top - GAP - panelH, left: r.left, maxHeight: Math.min(240, spaceAbove) }))
+      return
+    }
+    // Fits neither: open on the larger side and cap+scroll.
+    if (spaceBelow >= spaceAbove) {
+      setPanelPos(p => ({ ...p, top: r.bottom + GAP, left: r.left, maxHeight: Math.max(120, spaceBelow) }))
+    } else {
+      const h = Math.max(120, spaceAbove)
+      setPanelPos(p => ({ ...p, top: r.top - GAP - h, left: r.left, maxHeight: h }))
+    }
+  }, [open, value.length, known.length])
 
   // Phase 4: parent can force the panel open (e.g., on gate block).
   useEffect(() => {
@@ -74,8 +106,8 @@ export default function TagPicker({ label, value, known, chipClass, onAdd, onRem
   const panel = open ? createPortal(
     <div
       ref={panelRef}
-      style={{ position: 'fixed', top: panelPos.top, left: panelPos.left, zIndex: 9999 }}
-      className="w-56 max-h-60 overflow-auto rounded-lg border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-gray-900 shadow-xl p-1"
+      style={{ position: 'fixed', top: panelPos.top, left: panelPos.left, maxHeight: panelPos.maxHeight, zIndex: 9999 }}
+      className="w-56 overflow-auto rounded-lg border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-gray-900 shadow-xl p-1"
     >
       <input
         autoFocus
