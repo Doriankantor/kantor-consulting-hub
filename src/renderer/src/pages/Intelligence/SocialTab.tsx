@@ -530,17 +530,9 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                     <span className="text-[11px] text-gray-400 dark:text-white/30">Loading…</span>
                   )}
                 </div>
-                {post.status !== 'approved' && post.status !== 'pushed' && (
-                  <button onClick={() => handleStatus(post.id, 'approved')} disabled={isPending}
-                    className="px-2.5 py-1 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-medium transition disabled:opacity-50">Approve</button>
-                )}
-                {post.status !== 'saved' && post.status !== 'approved' && post.status !== 'pushed' && (
+                {post.status !== 'saved' && (
                   <button onClick={() => handleStatus(post.id, 'saved')} disabled={isPending}
                     className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition disabled:opacity-50">Save</button>
-                )}
-                {post.status !== 'rejected' && (
-                  <button onClick={() => handleStatus(post.id, 'rejected')} disabled={isPending}
-                    className="px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-medium transition disabled:opacity-50">Reject</button>
                 )}
                 {/* 3d: Send to New sources — routes into the selected project's pipeline */}
                 <button

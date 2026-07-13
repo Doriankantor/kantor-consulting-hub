@@ -287,31 +287,13 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
                   )}
                 </div>
                 <div className="flex-1" />
-                {doc.status !== 'approved' && doc.status !== 'pushed' && (
-                  <button
-                    onClick={() => handleStatus(doc.id, 'approved')}
-                    disabled={isPending}
-                    className="px-2.5 py-1 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-medium transition disabled:opacity-50"
-                  >
-                    Approve
-                  </button>
-                )}
-                {doc.status !== 'saved' && doc.status !== 'approved' && doc.status !== 'pushed' && (
+                {doc.status !== 'saved' && (
                   <button
                     onClick={() => handleStatus(doc.id, 'saved')}
                     disabled={isPending}
                     className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition disabled:opacity-50"
                   >
                     Save
-                  </button>
-                )}
-                {doc.status !== 'rejected' && (
-                  <button
-                    onClick={() => handleStatus(doc.id, 'rejected')}
-                    disabled={isPending}
-                    className="px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-medium transition disabled:opacity-50"
-                  >
-                    Reject
                   </button>
                 )}
                 {/* 3d: Send to New sources — routes into the selected project's pipeline */}
