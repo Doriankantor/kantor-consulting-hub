@@ -419,6 +419,10 @@ interface InfoPageSourceRow {
   confidence: string | null
   review_notes: string | null
   disposition_tags: string | null
+  // 3c-2a: full-item fields (optional — most rows have none of these).
+  type?: string
+  analysis_json?: string
+  intel_notes?: string
 }
 
 // Audit log entry from info_page_changes.

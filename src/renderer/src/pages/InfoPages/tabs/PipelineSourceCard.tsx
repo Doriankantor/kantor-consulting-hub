@@ -8,6 +8,22 @@ function readArr(raw: string | null): string[] {
   try { return JSON.parse(raw || '[]') } catch { return [] }
 }
 
+// 3c-2a: parse the analysis_json blob (never throws → {} on missing/invalid).
+function parseAnalysis(raw: string | null | undefined): { ai?: any; human?: any; reconciled?: any } {
+  if (!raw) return {}
+  try { const o = JSON.parse(raw); return o && typeof o === 'object' ? o : {} } catch { return {} }
+}
+
+// 3c-2a: plain text from the researcher's TipTap notes HTML (for a compact card line).
+function stripHtml(html: string | null | undefined): string {
+  return (html || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 const REL_BADGE: Record<string, string> = {
   'in-region':        'bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-300',
   'supply-side':      'bg-blue-100 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300',
@@ -38,6 +54,10 @@ export default function PipelineSourceCard({ row, checked, onCheck, action, show
   const topics = readArr(row.thematic_tags)
   const date = row.published_at ? new Date(row.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
   const selectable = typeof onCheck === 'function'
+  // 3c-2a: full-item data (all optional — most rows have none of these).
+  const analysis = parseAnalysis(row.analysis_json)
+  const hasAnalysis = !!(analysis.ai || analysis.human || analysis.reconciled)
+  const notes = stripHtml(row.intel_notes)
 
   return (
     <div className={`rounded-xl border p-4 transition-all ${checked ? 'border-indigo-400 dark:border-indigo-500 bg-indigo-50/50 dark:bg-indigo-500/5' : 'border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.03]'}`}>
@@ -53,6 +73,12 @@ export default function PipelineSourceCard({ row, checked, onCheck, action, show
         <div className="flex-1 min-w-0">
           {/* Badge row — full carried metadata */}
           <div className="flex flex-wrap gap-1 mb-2">
+            {/* 3c-2a: source type */}
+            {row.type && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-500/20 text-slate-600 dark:text-slate-300">
+                {row.type}
+              </span>
+            )}
             {row.relevance_score != null && (
               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-white/60">
                 REL {row.relevance_score}
@@ -105,6 +131,42 @@ export default function PipelineSourceCard({ row, checked, onCheck, action, show
           {row.review_notes && (
             <p className="mt-2 text-xs text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-1.5 rounded-lg italic">
               📝 {row.review_notes}
+            </p>
+          )}
+          {/* 3c-2a: AI analysis — render only the blocks that exist */}
+          {hasAnalysis && (
+            <div className="mt-2 space-y-1.5">
+              {analysis.human && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  <span className="font-semibold">Researcher override:</span> relevance = {String(analysis.human.relevance ?? '—')}
+                </p>
+              )}
+              {analysis.ai && (
+                <div className="text-xs text-gray-600 dark:text-white/60">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30">AI analysis</span>
+                  {typeof analysis.ai.relevance_score === 'number' && (
+                    <span className="ml-1.5 px-1 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">REL {analysis.ai.relevance_score}</span>
+                  )}
+                  {analysis.ai.summary && <span className="block mt-0.5">{analysis.ai.summary}</span>}
+                  {analysis.ai.relevance_reasoning && !analysis.ai.summary && <span className="block mt-0.5 italic">{analysis.ai.relevance_reasoning}</span>}
+                </div>
+              )}
+              {analysis.reconciled && (
+                <div className="text-xs text-gray-600 dark:text-white/60">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30">Reconciled</span>
+                  {typeof analysis.reconciled.relevance_score === 'number' && (
+                    <span className="ml-1.5 px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-bold">REL {analysis.reconciled.relevance_score}</span>
+                  )}
+                  {analysis.reconciled.summary && <span className="block mt-0.5">{analysis.reconciled.summary}</span>}
+                </div>
+              )}
+            </div>
+          )}
+          {/* 3c-2a: researcher notes (intel_notes) */}
+          {notes && (
+            <p className="mt-2 text-xs text-gray-600 dark:text-white/60 bg-gray-50 dark:bg-white/[0.03] px-2 py-1.5 rounded-lg">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30">📝 Notes</span>
+              <span className="block mt-0.5">{notes}</span>
             </p>
           )}
           {/* Design notes (carried with committed sources) */}

@@ -3763,7 +3763,8 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
              is2.title, is2.url, is2.source_name, is2.published_at, is2.snippet,
              is2.relevance_score, is2.relevance_type, is2.geography, is2.language,
              is2.categories_json, is2.thematic_tags, is2.confidence,
-             is2.review_notes, is2.disposition_tags
+             is2.review_notes, is2.disposition_tags,
+             is2.type, is2.analysis_json, is2.intel_notes
       FROM info_page_sources ips
       JOIN intelligence_sources is2 ON is2.id = ips.article_id
       WHERE ips.info_page = ?
