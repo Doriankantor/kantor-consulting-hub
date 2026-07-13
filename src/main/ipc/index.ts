@@ -2851,6 +2851,12 @@ function registerIntelligenceHandlers(): void {
     return { ok: true }
   })
 
+  // 3e: save researcher-pasted full article text into content (pipeline only captures a snippet).
+  ipcMain.handle('intelligence:updateContent', (_e, id: string, content: string) => {
+    db().prepare('UPDATE intelligence_sources SET content=? WHERE id=?').run(content ?? '', id)
+    return { ok: true }
+  })
+
   // 2b: store a reconciled AI read UNDER analysis_json.reconciled, leaving the
   // original top-level analysis untouched. Stamps reconciled_at server-side and
   // returns the stored block so the renderer can merge it without a refetch.

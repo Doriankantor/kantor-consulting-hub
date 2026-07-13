@@ -776,6 +776,7 @@ interface Window {
       fetchUrlMetadata:     (url: string) => Promise<{ ok: true; metadata: { title?: string; description?: string; site_name?: string; author?: string; published?: string; image?: string; url: string; platform?: string } } | { ok: false; error: string; reason: 'blocked' | 'timeout' | 'not_html' | 'fetch_failed' | 'invalid_url' }>
       // 2b (human-first): researcher notes, on-demand AI read, editable reconciled read.
       updateNotes:          (id: string, notesHtml: string)   => Promise<{ ok: boolean }>
+      updateContent:        (id: string, content: string)     => Promise<{ ok: boolean }>
       saveAiAnalysis:       (id: string, ai: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[] }) => Promise<{ ok: true; ai: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]; analyzed_at: string } } | { ok: false; error: string }>
       saveReconciled:       (id: string, reconciled: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[] }) => Promise<{ ok: true; reconciled: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]; reconciled_at: string } } | { ok: false; error: string }>
       updateReconciledNotes:(id: string, html: string)        => Promise<{ ok: boolean }>

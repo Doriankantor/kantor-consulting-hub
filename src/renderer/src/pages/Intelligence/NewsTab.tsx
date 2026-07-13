@@ -58,6 +58,16 @@ function parseAnalysis(raw: string | null): Record<string, unknown> {
 function notesText(html: string | null): string {
   return (html || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
 }
+// 3e: return analysis_json with one top-level key replaced, preserving the rest.
+function withAnalysisKey(raw: string | null, key: string, block: unknown): string {
+  const o = parseAnalysis(raw)
+  o[key] = block
+  return JSON.stringify(o)
+}
+// 3e: escape for seeding the reconciled RichTextEditor from the AI summary.
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
 
 
 interface Props {
@@ -94,6 +104,12 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   // News human layer: per-card elongating footer open state + in-progress note drafts.
   const [openFooter, setOpenFooter] = useState<Record<string, boolean>>({})
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
+  // 3e: per-source keyed state for the rich human-first footer (article text + AI + reconcile).
+  const [contentDrafts, setContentDrafts]       = useState<Record<string, string>>({})
+  const [reconciledDrafts, setReconciledDrafts] = useState<Record<string, string>>({})
+  const [analyzingId, setAnalyzingId]           = useState<string | null>(null)
+  const [reconcilingId, setReconcilingId]       = useState<string | null>(null)
+  const [aiErr, setAiErr]                        = useState<Record<string, string>>({})
 
   // Autosave researcher notes to intel_notes (existing row → safe). Save-if-changed.
   async function saveNote(id: string) {
@@ -105,6 +121,86 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       await window.api.intelligence.updateNotes(id, draft)
       setSources(prev => prev.map(s => s.id === id ? { ...s, intel_notes: draft || null } : s))
     } catch (e) { console.warn('[NewsTab] updateNotes failed:', e) }
+  }
+
+  // 3e: save pasted article text → content (save-if-changed).
+  async function saveContent(id: string) {
+    const draft = contentDrafts[id]
+    if (draft === undefined) return
+    const current = sources.find(s => s.id === id)?.content || ''
+    if (draft === current) return
+    try {
+      await window.api.intelligence.updateContent(id, draft)
+      setSources(prev => prev.map(s => s.id === id ? { ...s, content: draft } : s))
+    } catch (e) { console.warn('[NewsTab] updateContent failed:', e) }
+  }
+
+  // 3e: on-demand AI read over the PASTED article text (task='relevance', project-aware).
+  async function analyzeSource(id: string) {
+    if (analyzingId) return
+    // use the pasted draft if present, else the stored content
+    const text = contentDrafts[id] ?? (sources.find(s => s.id === id)?.content || '')
+    setAnalyzingId(id); setAiErr(p => ({ ...p, [id]: '' }))
+    try {
+      // persist the pasted text first so analysis + later reload agree
+      await saveContent(id)
+      const src = sources.find(s => s.id === id)
+      const boardId = src?.project_board_id
+      const proj = boardId ? projects.find(p => p.id === boardId) : null
+      const res = await window.api.intelligence.analyzeText({
+        task: 'relevance',
+        text,
+        projectConfig: proj ? { name: proj.name, keywords: (proj as any).keywords } : null,
+      })
+      if (!res.ok) { setAiErr(p => ({ ...p, [id]: res.error || 'Analysis failed.' })); return }
+      const saved = await window.api.intelligence.saveAiAnalysis(id, res.result)
+      if (!saved.ok) { setAiErr(p => ({ ...p, [id]: saved.error || 'Save failed.' })); return }
+      setSources(prev => prev.map(s => s.id === id ? { ...s, analysis_json: withAnalysisKey(s.analysis_json, 'ai', saved.ai) } : s))
+    } catch (e) { setAiErr(p => ({ ...p, [id]: (e as Error)?.message || 'Analysis failed.' })) }
+    finally { setAnalyzingId(null) }
+  }
+
+  // 3e: merge notes + article into an editable reconciled read (task='reconcile').
+  async function reconcileSource(id: string) {
+    if (reconcilingId) return
+    const src = sources.find(s => s.id === id)
+    if (!src) return
+    const notesHtml = noteDrafts[id] ?? (src.intel_notes || '')
+    const plainNotes = notesText(notesHtml)
+    setReconcilingId(id); setAiErr(p => ({ ...p, [id]: '' }))
+    try {
+      if (notesHtml !== (src.intel_notes || '')) {
+        await window.api.intelligence.updateNotes(id, notesHtml)
+        setSources(prev => prev.map(s => s.id === id ? { ...s, intel_notes: notesHtml || null } : s))
+      }
+      const text = contentDrafts[id] ?? (src.content || '')
+      const boardId = src.project_board_id
+      const proj = boardId ? projects.find(p => p.id === boardId) : null
+      const res = await window.api.intelligence.analyzeText({
+        task: 'reconcile', text, userNotes: plainNotes,
+        projectConfig: proj ? { name: proj.name, keywords: (proj as any).keywords } : null,
+      })
+      if (!res.ok) { setAiErr(p => ({ ...p, [id]: res.error || 'Reconcile failed.' })); return }
+      const savedMeta = await window.api.intelligence.saveReconciled(id, res.result)
+      if (!savedMeta.ok) { setAiErr(p => ({ ...p, [id]: savedMeta.error || 'Save failed.' })); return }
+      const seeded = res.result.summary ? `<p>${escapeHtml(res.result.summary)}</p>` : (reconciledDrafts[id] || '')
+      await window.api.intelligence.updateReconciledNotes(id, seeded)
+      setReconciledDrafts(p => ({ ...p, [id]: seeded }))
+      setSources(prev => prev.map(s => s.id === id ? { ...s, analysis_json: withAnalysisKey(s.analysis_json, 'reconciled', savedMeta.reconciled), reconciled_notes: seeded || null } : s))
+    } catch (e) { setAiErr(p => ({ ...p, [id]: (e as Error)?.message || 'Reconcile failed.' })) }
+    finally { setReconcilingId(null) }
+  }
+
+  // 3e: autosave the editable reconciled read (save-if-changed).
+  async function saveReconciledText(id: string) {
+    const draft = reconciledDrafts[id]
+    if (draft === undefined) return
+    const current = sources.find(s => s.id === id)?.reconciled_notes || ''
+    if (draft === current) return
+    try {
+      await window.api.intelligence.updateReconciledNotes(id, draft)
+      setSources(prev => prev.map(s => s.id === id ? { ...s, reconciled_notes: draft } : s))
+    } catch (e) { console.warn('[NewsTab] updateReconciledNotes failed:', e) }
   }
 
   // Researcher relevance override → analysis_json.human (gate-safe; never relevance_score).
@@ -499,6 +595,15 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           const humanRel = (parseAnalysis(source.analysis_json).human as { relevance?: string } | undefined)?.relevance
           const footerFilled = !!notesText(source.intel_notes)   // footer is notes-only now
           const footerOpen = openFooter[source.id] ?? footerFilled
+          // 3e: rich human-first footer — article text + AI + reconcile (per-source keyed).
+          const contentDraft = contentDrafts[source.id] ?? (source.content || '')
+          const hasArticleText = notesText(contentDraft).length > 40   // substantial pasted text (not ~52-char snippet leftovers)
+          const srcAnalysis = parseAnalysis(source.analysis_json)
+          const aiBlock = srcAnalysis.ai as Record<string, any> | undefined
+          const reconciledBlock = srcAnalysis.reconciled as Record<string, any> | undefined
+          const reconciledDraft = reconciledDrafts[source.id] ?? (source.reconciled_notes || '')
+          const showReconciled = notesText(reconciledDraft).trim() !== '' || !!reconciledBlock
+          const notesFilledForReconcile = notesText(noteDrafts[source.id] ?? (source.intel_notes || '')).length > 0
           const isPending = pendingStatus[source.id]
           const isFading = fadingIds.has(source.id)
 
@@ -888,15 +993,127 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                 </button>
 
                 {footerOpen && (
-                  <div className="mt-3">
-                    {/* NOTES — reuse intel_notes + updateNotes (row already exists → autosave safe) */}
-                    <RichTextEditor
-                      value={noteDrafts[source.id] ?? (source.intel_notes || '')}
-                      onChange={html => setNoteDrafts(prev => ({ ...prev, [source.id]: html }))}
-                      onBlur={() => saveNote(source.id)}
-                      placeholder="Your interpretation, context, why it matters for the project…"
-                      minHeight="72px"
-                    />
+                  <div className="mt-3 space-y-4">
+                    {/* (1) 3e: ARTICLE TEXT — paste the full article (the feed only stores a snippet) */}
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-white/40">Article text</span>
+                        <span className="text-[10px] font-normal text-gray-300 dark:text-white/25">· paste the full article for AI analysis (the feed only captures a snippet)</span>
+                      </div>
+                      <RichTextEditor
+                        value={contentDraft}
+                        onChange={html => setContentDrafts(prev => ({ ...prev, [source.id]: html }))}
+                        onBlur={() => saveContent(source.id)}
+                        placeholder="Paste the full article text here…"
+                        minHeight="96px"
+                      />
+                    </div>
+
+                    {/* (2) 3e: AI ANALYSIS — on-demand over the pasted text; nothing runs until pressed */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30">AI analysis — suggestions</span>
+                        <button
+                          onClick={() => analyzeSource(source.id)}
+                          disabled={!hasArticleText || analyzingId === source.id}
+                          title={hasArticleText ? 'Run the AI analysis on demand (project-aware). Nothing runs until you press this.' : 'Paste the full article text first'}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {analyzingId === source.id ? (
+                            <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Analyzing…</>
+                          ) : (
+                            <>✦ {aiBlock ? 'Re-analyze' : 'Analyze with AI'}</>
+                          )}
+                        </button>
+                      </div>
+                      {aiBlock ? (
+                        <div className="p-3 rounded-lg bg-indigo-50/60 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/25 space-y-2 text-xs">
+                          {typeof aiBlock.relevance_score === 'number' && (
+                            <span className="inline-block px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 font-bold text-[10px]">relevance {aiBlock.relevance_score}/10</span>
+                          )}
+                          {aiBlock.summary && <p className="text-gray-700 dark:text-white/70">{aiBlock.summary}</p>}
+                          {aiBlock.relevance_reasoning && <p className="text-gray-500 dark:text-white/50 italic">{aiBlock.relevance_reasoning}</p>}
+                          {Array.isArray(aiBlock.suggested_tags) && aiBlock.suggested_tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {aiBlock.suggested_tags.map((t: string, i: number) => (
+                                <span key={`${t}-${i}`} className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-medium">{t}</span>
+                              ))}
+                            </div>
+                          )}
+                          {aiBlock.analyzed_at && <p className="text-[10px] text-indigo-500/60 dark:text-indigo-400/40">Analyzed {formatDate(aiBlock.analyzed_at)}</p>}
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-lg border border-dashed border-gray-200 dark:border-white/10 text-[11px] text-gray-400 dark:text-white/30">
+                          Press <span className="font-medium">Analyze with AI</span> — nothing runs until you ask.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* (3) 3e: RECONCILE — editable merged read; appears once an AI read exists */}
+                    {aiBlock && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">Reconciled — editable before commit</span>
+                          <div className="flex items-center gap-2">
+                            {!notesFilledForReconcile && <span className="text-[10px] text-gray-300 dark:text-white/25">add notes first</span>}
+                            <button
+                              onClick={() => reconcileSource(source.id)}
+                              disabled={!notesFilledForReconcile || reconcilingId === source.id}
+                              title={notesFilledForReconcile ? 'Merge your notes with the AI read into an editable version' : 'Analyze first, and add notes, to reconcile'}
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {reconcilingId === source.id ? (
+                                <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Reconciling…</>
+                              ) : (
+                                <>⟲ Reconcile with my notes</>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                        {reconciledBlock && (
+                          <div className="flex items-center flex-wrap gap-1 mb-1.5">
+                            {typeof reconciledBlock.relevance_score === 'number' && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold text-[10px]">relevance {reconciledBlock.relevance_score}/10</span>
+                            )}
+                            {Array.isArray(reconciledBlock.suggested_tags) && reconciledBlock.suggested_tags.map((t: string, i: number) => (
+                              <span key={`${t}-${i}`} className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-medium">{t}</span>
+                            ))}
+                            {reconciledBlock.reconciled_at && (
+                              <span className="text-[10px] text-amber-600/60 dark:text-amber-400/40 ml-1">Reconciled {formatDate(reconciledBlock.reconciled_at)}</span>
+                            )}
+                          </div>
+                        )}
+                        {showReconciled ? (
+                          <RichTextEditor
+                            value={reconciledDraft}
+                            onChange={html => setReconciledDrafts(prev => ({ ...prev, [source.id]: html }))}
+                            onBlur={() => saveReconciledText(source.id)}
+                            placeholder="The reconciled read — edit freely before commit…"
+                            minHeight="80px"
+                          />
+                        ) : (
+                          <p className="text-[11px] text-gray-400 dark:text-white/30">Press <span className="font-medium">Reconcile with my notes</span> to generate an editable merged read.</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* (4) NOTES — reuse intel_notes + updateNotes (row already exists → autosave safe) */}
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[9px] font-bold uppercase tracking-wide">Primary</span>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-white/40">Researcher notes — your interpretation</span>
+                      </div>
+                      <RichTextEditor
+                        value={noteDrafts[source.id] ?? (source.intel_notes || '')}
+                        onChange={html => setNoteDrafts(prev => ({ ...prev, [source.id]: html }))}
+                        onBlur={() => saveNote(source.id)}
+                        placeholder="Your interpretation, context, why it matters for the project…"
+                        minHeight="72px"
+                      />
+                    </div>
+
+                    {/* (5) 3e: per-source AI error */}
+                    {aiErr[source.id] && <p className="text-xs text-red-500 dark:text-red-400 mt-2">{aiErr[source.id]}</p>}
                   </div>
                 )}
               </div>
