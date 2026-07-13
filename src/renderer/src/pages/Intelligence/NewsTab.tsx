@@ -633,7 +633,7 @@ export default function NewsTab({ onApprove }: Props) {
           const themaTags = readTags(source.thematic_tags)
           // News human layer: relevance override (analysis_json.human) + footer open state.
           const humanRel = (parseAnalysis(source.analysis_json).human as { relevance?: string } | undefined)?.relevance
-          const footerFilled = !!notesText(source.intel_notes) || !!humanRel
+          const footerFilled = !!notesText(source.intel_notes)   // footer is notes-only now
           const footerOpen = openFooter[source.id] ?? footerFilled
           const isPending = pendingStatus[source.id]
           const isFading = fadingIds.has(source.id)
@@ -861,8 +861,8 @@ export default function NewsTab({ onApprove }: Props) {
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
+              {/* Actions + quick controls (confidence · topic tags · relevance override) */}
+              <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
                 {/* Confidence: fixed for framework refs, gradeable for journalistic sources */}
                 {source.added_by_name === 'Kantor Framework' ? (
                   <span className="px-2 py-1 rounded text-[11px] border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 font-medium" title="Fixed authoritative source — confidence is not graded">
@@ -881,6 +881,46 @@ export default function NewsTab({ onApprove }: Props) {
                   </select>
                 )}
 
+                {/* TOPIC tags — always-visible quick control (writes thematic_tags via setArticleTags) */}
+                <TagPicker
+                  label="Topic"
+                  value={themaTags}
+                  known={knownThematic}
+                  chipClass="bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-300"
+                  onAdd={tag => {
+                    handleSetTags(source.id, 'thematic', [...themaTags, tag])
+                    setGateError(prev => {
+                      const n = { ...prev }
+                      if (n[source.id]) n[source.id] = { ...n[source.id], missingTopic: false }
+                      return n
+                    })
+                  }}
+                  onRemove={tag => handleSetTags(source.id, 'thematic', themaTags.filter(t => t !== tag))}
+                  onCreate={name => handleCreateTag(source.id, 'thematic', themaTags, name)}
+                  onDelete={(can('delete_intel_tag') || isRoot) ? tag => handleDeleteTag('thematic', tag) : undefined}
+                  isAdmin={can('delete_intel_tag') || isRoot}
+                  forceOpen={forceOpenTopicId === source.id}
+                />
+
+                {/* RELEVANCE override — always-visible; stored in analysis_json.human (AI score kept) */}
+                <span className="inline-flex items-center gap-1">
+                  <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30">Rel</span>
+                  <select
+                    value={humanRel ?? ''}
+                    onChange={e => handleHumanRelevance(source.id, e.target.value)}
+                    className="px-2 py-0.5 rounded text-[11px] border border-gray-200 dark:border-white/[0.15] bg-white dark:bg-gray-900 text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                    title="Your relevance override — does not change the AI's REL score"
+                  >
+                    <option value="">— (use AI)</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                  {humanRel && (
+                    <span className="text-[10px] text-gray-400 dark:text-white/35" title="AI relevance score is preserved">overrides AI REL {source.relevance_score ?? '—'}</span>
+                  )}
+                </span>
+
                 <div className="flex-1" />
 
                 {/* Phase 4: Approve — gated on project + topic. Dimmed + tooltip when blocked. */}
@@ -897,10 +937,9 @@ export default function NewsTab({ onApprove }: Props) {
                           },
                         }))
                         if (themaTags.length === 0) {
-                          // Topic picker now lives in the footer — reveal it, then force-open.
-                          setOpenFooter(prev => ({ ...prev, [source.id]: true }))
+                          // Topic picker is always visible in the quick-controls row — just force it open.
                           setForceOpenTopicId(source.id)
-                          setTimeout(() => setForceOpenTopicId(null), 300)
+                          setTimeout(() => setForceOpenTopicId(null), 0)
                         }
                         return
                       }
@@ -958,8 +997,9 @@ export default function NewsTab({ onApprove }: Props) {
                 )}
               </div>
 
-              {/* News human layer — elongating footer: notes / topic tags / relevance override.
-                  Compact when empty ("✎ …"); "●" + default-open when filled. */}
+              {/* News human layer — elongating footer, NOTES ONLY. Compact "✎ Add notes"
+                  when empty; "● Notes" + default-open when notes exist. Tags + relevance
+                  override moved up to the always-visible quick-controls row above. */}
               <div className="mt-2 pt-2 border-t border-gray-100 dark:border-white/[0.06]">
                 <button
                   onClick={() => setOpenFooter(prev => ({ ...prev, [source.id]: !footerOpen }))}
@@ -967,14 +1007,8 @@ export default function NewsTab({ onApprove }: Props) {
                 >
                   <span className={`text-xs ${footerFilled ? 'text-emerald-500' : 'text-gray-400 dark:text-white/30'}`}>{footerFilled ? '●' : '✎'}</span>
                   <span className="text-[11px] font-medium text-gray-500 dark:text-white/45">
-                    {footerFilled ? 'Your notes & overrides' : 'Add notes / override tags'}
+                    {footerFilled ? 'Notes' : 'Add notes'}
                   </span>
-                  {humanRel && (
-                    <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-medium">Your relevance: {humanRel}</span>
-                  )}
-                  {themaTags.length > 0 && (
-                    <span className="text-[10px] text-gray-400 dark:text-white/30">{themaTags.length} tag{themaTags.length === 1 ? '' : 's'}</span>
-                  )}
                   <span className="flex-1" />
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={`text-gray-400 dark:text-white/40 transition-transform ${footerOpen ? 'rotate-180' : ''}`}>
                     <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
@@ -982,61 +1016,15 @@ export default function NewsTab({ onApprove }: Props) {
                 </button>
 
                 {footerOpen && (
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-3">
                     {/* NOTES — reuse intel_notes + updateNotes (row already exists → autosave safe) */}
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30 mb-1">Your notes</p>
-                      <RichTextEditor
-                        value={noteDrafts[source.id] ?? (source.intel_notes || '')}
-                        onChange={html => setNoteDrafts(prev => ({ ...prev, [source.id]: html }))}
-                        onBlur={() => saveNote(source.id)}
-                        placeholder="Your interpretation, context, why it matters for the project…"
-                        minHeight="72px"
-                      />
-                    </div>
-                    {/* YOUR TAGS — the existing topic picker (writes thematic_tags via setArticleTags) */}
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30 mb-1">Your tags</p>
-                      <TagPicker
-                        label="Topic"
-                        value={themaTags}
-                        known={knownThematic}
-                        chipClass="bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-300"
-                        onAdd={tag => {
-                          handleSetTags(source.id, 'thematic', [...themaTags, tag])
-                          setGateError(prev => {
-                            const n = { ...prev }
-                            if (n[source.id]) n[source.id] = { ...n[source.id], missingTopic: false }
-                            return n
-                          })
-                        }}
-                        onRemove={tag => handleSetTags(source.id, 'thematic', themaTags.filter(t => t !== tag))}
-                        onCreate={name => handleCreateTag(source.id, 'thematic', themaTags, name)}
-                        onDelete={(can('delete_intel_tag') || isRoot) ? tag => handleDeleteTag('thematic', tag) : undefined}
-                        isAdmin={can('delete_intel_tag') || isRoot}
-                        forceOpen={forceOpenTopicId === source.id}
-                      />
-                    </div>
-                    {/* RELEVANCE OVERRIDE — stored in analysis_json.human; the AI's relevance_score is untouched */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30">Your relevance</p>
-                      <select
-                        value={humanRel ?? ''}
-                        onChange={e => handleHumanRelevance(source.id, e.target.value)}
-                        className="px-2 py-0.5 rounded text-[11px] border border-gray-200 dark:border-white/[0.15] bg-white dark:bg-gray-900 text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
-                        title="Your relevance override — does not change the AI's REL score"
-                      >
-                        <option value="">— (use AI)</option>
-                        <option value="High">High</option>
-                        <option value="Medium">Medium</option>
-                        <option value="Low">Low</option>
-                      </select>
-                      {humanRel && (
-                        <span className="text-[10px] text-gray-400 dark:text-white/35">
-                          overrides AI REL {source.relevance_score ?? '—'} (AI score kept)
-                        </span>
-                      )}
-                    </div>
+                    <RichTextEditor
+                      value={noteDrafts[source.id] ?? (source.intel_notes || '')}
+                      onChange={html => setNoteDrafts(prev => ({ ...prev, [source.id]: html }))}
+                      onBlur={() => saveNote(source.id)}
+                      placeholder="Your interpretation, context, why it matters for the project…"
+                      minHeight="72px"
+                    />
                   </div>
                 )}
               </div>
