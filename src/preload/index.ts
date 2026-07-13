@@ -277,6 +277,7 @@ const api = {
     saveAiAnalysis:       (id: string, ai: Record<string, unknown>)         => ipcRenderer.invoke('intelligence:saveAiAnalysis', id, ai),
     saveReconciled:       (id: string, reconciled: Record<string, unknown>) => ipcRenderer.invoke('intelligence:saveReconciled', id, reconciled),
     updateReconciledNotes:(id: string, html: string)         => ipcRenderer.invoke('intelligence:updateReconciledNotes', id, html),
+    setHumanRelevance:    (id: string, value: string | null) => ipcRenderer.invoke('intelligence:setHumanRelevance', id, value),
     getKnownTags:         (type: string)                     => ipcRenderer.invoke('intelligence:getKnownTags', type),
     createTag:            (name: string, type: string)       => ipcRenderer.invoke('intelligence:createTag', name, type),
     deleteTag:            (name: string, type: string)       => ipcRenderer.invoke('intelligence:deleteTag', name, type),

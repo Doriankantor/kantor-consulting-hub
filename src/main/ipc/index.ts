@@ -2805,6 +2805,31 @@ function registerIntelligenceHandlers(): void {
     return { ok: true, reconciled: block }
   })
 
+  // News human layer: store a researcher's RELEVANCE OVERRIDE under
+  // analysis_json.human — NOT the relevance_score column (the gate owns that and
+  // would clobber a human value on the next rescore). Merge-in-place like
+  // saveReconciled so other analysis_json keys (.ai / .reconciled) are preserved.
+  // Passing null/'' clears the override.
+  ipcMain.handle('intelligence:setHumanRelevance', (_e, id: string, value: string | null) => {
+    const row = db().prepare('SELECT analysis_json FROM intelligence_sources WHERE id=?').get(id) as { analysis_json: string | null } | undefined
+    if (!row) return { ok: false, error: 'Source not found.' }
+    let analysis: Record<string, unknown> = {}
+    try { analysis = row.analysis_json ? JSON.parse(row.analysis_json) : {} } catch { analysis = {} }
+    const human = (analysis.human && typeof analysis.human === 'object') ? analysis.human as Record<string, unknown> : {}
+    const v = (value ?? '').trim()
+    if (!v) {
+      delete human.relevance
+      delete human.overridden_at
+    } else {
+      human.relevance = v
+      human.overridden_at = new Date().toISOString()
+    }
+    if (Object.keys(human).length) analysis.human = human
+    else delete analysis.human
+    db().prepare('UPDATE intelligence_sources SET analysis_json=? WHERE id=?').run(JSON.stringify(analysis), id)
+    return { ok: true, human: analysis.human ?? null }
+  })
+
   // 2b (human-first): store the on-demand "Analyze with AI" read UNDER
   // analysis_json.ai (separate box from the researcher's notes). Re-running
   // replaces .ai only. Stamps analyzed_at server-side; returns the stored block.
