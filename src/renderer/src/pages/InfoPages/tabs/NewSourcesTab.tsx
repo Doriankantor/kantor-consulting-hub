@@ -42,6 +42,13 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
     } finally { setSending(false) }
   }
 
+  // 3c-2b: remove this source from the pipeline and return it to the intel queue.
+  const handleMoveBack = async (articleId: string) => {
+    await window.api.infoPages.moveBackToIntel(pageId, articleId)
+    await load()
+    onMoved?.()
+  }
+
   if (loading) return <div className="flex items-center justify-center py-16"><div className="w-5 h-5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"/></div>
 
   return (
@@ -79,6 +86,13 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
               c ? s.add(row.article_id) : s.delete(row.article_id)
               setChecked(s)
             }}
+            action={
+              <button
+                onClick={() => handleMoveBack(row.article_id)}
+                className="px-2 py-0.5 rounded-lg text-[11px] font-medium text-gray-500 dark:text-white/50 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"
+                title="Return this source to the Intelligence pending queue"
+              >↩ Move back to intel</button>
+            }
           />
         ))}
       </div>

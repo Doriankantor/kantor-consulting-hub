@@ -335,6 +335,7 @@ const api = {
     getSourcePipeline:    (pageId: string)                           => ipcRenderer.invoke('infoPages:getSourcePipeline', pageId),
     sendToReview:         (pageId: string, articleIds: string[])     => ipcRenderer.invoke('infoPages:sendToReview', pageId, articleIds),
     backSourceToNew:      (pageId: string, articleId: string)        => ipcRenderer.invoke('infoPages:backSourceToNew', pageId, articleId),
+    moveBackToIntel:      (pageId: string, articleId: string)        => ipcRenderer.invoke('infoPages:moveBackToIntel', pageId, articleId),
     commitSources:        (pageId: string, designNotes: string)      => ipcRenderer.invoke('infoPages:commitSources', pageId, designNotes),
     saveReviewNotes:      (pageId: string, designNotes: string)      => ipcRenderer.invoke('infoPages:saveReviewNotes', pageId, designNotes),
     getSourceChanges:     (pageId: string)                           => ipcRenderer.invoke('infoPages:getSourceChanges', pageId),

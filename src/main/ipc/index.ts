@@ -3805,6 +3805,26 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
     return { ok: true }
   })
 
+  // Move a 'new' source OUT of the pipeline and back to the intel pending queue.
+  // Deletes the pointer row (intel row + its content/analysis/notes are untouched)
+  // and returns the intel source to status='unreviewed' so it reappears in News.
+  // Guarded: only acts on stage='new'; intel status flips ONLY if a row was deleted.
+  ipcMain.handle('infoPages:moveBackToIntel', (_e, pageId: string, articleId: string) => {
+    const now = new Date().toISOString()
+    const r = db().prepare(
+      "DELETE FROM info_page_sources WHERE article_id=? AND info_page=? AND stage='new'"
+    ).run(articleId, pageId)
+    if (r.changes > 0) {
+      db().prepare(
+        "UPDATE intelligence_sources SET status='unreviewed' WHERE id=?"
+      ).run(articleId)
+      db().prepare(
+        "INSERT INTO info_page_changes (article_id, info_page, from_stage, to_stage, created_at) VALUES (?,?,'new','intel',?)"
+      ).run(articleId, pageId, now)
+    }
+    return { ok: true, movedBack: r.changes > 0 }
+  })
+
   // Commit all 'review' items to 'committed'. Saves design_notes onto each row.
   ipcMain.handle('infoPages:commitSources', (_e, pageId: string, designNotes: string) => {
     const now = new Date().toISOString()
