@@ -2923,34 +2923,35 @@ function registerIntelligenceHandlers(): void {
   }
 
   // Return all registered tags of a type ('disposition' | 'thematic'), A→Z.
-  ipcMain.handle('intelligence:getKnownTags', (_e, type: string) => {
+  ipcMain.handle('intelligence:getKnownTags', (_e, type: string, boardId: string) => {
     const t = type === 'disposition' ? 'disposition' : 'thematic'
     const rows = db().prepare(
-      'SELECT name FROM known_tags WHERE type=? ORDER BY name COLLATE NOCASE ASC'
-    ).all(t) as { name: string }[]
+      'SELECT name FROM known_tags WHERE type=? AND project_board_id=? ORDER BY name COLLATE NOCASE ASC'
+    ).all(t, boardId) as { name: string }[]
     return rows.map(r => r.name)
   })
 
   // Create (or upsert) a tag in the registry; returns the normalized name.
-  ipcMain.handle('intelligence:createTag', (_e, name: string, type: string) => {
+  ipcMain.handle('intelligence:createTag', (_e, name: string, type: string, boardId: string) => {
     const t = type === 'disposition' ? 'disposition' : 'thematic'
     const norm = normalizeTag(name)
     if (!norm) return { ok: false, name: '' }
+    if (!boardId) return { ok: false, name: '' }
     db().prepare(
-      'INSERT OR IGNORE INTO known_tags (name, type, created_at) VALUES (?, ?, ?)'
-    ).run(norm, t, new Date().toISOString())
+      'INSERT OR IGNORE INTO known_tags (name, type, project_board_id, created_at) VALUES (?, ?, ?, ?)'
+    ).run(norm, t, boardId, new Date().toISOString())
     return { ok: true, name: norm }
   })
 
   // Admin: remove a tag from the registry. Existing article chips are preserved
   // (articles keep their stored JSON) but the tag won't appear in autocomplete.
-  ipcMain.handle('intelligence:deleteTag', async (_e, name: string, type: string) => {
+  ipcMain.handle('intelligence:deleteTag', async (_e, name: string, type: string, boardId: string) => {
     const actor = await boardsCloud.resolveActor(currentActingUserId)
     if (!actor.isRoot && !actor.can('delete_intel_tag')) {
       return { ok: false, error: 'You do not have permission to delete intelligence tags.' }
     }
     const t = type === 'disposition' ? 'disposition' : 'thematic'
-    db().prepare('DELETE FROM known_tags WHERE name=? AND type=?').run(name, t)
+    db().prepare('DELETE FROM known_tags WHERE name=? AND type=? AND project_board_id=?').run(name, t, boardId)
     return { ok: true }
   })
 

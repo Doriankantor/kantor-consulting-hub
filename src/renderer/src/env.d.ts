@@ -787,9 +787,9 @@ interface Window {
       updateGeography:      (id: string, geography: string)    => Promise<{ ok: boolean }>
       setProject:           (id: string, boardId: string | null) => Promise<{ ok: boolean }>   // 3a: board-id project association
       routeToProject:       (sourceId: string, boardId: string) => Promise<{ ok: boolean; pageName?: string; error?: string }>   // 3d: Send to New sources
-      getKnownTags:         (type: string)                     => Promise<string[]>
-      createTag:            (name: string, type: string)       => Promise<{ ok: boolean; name: string }>
-      deleteTag:            (name: string, type: string)       => Promise<{ ok: boolean }>
+      getKnownTags:         (type: string, boardId: string)              => Promise<string[]>
+      createTag:            (name: string, type: string, boardId: string) => Promise<{ ok: boolean; name: string }>
+      deleteTag:            (name: string, type: string, boardId: string) => Promise<{ ok: boolean }>
       setArticleTags:       (id: string, type: string, tags: string[]) => Promise<{ ok: boolean; tags: string[] }>
       logDecision:          (payload: { articleId: string; action: string; aiProposed?: unknown; humanFinal?: unknown; reason?: string | null }) => Promise<{ ok: boolean }>
       deleteSource:         (id: string)                       => Promise<{ ok: boolean }>

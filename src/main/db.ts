@@ -928,6 +928,18 @@ export function initDatabase(): void {
   // link back to the intel row is article_id; content/analysis/notes stay LIVE
   // via that reference (no copy), so the item remains editable + move-back-able.
   try { db.exec("ALTER TABLE info_page_sources ADD COLUMN source_type TEXT;") } catch {}
+  // T1: project-scope thematic tags. Add project_board_id to known_tags, assign all
+  // existing thematic tags to Contested Skies (board-info-latam), and re-key the
+  // uniqueness index to (name, type, project_board_id). Idempotent.
+  const ktCols = db.prepare("PRAGMA table_info(known_tags)").all() as { name: string }[]
+  if (!ktCols.some(c => c.name === 'project_board_id')) {
+    db.exec("ALTER TABLE known_tags ADD COLUMN project_board_id TEXT")
+    // Backfill: all existing thematic tags belong to Contested Skies (where their articles live).
+    db.exec("UPDATE known_tags SET project_board_id='board-info-latam' WHERE type='thematic'")
+    // Re-key uniqueness to include project so the same name can exist per-project.
+    db.exec("DROP INDEX IF EXISTS idx_known_tags_name_type")
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_known_tags_name_type_project ON known_tags(name, type, project_board_id)")
+  }
   try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS info_page_changes (

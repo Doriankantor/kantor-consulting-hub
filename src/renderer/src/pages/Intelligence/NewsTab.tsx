@@ -318,19 +318,28 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   useEffect(() => { load() }, [load])
 
   // Phase 1: load projects from existing info-page boards.
-  // Phase 2 (thematic): load known topic tag registry.
   useEffect(() => {
     (async () => {
       try {
         const boards = await window.api.infoPages.list()
         setProjects((boards as Array<{ id: string; name: string }>).map(b => ({ id: b.id, name: b.name })))
       } catch (e) { console.warn('[NewsTab] projects load failed:', e) }
+    })()
+  }, [])
+
+  // T1: the topic-tag registry is now PROJECT-SCOPED. Load the currently selected
+  // project's vocabulary (the top dropdown) and reload when it changes. When the
+  // dropdown is 'all' or empty there is no project scope → load nothing.
+  useEffect(() => {
+    (async () => {
+      const boardId = selectedProjectId && selectedProjectId !== 'all' ? selectedProjectId : ''
+      if (!boardId) { setKnownThematic([]); return }
       try {
-        const t = await window.api.intelligence.getKnownTags('thematic')
+        const t = await window.api.intelligence.getKnownTags('thematic', boardId)
         setKnownThematic(t || [])
       } catch (e) { console.warn('[NewsTab] known-tags load failed:', e) }
     })()
-  }, [])
+  }, [selectedProjectId])
 
   async function handleRefreshNews() {
     setRefreshing(true)
@@ -454,9 +463,11 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   }
 
   // Create a new registry tag, refresh the local registry, then attach it.
-  async function handleCreateTag(id: string, type: 'thematic', current: string[], name: string) {
+  // T1: the tag belongs to the ARTICLE's project (boardId = source.project_board_id).
+  async function handleCreateTag(id: string, type: 'thematic', boardId: string, current: string[], name: string) {
+    if (!boardId) return
     try {
-      const res = await window.api.intelligence.createTag(name, type)
+      const res = await window.api.intelligence.createTag(name, type, boardId)
       if (!res?.ok || !res.name) return
       setKnownThematic(prev => prev.includes(res.name) ? prev : [...prev, res.name].sort((a, b) => a.localeCompare(b)))
       if (!current.includes(res.name)) await handleSetTags(id, type, [...current, res.name])
@@ -465,10 +476,12 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
 
   // Admin: delete a tag from the known_tags registry. Existing article chips are
   // kept (articles retain their stored JSON) but the tag leaves the autocomplete.
-  async function handleDeleteTag(type: 'thematic', name: string) {
+  // T1: deletion is scoped to the currently viewed project's registry (boardId).
+  async function handleDeleteTag(type: 'thematic', name: string, boardId: string) {
+    if (!boardId) return
     if (!confirm(`Delete tag "${name}" from the registry? Articles that already use it will keep it as a chip.`)) return
     try {
-      await window.api.intelligence.deleteTag(name, type)
+      await window.api.intelligence.deleteTag(name, type, boardId)
       setKnownThematic(prev => prev.filter(t => t !== name))
     } catch (e) { console.warn('[NewsTab] deleteTag failed:', e) }
   }
@@ -913,8 +926,8 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                     })
                   }}
                   onRemove={tag => handleSetTags(source.id, 'thematic', themaTags.filter(t => t !== tag))}
-                  onCreate={name => handleCreateTag(source.id, 'thematic', themaTags, name)}
-                  onDelete={(can('delete_intel_tag') || isRoot) ? tag => handleDeleteTag('thematic', tag) : undefined}
+                  onCreate={name => handleCreateTag(source.id, 'thematic', source.project_board_id || '', themaTags, name)}
+                  onDelete={(can('delete_intel_tag') || isRoot) ? tag => handleDeleteTag('thematic', tag, selectedProjectId && selectedProjectId !== 'all' ? selectedProjectId : '') : undefined}
                   isAdmin={can('delete_intel_tag') || isRoot}
                   forceOpen={forceOpenTopicId === source.id}
                 />
