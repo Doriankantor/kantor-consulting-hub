@@ -389,9 +389,10 @@ interface IntelligenceSource {
   geography_confirmed: number          // 0 = AI proposal, 1 = human-confirmed
   gate_processed: number               // 0 = not yet gated, 1 = gated
   gate_reasoning: string | null
-  disposition_tags: string | null      // JSON array
+  disposition_tags: string | null      // JSON array (legacy project link — unreliable)
   thematic_tags: string | null         // JSON array
   language: string | null              // inferred: 'es' | 'pt' | 'en' | null
+  project_board_id: string | null      // 3a: reliable board-id project association
 }
 
 // Source pipeline row — joined from info_page_sources + intelligence_sources.
@@ -779,6 +780,7 @@ interface Window {
       updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => Promise<{ ok: boolean; addedToPages?: string[] }>
       updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean }>
       updateGeography:      (id: string, geography: string)    => Promise<{ ok: boolean }>
+      setProject:           (id: string, boardId: string | null) => Promise<{ ok: boolean }>   // 3a: board-id project association
       getKnownTags:         (type: string)                     => Promise<string[]>
       createTag:            (name: string, type: string)       => Promise<{ ok: boolean; name: string }>
       deleteTag:            (name: string, type: string)       => Promise<{ ok: boolean }>

@@ -2781,6 +2781,15 @@ function registerIntelligenceHandlers(): void {
     return { ok: true }
   })
 
+  // 3a: reliable board-id project association. Sets project_board_id to a board id
+  // (e.g. 'board-info-latam'); empty/null clears it. Does NOT touch disposition_tags.
+  // No routing here — routing lands in 3c.
+  ipcMain.handle('intelligence:setProject', (_e, id: string, boardId: string | null) => {
+    const bid = (boardId ?? '').trim()
+    db().prepare('UPDATE intelligence_sources SET project_board_id=? WHERE id=?').run(bid || null, id)
+    return { ok: true }
+  })
+
   // 2b: persist the researcher's rich-text notes (HTML) for a source. Separate
   // column from review_notes — approve/reject never touches this. Empty → null.
   ipcMain.handle('intelligence:updateNotes', (_e, id: string, notesHtml: string) => {

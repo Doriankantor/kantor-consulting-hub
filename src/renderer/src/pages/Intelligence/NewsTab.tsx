@@ -222,9 +222,10 @@ function TagPicker({ label, value, known, chipClass, onAdd, onRemove, onCreate, 
 
 interface Props {
   onApprove: (addedToPages?: string[]) => void
+  selectedProjectId?: string   // 3a: top-dropdown project (Slice 1) → default for unset cards
 }
 
-export default function NewsTab({ onApprove }: Props) {
+export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const { localUser, isRoot, can } = useAuth()
   const [sources, setSources] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
@@ -439,10 +440,12 @@ export default function NewsTab({ onApprove }: Props) {
     } catch (e) { console.warn('[NewsTab] setArticleTags failed:', e) }
   }
 
-  // Phase 1: Project selector change — immediately persist to disposition_tags.
-  async function handleProjectSelect(id: string, projectName: string) {
-    await handleSetTags(id, 'disposition', projectName ? [projectName] : [])
-    // Clear any gate error for this article since project requirement is now met.
+  // 3a: Project selector change — persist the reliable board-id association
+  // (project_board_id). No longer writes disposition_tags. No routing (that's 3c).
+  async function handleProjectSelect(id: string, boardId: string) {
+    await window.api.intelligence.setProject(id, boardId || null)
+    setSources(prev => prev.map(s => s.id === id ? { ...s, project_board_id: boardId || null } : s))
+    // Clear any gate error for this article since a project is now set.
     setGateError(prev => {
       const n = { ...prev }
       if (n[id]) n[id] = { ...n[id], missingProject: false }
@@ -641,6 +644,11 @@ export default function NewsTab({ onApprove }: Props) {
           // Phase 1: compute effective project (stored or first-project default).
           const defaultProject = projects[0]?.name ?? ''
           const projectSel = dispoTags[0] || defaultProject
+          // 3a: the reliable board-id project association shown/edited by the picker.
+          // Seeded articles have project_board_id; unset cards default to the top
+          // dropdown's selected project (Slice 1) as inherited working context.
+          const projectBoardSel = source.project_board_id
+            || (selectedProjectId && selectedProjectId !== 'all' ? selectedProjectId : '')
 
           // Phase 4: gate — Approve requires at least one project AND one topic tag.
           const canApprove = projectSel !== '' && themaTags.length > 0
@@ -825,7 +833,7 @@ export default function NewsTab({ onApprove }: Props) {
                       <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30">Project</span>
                       {projects.length > 0 ? (
                         <select
-                          value={projectSel}
+                          value={projectBoardSel}
                           onChange={e => handleProjectSelect(source.id, e.target.value)}
                           className={`px-2 py-0.5 rounded text-[11px] border focus:outline-none focus:ring-1 focus:ring-indigo-500/50 bg-white dark:bg-gray-900 text-gray-700 dark:text-white/80 ${
                             gateErr?.missingProject
@@ -833,8 +841,9 @@ export default function NewsTab({ onApprove }: Props) {
                               : 'border-gray-200 dark:border-white/[0.15]'
                           }`}
                         >
+                          {!projectBoardSel && <option value="">— select project —</option>}
                           {projects.map(p => (
-                            <option key={p.id} value={p.name}>{p.name}</option>
+                            <option key={p.id} value={p.id}>{p.name}</option>
                           ))}
                         </select>
                       ) : (

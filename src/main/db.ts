@@ -983,6 +983,20 @@ export function initDatabase(): void {
   // 2b (human-first): the EDITABLE reconciled read (HTML) the researcher can amend
   // before commit. The AI's raw reads live in analysis_json (.ai / .reconciled).
   try { db.exec("ALTER TABLE intelligence_sources ADD COLUMN reconciled_notes TEXT;") } catch {}
+  // 3a: reliable board-id project association (replaces the 93%-empty, stale-slug
+  // disposition_tags as the source→project link). Holds a board id like
+  // 'board-info-latam'. Distinct from disposition_tags (left untouched).
+  try { db.exec("ALTER TABLE intelligence_sources ADD COLUMN project_board_id TEXT;") } catch {}
+  // 3a seed: every pulled article belongs to Contested Skies (the single-project
+  // GDELT/cs_articles pull). Backfill only where unset — inherently idempotent,
+  // safe to re-run, and never touches non-article rows (documents/social/interviews
+  // get a project from the picker/review going forward).
+  try {
+    const r = db.prepare(
+      "UPDATE intelligence_sources SET project_board_id='board-info-latam' WHERE type='article' AND (project_board_id IS NULL OR project_board_id='')"
+    ).run()
+    if (r.changes > 0) console.log(`[3a] Seeded project_board_id=board-info-latam on ${r.changes} article(s).`)
+  } catch (e) { console.warn('[3a] project_board_id seed failed:', (e as Error)?.message) }
 
   // ── Seed the Contested Skies Source Archive into Source Intelligence ──────────
   // The sources the live Contested Skies page is built on. FRAMEWORK references
