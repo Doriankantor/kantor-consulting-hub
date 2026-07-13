@@ -1,14 +1,18 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-13 · v2.0.21 released; Intelligence restructure through Slice 3b committed; Slice 3c-1 built + uncommitted_
+_Last updated: 2026-07-13 · v2.0.21 released; Intelligence restructure through Slice 3d-2 committed + pushed (HEAD 9021518); docs-only edits pending_
 
 ## ▶ Start here — resume point for the next session
 
 **Where we are:** the **INTELLIGENCE RESTRUCTURE** (human-first capture → project
-commit pipeline). Slices 1 → 3b are **committed** (HEAD = `17448c0`). **Slice 3c-1
-(commit-pipeline routing + News Approve) is BUILT but UNCOMMITTED** — do not assume
-it's in git. **Immediate next step: TEST 3c-1 (approve an article, verify the
-`info_page_sources` row via SQL), commit it, then build 3c-2.**
+commit pipeline). Slices 1 → 3d-2 are **committed + pushed** (HEAD = `9021518`,
+`origin/main` up to date); the only working-tree changes are these two docs. The
+commit pipeline works end-to-end and is now **proven type-agnostic across all four
+source types** — News Approve **and** the Documents / Social / Interviews "Send" all
+route into a project's "New sources" (all SQL-verified: `source_type` travels from the
+intel row, so article/document/social/interview each land with the matching badge),
+those cards show the full item, and move-back returns a source to the intel queue.
+**Immediate next step: Slice 3d-3 (compose action-row cleanup across all three tabs).**
 
 **The arc (why):** make Source Intelligence human-first (researcher notes + on-demand
 AI, never auto-run) and route items into a specific project's Info Pages "New sources"
@@ -16,42 +20,51 @@ via a **reliable board-id association** (`intelligence_sources.project_board_id`
 retiring the 93%-empty / stale-slug `disposition_tags` link and the keyword-match
 fan-out.
 
-**Uncommitted working-tree changes right now (Slice 3c-1):**
-- `src/main/db.ts` — `ALTER TABLE info_page_sources ADD COLUMN source_type TEXT`
-  (idempotent). The durable intel link is the existing `article_id`; content/analysis/
-  notes stay LIVE via that reference (no copy).
-- `src/main/ipc/index.ts` —
-  1. New `routeToNewSources(intelSourceId, boardId)`: `INSERT OR IGNORE INTO
-     info_page_sources (article_id, info_page=boardId, stage='new', source_type,
-     added_at)` + `info_page_changes` log. Idempotent via `UNIQUE(article_id,
-     info_page)`. Type-agnostic (3d compose Send reuses it). Returns the page name.
-  2. `updateStatus('approved')` repointed to call `routeToNewSources(id,
-     project_board_id)` and **RETIRED** `addApprovedSourceToInfoPages` (keyword
-     fan-out → `info_page_items`). `confirmImported` (bulk approve) repointed too, so
-     the fan-out fn is now fully uncalled (definition left in place, unused).
-- `src/renderer/src/pages/Intelligence/NewsTab.tsx` — Approve `onClick` persists
-  `project_board_id` (from the picker / selected-project default) BEFORE approving,
-  so the server routes to the right project. Replaced the legacy disposition auto-save.
-- Builds clean (tsc: 0 new errors; node 8 / web 55 pre-existing baselines).
+**The 3c/3d commit pipeline (all committed + pushed, SQL-verified):**
+- **3c-1** (`41d0acb`) — `routeToNewSources(id, boardId)` writes an `info_page_sources`
+  pointer (`stage='new'`, `source_type`) keyed on `project_board_id`; idempotent via
+  `UNIQUE(article_id,info_page)`+`INSERT OR IGNORE`. News Approve routes through it;
+  the keyword fan-out (`addApprovedSourceToInfoPages` → `info_page_items`) is retired
+  from both approve paths (`updateStatus` + `confirmImported`; fn left defined, uncalled).
+- **3c-2a** (`8010183`) — full-item New-sources cards: `getSourcePipeline` SELECT +
+  `InfoPageSourceRow` gain `type`/`analysis_json`/`intel_notes`; `PipelineSourceCard`
+  shows a type badge, AI-analysis blocks (`.human`/`.ai`/`.reconciled`, only if present),
+  and researcher notes — graceful-degrade.
+- **3c-2b** (`588ac91`) — `infoPages:moveBackToIntel(pageId, articleId)`: DELETE the
+  pointer (scoped `stage='new'`) + set intel `status='unreviewed'` + log `new→intel`.
+  Per-card "↩ Move back to intel" via the card's `action` slot. Intel content/analysis/
+  notes untouched.
+- **3d-1** (`14d9386`) — dedicated `intelligence:routeToProject(id, boardId)` IPC
+  (persists `project_board_id` → `routeToNewSources` → `status='routed'`; decoupled
+  from approve/verdict). Wired the **DOCUMENTS** tab: projects-list project picker
+  (defaults to selected project), "➤ Send to New sources" button (disabled until a
+  project is chosen), optimistic removal + a load filter excluding `status='routed'`.
+  Added `'routed'` to the `IntelligenceSource.status` union. Approve/Save/Reject untouched.
+- **3d-2** (`9021518`) — applied the **exact 3d-1 Send pattern** to the **Social** and
+  **Interviews** compose tabs: projects-list picker (defaults to the selected project),
+  "➤ Send to New sources" button (disabled until a project is chosen) → `routeToProject`
+  (**reuse — no backend change**), `handleProjectSelect`→`intelligence.setProject`,
+  optimistic removal on send, and a `status !== 'routed'` load filter on each tab.
+  Approve/Save/Reject and the action-row layout left **untouched** (cleanup is 3d-3).
+  SQL-verified: Send from each tab creates an `info_page_sources` row `stage='new'` with
+  `source_type` `social`/`interview` matching the intel `type`, and flips `status='routed'`.
 
-**Immediate next task — TEST 3c-1, then commit.** Relaunch (`npm run rebuild && npm
-run dev`; DB + IPC are main-process → needs a real restart). Approve a News article,
-then verify by SQL: a new `info_page_sources` row (`article_id`=source id,
-`info_page`='board-info-latam', `stage`='new', `source_type`='article') + an
-`info_page_changes` `NULL→new` row; re-approve → no duplicate; the intel row persists
-at `status='approved'` and drops out of the pending queue. Then **commit 3c-1**.
+**Why this matters:** the routing engine (`routeToProject` → `routeToNewSources`) is now
+proven **type-agnostic** — the same IPC drives article, document, social, and interview
+Sends, and `source_type` is read from the intel row rather than hard-coded per tab.
 
-**Then build 3c-2** (New-sources full-item VIEW + move-back-to-intel): extend
-`getSourcePipeline`'s SELECT + `InfoPageSourceRow` + `PipelineSourceCard` to show
-`type` / `analysis_json` (.ai/.human/.reconciled) / `intel_notes`; add a **move-back**
-IPC that `DELETE`s the `info_page_sources` row for `(article_id, info_page)` AND sets
-the intel `status` back to `'unreviewed'` (source reappears in intel; `UNIQUE` lets a
-later re-approve re-insert). Then **3d**: compose "Send" buttons on Documents/Social/
-Interviews reusing `routeToNewSources` + per-card project pickers.
+**Immediate next task — Slice 3d-3 (compose action-row cleanup).** Rework the per-item
+action row consistently across **Documents / Social / Interviews**: today Approve / Save /
+Reject / Send are crowded on one line. Target layout **[project picker] · [Save draft] ·
+[Send]** with **Delete in the card header**, dropping the now-vestigial **Approve / Reject**
+verdict buttons (the verdict is superseded by the Send-to-project pipeline). **Pending a
+design decision** — confirm the target row before touching source. Then continue the rest
+of the **Info Pages restructure**: the downstream editorial stages **Analysis & design →
+Publish → Sources** (the New-sources → committed → published lifecycle beyond capture).
 
 **Then, eventually:** cut a **v2.0.22** release so installed apps get everything
 committed since the v2.0.21 tag (member-add hang fix + Phase-B B0.3/B0.5/B0.6/B1 +
-the whole Intelligence restructure).
+the whole Intelligence restructure through 3d-2).
 
 ## Release status at a glance
 
@@ -65,9 +78,11 @@ the whole Intelligence restructure).
   (`42ff4bf`); and the **Intelligence restructure** Slices **1** (`07e9a8d`), **2a**
   (`60a5d45`), **2b** (`b231b2a`), Documents-delete (`be9101e`), **2c+Social-a**
   (`9ce37a9`), AI-relevance (`335d3a8`), **Social-b** (`dcda557`), News-human-layer
-  (`ff50233` + `69fac5c`), **3a** (`0a4585e`), **3b** (`17448c0`).
-- **Uncommitted in the working tree:** **Slice 3c-1** (commit-pipeline routing + News
-  Approve → `info_page_sources`) — built, tested-pending. See "Start here" above.
+  (`ff50233` + `69fac5c`), **3a** (`0a4585e`), **3b** (`17448c0`), **3c-1** (`41d0acb`),
+  **3c-2a** (`8010183`), **3c-2b** (`588ac91`), **3d-1** (`14d9386`), **3d-2** (`9021518`).
+- **Working tree:** only these two docs (`HANDOFF.md`, `PROJECT_SUMMARY.txt`) are
+  modified — no source changes pending. Next unbuilt work is **Slice 3d-3** (compose
+  action-row cleanup, pending a design decision). See "Start here" above.
 
 ## v2.0.21 — keyword matcher word-boundary fix (released)
 
@@ -253,6 +268,24 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
 - `WorkspaceContext` exposes `setTasks` for this optimistic UI.
 
 ## Known issues / open threads
+
+### On the horizon — deferred, from the 3d verification pass
+
+- **Article collection dedup + outlet targeting (pipeline layer).** The GDELT / Haiku
+  fetch pulls many near-duplicate reposts/mirrors of the same story (e.g. one CNN piece
+  syndicated across outlets) while sometimes *missing the original source*. Likely a
+  two-part fix: better source targeting **upstream** (GDELT query / source config) +
+  dedup **downstream**. Not app-code; deferred to a pipeline-focused session.
+- **Sidebar "N new" badge likely counts the wrong table.** The Info Pages sidebar badge
+  appears to still count the legacy `info_page_items` table, not `info_page_sources`
+  `stage='new'` (observed mismatch: the New-sources tab showed **4**, the sidebar badge
+  showed **7**). Small, self-contained fix — its own slice.
+- **Legacy `info_page_sources` rows have empty `source_type`.** The 3 pre-existing rows
+  routed by the old disposition-based path (pre-3c-1) carry an empty `source_type`. The
+  card still badges correctly via the JOIN on the intel `type`, so this is **cosmetic
+  only** — no backfill needed unless a later query reads `source_type` directly.
+
+### Standing issues
 
 - **Info-page CONTENT is still local + per-machine.** After B0 the board *rows* are
   cloud, but every `info_page_*` table (items, sources, commits, published, changes,

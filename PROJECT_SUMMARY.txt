@@ -1,13 +1,15 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-13
-  Current version: v2.0.21 (released)  |   246 commits   |   ~34,000 lines of TS/TSX
+  Current version: v2.0.21 (released)  |   252 commits   |   ~34,300 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
   NOTE: large post-v2.0.21 work stream is COMMITTED but UNRELEASED (needs a v2.0.22):
   Phase B B0.3/B0.5/B0.6 + B1 + member-add hang fix, AND the INTELLIGENCE RESTRUCTURE
-  (Slices 1, 2a–2c, Social-a/b, News human layer, 3a, 3b). CURRENTLY UNCOMMITTED in the
-  working tree: Slice 3c-1 (commit-pipeline routing + News Approve → info_page_sources).
-  See HANDOFF.md "Start here" for the resume point.
+  (Slices 1, 2a–2c, Social-a/b, News human layer, 3a, 3b, the 3c commit pipeline, and
+  3d-1/3d-2 Send-to-New-sources across Documents + Social + Interviews). The routing
+  engine is now proven type-agnostic (article/document/social/interview). Working tree
+  is otherwise CLEAN (docs only). Next: Slice 3d-3 (compose action-row cleanup, pending
+  a design decision). See HANDOFF.md "Start here" for the resume point.
 ═══════════════════════════════════════════════════════════════════════════════
 
 ───────────────────────────────────────────────────────────────────────────────
@@ -190,7 +192,7 @@ DESIGN PRINCIPLES / CONVENTIONS
 9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-07-13)
 ───────────────────────────────────────────────────────────────────────────────
   INTELLIGENCE RESTRUCTURE — human-first capture → project commit pipeline
-  (all committed except Slice 3c-1; post-v2.0.21, needs a v2.0.22 to ship)
+  (all COMMITTED through Slice 3d-1; post-v2.0.21, needs a v2.0.22 to ship)
     Goal: turn Source Intelligence into a human-first workflow (researcher notes +
     on-demand AI, never auto-run) that routes items into a specific project's Info
     Pages "New sources" via a RELIABLE board-id association (project_board_id),
@@ -221,13 +223,42 @@ DESIGN PRINCIPLES / CONVENTIONS
       intelligence:setProject IPC (stopped writing disposition_tags). No routing yet.
     * Slice 3b (17448c0) -- top project dropdown now FILTERS the News list by
       project_board_id (real per-project scoping); project-specific empty state.
-    * Slice 3c-1 (BUILT, UNCOMMITTED) -- commit-pipeline routing: Approve routes a News
-      article into its project's "New sources" (info_page_sources, stage='new') via new
+    * Slice 3c-1 (41d0acb) -- commit-pipeline routing: News Approve routes an article
+      into its project's "New sources" (info_page_sources, stage='new') via new
       routeToNewSources(id, boardId) keyed on project_board_id; added source_type column;
       idempotent (UNIQUE(article_id,info_page)+INSERT OR IGNORE); durable pointer (content/
       analysis/notes live via article_id ref). RETIRED the keyword fan-out
       (addApprovedSourceToInfoPages → info_page_items) from both approve paths
-      (updateStatus + confirmImported). Next: 3c-2 (New-sources full-item view + move-back).
+      (updateStatus + confirmImported). Verified via SQL end-to-end.
+    * Slice 3c-2a (8010183) -- full-item New-sources cards: getSourcePipeline SELECT +
+      InfoPageSourceRow gain type/analysis_json/intel_notes; PipelineSourceCard shows a
+      source-type badge, AI-analysis blocks (.human/.ai/.reconciled, render only if
+      present), and researcher notes (HTML-stripped) — all graceful-degrade.
+    * Slice 3c-2b (588ac91) -- move-back-to-intel: infoPages:moveBackToIntel deletes the
+      info_page_sources pointer (scoped stage='new') and, only if a row was deleted, sets
+      the intel source status='unreviewed' (reappears in News) + logs new→intel. Per-card
+      "↩ Move back to intel" button via PipelineSourceCard's action slot. Intel content/
+      analysis/notes untouched — a later re-approve re-routes cleanly.
+    * Slice 3d-1 (14d9386) -- dedicated intelligence:routeToProject(id, boardId) IPC
+      (persists project_board_id → routeToNewSources → status='routed'; decoupled from the
+      approve/verdict path). Wired the DOCUMENTS compose tab: projects-list project picker
+      (defaults to selected project), "➤ Send to New sources" button (disabled until a
+      project is chosen), optimistic removal + a load filter excluding status='routed'.
+      Approve/Save/Reject untouched. Verified via SQL end-to-end.
+    * Slice 3d-2 (9021518) -- applied the exact 3d-1 Send pattern to the SOCIAL + INTERVIEWS
+      compose tabs: projects-list picker (defaults to the selected project), "➤ Send to New
+      sources" button (disabled until a project is chosen) → routeToProject, handleProjectSelect
+      → intelligence.setProject, optimistic removal on send, and a status!=='routed' load filter
+      on each tab. Reuses the existing routeToProject IPC — NO backend change. Approve/Save/
+      Reject and the action-row layout left untouched (cleanup is 3d-3). Verified via SQL:
+      Send from each tab creates an info_page_sources row stage='new' with source_type
+      'social'/'interview' matching the intel type, status='routed'. The routing engine is now
+      proven TYPE-AGNOSTIC across all four source types (article/document/social/interview) —
+      source_type travels from the intel row rather than being hard-coded per tab.
+    * NEXT — Slice 3d-3: compose action-row cleanup across Documents + Social + Interviews
+      (drop the vestigial Approve/Reject; target [project picker] · [Save draft] · [Send] with
+      Delete in the card header) — pending a design decision. Then the rest of the Info Pages
+      restructure: the downstream editorial stages Analysis & design → Publish → Sources.
 
   PHASE B — CLOUD BRIDGE FOR INFO PAGES (post-v2.0.21; needs a v2.0.22 to ship)
     Goal: make the 4 info-page projects real cloud boards (membership/heads work),
