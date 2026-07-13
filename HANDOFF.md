@@ -329,6 +329,19 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   routed by the old disposition-based path (pre-3c-1) carry an empty `source_type`. The
   card still badges correctly via the JOIN on the intel `type`, so this is **cosmetic
   only** — no backfill needed unless a later query reads `source_type` directly.
+- **Interview span annotation.** Tag/annotate specific text segments *within* an
+  interview transcript with interpretations — per-character-range notes over the
+  plain-text transcript (`content` is stored plain, not JSON-wrapped, precisely to
+  anchor these offsets). Distinct from the whole-item topic tags shipped in T1–T5.
+  Design-first, its own multi-slice feature — deferred.
+- **T1 test-tag cleanup.** `alpha` / `beta` / `test-tag-alpha` were created in Contested
+  Skies' thematic vocabulary (`known_tags`, `board-info-latam`) during T1 testing. Delete
+  them via the **TagPicker admin trash** when convenient (leaves any article chips intact).
+- **`created_at` is UTC — add the local offset before judging recency.** Both `known_tags`
+  and `intelligence_sources` store `created_at` in **UTC** (`new Date().toISOString()`,
+  `…Z`); local is **CEST = UTC+2**. A UTC-vs-local mismatch cost real debugging time during
+  T1 testing (fresh writes looked ~2h stale). Convert (+2h) before concluding "nothing was
+  written."
 
 ### Standing issues
 
