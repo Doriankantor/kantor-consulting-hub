@@ -1,46 +1,57 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-11 · v2.0.21 released; Phase B B0 committed, B1 built + uncommitted_
+_Last updated: 2026-07-13 · v2.0.21 released; Intelligence restructure through Slice 3b committed; Slice 3c-1 built + uncommitted_
 
 ## ▶ Start here — resume point for the next session
 
-**Where we are:** Phase B (cloud bridge for Info Pages). B0 is done + committed
-(HEAD = `a0a67b3`). **B1 + two follow-on fixes are BUILT but UNCOMMITTED** in the
-working tree — do not assume they're in git yet. Both bugs found while testing B1 are
-now FIXED (uncommitted). **Immediate next step: TEST in-app, then commit it all.**
+**Where we are:** the **INTELLIGENCE RESTRUCTURE** (human-first capture → project
+commit pipeline). Slices 1 → 3b are **committed** (HEAD = `17448c0`). **Slice 3c-1
+(commit-pipeline routing + News Approve) is BUILT but UNCOMMITTED** — do not assume
+it's in git. **Immediate next step: TEST 3c-1 (approve an article, verify the
+`info_page_sources` row via SQL), commit it, then build 3c-2.**
 
-**Uncommitted working-tree changes right now (B1 + 2 fixes + docs):**
-- `src/main/cloud/boards.ts` — 4 new cloud owner fns (`addOwner`, `removeOwner`,
-  `isOwner`, `getOwners`), email-keyed, mirror `board_members`, root-gated.
-- `src/main/ipc/index.ts` — repointed `infoPages:getOwners/addOwner/removeOwner/isOwner`
-  to the cloud fns (local table/handlers left in place, unused).
-- `src/renderer/src/env.d.ts` — owner types updated (`getOwners` → `user_email` shape;
-  `addOwner` `by?` optional; `isOwner` `userId?`).
-- `src/renderer/src/pages/Settings.tsx` — three things stacked here:
-  1. **B1** — Board Access matrix root-only **"Head"** toggle on info-page columns
-     (writes cloud `info_page_owners`, refetches).
-  2. **Member-checkmark fix (DONE)** — membership was keyed by `m.id` (UUID) against a
-     Set of emails, so green checks vanished on reload. Now the member Set, render,
-     single toggle, and grant/revoke-all ALL key on `member.email.toLowerCase()`
-     (mirrors how heads are keyed). IPC still passes `m.id`.
-  3. **"Head implies member" invariant (DONE)** — three cascade points:
-     `toggleHead` ON auto-adds membership before `addOwner`; `toggleBoardAccess`
-     removing membership also `removeOwner`s (info-page only); `revokeAllBoards` also
-     removes heads. `grantAllBoards` deliberately does NOT auto-add heads (head is a
-     deliberate assignment). Invariant: after any op, nobody is a head of a board
-     they're not a member of.
-- Builds clean (tsc: 0 new errors; node 8 / web 57 pre-existing baselines).
+**The arc (why):** make Source Intelligence human-first (researcher notes + on-demand
+AI, never auto-run) and route items into a specific project's Info Pages "New sources"
+via a **reliable board-id association** (`intelligence_sources.project_board_id`),
+retiring the 93%-empty / stale-slug `disposition_tags` link and the keyword-match
+fan-out.
 
-**Immediate next task — TEST, then commit.** Relaunch (`npm run rebuild && npm run
-dev`; owner IPC is a main-process change → needs a real restart), then in Settings →
-Board Access verify: (a) member checkmarks persist across navigate-away-and-back;
-(b) turning a non-member into a Head adds the green member check too; (c) unchecking
-membership clears the Head; (d) Revoke-all clears both. Then **commit B1 + both fixes
-together**, and continue B2+ (migrate remaining `info_page_*` + `intelligence_sources`
-content tables to cloud). See "Phase B → Next" below.
+**Uncommitted working-tree changes right now (Slice 3c-1):**
+- `src/main/db.ts` — `ALTER TABLE info_page_sources ADD COLUMN source_type TEXT`
+  (idempotent). The durable intel link is the existing `article_id`; content/analysis/
+  notes stay LIVE via that reference (no copy).
+- `src/main/ipc/index.ts` —
+  1. New `routeToNewSources(intelSourceId, boardId)`: `INSERT OR IGNORE INTO
+     info_page_sources (article_id, info_page=boardId, stage='new', source_type,
+     added_at)` + `info_page_changes` log. Idempotent via `UNIQUE(article_id,
+     info_page)`. Type-agnostic (3d compose Send reuses it). Returns the page name.
+  2. `updateStatus('approved')` repointed to call `routeToNewSources(id,
+     project_board_id)` and **RETIRED** `addApprovedSourceToInfoPages` (keyword
+     fan-out → `info_page_items`). `confirmImported` (bulk approve) repointed too, so
+     the fan-out fn is now fully uncalled (definition left in place, unused).
+- `src/renderer/src/pages/Intelligence/NewsTab.tsx` — Approve `onClick` persists
+  `project_board_id` (from the picker / selected-project default) BEFORE approving,
+  so the server routes to the right project. Replaced the legacy disposition auto-save.
+- Builds clean (tsc: 0 new errors; node 8 / web 55 pre-existing baselines).
+
+**Immediate next task — TEST 3c-1, then commit.** Relaunch (`npm run rebuild && npm
+run dev`; DB + IPC are main-process → needs a real restart). Approve a News article,
+then verify by SQL: a new `info_page_sources` row (`article_id`=source id,
+`info_page`='board-info-latam', `stage`='new', `source_type`='article') + an
+`info_page_changes` `NULL→new` row; re-approve → no duplicate; the intel row persists
+at `status='approved'` and drops out of the pending queue. Then **commit 3c-1**.
+
+**Then build 3c-2** (New-sources full-item VIEW + move-back-to-intel): extend
+`getSourcePipeline`'s SELECT + `InfoPageSourceRow` + `PipelineSourceCard` to show
+`type` / `analysis_json` (.ai/.human/.reconciled) / `intel_notes`; add a **move-back**
+IPC that `DELETE`s the `info_page_sources` row for `(article_id, info_page)` AND sets
+the intel `status` back to `'unreviewed'` (source reappears in intel; `UNIQUE` lets a
+later re-approve re-insert). Then **3d**: compose "Send" buttons on Documents/Social/
+Interviews reusing `routeToNewSources` + per-card project pickers.
 
 **Then, eventually:** cut a **v2.0.22** release so installed apps get everything
-committed since the v2.0.21 tag (member-add hang fix + B0.3/B0.5/B0.6 + B1).
+committed since the v2.0.21 tag (member-add hang fix + Phase-B B0.3/B0.5/B0.6/B1 +
+the whole Intelligence restructure).
 
 ## Release status at a glance
 
@@ -49,12 +60,14 @@ committed since the v2.0.21 tag (member-add hang fix + B0.3/B0.5/B0.6 + B1).
   visualizer, board-restore + card-revive fixes, PublishQueue dead-code removal,
   Restore-all route-by-source fix).
 - **Committed AFTER the v2.0.21 tag, NOT yet in any released build** (needs a
-  **v2.0.22** release to reach installed apps): the board member-add UI hang fix
-  (`81e9eea`), and Phase-B **B0.3** (`a1ca0d4`), **B0.5** (`f9a5db4`), **B0.6**
-  (`a0a67b3`).
-- **Uncommitted in the working tree:** **B1** (cloud info-page owners + Settings heads
-  toggle) + the **member-checkmark render fix** + the **"head implies member"
-  invariant** — all built, tested-pending, not committed. See "Start here" above.
+  **v2.0.22** release to reach installed apps): member-add hang fix (`81e9eea`);
+  Phase-B **B0.3** (`a1ca0d4`), **B0.5** (`f9a5db4`), **B0.6** (`a0a67b3`), **B1**
+  (`42ff4bf`); and the **Intelligence restructure** Slices **1** (`07e9a8d`), **2a**
+  (`60a5d45`), **2b** (`b231b2a`), Documents-delete (`be9101e`), **2c+Social-a**
+  (`9ce37a9`), AI-relevance (`335d3a8`), **Social-b** (`dcda557`), News-human-layer
+  (`ff50233` + `69fac5c`), **3a** (`0a4585e`), **3b** (`17448c0`).
+- **Uncommitted in the working tree:** **Slice 3c-1** (commit-pipeline routing + News
+  Approve → `info_page_sources`) — built, tested-pending. See "Start here" above.
 
 ## v2.0.21 — keyword matcher word-boundary fix (released)
 
@@ -120,7 +133,7 @@ work, then migrate the info-page **content tables** to cloud.
   appeared — the `group-hover:opacity-100` reveal had no `group` ancestor; added
   `group` to the row container.
 
-### B1 — built, UNCOMMITTED (identity spine)
+### B1 — COMMITTED `42ff4bf` (identity spine)
 
 `info_page_owners` ("project heads") is now **cloud + email-keyed** — the first content
 table to cloud, aligned with the email-keyed `board_members` (= project members):
@@ -139,15 +152,15 @@ table to cloud, aligned with the email-keyed `board_members` (= project members)
   `info_page_owners` row then **refetches** that board's heads.
 - The cloud `public.info_page_owners` table already exists
   (`page_id, user_email, assigned_by_email, assigned_at`, PK `page_id+user_email`).
-- **Two follow-on fixes stacked on B1 (also uncommitted):** the member-checkmark
+- **Two follow-on fixes stacked on B1 (also committed `42ff4bf`):** the member-checkmark
   render fix (membership keyed by email) and the "head implies member" invariant
-  (three cascade points in `toggleHead`/`toggleBoardAccess`/`revokeAllBoards`). See
-  "Start here" for both.
-- **Not committed** — pending your in-app test.
+  (three cascade points in `toggleHead`/`toggleBoardAccess`/`revokeAllBoards`).
+- **Committed `42ff4bf`** (B1 + both follow-on fixes).
 
 ### Next
 
-- **Do first** — TEST B1 + the two fixes in-app, then commit them together.
+- **Active work is the Intelligence restructure** (see "Start here") — Phase B B2+ is
+  paused behind it. Resume it after the restructure lands.
 - **B2+** — migrate the remaining `info_page_*` tables + `intelligence_sources` to
   cloud, **additive-first per table**: create cloud table → dual-write → backfill →
   verify → cut reads over → add realtime. (Realtime for `info_page_owners` was

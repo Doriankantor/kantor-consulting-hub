@@ -1,12 +1,13 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-07-11
-  Current version: v2.0.21 (released)  |   234 commits   |   ~31,900 lines of TS/TSX
+  Generated: 2026-07-13
+  Current version: v2.0.21 (released)  |   246 commits   |   ~34,000 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
-  NOTE: post-v2.0.21 work (member-add hang fix + Phase B B0.3/B0.5/B0.6) is COMMITTED
-  but unreleased; Phase B B1 (info-page owners → cloud/email + Settings heads toggle),
-  the member-checkmark render fix, and the "head implies member" invariant are BUILT
-  but UNCOMMITTED (test-then-commit). See HANDOFF.md "Start here" for the resume point.
+  NOTE: large post-v2.0.21 work stream is COMMITTED but UNRELEASED (needs a v2.0.22):
+  Phase B B0.3/B0.5/B0.6 + B1 + member-add hang fix, AND the INTELLIGENCE RESTRUCTURE
+  (Slices 1, 2a–2c, Social-a/b, News human layer, 3a, 3b). CURRENTLY UNCOMMITTED in the
+  working tree: Slice 3c-1 (commit-pipeline routing + News Approve → info_page_sources).
+  See HANDOFF.md "Start here" for the resume point.
 ═══════════════════════════════════════════════════════════════════════════════
 
 ───────────────────────────────────────────────────────────────────────────────
@@ -186,8 +187,48 @@ DESIGN PRINCIPLES / CONVENTIONS
     save it as a dated file in /sql and commit it.
 
 ───────────────────────────────────────────────────────────────────────────────
-9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-07-11)
+9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-07-13)
 ───────────────────────────────────────────────────────────────────────────────
+  INTELLIGENCE RESTRUCTURE — human-first capture → project commit pipeline
+  (all committed except Slice 3c-1; post-v2.0.21, needs a v2.0.22 to ship)
+    Goal: turn Source Intelligence into a human-first workflow (researcher notes +
+    on-demand AI, never auto-run) that routes items into a specific project's Info
+    Pages "New sources" via a RELIABLE board-id association (project_board_id),
+    replacing the 93%-empty/stale-slug disposition_tags link.
+    * Slice 1 (07e9a8d) -- project dropdown + read-only data-gathering FRAMEWORK panel
+      (bound to board_config: repo/live_url/keywords/pipeline). View scoping deferred.
+    * Slice 2a (60a5d45) -- shared main-process AI helper analyzeWithClaude()
+      (src/main/ai/analyze.ts): tasks summarize|relevance|reconcile, project-aware,
+      reuses resolveAnthropicKey, never throws; model claude-haiku-4-5. Thin test IPC.
+    * Slice 2b (b231b2a) -- Documents human-first: PRIMARY researcher notes (intel_notes),
+      on-demand "Analyze with AI" (separate box → analysis_json.ai), editable Reconcile
+      (→ reconciled_notes). New cols intel_notes/reconciled_notes on intelligence_sources.
+      Upload no longer auto-analyzes. Delete moved to always-visible header (be9101e).
+    * Slice 2c + Social-a (9ce37a9) -- new Interviews tab (type='interview', transcript
+      plain-text in content, annotation-ready) replicating the human-first compose;
+      Social-a URL-metadata fetcher (src/main/social/fetchUrlMetadata.ts: OpenGraph/meta
+      via native fetch, graceful blocked/timeout signal) + test IPC.
+    * AI relevance always explains (335d3a8) -- relevance_reasoning must justify why a
+      source IS/IS NOT relevant to the project (keyword/scope grounded).
+    * Social-b (dcda557) -- human-first SocialTab: paste-URL → autofill (or hand-fill
+      fallback), primary "describe what's happening", on-demand AI + reconcile,
+      "View original", compose state survives tab-switch (SocialTab kept mounted).
+    * News human layer (ff50233, refined 69fac5c) -- elongating NOTES footer
+      (intel_notes) + always-visible topic-tag + RELEVANCE OVERRIDE controls; human
+      relevance stored in analysis_json.human (gate-safe; never relevance_score).
+    * Slice 3a (0a4585e) -- new column intelligence_sources.project_board_id; seeded all
+      248 articles to board-info-latam; NewsTab Project picker reads/writes it via new
+      intelligence:setProject IPC (stopped writing disposition_tags). No routing yet.
+    * Slice 3b (17448c0) -- top project dropdown now FILTERS the News list by
+      project_board_id (real per-project scoping); project-specific empty state.
+    * Slice 3c-1 (BUILT, UNCOMMITTED) -- commit-pipeline routing: Approve routes a News
+      article into its project's "New sources" (info_page_sources, stage='new') via new
+      routeToNewSources(id, boardId) keyed on project_board_id; added source_type column;
+      idempotent (UNIQUE(article_id,info_page)+INSERT OR IGNORE); durable pointer (content/
+      analysis/notes live via article_id ref). RETIRED the keyword fan-out
+      (addApprovedSourceToInfoPages → info_page_items) from both approve paths
+      (updateStatus + confirmImported). Next: 3c-2 (New-sources full-item view + move-back).
+
   PHASE B — CLOUD BRIDGE FOR INFO PAGES (post-v2.0.21; needs a v2.0.22 to ship)
     Goal: make the 4 info-page projects real cloud boards (membership/heads work),
     then migrate info-page content tables to cloud. Full detail in HANDOFF.md.
@@ -207,18 +248,18 @@ DESIGN PRINCIPLES / CONVENTIONS
       is hosting-fields-only (name/repo/live_url/file); keywords reserved for Claude
       Code, preserved on edit via config merge. Fixed the hover-kebab reveal (missing
       'group' class). Local infoPages:create/updateMeta/delete handlers left unused.
-    * B1 (BUILT, UNCOMMITTED) -- info_page_owners ("project heads") is now cloud +
+    * B1 (committed 42ff4bf) -- info_page_owners ("project heads") is now cloud +
       email-keyed (identity spine, aligned with email-keyed board_members). 4 cloud
       fns in cloud/boards.ts (addOwner/removeOwner/isOwner/getOwners, root-gated);
       infoPages owner IPC repointed to cloud; Settings Board Access matrix gained a
       root-only "Head" toggle on info-page columns. Cloud public.info_page_owners
       already created.
-    * MEMBER-CHECKMARK FIX (built, uncommitted) -- Board Access matrix green MEMBER
+    * MEMBER-CHECKMARK FIX (committed 42ff4bf) -- Board Access matrix green MEMBER
       checkmarks vanished on reload (id-vs-email key mismatch: member Set held emails
       from listMembers, but render/toggles keyed on m.id UUID). Data was never lost.
       Fixed: member Set, render, single toggle, and grant/revoke-all all key on
       member.email.toLowerCase() (mirrors heads). IPC still passes m.id.
-    * HEAD-IMPLIES-MEMBER INVARIANT (built, uncommitted) -- a head must be a member.
+    * HEAD-IMPLIES-MEMBER INVARIANT (committed 42ff4bf) -- a head must be a member.
       Three cascade points in Settings.tsx: toggleHead ON auto-adds membership before
       addOwner; toggleBoardAccess removing membership also removeOwners (info-page);
       revokeAllBoards also removes heads. grantAllBoards does NOT auto-add heads.
