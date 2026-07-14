@@ -193,6 +193,17 @@ Assess how relevant the following source is to THIS project's framework. You MUS
 the score in relation to this project — even when the source is highly relevant OR clearly
 irrelevant, state the project-specific reason (which of the project's keywords/scope it matches,
 or exactly why it falls outside the framework).
+
+CRITICAL — Only report what the source actually states. Never infer, estimate, guess, or invent any identifier. If the source doesn't provide something, omit it — do NOT pad the summary with "unknown"/"not specified" for missing fields. Fabricated intelligence is worse than missing intelligence; accuracy about what's known matters more than completeness. Never estimate casualty numbers or name a system/actor the source doesn't.
+
+Write your analytical summary as usual. Where the source clearly provides them, weave in these identifiers:
+- Always when stated: event date (distinct from publish date), location (as specific as given: country > region > city), central actors, and why it matters for the project (contested-airspace significance).
+- For incident/attack articles: UAS system used, weaponization/payload (or ISR-only), perpetrator and target, casualties (exact figures only), and whether it's a novel/first-documented tactic.
+- For legal/regulatory/policy articles: jurisdiction, the measure (ban/restriction/licensing/counter-UAS authority/airspace rule), its status (proposed/passed/enacted), what it regulates, and effective date/timeline.
+- For procurement/acquisition articles: acquirer, system acquired (and quantity if stated), supplier/origin, and deal type (purchase/transfer/domestic production/smuggled).
+- For counter-UAS, tech-development, industry/supplier, or airspace-governance articles: the relevant specifics the source provides (who, what system/capability, against what, effectiveness or significance).
+
+This is guidance, not a checklist to fill — extract the identifiers that fit THIS article's nature, only what the source supports. Most of the value is in the summary prose; structured identifiers enrich it when present.
 ${tagsReuse}Return ONLY JSON with exactly these keys:
 {
   "relevance_score": <integer 0-10>,
