@@ -70,6 +70,16 @@ function withAnalysisKey(raw: string | null, key: string, block: unknown): strin
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
+// B2: color-code a capability's actor_type badge (VNSA-held vs state-held vs
+// commercial distinguishable at a glance).
+function actorTypeClass(t?: string): string {
+  switch ((t || '').toLowerCase()) {
+    case 'vnsa':       return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+    case 'state':      return 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
+    case 'commercial': return 'bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300'
+    default:           return 'bg-gray-100 text-gray-500 dark:bg-white/[0.08] dark:text-white/40'
+  }
+}
 
 
 interface Props {
@@ -651,6 +661,10 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           const srcAnalysis = parseAnalysis(source.analysis_json)
           const aiBlock = srcAnalysis.ai as Record<string, any> | undefined
           const reconciledBlock = srcAnalysis.reconciled as Record<string, any> | undefined
+          // B2: structured identifiers from the AI block (B1 extraction). Graceful-degrade.
+          const articleType = aiBlock?.article_type as string | undefined
+          const caps: Array<Record<string, any>> = Array.isArray(aiBlock?.capabilities) ? aiBlock!.capabilities : []
+          const facts: Array<Record<string, any>> = Array.isArray(aiBlock?.key_facts) ? aiBlock!.key_facts : []
           const reconciledDraft = reconciledDrafts[source.id] ?? (source.reconciled_notes || '')
           const showReconciled = notesText(reconciledDraft).trim() !== '' || !!reconciledBlock
           const notesFilledForReconcile = notesText(noteDrafts[source.id] ?? (source.intel_notes || '')).length > 0
@@ -1089,8 +1103,15 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                       </div>
                       {aiBlock ? (
                         <div className="p-3 rounded-lg bg-indigo-50/60 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/25 space-y-2 text-xs">
-                          {typeof aiBlock.relevance_score === 'number' && (
-                            <span className="inline-block px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 font-bold text-[10px]">relevance {aiBlock.relevance_score}/10</span>
+                          {(typeof aiBlock.relevance_score === 'number' || articleType) && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {typeof aiBlock.relevance_score === 'number' && (
+                                <span className="inline-block px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/20 text-indigo-800 dark:text-indigo-300 font-bold text-[10px]">relevance {aiBlock.relevance_score}/10</span>
+                              )}
+                              {articleType && (
+                                <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-600/30 text-slate-700 dark:text-slate-300 font-medium text-[10px] uppercase tracking-wide">{articleType}</span>
+                              )}
+                            </div>
                           )}
                           {aiBlock.summary && <p className="text-gray-700 dark:text-white/70">{aiBlock.summary}</p>}
                           {aiBlock.relevance_reasoning && <p className="text-gray-500 dark:text-white/50 italic">{aiBlock.relevance_reasoning}</p>}
@@ -1107,6 +1128,37 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                                   onCreate={tag => handleCreateTag(source.id, 'thematic', projectBoardSel, themaTags, tag)}
                                 />
                               ))}
+                            </div>
+                          )}
+                          {/* B2: SYSTEMS — capabilities table (verbatim named systems + actor/cost). */}
+                          {caps.length > 0 && (
+                            <div>
+                              <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30 mb-1">Systems</p>
+                              <div className="space-y-1">
+                                {caps.map((c, i) => (
+                                  <div key={`${c.system}-${i}`} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                    <span className="font-semibold text-gray-800 dark:text-white/80">{c.system}</span>
+                                    {c.actor && <span className="text-gray-500 dark:text-white/50">· {c.actor}</span>}
+                                    {c.actor_type && <span className={`px-1 py-0.5 rounded text-[9px] font-medium uppercase ${actorTypeClass(c.actor_type)}`}>{c.actor_type}</span>}
+                                    {c.cost && <span className="px-1 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[9px] font-medium">{c.cost}</span>}
+                                    {c.category && <span className="px-1 py-0.5 rounded bg-indigo-100/70 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 text-[9px] font-medium">{c.category}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {/* B2: KEY FACTS — label/value rows for type-specific specifics. */}
+                          {facts.length > 0 && (
+                            <div>
+                              <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30 mb-1">Key facts</p>
+                              <div className="space-y-1">
+                                {facts.map((f, i) => (
+                                  <div key={`${f.label}-${i}`} className="grid grid-cols-[128px_1fr] gap-x-2">
+                                    <span className="text-gray-400 dark:text-white/35 break-words">{f.label}</span>
+                                    <span className="text-gray-700 dark:text-white/70 break-words">{f.value}</span>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           )}
                           {aiBlock.analyzed_at && <p className="text-[10px] text-indigo-500/60 dark:text-indigo-400/40">Analyzed {formatDate(aiBlock.analyzed_at)}</p>}
