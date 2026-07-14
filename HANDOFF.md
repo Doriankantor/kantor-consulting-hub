@@ -1,36 +1,98 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-14 · v2.0.22 RELEASED; post-release work (News rich capture 3e-1, Duplicate action, T6a clickable chips, delete-trash fix) committed + pushed (HEAD 3153587) → needs a v2.0.23 release; docs-only edits pending_
+_Last updated: 2026-07-15 · v2.0.22 RELEASED; post-release work (3e-1, Duplicate, T6a, tag-delete fix, T7, persist fix, Phase 1, **Path B B1/B2/B3**, **narrative-summary fix**) committed + pushed (HEAD `c0be06f`) → a **v2.1.0 MINOR** release is planned to ship the whole batch_
 
 ## ▶ Start here — resume point for the next session
 
 **Where we are:** **v2.0.22 is RELEASED** (`937e220`; the Intelligence restructure through
-3d-3 + tag/scoping series T1–T5 shipped to installed apps). On top of it, a batch of
-**News-focused work is committed + pushed but UNRELEASED** — HEAD = `3153587`,
-`origin/main` up to date, working tree clean apart from these two docs. It needs a
-**v2.0.23** release to reach installed apps (see "Post-v2.0.22" below). Net state of the
-four source types (**News / Documents / Social / Interviews**):
-- **Human-first capture** — researcher notes primary, on-demand AI (never auto-run),
-  editable reconcile — on all four. **News now matches** (3e-1): article-text paste box
-  + Analyze-with-AI + Reconcile on the card footer, feature-complete across all four.
-- **Send-to-pipeline** — each routes into a project's "New sources" via the shared,
-  type-agnostic `routeToProject` → `routeToNewSources` (`source_type` travels from the
-  intel row; SQL-verified for all four). New-sources cards show the full item, and
-  **move-back** returns a source to the intel queue (bidirectional).
-- **Project-scoped topic tags** — a shared `TagPicker` with a per-project vocabulary
-  (`known_tags.project_board_id`) on all four; **News AI-suggested tags are now clickable**
-  (T6a, 3-state color-coded).
-- **Project-scoped views** — the three compose tabs filter by the selected project like
-  News, and newly-created items inherit the selected project; every visible card belongs
-  to the selected project, so its tag vocabulary always matches.
-- **Duplicate handling** — News-only **Duplicate** action (mark + optional link to the
-  original), no learning signal.
+3d-3 + tag/scoping series T1–T5 shipped to installed apps). On top of it, a substantial
+batch is **committed + pushed but UNRELEASED** — HEAD = `c0be06f` (narrative-summary
+fix), `origin/main` up to date, working tree clean apart from these two docs.
 
-**Immediate next step: the downstream Info Pages editorial stages** (Analysis & design →
-Publish → Sources) — the New-sources → committed → published lifecycle *beyond* capture.
-The capture/routing/tagging front-end is now feature-complete for all four types. Also
-pending: a **v2.0.23** release for the post-v2.0.22 work, and **T6b** (clickable chips on
-the compose tabs).
+Because of the **feature volume** in that batch (not just fixes), Dorian chose a
+**v2.1.0 MINOR** release over another patch — it ships everything since v2.0.22 in one
+go: 3e-1, Duplicate, T6a, tag-delete fix, **T7**, the persist-selection fix, **Phase 1**,
+the **Path B arc (B1 → B2 → B3)**, and the **narrative-summary fix**.
+
+**The headline: Path B — structured identifier extraction is live end-to-end.** The AI
+analysis no longer produces only prose; it now emits a **structured catalogue** that
+survives routing and renders on both surfaces:
+- **B1** (`dd37e40`) — `analyzeText` returns `article_type` + **`capabilities[]`**
+  `{system, actor, actor_type, cost, category, relationship}` + **`key_facts[]`**
+  `{label, value}` into `analysis_json.ai`, no-invention-governed, **verbatim** specifics.
+- **B2** (`e379d2f`) — the News card renders it: article-type badge, color-coded
+  **SYSTEMS** table, **KEY FACTS** list, graceful-degrade.
+- **B3** (`51a9569`) — the same render ported to the **Info Pages New-sources cards**
+  (`PipelineSourceCard`), via a shared `actorTypeClass` module. **No backend change** —
+  `getSourcePipeline`'s live JOIN already returns `analysis_json`, so the structure
+  travels (and stays live: re-analyzing the intel source updates the card).
+
+Net state of the four source types (**News / Documents / Social / Interviews**):
+- **Human-first capture** — researcher notes primary, on-demand AI (never auto-run),
+  editable reconcile — on all four (News matched at 3e-1).
+- **Send-to-pipeline** — each routes into a project's "New sources" via the shared,
+  type-agnostic `routeToProject` → `routeToNewSources`; **move-back** is bidirectional.
+- **Project-scoped topic tags** — shared `TagPicker` with a per-project vocabulary
+  (`known_tags.project_board_id`) on all four; News AI-suggested chips are clickable (T6a);
+  and the **AI now reuses the project's existing vocabulary** instead of coining
+  near-duplicates (**T7**).
+- **Duplicate handling** — News-only **Duplicate** action (mark + optional link), no
+  learning signal.
+
+**Immediate next step:**
+- **DONE (`c0be06f`):** the relevance-path `summary`-key fix (see the amendment under
+  "Key design insight" and the post-v2.0.22 entry below). The AI narrative now has its
+  own `summary` field instead of cramming into `relevance_reasoning`.
+- **NEXT — reconcile refinement:** thread the structured `capabilities[]`/`key_facts[]`
+  into the **RECONCILE prompt** so reconcile narrates *from the catalogue* instead of
+  re-deriving from raw text. Requires adding an opt (e.g. `priorAi`) to `AnalyzeOpts` +
+  threading it from the **4 reconcile call sites** (`NewsTab:189`, `DocumentsTab:468`,
+  `SocialTab:701`, `InterviewsTab:416` — each already has `analysis_json` in scope).
+- **THEN:** the **v2.1.0** release, then the Level-2 cross-source aggregation (design-first).
+
+## ★ Key design insight — prose summarizes, structure catalogues
+
+**Named specifics (systems, costs, actors) must live in structured `capabilities[]`, not
+in prose. This was proven empirically, not assumed.**
+
+We tried **twice** to make the prose summary hold verbatim specifics (system names,
+dollar costs) by strengthening the prompt (Phase 1's enumerated, article-type-aware
+guidance, then a follow-up specificity revision). **Both failed and were reverted** —
+prose *structurally abstracts*: a summary's job is to generalize, so "a $100K SkyFend
+jammer held by Sinaloa" reliably degrades into "commercially available counter-drone
+equipment." You cannot prompt that tendency away.
+
+The fix was to stop fighting it and **split the two jobs**: prose narrates (Phase 1's
+guidance still shapes *what* the narrative is about), while a separate **structured
+extraction** (B1) catalogues the named specifics verbatim. **Do not re-attempt
+"make the summary more specific."**
+
+**`actor_type` is the thesis-critical classifier.** Of all the structured fields, the
+`actor_type` on each capability (**VNSA** / **state** / **commercial** / **unknown**) is
+the one the whole thesis turns on: it answers **"who has what"** — VNSAs *already
+operate* counter-UAS systems while states are *failing to acquire* them. That is why it
+is color-coded on the cards (amber VNSA / blue state), and why the Level-2 aggregation
+(below) is the real destination.
+
+**AMENDMENT (2026-07-15) — the summary regression had a SECOND, simpler cause: a schema
+bug.** The relevance prompt's JSON contract never requested a `summary` key at all. Phase
+1's guidance said "write your analytical summary as usual" — pointing at a field the
+contract didn't ask for — so the model complied by cramming the narrative into
+`relevance_reasoning` (600–840 chars in a field asking for "one or two sentences", styled
+as an italic footnote). Confirmed against the live DB: every B1-analyzed row had
+`ai.summary = NULL`. There was NO AI narrative summary on the analyze path at all.
+
+The insight above STILL HOLDS — prose structurally abstracts, and the two reverted
+experiments correctly failed at making prose hold VERBATIM specifics. But those
+experiments were also fighting a missing field: there was no narrative slot to be
+specific *in*. The fix (`c0be06f`) was to give the narrative its own home and let each
+field do its job:
+- `summary` = the analytical narrative (paragraph, ~4–7 sentences soft cap). Narrates
+  significance; REFERENCES the specifics rather than re-listing them —
+  `capabilities[]`/`key_facts[]` do the cataloguing.
+- `relevance_reasoning` = a 1–2 sentence relevance VERDICT only.
+
+Still do NOT re-attempt "make the summary hold verbatim specifics."
 
 **The arc (why):** make Source Intelligence human-first (researcher notes + on-demand
 AI, never auto-run) and route items into a specific project's Info Pages "New sources"
@@ -106,7 +168,7 @@ all four source types, plus project-scoped compose views.
   **resolving the cross-project tag-scoping bug** (a card's TagPicker vocabulary always
   matches its project).
 
-**Post-v2.0.22 (committed + pushed, UNRELEASED → needs v2.0.23):**
+**Post-v2.0.22 (committed + pushed, UNRELEASED → ships in v2.1.0):**
 - **3e-0 (ABANDONED, never committed)** — a collapsible Intelligence header experiment
   (collapse subtitle + big counters + framework panel, keep title/project/tabs). Built,
   then **reverted** — it freed too little vertical space for the interaction cost.
@@ -135,16 +197,79 @@ all four source types, plus project-scoped compose views.
   project is selected (was a silent no-op in "All sources": `onDelete` was gated only on
   admin, so it passed a handler with an empty board id → `handleDeleteTag` early-returned).
   Now gated on a non-empty board id in all four tabs; the trash isn't offered without a project.
+- **T7** (`d78fd36`) — **AI reuses existing project tags.** The project's `known_tags`
+  vocabulary is threaded from the renderer into `analyzeText` (`existingTags: string[]`) and
+  injected into the prompt as an "EXISTING PROJECT TAGS (reuse these where they fit)" block
+  across all three task branches, so the AI **prefers an existing tag over coining a
+  near-duplicate** (suggests `drone-attack` rather than a new `Drone-Strike`). Cuts the
+  create-churn the T6a chips surface. *(The spec originally named `buildRelevancePrompt` /
+  `projectConfig.projectBoardId` — neither exists; we stopped, surfaced the mismatch, and
+  took the renderer-threads-`existingTags` option.)*
+- **Persist Intelligence project selection** (`f4e107e`) — the selected project now persists
+  to **localStorage** (lazy initializer + write-on-change, mirroring `WorkspaceContext`).
+  It had been resetting to **"All sources"** on remount, which **silently broke T7 and tag
+  coloring** — with no project, no vocabulary is loaded, so the AI got an empty
+  `existingTags` and the chips rendered uncolored. A navigation-shaped bug with an
+  AI-shaped symptom.
+- **Phase 1** (`161a133`) — **article-type-aware identifier guidance in the analysis prose.**
+  The prompt tells the model, in enumerated form, *which* identifiers matter per article
+  type (incident vs procurement vs policy…). This shapes **what the narrative is about**;
+  it does **not** make the prose hold verbatim specifics (see below).
+- **Narrative-specificity experiment — TRIED AND REVERTED (do not re-attempt).** After
+  Phase 1 we pushed further, asking the prose summary itself to retain verbatim specifics
+  (system names, costs). **It failed twice and was discarded both times.** Prose
+  structurally abstracts — see "Key design insight" above. **Conclusion: specifics belong
+  in structured extraction, not prose.** This is why Path B exists.
+- **Path B / B1** (`dd37e40`) — **STRUCTURED extraction.** `AnalyzeResult` gains
+  `article_type`, **`capabilities[]`** `{system, actor, actor_type (VNSA/state/commercial/
+  unknown), cost, category, relationship}` and **`key_facts[]`** `{label, value}`, written
+  into `analysis_json.ai` (**no schema change** — `saveAiAnalysis` spreads the AI block, and
+  `normalizeResult` allowlist-copies the new keys, `Array.isArray`-guarded, defaulting to
+  `[]`). Governed by an explicit **no-invention** rule: extract **verbatim** or omit.
+  - **Also fixed a silent-failure bug found here:** `max_tokens` was **1024**, far too small
+    for the larger structured output → the JSON came back **truncated** → parse failure →
+    `{ok:false}` with **no console output** (only a tiny footer line). Raised to **4096**,
+    added a **60s timeout**, and `console.warn` on **every** failure path (API error + both
+    JSON-parse returns). *(Note: the model has always been `claude-haiku-4-5`.)*
+  - **Verified against raw JSON**, two article types: an **incident** piece yielded the
+    SkyFend jammer (**$100K**, Sinaloa, **VNSA**), the QR-07S3 (**$20K**, CJNG, **VNSA**) and
+    an MQ-9 Reaper (CIA, **state**); a **Colombian procurement** piece yielded an Australian
+    system (Colombian Army, **state**, 80B pesos). Casualty figures absent from the text were
+    **left unfabricated**.
+- **Path B / B2** (`e379d2f`) — **render the structured block on the News card**:
+  `article_type` badge, color-coded **SYSTEMS** table (amber **VNSA** / blue **state**),
+  **KEY FACTS** list — all graceful-degrade (a source with no structured data renders
+  exactly as before).
+- **Path B / B3** (`51a9569`) — **port that render to the Info Pages New-sources cards**
+  (`PipelineSourceCard`), so the intelligence travels end-to-end: extracted on News →
+  shown on News → shown in the project pipeline. Extracted **`actorTypeClass`** to a shared
+  module (`Intelligence/actorTypeClass.ts`) imported by both — one source of truth for the
+  actor-type colors. **No backend change:** routing writes only a *pointer*, and
+  `getSourcePipeline`'s live JOIN already returns `is2.analysis_json`, so
+  `capabilities`/`key_facts`/`article_type` arrive automatically **and stay live**.
+- **Narrative summary fix** (`c0be06f`) — added a `summary` key to the **RELEVANCE**
+  prompt's JSON contract (first key), re-pointed the Phase 1 identifier guidance at it
+  explicitly ("write your analytical narrative into the `summary` field, NOT into
+  `relevance_reasoning`"), and tightened `relevance_reasoning` back to a 1–2 sentence
+  verdict. Dropped `PipelineSourceCard`'s `&& !analysis.ai.summary` fallback guard so the
+  New-sources card renders summary + reasoning together, matching the News card. **No
+  schema / normalizeResult / IPC / DB change** — `normalizeResult` already copied
+  `summary` (4000-char cap) and BOTH cards already had a `summary &&` render slot; the
+  field was simply never requested. Verified in-app on `csa-rg-02` (5 capabilities):
+  summary renders as a narrative paragraph, reasoning shrank to a verdict, SYSTEMS/KEY
+  FACTS unchanged, both fields render on the New-sources card. Old rows keep the crammed
+  reasoning until re-analyzed.
 
-**Immediate next task — the downstream Info Pages editorial stages.** Capture, routing,
-tagging, and duplicate handling are done for all four source types; the next arc is the
-**New-sources → committed → published** lifecycle on the Info Pages side: **Analysis &
-design → Publish → Sources**. (Scope TBD — start by mapping the existing
-`getSourcePipeline` stages `new → review → committed` and the editorial tabs against
-what's still stubbed.)
+**Immediate next task — RECONCILE REFINEMENT** (self-contained, needs a small opt): the
+summary half is DONE (`c0be06f`). What remains is the **reconcile** half — thread the
+structured `capabilities[]`/`key_facts[]` into the **reconcile** prompt in `ai/analyze.ts`
+by adding an opt (e.g. `priorAi`) to `AnalyzeOpts` and passing it from the 4 reconcile
+call sites (each has `analysis_json` in scope), so reconcile **narrates from the
+catalogue** rather than re-deriving from raw text. This closes the loop opened by the
+reverted specificity experiment. Testable by re-analyze + reconcile on a known article.
 
-**Then, eventually:** cut a **v2.0.23** release so installed apps get the post-v2.0.22
-work (News rich capture 3e-1, Duplicate action, T6a clickable chips, delete-trash fix).
+**Then:** cut the **v2.1.0** release (ships the whole committed-but-unreleased batch), and
+scope the **Level-2 cross-source aggregation** (design-first).
 
 ## Release status at a glance
 
@@ -157,15 +282,20 @@ work (News rich capture 3e-1, Duplicate action, T6a clickable chips, delete-tras
 - **v2.0.21 — RELEASED** (superseded). Keyword-matcher word-boundary fix + the v2.0.20
   stack (board reorder, read-only visualizer, board-restore + card-revive fixes,
   PublishQueue dead-code removal, Restore-all route-by-source fix).
-- **Committed AFTER the v2.0.22 release, NOT yet in any released build** (needs a
-  **v2.0.23** release to reach installed apps): **3e-1** News rich capture (`73efd3a`),
-  **Duplicate action** (`5702da5`), **T6a** clickable chips (`650aeaa`), and the
-  **tag-delete no-project fix** (`3153587`). (Docs commit `0b1572e` + `801ec27` and the
-  version-bump `937e220` sit between T5 and 3e-1.)
+- **v2.1.0 — PLANNED (not yet cut).** A **MINOR** bump, not another patch: the
+  committed-but-unreleased batch is feature-heavy, so Dorian chose `2.1.0` to ship it all
+  at once.
+- **Committed AFTER the v2.0.22 release, NOT yet in any released build** (ships in
+  **v2.1.0**): **3e-1** News rich capture (`73efd3a`), **Duplicate action** (`5702da5`),
+  **T6a** clickable chips (`650aeaa`), the **tag-delete no-project fix** (`3153587`),
+  **T7** AI tag reuse (`d78fd36`), the **persist-selection fix** (`f4e107e`), **Phase 1**
+  identifier guidance (`161a133`), **Path B — B1** (`dd37e40`) / **B2** (`e379d2f`) /
+  **B3** (`51a9569`), and the **narrative-summary fix** (`c0be06f`). (Docs commit
+  `0b1572e` + `801ec27` and the version-bump `937e220` sit between T5 and 3e-1.)
 - **Working tree:** only these two docs (`HANDOFF.md`, `PROJECT_SUMMARY.txt`) are
-  modified — no source changes pending. Next unbuilt work is the **downstream Info Pages
-  editorial stages** (Analysis & design → Publish → Sources); **T6b** and a **v2.0.23**
-  release are also pending. See "Start here" above.
+  modified — no source changes pending. Next unbuilt work is **reconcile refinement**
+  (thread the structured extraction into the reconcile prompt via a `priorAi` opt); then
+  **v2.1.0**; then the **Level-2 cross-source aggregation**. See "Start here" above.
 
 ## v2.0.21 — keyword matcher word-boundary fix (released)
 
@@ -352,19 +482,32 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
 
 ## Known issues / open threads
 
-### On the horizon — deferred / next up
+### On the horizon — deferred / next up (priority order)
 
-- **T6b — clickable suggested-tag chips on the compose tabs.** Extend the T6a
+- **1. NEXT — Narrative refinement (HALF DONE).** The **summary half shipped** (`c0be06f`):
+  the relevance prompt now has its own `summary` key, so the AI narrative stopped cramming
+  into `relevance_reasoning`. What **remains is the RECONCILE half** — feed the structured
+  `capabilities[]` / `key_facts[]` into the **reconcile** prompt in `src/main/ai/analyze.ts`
+  (add a `priorAi` opt to `AnalyzeOpts`, thread it from the 4 reconcile call sites) so
+  reconcile **REFERENCES the specifics precisely** — narrating *from* the already-extracted
+  structure rather than re-deriving from raw text. Instead of begging prose to be specific
+  (which **failed** — see "Key design insight"), we hand it the catalogue. Testable by
+  re-analyze → reconcile on a known article.
+- **2. Level 2 — cross-source aggregation (BIG, design-first).** Aggregate `capabilities[]`
+  across an Info Page's **committed sources** into the **"who has what across VNSAs vs
+  states"** reconstruction — the payoff the whole Path B arc was built for, and the natural
+  destination of the Info Pages publication-stages work. **Design-first: start with a mockup
+  conversation**, not code.
+- **3. v2.1.0 release.** Ship the whole committed-but-unreleased batch (3e-1, Duplicate,
+  T6a, tag-delete fix, T7, persist fix, Phase 1, B1, B2, B3) once the Path B arc is
+  complete. **MINOR**, not patch — feature volume (Dorian's call).
+- **4. T6b — clickable suggested-tag chips on the compose tabs.** Extend the T6a
   `SuggestedTagChip` (already shared) to Documents/Social/Interviews. Blocker: those
   chips render **inside** the `DocumentCompose`/`SocialCompose`/`InterviewCompose`
   sub-components, which only receive `{ doc, project, onPatch, formatDate }` — so
   `knownThematic` + the `handleSetTags`/`handleCreateTag` handlers must be **threaded in
   as new props** (+ their call sites). `themaTags`/`projectBoardSel` are derivable locally
   from `doc`+`project`. (News was clean because it has no sub-component.)
-- **T7 (next up) — AI tag reuse.** Feed the project's existing `known_tags` vocabulary
-  into the `analyzeText` prompt so the AI **reuses existing tags** instead of coining
-  near-duplicates (e.g. suggests `drone-attack` rather than a new `Drone-Strike`). Reduces
-  the create-churn the T6 chips surface.
 - **Per-card tag scoping.** Each card's picker + AI chips should load/check against **that
   card's OWN `project_board_id`** vocabulary, independent of the top project picker.
   Deferred at T5 (compose views keep visible cards aligned to the selected project, so it
@@ -372,13 +515,15 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
 - **Info Pages publication stages (big design-first arc, unbuilt).** The downstream
   editorial lifecycle on the Info Pages side: **Analysis & design → Publish → Latest
   update notes → Sources** — push to the live site, auto-generate an update note, with a
-  confirmation gate before publish. This is the main "immediate next task" (see "Start
-  here"); scope it first against the existing `getSourcePipeline` stages.
+  confirmation gate before publish. Scope it against the existing `getSourcePipeline`
+  stages; the **Level-2 aggregation** (above) is what lands *in* it.
 - **Article collection dedup + outlet targeting (pipeline layer).** The GDELT / Haiku
   fetch pulls many near-duplicate reposts/mirrors of the same story (e.g. one CNN piece
   syndicated across outlets) while sometimes *missing the original source*. Likely a
   two-part fix: better source targeting **upstream** (GDELT query / source config) +
-  dedup **downstream**. Not app-code; deferred to a pipeline-focused session.
+  dedup **downstream**, plus **AI duplicate-detection on push**. The **Duplicate-link**
+  (`duplicate_of`) and the **structured date/location/actors** from B1 are the natural
+  **prefilter feed** for that detector. Not app-code; deferred to a pipeline session.
 - **Sidebar "N new" badge likely counts the wrong table.** The Info Pages sidebar badge
   appears to still count the legacy `info_page_items` table, not `info_page_sources`
   `stage='new'` (observed mismatch: the New-sources tab showed **4**, the sidebar badge
@@ -400,6 +545,14 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   `…Z`); local is **CEST = UTC+2**. A UTC-vs-local mismatch cost real debugging time during
   T1 testing (fresh writes looked ~2h stale). Convert (+2h) before concluding "nothing was
   written."
+- **Watch: does `relevance_reasoning` stay short?** The 1–2 sentence verdict guidance is
+  new (`c0be06f`) and only applies to rows re-analyzed after it. Verified on one source. If
+  the model drifts back to long reasoning as more rows are re-analyzed, **tune the prompt
+  wording** (firmer split instruction) — do NOT accept it, and do NOT fight it by removing
+  the summary. Re-check before the v2.1.0 release.
+- **The `'summarize'` task branch in `analyze.ts` is DEAD CODE** — grep found zero call
+  sites (only the type union in `env.d.ts:774`). All four tabs use `'relevance'` and
+  `'reconcile'`. Candidate for removal in a cleanup slice.
 
 ### Standing issues
 
