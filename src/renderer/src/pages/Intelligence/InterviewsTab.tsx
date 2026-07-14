@@ -309,7 +309,7 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
                     onAdd={tag => handleSetTags(iv.id, [...themaTags, tag])}
                     onRemove={tag => handleSetTags(iv.id, themaTags.filter(t => t !== tag))}
                     onCreate={name => handleCreateTag(iv.id, themaTags, name, projectBoardSel)}
-                    onDelete={(can('delete_intel_tag') || isRoot) ? tag => handleDeleteTag(tag, projectBoardSel) : undefined}
+                    onDelete={((can('delete_intel_tag') || isRoot) && projectBoardSel) ? tag => handleDeleteTag(tag, projectBoardSel) : undefined}
                     isAdmin={can('delete_intel_tag') || isRoot}
                   />
                 ) : (

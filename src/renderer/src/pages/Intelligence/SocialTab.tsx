@@ -595,7 +595,7 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                     onAdd={tag => handleSetTags(post.id, [...themaTags, tag])}
                     onRemove={tag => handleSetTags(post.id, themaTags.filter(t => t !== tag))}
                     onCreate={name => handleCreateTag(post.id, themaTags, name, projectBoardSel)}
-                    onDelete={(can('delete_intel_tag') || isRoot) ? tag => handleDeleteTag(tag, projectBoardSel) : undefined}
+                    onDelete={((can('delete_intel_tag') || isRoot) && projectBoardSel) ? tag => handleDeleteTag(tag, projectBoardSel) : undefined}
                     isAdmin={can('delete_intel_tag') || isRoot}
                   />
                 ) : (

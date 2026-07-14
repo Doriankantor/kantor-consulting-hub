@@ -920,7 +920,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                   }}
                   onRemove={tag => handleSetTags(source.id, 'thematic', themaTags.filter(t => t !== tag))}
                   onCreate={name => handleCreateTag(source.id, 'thematic', source.project_board_id || '', themaTags, name)}
-                  onDelete={(can('delete_intel_tag') || isRoot) ? tag => handleDeleteTag('thematic', tag, selectedProjectId && selectedProjectId !== 'all' ? selectedProjectId : '') : undefined}
+                  onDelete={((can('delete_intel_tag') || isRoot) && selectedProjectId && selectedProjectId !== 'all') ? tag => handleDeleteTag('thematic', tag, selectedProjectId) : undefined}
                   isAdmin={can('delete_intel_tag') || isRoot}
                   forceOpen={forceOpenTopicId === source.id}
                 />

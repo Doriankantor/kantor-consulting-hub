@@ -353,7 +353,7 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
                     onAdd={tag => handleSetTags(doc.id, [...themaTags, tag])}
                     onRemove={tag => handleSetTags(doc.id, themaTags.filter(t => t !== tag))}
                     onCreate={name => handleCreateTag(doc.id, themaTags, name, projectBoardSel)}
-                    onDelete={(can('delete_intel_tag') || isRoot) ? tag => handleDeleteTag(tag, projectBoardSel) : undefined}
+                    onDelete={((can('delete_intel_tag') || isRoot) && projectBoardSel) ? tag => handleDeleteTag(tag, projectBoardSel) : undefined}
                     isAdmin={can('delete_intel_tag') || isRoot}
                   />
                 ) : (
