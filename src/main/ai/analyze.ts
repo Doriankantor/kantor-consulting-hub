@@ -50,6 +50,11 @@ export interface AnalyzeResult {
   relevance_reasoning?: string
   summary?: string
   suggested_tags?: string[]
+  // Path-B B1: structured identifiers (extraction only; no UI yet). Populated on the
+  // relevance/analyze path when the source explicitly states them — empty otherwise.
+  article_type?: string
+  capabilities?: Array<{ system: string; actor?: string; actor_type?: string; cost?: string; category?: string; relationship?: string }>
+  key_facts?: Array<{ label: string; value: string }>
 }
 
 export type AnalyzeResponse =
@@ -70,24 +75,34 @@ export async function analyzeWithClaude(opts: AnalyzeOpts): Promise<AnalyzeRespo
 
     let raw = ''
     try {
+      // max_tokens 4096: B1's structured output (capabilities[] + key_facts[]) is larger
+      // than the old summary/tags-only response and was truncating at 1024 → parse fail.
+      // timeout 60s: a stalled request can't hang the spinner forever (SDK default is ~10min).
       const msg = await client.messages.create({
         model: MODEL,
-        max_tokens: 1024,
+        max_tokens: 4096,
         system,
         messages: [{ role: 'user', content: user }],
-      })
+      }, { timeout: 60000 })
       raw = msg?.content?.[0]?.type === 'text' ? msg.content[0].text : ''
     } catch (e) {
-      return { ok: false, error: `AI request failed: ${errMsg(e)}` }
+      const m = errMsg(e)
+      console.warn('[analyze] API error:', m)
+      const timedOut = /timed?\s*out|timeout|ETIMEDOUT|aborted/i.test(m)
+      return { ok: false, error: timedOut ? 'AI request timed out' : `AI request failed: ${m}` }
     }
 
     // Robust JSON extraction — first '{' to last '}', same idiom as the gate.
     const match = raw.match(/\{[\s\S]*\}/)
-    if (!match) return { ok: false, error: 'AI response could not be parsed.' }
+    if (!match) {
+      console.warn('[analyze] JSON parse failed (no JSON object in response). Raw:', raw.slice(0, 500))
+      return { ok: false, error: 'AI response could not be parsed.' }
+    }
     let parsed: Record<string, unknown>
     try {
       parsed = JSON.parse(match[0]) as Record<string, unknown>
     } catch {
+      console.warn('[analyze] JSON parse failed (invalid/truncated JSON). Raw:', raw.slice(0, 500))
       return { ok: false, error: 'AI response could not be parsed.' }
     }
 
@@ -204,11 +219,30 @@ Write your analytical summary as usual. Where the source clearly provides them, 
 - For counter-UAS, tech-development, industry/supplier, or airspace-governance articles: the relevant specifics the source provides (who, what system/capability, against what, effectiveness or significance).
 
 This is guidance, not a checklist to fill — extract the identifiers that fit THIS article's nature, only what the source supports. Most of the value is in the summary prose; structured identifiers enrich it when present.
+
+Also extract STRUCTURED IDENTIFIERS as JSON fields (separate from the prose summary):
+
+"article_type": one of "incident" | "regulatory" | "procurement" | "counter-uas" | "innovation" | "legal" | "governance" | "other" — classify the article's primary nature.
+
+"capabilities": an array of drone/counter-drone SYSTEMS the source describes, with WHO is associated with each. Populate ONLY when the source names or clearly describes specific systems (typical for incident/procurement/innovation/counter-uas articles; usually empty for pure regulatory/legal articles). Each entry:
+  { "system": exact named platform/product VERBATIM (e.g. "SkyFend counter-drone jammer", "QR-07S3 Digital Eagle anti-drone gun", "Mohajer-6") — NOT a category,
+    "actor": the group/entity associated (e.g. "CJNG", "Sinaloa Cartel") if stated,
+    "actor_type": "VNSA" | "state" | "commercial" | "unknown" — only classify if determinable from the source; use "unknown" if unclear,
+    "cost": exact figure if stated (e.g. "$100,000", "$20,000/unit"), else omit,
+    "category": e.g. "C-UAS", "strike-UAS", "ISR-UAS", "payload" if determinable,
+    "relationship": "operates" | "acquired" | "supplies" | "develops" | "counters" — the actor's relationship to the system }
+
+"key_facts": an array of { "label", "value" } capturing the type-appropriate specifics that DON'T fit capabilities — for regulatory: jurisdiction/measure/status/effective-date; for legal/LOAC: framework/concern/actors; for governance: parties/dispute/jurisdiction; plus event dates, locations, casualties (exact figures), etc. Use clear labels.
+
+CRITICAL for all structured fields: report ONLY what the source explicitly states. NEVER invent a system name, actor, cost, figure, or classification. If the source doesn't describe systems, return "capabilities": []. If nothing fits key_facts, return "key_facts": []. Empty is correct and expected — fabricated structured data is far worse than empty fields. Preserve names and numbers VERBATIM; never abstract them.
 ${tagsReuse}Return ONLY JSON with exactly these keys:
 {
   "relevance_score": <integer 0-10>,
   "relevance_reasoning": "<ALWAYS explain WHY this IS or IS NOT relevant to this specific project — name the keyword/scope it matches, or the reason it falls outside the framework. Never leave empty. E.g. 'Relevant to the project: describes UAS procurement by a state actor in the LATAM region' or 'Not relevant: consumer drone photography, no security/proliferation dimension'.>",
-  "suggested_tags": ["<short topical tag>", "..."]
+  "suggested_tags": ["<short topical tag>", "..."],
+  "article_type": "<one of the article_type values above>",
+  "capabilities": [ { "system": "<exact name>", "actor": "<if stated>", "actor_type": "VNSA|state|commercial|unknown", "cost": "<if stated>", "category": "<if determinable>", "relationship": "operates|acquired|supplies|develops|counters" } ],
+  "key_facts": [ { "label": "<clear label>", "value": "<exact value from the source>" } ]
 }
 
 Source:
@@ -239,6 +273,36 @@ function normalizeResult(parsed: Record<string, unknown>): AnalyzeResult {
       .map(t => String(t).trim().slice(0, 60))
       .filter(Boolean)
       .slice(0, 20)
+  }
+  // Path-B B1: structured identifiers — pass through with light validation. Missing
+  // arrays default to []; the model is told empty is correct when nothing is stated.
+  if (typeof parsed.article_type === 'string' && parsed.article_type.trim()) {
+    out.article_type = parsed.article_type.trim().slice(0, 40)
+  }
+  if (Array.isArray(parsed.capabilities)) {
+    out.capabilities = (parsed.capabilities as unknown[])
+      .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object' && typeof (c as any).system === 'string' && !!(c as any).system.trim())
+      .map(c => {
+        const cap: { system: string; actor?: string; actor_type?: string; cost?: string; category?: string; relationship?: string } = {
+          system: String((c as any).system).trim().slice(0, 200),
+        }
+        for (const k of ['actor', 'actor_type', 'cost', 'category', 'relationship'] as const) {
+          const v = (c as any)[k]
+          if (v != null && String(v).trim()) cap[k] = String(v).trim().slice(0, 200)
+        }
+        return cap
+      })
+      .slice(0, 20)
+  } else {
+    out.capabilities = []
+  }
+  if (Array.isArray(parsed.key_facts)) {
+    out.key_facts = (parsed.key_facts as unknown[])
+      .filter((f): f is Record<string, unknown> => !!f && typeof f === 'object' && typeof (f as any).label === 'string' && typeof (f as any).value === 'string' && !!(f as any).label.trim() && !!(f as any).value.trim())
+      .map(f => ({ label: String((f as any).label).trim().slice(0, 100), value: String((f as any).value).trim().slice(0, 500) }))
+      .slice(0, 30)
+  } else {
+    out.key_facts = []
   }
   return out
 }
