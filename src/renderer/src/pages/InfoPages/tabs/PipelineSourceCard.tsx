@@ -1,4 +1,5 @@
 import { ReactNode } from 'react'
+import { actorTypeClass } from '../../Intelligence/actorTypeClass'
 
 // Shared read-only source card for the Info Page source pipeline tabs
 // (New Sources / Pre-Commit Review / All Sources). All metadata shown here was
@@ -57,6 +58,10 @@ export default function PipelineSourceCard({ row, checked, onCheck, action, show
   // 3c-2a: full-item data (all optional — most rows have none of these).
   const analysis = parseAnalysis(row.analysis_json)
   const hasAnalysis = !!(analysis.ai || analysis.human || analysis.reconciled)
+  // B3: structured identifiers from the AI block (B1 extraction; travels via the live JOIN).
+  const articleType = analysis.ai?.article_type as string | undefined
+  const caps: Array<Record<string, any>> = Array.isArray(analysis.ai?.capabilities) ? analysis.ai.capabilities : []
+  const facts: Array<Record<string, any>> = Array.isArray(analysis.ai?.key_facts) ? analysis.ai.key_facts : []
   const notes = stripHtml(row.intel_notes)
 
   return (
@@ -147,8 +152,42 @@ export default function PipelineSourceCard({ row, checked, onCheck, action, show
                   {typeof analysis.ai.relevance_score === 'number' && (
                     <span className="ml-1.5 px-1 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">REL {analysis.ai.relevance_score}</span>
                   )}
+                  {articleType && (
+                    <span className="ml-1.5 px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-600/30 text-slate-700 dark:text-slate-300 text-[10px] font-medium uppercase tracking-wide">{articleType}</span>
+                  )}
                   {analysis.ai.summary && <span className="block mt-0.5">{analysis.ai.summary}</span>}
                   {analysis.ai.relevance_reasoning && !analysis.ai.summary && <span className="block mt-0.5 italic">{analysis.ai.relevance_reasoning}</span>}
+                  {/* B3: SYSTEMS — capabilities table (verbatim named systems + actor/cost). */}
+                  {caps.length > 0 && (
+                    <div className="mt-1.5">
+                      <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30 mb-1">Systems</p>
+                      <div className="space-y-1">
+                        {caps.map((c, i) => (
+                          <div key={`${c.system}-${i}`} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                            <span className="font-semibold text-gray-800 dark:text-white/80">{c.system}</span>
+                            {c.actor && <span className="text-gray-500 dark:text-white/50">· {c.actor}</span>}
+                            {c.actor_type && <span className={`px-1 py-0.5 rounded text-[9px] font-medium uppercase ${actorTypeClass(c.actor_type)}`}>{c.actor_type}</span>}
+                            {c.cost && <span className="px-1 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[9px] font-medium">{c.cost}</span>}
+                            {c.category && <span className="px-1 py-0.5 rounded bg-indigo-100/70 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 text-[9px] font-medium">{c.category}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* B3: KEY FACTS — label/value rows for type-specific specifics. */}
+                  {facts.length > 0 && (
+                    <div className="mt-1.5">
+                      <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30 mb-1">Key facts</p>
+                      <div className="space-y-1">
+                        {facts.map((f, i) => (
+                          <div key={`${f.label}-${i}`} className="grid grid-cols-[128px_1fr] gap-x-2">
+                            <span className="text-gray-400 dark:text-white/35 break-words">{f.label}</span>
+                            <span className="text-gray-700 dark:text-white/70 break-words">{f.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {analysis.reconciled && (

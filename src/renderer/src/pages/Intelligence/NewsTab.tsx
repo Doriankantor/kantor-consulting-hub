@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import RichTextEditor from '../../components/RichTextEditor'
 import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
+import { actorTypeClass } from './actorTypeClass'
 
 const CONFIDENCE_COLORS = {
   high:   { bg: 'bg-green-100 dark:bg-green-900/30',   text: 'text-green-700 dark:text-green-400',   dot: 'bg-green-500' },
@@ -69,16 +70,6 @@ function withAnalysisKey(raw: string | null, key: string, block: unknown): strin
 // 3e: escape for seeding the reconciled RichTextEditor from the AI summary.
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-// B2: color-code a capability's actor_type badge (VNSA-held vs state-held vs
-// commercial distinguishable at a glance).
-function actorTypeClass(t?: string): string {
-  switch ((t || '').toLowerCase()) {
-    case 'vnsa':       return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
-    case 'state':      return 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300'
-    case 'commercial': return 'bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300'
-    default:           return 'bg-gray-100 text-gray-500 dark:bg-white/[0.08] dark:text-white/40'
-  }
 }
 
 
