@@ -211,7 +211,7 @@ or exactly why it falls outside the framework).
 
 CRITICAL — Only report what the source actually states. Never infer, estimate, guess, or invent any identifier. If the source doesn't provide something, omit it — do NOT pad the summary with "unknown"/"not specified" for missing fields. Fabricated intelligence is worse than missing intelligence; accuracy about what's known matters more than completeness. Never estimate casualty numbers or name a system/actor the source doesn't.
 
-Write your analytical summary as usual. Where the source clearly provides them, weave in these identifiers:
+Write your analytical narrative into the "summary" field below (NOT into relevance_reasoning, which is the short relevance verdict). Where the source clearly provides them, weave these identifiers into that summary:
 - Always when stated: event date (distinct from publish date), location (as specific as given: country > region > city), central actors, and why it matters for the project (contested-airspace significance).
 - For incident/attack articles: UAS system used, weaponization/payload (or ISR-only), perpetrator and target, casualties (exact figures only), and whether it's a novel/first-documented tactic.
 - For legal/regulatory/policy articles: jurisdiction, the measure (ban/restriction/licensing/counter-UAS authority/airspace rule), its status (proposed/passed/enacted), what it regulates, and effective date/timeline.
@@ -237,8 +237,9 @@ Also extract STRUCTURED IDENTIFIERS as JSON fields (separate from the prose summ
 CRITICAL for all structured fields: report ONLY what the source explicitly states. NEVER invent a system name, actor, cost, figure, or classification. If the source doesn't describe systems, return "capabilities": []. If nothing fits key_facts, return "key_facts": []. Empty is correct and expected — fabricated structured data is far worse than empty fields. Preserve names and numbers VERBATIM; never abstract them.
 ${tagsReuse}Return ONLY JSON with exactly these keys:
 {
+  "summary": "<A substantive analytical paragraph (roughly 4-7 sentences) narrating what this source reports and what it means for THIS project. Narrate the situation and its significance. Do NOT re-list every figure — named systems, costs, and actors are catalogued separately in capabilities/key_facts below; reference them in prose but do not duplicate the full list.>",
   "relevance_score": <integer 0-10>,
-  "relevance_reasoning": "<ALWAYS explain WHY this IS or IS NOT relevant to this specific project — name the keyword/scope it matches, or the reason it falls outside the framework. Never leave empty. E.g. 'Relevant to the project: describes UAS procurement by a state actor in the LATAM region' or 'Not relevant: consumer drone photography, no security/proliferation dimension'.>",
+  "relevance_reasoning": "<ONE or TWO sentences ONLY — the relevance verdict. Name the keyword/scope it matches, or why it falls outside the framework. This is the justification, NOT a summary. E.g. 'Relevant: describes UAS procurement by a state actor in the LATAM region.' or 'Not relevant: consumer drone photography, no security dimension.'>",
   "suggested_tags": ["<short topical tag>", "..."],
   "article_type": "<one of the article_type values above>",
   "capabilities": [ { "system": "<exact name>", "actor": "<if stated>", "actor_type": "VNSA|state|commercial|unknown", "cost": "<if stated>", "category": "<if determinable>", "relationship": "operates|acquired|supplies|develops|counters" } ],

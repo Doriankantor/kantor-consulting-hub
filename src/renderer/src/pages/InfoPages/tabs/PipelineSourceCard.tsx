@@ -156,7 +156,7 @@ export default function PipelineSourceCard({ row, checked, onCheck, action, show
                     <span className="ml-1.5 px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-600/30 text-slate-700 dark:text-slate-300 text-[10px] font-medium uppercase tracking-wide">{articleType}</span>
                   )}
                   {analysis.ai.summary && <span className="block mt-0.5">{analysis.ai.summary}</span>}
-                  {analysis.ai.relevance_reasoning && !analysis.ai.summary && <span className="block mt-0.5 italic">{analysis.ai.relevance_reasoning}</span>}
+                  {analysis.ai.relevance_reasoning && <span className="block mt-0.5 italic">{analysis.ai.relevance_reasoning}</span>}
                   {/* B3: SYSTEMS — capabilities table (verbatim named systems + actor/cost). */}
                   {caps.length > 0 && (
                     <div className="mt-1.5">
