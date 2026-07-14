@@ -31,7 +31,11 @@ export default function Intelligence() {
     () => boards.filter(b => b.board_type === 'info-page').sort((a, b) => a.position - b.position),
     [boards],
   )
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('all')
+  // Persisted across navigation (the /intelligence route fully unmounts on nav, which
+  // would otherwise reset this to 'all' and empty knownThematic → breaks T7 + tag coloring).
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
+    try { return localStorage.getItem('intel-selected-project') || 'all' } catch { return 'all' }
+  })
   const selectedProject = selectedProjectId === 'all'
     ? null
     : projects.find(p => p.id === selectedProjectId) || null
@@ -40,6 +44,21 @@ export default function Intelligence() {
   const selectedProjectConfig = selectedProject
     ? { id: selectedProject.id, name: selectedProject.name, keywords: parseConfig(selectedProject.board_config).keywords }
     : null
+
+  // Persist the selection so it survives navigating away and back.
+  useEffect(() => {
+    try { localStorage.setItem('intel-selected-project', selectedProjectId) } catch {}
+  }, [selectedProjectId])
+
+  // Guard: if a persisted id points at a project that no longer exists, fall back to
+  // 'all'. Race-safe — only resets ONCE projects have genuinely loaded (length > 0) and
+  // the id isn't among them; never fires during the loading window (projects still empty),
+  // so it can't clobber a valid restored selection on mount.
+  useEffect(() => {
+    if (selectedProjectId !== 'all' && projects.length > 0 && !projects.some(p => p.id === selectedProjectId)) {
+      setSelectedProjectId('all')
+    }
+  }, [projects, selectedProjectId])
   const [toast, setToast] = useState<string | null>(null)
   // Re-score button state
   const [unscoredCount, setUnscoredCount] = useState(0)
