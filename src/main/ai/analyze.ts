@@ -39,6 +39,10 @@ export interface AnalyzeOpts {
   text: string
   projectConfig?: ProjectConfig | null
   userNotes?: string | null
+  // T7: the project's existing thematic vocabulary (threaded from the renderer's
+  // already-loaded knownThematic). When present, the prompt nudges the model to
+  // reuse these before coining new tags. Empty/absent → unchanged behaviour.
+  existingTags?: string[]
 }
 
 export interface AnalyzeResult {
@@ -62,7 +66,7 @@ export async function analyzeWithClaude(opts: AnalyzeOpts): Promise<AnalyzeRespo
     if (!apiKey) return { ok: false, error: 'No Anthropic API key configured.' }
 
     const client = new Anthropic({ apiKey })
-    const { system, user } = buildPrompt(opts.task, text, opts.projectConfig, opts.userNotes)
+    const { system, user } = buildPrompt(opts.task, text, opts.projectConfig, opts.userNotes, opts.existingTags)
 
     let raw = ''
     try {
@@ -108,11 +112,26 @@ function projectBlock(pc?: ProjectConfig | null): string {
     : 'No specific project framework was provided — assess against general security-intelligence relevance.'
 }
 
+// T7: an existing-vocabulary block that nudges the model to REUSE the project's
+// current thematic tags before coining near-duplicates. Empty string when the
+// project has no vocabulary yet (new project) — leaves the prompt unchanged.
+function tagReuseBlock(existingTags?: string[]): string {
+  const tags = (existingTags ?? []).filter(Boolean)
+  if (!tags.length) return ''
+  return `EXISTING PROJECT TAGS (reuse these where they fit):
+${tags.join(', ')}
+
+When suggesting thematic tags, PREFER reusing tags from the existing list above when one accurately captures a concept in the source. Only propose a NEW tag when none of the existing tags fit. Match the existing tags' style (lowercase, hyphenated). Return 3-6 tags total.
+
+`
+}
+
 function buildPrompt(
   task: AnalyzeTask,
   text: string,
   projectConfig?: ProjectConfig | null,
   userNotes?: string | null,
+  existingTags?: string[],
 ): { system: string; user: string } {
   const system =
     'You are an intelligence analyst assistant for a security-focused consultancy. ' +
@@ -121,6 +140,7 @@ function buildPrompt(
 
   const context = projectBlock(projectConfig)
   const body = text.slice(0, 8000) // cost/context cap, matches the doc-analysis path
+  const tagsReuse = tagReuseBlock(existingTags) // T7: '' when no existing vocabulary
 
   if (task === 'summarize') {
     return {
@@ -128,7 +148,7 @@ function buildPrompt(
       user: `${context}
 
 Summarize the following source for an analyst tracking this project. Be concise and factual.
-Return ONLY JSON with exactly these keys:
+${tagsReuse}Return ONLY JSON with exactly these keys:
 {
   "summary": "<2-4 sentence summary>",
   "suggested_tags": ["<short topical tag>", "..."]
@@ -148,7 +168,7 @@ ${body}`,
 A researcher reviewed the following source and added their own interpretation. Integrate the
 researcher's notes into your analysis — weigh their interpretation, do not ignore it — and produce
 a reconciled assessment for this project.
-Return ONLY JSON with exactly these keys:
+${tagsReuse}Return ONLY JSON with exactly these keys:
 {
   "summary": "<reconciled 2-4 sentence summary that incorporates the researcher's notes>",
   "relevance_score": <integer 0-10 for this project's relevance>,
@@ -173,7 +193,7 @@ Assess how relevant the following source is to THIS project's framework. You MUS
 the score in relation to this project — even when the source is highly relevant OR clearly
 irrelevant, state the project-specific reason (which of the project's keywords/scope it matches,
 or exactly why it falls outside the framework).
-Return ONLY JSON with exactly these keys:
+${tagsReuse}Return ONLY JSON with exactly these keys:
 {
   "relevance_score": <integer 0-10>,
   "relevance_reasoning": "<ALWAYS explain WHY this IS or IS NOT relevant to this specific project — name the keyword/scope it matches, or the reason it falls outside the framework. Never leave empty. E.g. 'Relevant to the project: describes UAS procurement by a state actor in the LATAM region' or 'Not relevant: consumer drone photography, no security/proliferation dimension'.>",

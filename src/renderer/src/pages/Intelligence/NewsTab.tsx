@@ -159,6 +159,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
         task: 'relevance',
         text,
         projectConfig: proj ? { name: proj.name, keywords: (proj as any).keywords } : null,
+        existingTags: knownThematic,   // T7: bias the AI toward reusing existing project tags
       })
       if (!res.ok) { setAiErr(p => ({ ...p, [id]: res.error || 'Analysis failed.' })); return }
       const saved = await window.api.intelligence.saveAiAnalysis(id, res.result)
@@ -187,6 +188,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       const res = await window.api.intelligence.analyzeText({
         task: 'reconcile', text, userNotes: plainNotes,
         projectConfig: proj ? { name: proj.name, keywords: (proj as any).keywords } : null,
+        existingTags: knownThematic,   // T7: bias the AI toward reusing existing project tags
       })
       if (!res.ok) { setAiErr(p => ({ ...p, [id]: res.error || 'Reconcile failed.' })); return }
       const savedMeta = await window.api.intelligence.saveReconciled(id, res.result)
