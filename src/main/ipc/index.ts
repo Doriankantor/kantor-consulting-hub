@@ -2658,6 +2658,17 @@ function registerIntelligenceHandlers(): void {
     return row.c
   })
 
+  // Mark a news article as a duplicate. Removes it from the review queue WITHOUT any
+  // learning signal (no verdict to cs_articles, no decision log) - a duplicate is
+  // relevant-but-redundant, not a relevance rejection. Optionally links to the original.
+  ipcMain.handle('intelligence:markDuplicate', (_e, id: string, duplicateOf: string | null) => {
+    const now = new Date().toISOString()
+    db().prepare(
+      "UPDATE intelligence_sources SET status='duplicate', duplicate_of=?, reviewed_at=? WHERE id=?"
+    ).run(duplicateOf || null, now, id)
+    return { ok: true }
+  })
+
   ipcMain.handle('intelligence:updateStatus', (_e, id: string, status: string, notes?: string, reviewedById?: string, reviewedByName?: string) => {
     const now2 = new Date().toISOString()
     // The article URL is the join key for mirroring this verdict to cs_articles.

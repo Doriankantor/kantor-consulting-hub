@@ -355,7 +355,7 @@ interface IntelligenceSource {
   added_at: string
   added_by_id: string | null
   added_by_name: string | null
-  status: 'unreviewed' | 'approved' | 'rejected' | 'saved' | 'pushed' | 'imported' | 'routed'
+  status: 'unreviewed' | 'approved' | 'rejected' | 'saved' | 'pushed' | 'imported' | 'routed' | 'duplicate'
   confidence: 'high' | 'medium' | 'low' | null
   confidence_override: number
   categories_json: string
@@ -784,6 +784,7 @@ interface Window {
       setHumanRelevance:    (id: string, value: string | null) => Promise<{ ok: true; human: { relevance?: string; overridden_at?: string } | null } | { ok: false; error: string }>
       getUnreviewedCount:   ()                                 => Promise<number>
       updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => Promise<{ ok: boolean; addedToPages?: string[] }>
+      markDuplicate:        (id: string, duplicateOf: string | null) => Promise<{ ok: boolean }>
       updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean }>
       updateGeography:      (id: string, geography: string)    => Promise<{ ok: boolean }>
       setProject:           (id: string, boardId: string | null) => Promise<{ ok: boolean }>   // 3a: board-id project association

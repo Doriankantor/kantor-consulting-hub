@@ -1003,6 +1003,12 @@ export function initDatabase(): void {
   // disposition_tags as the source→project link). Holds a board id like
   // 'board-info-latam'. Distinct from disposition_tags (left untouched).
   try { db.exec("ALTER TABLE intelligence_sources ADD COLUMN project_board_id TEXT;") } catch {}
+  // Duplicate slice: news articles can be marked as a duplicate of another article
+  // (status='duplicate' + optional duplicate_of link) WITHOUT any learning signal.
+  const isCols = db.prepare("PRAGMA table_info(intelligence_sources)").all() as { name: string }[]
+  if (!isCols.some(c => c.name === 'duplicate_of')) {
+    db.exec("ALTER TABLE intelligence_sources ADD COLUMN duplicate_of TEXT")
+  }
   // 3a seed: every pulled article belongs to Contested Skies (the single-project
   // GDELT/cs_articles pull). Backfill only where unset — inherently idempotent,
   // safe to re-run, and never touches non-article rows (documents/social/interviews

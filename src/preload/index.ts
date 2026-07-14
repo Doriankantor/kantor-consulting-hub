@@ -271,6 +271,7 @@ const api = {
     fetchUrlMetadata:     (url: string)                      => ipcRenderer.invoke('intelligence:fetchUrlMetadata', url),
     getUnreviewedCount:   ()                                 => ipcRenderer.invoke('intelligence:getUnreviewedCount'),
     updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => ipcRenderer.invoke('intelligence:updateStatus', id, status, notes, byId, byName),
+    markDuplicate:        (id: string, duplicateOf: string | null) => ipcRenderer.invoke('intelligence:markDuplicate', id, duplicateOf),
     updateConfidence:     (id: string, confidence: string)   => ipcRenderer.invoke('intelligence:updateConfidence', id, confidence),
     updateGeography:      (id: string, geography: string)    => ipcRenderer.invoke('intelligence:updateGeography', id, geography),
     setProject:           (id: string, boardId: string | null) => ipcRenderer.invoke('intelligence:setProject', id, boardId),

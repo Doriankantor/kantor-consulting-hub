@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import RichTextEditor from '../../components/RichTextEditor'
 import TagPicker from './TagPicker'
@@ -110,6 +111,12 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const [analyzingId, setAnalyzingId]           = useState<string | null>(null)
   const [reconcilingId, setReconcilingId]       = useState<string | null>(null)
   const [aiErr, setAiErr]                        = useState<Record<string, string>>({})
+  // Duplicate slice: modal state for marking an article a duplicate of another.
+  const [dupModalFor, setDupModalFor] = useState<string | null>(null)   // article id being marked duplicate, or null
+  const [dupSearch, setDupSearch]     = useState('')
+  const [dupResults, setDupResults]   = useState<Array<{ id: string; title: string; source_name?: string; published_at?: string }>>([])
+  const [dupChosen, setDupChosen]     = useState<{ id: string; title: string } | null>(null)
+  const [dupSearching, setDupSearching] = useState(false)
 
   // Autosave researcher notes to intel_notes (existing row → safe). Save-if-changed.
   async function saveNote(id: string) {
@@ -277,6 +284,26 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     })()
   }, [selectedProjectId])
 
+  // Duplicate slice: search candidate originals while the modal is open (excludes self).
+  useEffect(() => {
+    if (!dupModalFor || dupSearch.trim().length < 2) { setDupResults([]); return }
+    let cancelled = false
+    setDupSearching(true)
+    window.api.intelligence.getSources({ type: 'article', search: dupSearch.trim() })
+      .then((rows: any[]) => { if (!cancelled) setDupResults(rows.filter(r => r.id !== dupModalFor).slice(0, 20)) })
+      .catch(() => { if (!cancelled) setDupResults([]) })
+      .finally(() => { if (!cancelled) setDupSearching(false) })
+    return () => { cancelled = true }
+  }, [dupSearch, dupModalFor])
+
+  // Duplicate slice: Esc closes the modal while it's open.
+  useEffect(() => {
+    if (!dupModalFor) return
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') closeDupModal() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [dupModalFor])
+
   async function handleRefreshNews() {
     setRefreshing(true)
     try {
@@ -363,6 +390,26 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   async function handleConfidence(id: string, confidence: string) {
     await window.api.intelligence.updateConfidence(id, confidence)
     setSources(prev => prev.map(s => s.id === id ? { ...s, confidence: confidence as any, confidence_override: 1 } : s))
+  }
+
+  // Duplicate slice: mark as duplicate. NO learning signal — does NOT go through
+  // updateStatus/handleStatus (no logDecision, no pushVerdictToSupabase). Drops the
+  // card from the queue optimistically, exactly like reject's fade at handleStatus.
+  function openDupModal(id: string) { setDupModalFor(id); setDupSearch(''); setDupResults([]); setDupChosen(null) }
+  function closeDupModal() { setDupModalFor(null); setDupSearch(''); setDupResults([]); setDupChosen(null) }
+  async function markDuplicate(id: string, originalId: string | null) {
+    try {
+      await window.api.intelligence.markDuplicate(id, originalId)
+      // drop from the current (unreviewed) view like reject does, no learning signal
+      setFadingIds(f => new Set([...f, id]))
+      setTimeout(() => {
+        setSources(curr => curr.filter(s => s.id !== id))
+        setFadingIds(f => { const n = new Set(f); n.delete(id); return n })
+      }, 350)
+      // statusCounts shape is { unreviewed, approved, rejected } — mirror reject's decrement.
+      setStatusCounts(prev => ({ ...prev, unreviewed: Math.max(0, prev.unreviewed - 1) }))
+    } catch (e) { console.warn('[NewsTab] markDuplicate failed:', e) }
+    closeDupModal()
   }
 
   // Confirm / correct the gate's proposed geography.
@@ -962,6 +1009,17 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                     Reject
                   </button>
                 )}
+                {/* Duplicate — neutral (not a rejection); opens the link modal, no learning signal */}
+                {source.status !== 'duplicate' && (
+                  <button
+                    onClick={() => openDupModal(source.id)}
+                    disabled={isPending}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-white/[0.08] dark:hover:bg-white/[0.14] text-gray-700 dark:text-white/70 text-xs font-medium transition disabled:opacity-50"
+                    title="Mark as a duplicate of another article (no learning signal)"
+                  >
+                    Duplicate
+                  </button>
+                )}
                 {/* Delete */}
                 {(can('delete_intel_news') || isRoot) && (
                   <button
@@ -1121,6 +1179,77 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           )
         })}
       </div>
+
+      {/* Duplicate slice: link modal — portal to document.body so it escapes card
+          stacking contexts (cards use transition-all). Shown when dupModalFor is set. */}
+      {dupModalFor && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 dark:bg-black/60 animate-[fadeIn_0.15s_ease-out]"
+          onMouseDown={closeDupModal}
+        >
+          <div
+            className="w-full max-w-md mx-4 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/[0.12] shadow-2xl p-5"
+            onMouseDown={e => e.stopPropagation()}
+          >
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">Mark as duplicate</h3>
+            <p className="text-xs text-gray-500 dark:text-white/50 mt-1">
+              This removes the article from review without affecting AI learning. Optionally link the original it duplicates.
+            </p>
+            <input
+              autoFocus
+              type="text"
+              value={dupSearch}
+              onChange={e => setDupSearch(e.target.value)}
+              placeholder="Search for the original article… (optional)"
+              className="mt-3 w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+            />
+            <div className="mt-2 max-h-56 overflow-auto rounded-lg border border-gray-100 dark:border-white/[0.06] divide-y divide-gray-100 dark:divide-white/[0.06]">
+              {dupSearching ? (
+                <p className="px-3 py-3 text-xs text-gray-400 dark:text-white/30">Searching…</p>
+              ) : dupSearch.trim().length >= 2 && dupResults.length === 0 ? (
+                <p className="px-3 py-3 text-xs text-gray-400 dark:text-white/30">No matches</p>
+              ) : (
+                dupResults.map(r => (
+                  <button
+                    key={r.id}
+                    onClick={() => setDupChosen({ id: r.id, title: r.title })}
+                    className={`w-full text-left px-3 py-2 transition ${dupChosen?.id === r.id ? 'bg-indigo-50 dark:bg-indigo-500/15' : 'hover:bg-gray-50 dark:hover:bg-white/[0.04]'}`}
+                  >
+                    <p className="text-xs font-medium text-gray-800 dark:text-white/80 line-clamp-2">{r.title}</p>
+                    <p className="text-[10px] text-gray-400 dark:text-white/35 mt-0.5">
+                      {[r.source_name, formatDate(r.published_at || null)].filter(Boolean).join(' · ')}
+                    </p>
+                  </button>
+                ))
+              )}
+            </div>
+            {dupChosen && (
+              <div className="mt-2 flex items-center gap-1.5 text-[11px]">
+                <span className="text-gray-500 dark:text-white/40">Linked to:</span>
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-medium max-w-[240px]">
+                  <span className="truncate">{dupChosen.title}</span>
+                  <button onClick={() => setDupChosen(null)} className="opacity-60 hover:opacity-100" title="Clear link">✕</button>
+                </span>
+              </div>
+            )}
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                onClick={closeDupModal}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 dark:text-white/60 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => markDuplicate(dupModalFor, dupChosen?.id ?? null)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-500 hover:bg-indigo-600 text-white transition"
+              >
+                Mark as duplicate
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   )
 }
