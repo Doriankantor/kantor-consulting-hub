@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
 // Mirror the backend tag normalization for live previews (trim, lowercase, spaces→hyphens).
-function normalizeTagClient(name: string): string {
+export function normalizeTagClient(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, '-')
 }
 

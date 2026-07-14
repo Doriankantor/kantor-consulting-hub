@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import RichTextEditor from '../../components/RichTextEditor'
-import TagPicker from './TagPicker'
+import TagPicker, { normalizeTagClient } from './TagPicker'
+import SuggestedTagChip from './SuggestedTagChip'
 
 const CONFIDENCE_COLORS = {
   high:   { bg: 'bg-green-100 dark:bg-green-900/30',   text: 'text-green-700 dark:text-green-400',   dot: 'bg-green-500' },
@@ -1094,7 +1095,15 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                           {Array.isArray(aiBlock.suggested_tags) && aiBlock.suggested_tags.length > 0 && (
                             <div className="flex flex-wrap gap-1">
                               {aiBlock.suggested_tags.map((t: string, i: number) => (
-                                <span key={`${t}-${i}`} className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-medium">{t}</span>
+                                <SuggestedTagChip
+                                  key={`${t}-${i}`}
+                                  tag={t}
+                                  onArticle={themaTags.includes(normalizeTagClient(t))}
+                                  inLibrary={knownThematic.includes(normalizeTagClient(t))}
+                                  canApply={!!projectBoardSel}
+                                  onAttach={tag => handleSetTags(source.id, 'thematic', [...themaTags, tag])}
+                                  onCreate={tag => handleCreateTag(source.id, 'thematic', projectBoardSel, themaTags, tag)}
+                                />
                               ))}
                             </div>
                           )}
@@ -1134,7 +1143,15 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                               <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold text-[10px]">relevance {reconciledBlock.relevance_score}/10</span>
                             )}
                             {Array.isArray(reconciledBlock.suggested_tags) && reconciledBlock.suggested_tags.map((t: string, i: number) => (
-                              <span key={`${t}-${i}`} className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-medium">{t}</span>
+                              <SuggestedTagChip
+                                key={`${t}-${i}`}
+                                tag={t}
+                                onArticle={themaTags.includes(normalizeTagClient(t))}
+                                inLibrary={knownThematic.includes(normalizeTagClient(t))}
+                                canApply={!!projectBoardSel}
+                                onAttach={tag => handleSetTags(source.id, 'thematic', [...themaTags, tag])}
+                                onCreate={tag => handleCreateTag(source.id, 'thematic', projectBoardSel, themaTags, tag)}
+                              />
                             ))}
                             {reconciledBlock.reconciled_at && (
                               <span className="text-[10px] text-amber-600/60 dark:text-amber-400/40 ml-1">Reconciled {formatDate(reconciledBlock.reconciled_at)}</span>
