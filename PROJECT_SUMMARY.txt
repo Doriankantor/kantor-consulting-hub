@@ -1,18 +1,20 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-07-13
-  Current version: v2.0.21 (released)  |   259 commits   |   ~34,500 lines of TS/TSX
+  Generated: 2026-07-14
+  Current version: v2.0.22 (RELEASED)  |   266 commits   |   ~35,000 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
-  NOTE: large post-v2.0.21 work stream is COMMITTED but UNRELEASED (needs a v2.0.22):
-  Phase B B0.3/B0.5/B0.6 + B1 + member-add hang fix, AND the INTELLIGENCE RESTRUCTURE
-  (Slices 1, 2a–2c, Social-a/b, News human layer, 3a, 3b, the 3c commit pipeline,
-  3d-1/3d-2/3d-3 Send-to-New-sources + action-row cleanup across Documents + Social +
-  Interviews), AND the TAG/SCOPING SERIES T1–T5 (project-scoped topic tags + shared
-  TagPicker + project-scoped compose views). All four source types (News/Documents/
-  Social/Interviews) are now human-first with Send-to-pipeline, project-scoped topic
-  tags, and bidirectional New-sources (route in / move back). Working tree is otherwise
-  CLEAN (docs only). Next: downstream Info Pages editorial stages (Analysis & design →
-  Publish → Sources). See HANDOFF.md "Start here" for the resume point.
+  v2.0.22 shipped the INTELLIGENCE RESTRUCTURE (Slices 1–3d-3: human-first capture +
+  Send-to-New-sources + move-back across News/Documents/Social/Interviews) AND the
+  TAG/SCOPING SERIES T1–T5 (project-scoped topic tags + shared TagPicker + project-scoped
+  compose views), plus Phase B B0.3/B0.5/B0.6/B1 + the member-add hang fix.
+  NOTE: post-v2.0.22 work is COMMITTED but UNRELEASED (needs a v2.0.23): 3e-1 News rich
+  human-first capture (article-text paste + Analyze-with-AI + Reconcile), the News
+  DUPLICATE action (mark + optional link, no learning signal), T6a clickable AI
+  suggested-tag chips on News, and the tag-delete no-project fix. All four source types
+  are now human-first with Send-to-pipeline, project-scoped topic tags, and bidirectional
+  New-sources. Working tree is otherwise CLEAN (docs only). Next: downstream Info Pages
+  editorial stages (Analysis & design → Publish → Sources); also T6b + a v2.0.23 release.
+  See HANDOFF.md "Start here" for the resume point.
 ═══════════════════════════════════════════════════════════════════════════════
 
 ───────────────────────────────────────────────────────────────────────────────
@@ -302,6 +304,46 @@ DESIGN PRINCIPLES / CONVENTIONS
       badges + empty-state point at visible. Net: every visible compose card belongs to the
       selected project, so its TagPicker vocabulary always matches — resolving the
       cross-project tag-scoping bug. Renderer-only (no backend/IPC/preload change).
+
+  POST-v2.0.22 — NEWS ENRICHMENT (committed but UNRELEASED; needs a v2.0.23 to ship)
+    * v2.0.22 RELEASED (937e220) -- shipped the Intelligence restructure (1–3d-3) + tag
+      series T1–T5 + Phase B B0.3/B0.5/B0.6/B1 + member-add hang fix to installed apps
+      (mac universal DMG/zip + win NSIS x64).
+    * 3e-0 (ABANDONED, never committed) -- collapsible Intelligence header experiment;
+      built then reverted (freed too little space for the interaction cost). Recorded as
+      considered-and-rejected so it isn't re-attempted.
+    * 3e-1 (73efd3a) -- NEWS RICH HUMAN-FIRST. New intelligence:updateContent IPC (the feed
+      stores only a snippet; researcher pastes the full article). News card footer gains an
+      article-text paste box (autosaves to content), on-demand project-aware "Analyze with
+      AI" (gated until substantial text pasted; runs against the pasted draft not the stale
+      snippet), and an editable Reconcile block — mirroring DocumentCompose. Per-source
+      keyed state; reuses analyzeText/saveAiAnalysis/saveReconciled/updateReconciledNotes;
+      withAnalysisKey+escapeHtml replicated locally. Completes human-first capture across
+      all four source types.
+    * DUPLICATE ACTION (5702da5) -- News-only "Duplicate" button + modal that optionally
+      links the article to the original it duplicates (new duplicate_of column), sets
+      status='duplicate', and drops it from the review queue. Dedicated intelligence:
+      markDuplicate IPC bypasses updateStatus/handleStatus entirely — NO pushVerdictToSupabase
+      and NO logDecision — so duplicates never mistrain the relevance gate (relevant-but-
+      redundant, not a rejection). Idempotent duplicate_of migration; 'duplicate' added to
+      the status union; portal modal reuses getSources search. Linking feeds future puller-
+      culler dedup. Verified: linked path clusters syndicated articles to one original,
+      unlinked stores NULL, 0 decision-log rows.
+    * T6a (650aeaa) -- CLICKABLE AI SUGGESTED-TAG CHIPS ON NEWS. Shared SuggestedTagChip
+      component, 3-state color-coded: purple = not in the card's project library →
+      create+attach; green = in library → attach; muted ✓ = already on the article
+      (non-clickable); disabled when no project. Recolors live with the card's project.
+      Compares + displays the NORMALIZED tag form (exported normalizeTagClient) so mixed-
+      case suggestions like "Rio-de-Janeiro" correctly detect as added. Compose tabs
+      deferred to T6b.
+    * TAG-DELETE NO-PROJECT FIX (3153587) -- the TagPicker delete-trash was gated only on
+      admin permission, so in "All sources" (no project) it rendered a button that called
+      handleDeleteTag with an empty board id → early-return → silent no-op. Now gated on a
+      non-empty board id too (all four tabs), so the trash isn't offered without a project;
+      deletion works unchanged when a project is selected.
+    * NEXT -- v2.0.23 release for the above; T6b (clickable chips on the compose tabs);
+      T7 (AI tag reuse: feed known_tags into the analyzeText prompt); then the downstream
+      Info Pages editorial stages (Analysis & design → Publish → Sources).
 
   PHASE B — CLOUD BRIDGE FOR INFO PAGES (post-v2.0.21; needs a v2.0.22 to ship)
     Goal: make the 4 info-page projects real cloud boards (membership/heads work),

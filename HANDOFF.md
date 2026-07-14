@@ -1,28 +1,36 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-13 · v2.0.21 released; Intelligence restructure through 3d-3 + tag/scoping series (Slices T1–T5) committed + pushed (HEAD 83a9180); docs-only edits pending_
+_Last updated: 2026-07-14 · v2.0.22 RELEASED; post-release work (News rich capture 3e-1, Duplicate action, T6a clickable chips, delete-trash fix) committed + pushed (HEAD 3153587) → needs a v2.0.23 release; docs-only edits pending_
 
 ## ▶ Start here — resume point for the next session
 
-**Where we are:** the **INTELLIGENCE RESTRUCTURE** (human-first capture → project
-commit pipeline) plus a **tag/scoping series (T1–T5)** are **committed + pushed**
-(HEAD = `83a9180`, `origin/main` up to date); the only working-tree changes are these
-two docs. Net state of the four source types (**News / Documents / Social / Interviews**):
+**Where we are:** **v2.0.22 is RELEASED** (`937e220`; the Intelligence restructure through
+3d-3 + tag/scoping series T1–T5 shipped to installed apps). On top of it, a batch of
+**News-focused work is committed + pushed but UNRELEASED** — HEAD = `3153587`,
+`origin/main` up to date, working tree clean apart from these two docs. It needs a
+**v2.0.23** release to reach installed apps (see "Post-v2.0.22" below). Net state of the
+four source types (**News / Documents / Social / Interviews**):
 - **Human-first capture** — researcher notes primary, on-demand AI (never auto-run),
-  editable reconcile — on all four.
+  editable reconcile — on all four. **News now matches** (3e-1): article-text paste box
+  + Analyze-with-AI + Reconcile on the card footer, feature-complete across all four.
 - **Send-to-pipeline** — each routes into a project's "New sources" via the shared,
   type-agnostic `routeToProject` → `routeToNewSources` (`source_type` travels from the
   intel row; SQL-verified for all four). New-sources cards show the full item, and
   **move-back** returns a source to the intel queue (bidirectional).
 - **Project-scoped topic tags** — a shared `TagPicker` with a per-project vocabulary
-  (`known_tags.project_board_id`) on all four.
-- **Project-scoped views** — the three compose tabs now filter by the selected project
-  like News, and newly-created items inherit the selected project; every visible card
-  belongs to the selected project, so its tag vocabulary always matches.
+  (`known_tags.project_board_id`) on all four; **News AI-suggested tags are now clickable**
+  (T6a, 3-state color-coded).
+- **Project-scoped views** — the three compose tabs filter by the selected project like
+  News, and newly-created items inherit the selected project; every visible card belongs
+  to the selected project, so its tag vocabulary always matches.
+- **Duplicate handling** — News-only **Duplicate** action (mark + optional link to the
+  original), no learning signal.
 
 **Immediate next step: the downstream Info Pages editorial stages** (Analysis & design →
 Publish → Sources) — the New-sources → committed → published lifecycle *beyond* capture.
-The capture/routing/tagging front-end is now feature-complete for all four types.
+The capture/routing/tagging front-end is now feature-complete for all four types. Also
+pending: a **v2.0.23** release for the post-v2.0.22 work, and **T6b** (clickable chips on
+the compose tabs).
 
 **The arc (why):** make Source Intelligence human-first (researcher notes + on-demand
 AI, never auto-run) and route items into a specific project's Info Pages "New sources"
@@ -98,36 +106,66 @@ all four source types, plus project-scoped compose views.
   **resolving the cross-project tag-scoping bug** (a card's TagPicker vocabulary always
   matches its project).
 
-**Immediate next task — the downstream Info Pages editorial stages.** Capture, routing,
-and tagging are done for all four source types; the next arc is the **New-sources →
-committed → published** lifecycle on the Info Pages side: **Analysis & design → Publish →
-Sources**. (Scope TBD — start by mapping the existing `getSourcePipeline` stages
-`new → review → committed` and the editorial tabs against what's still stubbed.)
+**Post-v2.0.22 (committed + pushed, UNRELEASED → needs v2.0.23):**
+- **3e-0 (ABANDONED, never committed)** — a collapsible Intelligence header experiment
+  (collapse subtitle + big counters + framework panel, keep title/project/tabs). Built,
+  then **reverted** — it freed too little vertical space for the interaction cost.
+  Recorded here as **considered-and-rejected** so it isn't re-attempted.
+- **3e-1** (`73efd3a`) — **News rich human-first.** New `intelligence:updateContent` IPC
+  (the feed only stores a snippet; researcher pastes the full article). News card footer
+  gains an **article-text paste box** (autosaves to `content`), on-demand project-aware
+  **Analyze with AI** (gated until substantial text is pasted; runs against the pasted
+  draft, not the stale snippet), and an **editable Reconcile** block — mirroring
+  DocumentCompose. Completes human-first capture across all four source types. Per-source
+  keyed state; reuses `analyzeText`/`saveAiAnalysis`/`saveReconciled`/`updateReconciledNotes`.
+- **Duplicate action** (`5702da5`) — News-only **Duplicate** button + modal, optionally
+  links the article to the original it duplicates (`duplicate_of` column), sets
+  `status='duplicate'`, drops it from the queue. Dedicated `intelligence:markDuplicate`
+  IPC **bypasses `updateStatus`/`handleStatus` — NO `pushVerdictToSupabase`, NO
+  `logDecision`** (a duplicate is relevant-but-redundant, not a relevance rejection).
+  Linking feeds future puller-culler dedup. Verified end-to-end (linked + unlinked, 0
+  learning rows).
+- **T6a** (`650aeaa`) — **clickable AI suggested-tag chips on News.** Shared
+  `SuggestedTagChip` (3-state: **purple** = not in the card's project library → create +
+  attach · **green** = in library → attach · **muted ✓** = already on article; disabled
+  when no project). Recolors live with the card's project. Compares + displays the
+  **normalized** tag form (exported `normalizeTagClient`) so mixed-case suggestions like
+  "Rio-de-Janeiro" correctly detect as added. Compose tabs deferred to **T6b**.
+- **Tag-delete no-project fix** (`3153587`) — hide the TagPicker delete-trash when no
+  project is selected (was a silent no-op in "All sources": `onDelete` was gated only on
+  admin, so it passed a handler with an empty board id → `handleDeleteTag` early-returned).
+  Now gated on a non-empty board id in all four tabs; the trash isn't offered without a project.
 
-**Then, eventually:** cut a **v2.0.22** release so installed apps get everything
-committed since the v2.0.21 tag (member-add hang fix + Phase-B B0.3/B0.5/B0.6/B1 +
-the whole Intelligence restructure through 3d-3 + the tag/scoping series T1–T5).
+**Immediate next task — the downstream Info Pages editorial stages.** Capture, routing,
+tagging, and duplicate handling are done for all four source types; the next arc is the
+**New-sources → committed → published** lifecycle on the Info Pages side: **Analysis &
+design → Publish → Sources**. (Scope TBD — start by mapping the existing
+`getSourcePipeline` stages `new → review → committed` and the editorial tabs against
+what's still stubbed.)
+
+**Then, eventually:** cut a **v2.0.23** release so installed apps get the post-v2.0.22
+work (News rich capture 3e-1, Duplicate action, T6a clickable chips, delete-trash fix).
 
 ## Release status at a glance
 
-- **v2.0.21 — RELEASED** to GitHub Releases. Contains the keyword-matcher
-  word-boundary fix (and the earlier v2.0.20 stack: board reorder, read-only
-  visualizer, board-restore + card-revive fixes, PublishQueue dead-code removal,
-  Restore-all route-by-source fix).
-- **Committed AFTER the v2.0.21 tag, NOT yet in any released build** (needs a
-  **v2.0.22** release to reach installed apps): member-add hang fix (`81e9eea`);
-  Phase-B **B0.3** (`a1ca0d4`), **B0.5** (`f9a5db4`), **B0.6** (`a0a67b3`), **B1**
-  (`42ff4bf`); and the **Intelligence restructure** Slices **1** (`07e9a8d`), **2a**
-  (`60a5d45`), **2b** (`b231b2a`), Documents-delete (`be9101e`), **2c+Social-a**
-  (`9ce37a9`), AI-relevance (`335d3a8`), **Social-b** (`dcda557`), News-human-layer
-  (`ff50233` + `69fac5c`), **3a** (`0a4585e`), **3b** (`17448c0`), **3c-1** (`41d0acb`),
-  **3c-2a** (`8010183`), **3c-2b** (`588ac91`), **3d-1** (`14d9386`), **3d-2** (`9021518`),
-  **3d-3** (`7f91ba7`); and the **tag/scoping series** **T1** (`af9a651`), **T2**
-  (`c67b2b9`), **T3** (`9a1a187`), **T4** (`3787d87`), **T5** (`83a9180`). (Docs commit
-  `faf9b79` sits between 3d-2 and 3d-3.)
+- **v2.0.22 — RELEASED** (`937e220`) to GitHub Releases (mac universal DMG/zip + win NSIS
+  x64). Contains everything committed since the v2.0.21 tag: member-add hang fix
+  (`81e9eea`); Phase-B **B0.3** (`a1ca0d4`), **B0.5** (`f9a5db4`), **B0.6** (`a0a67b3`),
+  **B1** (`42ff4bf`); the **Intelligence restructure** Slices 1/2a/2b/Documents-delete/
+  2c+Social-a/AI-relevance/Social-b/News-human-layer/**3a**/**3b**/**3c-1**/**3c-2a**/
+  **3c-2b**/**3d-1**/**3d-2**/**3d-3**; and the **tag/scoping series T1–T5**.
+- **v2.0.21 — RELEASED** (superseded). Keyword-matcher word-boundary fix + the v2.0.20
+  stack (board reorder, read-only visualizer, board-restore + card-revive fixes,
+  PublishQueue dead-code removal, Restore-all route-by-source fix).
+- **Committed AFTER the v2.0.22 release, NOT yet in any released build** (needs a
+  **v2.0.23** release to reach installed apps): **3e-1** News rich capture (`73efd3a`),
+  **Duplicate action** (`5702da5`), **T6a** clickable chips (`650aeaa`), and the
+  **tag-delete no-project fix** (`3153587`). (Docs commit `0b1572e` + `801ec27` and the
+  version-bump `937e220` sit between T5 and 3e-1.)
 - **Working tree:** only these two docs (`HANDOFF.md`, `PROJECT_SUMMARY.txt`) are
   modified — no source changes pending. Next unbuilt work is the **downstream Info Pages
-  editorial stages** (Analysis & design → Publish → Sources). See "Start here" above.
+  editorial stages** (Analysis & design → Publish → Sources); **T6b** and a **v2.0.23**
+  release are also pending. See "Start here" above.
 
 ## v2.0.21 — keyword matcher word-boundary fix (released)
 
@@ -314,8 +352,28 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
 
 ## Known issues / open threads
 
-### On the horizon — deferred, from the 3d verification pass
+### On the horizon — deferred / next up
 
+- **T6b — clickable suggested-tag chips on the compose tabs.** Extend the T6a
+  `SuggestedTagChip` (already shared) to Documents/Social/Interviews. Blocker: those
+  chips render **inside** the `DocumentCompose`/`SocialCompose`/`InterviewCompose`
+  sub-components, which only receive `{ doc, project, onPatch, formatDate }` — so
+  `knownThematic` + the `handleSetTags`/`handleCreateTag` handlers must be **threaded in
+  as new props** (+ their call sites). `themaTags`/`projectBoardSel` are derivable locally
+  from `doc`+`project`. (News was clean because it has no sub-component.)
+- **T7 (next up) — AI tag reuse.** Feed the project's existing `known_tags` vocabulary
+  into the `analyzeText` prompt so the AI **reuses existing tags** instead of coining
+  near-duplicates (e.g. suggests `drone-attack` rather than a new `Drone-Strike`). Reduces
+  the create-churn the T6 chips surface.
+- **Per-card tag scoping.** Each card's picker + AI chips should load/check against **that
+  card's OWN `project_board_id`** vocabulary, independent of the top project picker.
+  Deferred at T5 (compose views keep visible cards aligned to the selected project, so it
+  didn't bite); revisit when per-card tagging across mixed projects is the priority.
+- **Info Pages publication stages (big design-first arc, unbuilt).** The downstream
+  editorial lifecycle on the Info Pages side: **Analysis & design → Publish → Latest
+  update notes → Sources** — push to the live site, auto-generate an update note, with a
+  confirmation gate before publish. This is the main "immediate next task" (see "Start
+  here"); scope it first against the existing `getSourcePipeline` stages.
 - **Article collection dedup + outlet targeting (pipeline layer).** The GDELT / Haiku
   fetch pulls many near-duplicate reposts/mirrors of the same story (e.g. one CNN piece
   syndicated across outlets) while sometimes *missing the original source*. Likely a
