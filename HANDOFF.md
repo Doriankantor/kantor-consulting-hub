@@ -1,22 +1,41 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-15 · v2.0.22 RELEASED; post-release work (3e-1, Duplicate, T6a, tag-delete fix, T7, persist fix, Phase 1, **Path B B1/B2/B3**, **narrative-summary fix**) committed + pushed (HEAD `c0be06f`) → a **v2.1.0 MINOR** release is planned to ship the whole batch_
+_Last updated: 2026-07-15 · **v2.1.0 RELEASED** (published 2026-07-15, mac universal DMG/zip + win NSIS, auto-update manifests live) — the Path B arc, summary-key fix, **reconcile-from-structure** (`edaab46`), and the **PDF extraction fix** (`283dc38`) all shipped. The "committed-but-unreleased batch" framing is now OBSOLETE — that batch shipped. **New milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
-**Where we are:** **v2.0.22 is RELEASED** (`937e220`; the Intelligence restructure through
-3d-3 + tag/scoping series T1–T5 shipped to installed apps). On top of it, a substantial
-batch is **committed + pushed but UNRELEASED** — HEAD = `c0be06f` (narrative-summary
-fix), `origin/main` up to date, working tree clean apart from these two docs.
+**Where we are: v2.1.0 is RELEASED** — published 2026-07-15 to GitHub Releases (mac
+universal DMG/zip + win NSIS x64, `latest-mac.yml`/`latest.yml` auto-update manifests
+live). HEAD = `460a8b6` (the `2.1.0` version bump; tag `v2.1.0` on the remote),
+`origin/main` up to date, working tree clean apart from these two docs. The old
+"committed-but-unreleased batch" framing is **obsolete — it all shipped.** v2.1.0 shipped:
+**3e-1, Duplicate, T6a, tag-delete fix, T7, persist fix, Phase 1, Path B (B1/B2/B3), the
+summary-key fix (`c0be06f`), reconcile-from-structure (`edaab46`), and the PDF extraction
+fix (`283dc38`).**
 
-Because of the **feature volume** in that batch (not just fixes), Dorian chose a
-**v2.1.0 MINOR** release over another patch — it ships everything since v2.0.22 in one
-go: 3e-1, Duplicate, T6a, tag-delete fix, **T7**, the persist-selection fix, **Phase 1**,
-the **Path B arc (B1 → B2 → B3)**, and the **narrative-summary fix**.
+**NEW MILESTONE (Dorian, locked): END OF JULY = COMPLETE INTEL PROCESS. PUBLISHING MOVES
+TO AUGUST.** Rationale: **intel is done by SIX people** and is currently
+local-SQLite-per-machine (i.e. impossible as a team activity); **publishing is done by
+DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B priority**
+— the cloud migration is needed for **INTEL**, not for the info-page content tables.
 
-**The headline: Path B — structured identifier extraction is live end-to-end.** The AI
-analysis no longer produces only prose; it now emits a **structured catalogue** that
-survives routing and renders on both surfaces:
+**NEXT UP, in order:**
+1. **Cosmetic sweep** — T1 test tags (`alpha`/`beta`/`test-tag-alpha`), dead `'summarize'`
+   branch in `analyze.ts`, attached-interface removal, sidebar "N new" badge.
+2. **CLOUD MIGRATION** — `intelligence_sources` + `known_tags` + `info_page_sources`.
+   **The big one. UNBLOCKS items 5 and 6 below.**
+3. **Pre-route editing** (locked decision — see the locked-decisions section below).
+4. **T6b + per-card tag scoping — COMBINED into one slice** (same prop threading; doing
+   them separately means threading twice).
+5. **Human-relevance feedback loop** into the Haiku gate (**PIPELINE repo**).
+6. **Collection dedup + outlet targeting** (**PIPELINE repo**).
+7. **Interview span annotation** (design-first; at risk of slipping to August).
+
+Then: **narrow publish v1 in August.**
+
+**The headline of the shipped work: Path B — structured identifier extraction is live
+end-to-end.** The AI analysis no longer produces only prose; it now emits a **structured
+catalogue** that survives routing and renders on both surfaces:
 - **B1** (`dd37e40`) — `analyzeText` returns `article_type` + **`capabilities[]`**
   `{system, actor, actor_type, cost, category, relationship}` + **`key_facts[]`**
   `{label, value}` into `analysis_json.ai`, no-invention-governed, **verbatim** specifics.
@@ -36,19 +55,10 @@ Net state of the four source types (**News / Documents / Social / Interviews**):
   (`known_tags.project_board_id`) on all four; News AI-suggested chips are clickable (T6a);
   and the **AI now reuses the project's existing vocabulary** instead of coining
   near-duplicates (**T7**).
+- **Reconcile narrates from structure** (`edaab46`) — reconcile now narrates *from* the
+  already-extracted `capabilities[]`/`key_facts[]` instead of re-deriving from raw text.
 - **Duplicate handling** — News-only **Duplicate** action (mark + optional link), no
   learning signal.
-
-**Immediate next step:**
-- **DONE (`c0be06f`):** the relevance-path `summary`-key fix (see the amendment under
-  "Key design insight" and the post-v2.0.22 entry below). The AI narrative now has its
-  own `summary` field instead of cramming into `relevance_reasoning`.
-- **NEXT — reconcile refinement:** thread the structured `capabilities[]`/`key_facts[]`
-  into the **RECONCILE prompt** so reconcile narrates *from the catalogue* instead of
-  re-deriving from raw text. Requires adding an opt (e.g. `priorAi`) to `AnalyzeOpts` +
-  threading it from the **4 reconcile call sites** (`NewsTab:189`, `DocumentsTab:468`,
-  `SocialTab:701`, `InterviewsTab:416` — each already has `analysis_json` in scope).
-- **THEN:** the **v2.1.0** release, then the Level-2 cross-source aggregation (design-first).
 
 ## ★ Key design insight — prose summarizes, structure catalogues
 
@@ -93,6 +103,31 @@ field do its job:
 - `relevance_reasoning` = a 1–2 sentence relevance VERDICT only.
 
 Still do NOT re-attempt "make the summary hold verbatim specifics."
+
+## ⚠ Lesson — SILENT FAILURE IS THE RECURRING BUG CLASS
+
+**Two instances now, same shape: a failure swallowed with no logging, wrong output
+accepted as real.**
+
+- **(a) B1 — `max_tokens: 1024`** truncated the structured JSON → parse failure →
+  `{ok:false}` with **NO console output** (only a tiny footer line). Raised to 4096 + a
+  60s timeout + `console.warn` on every failure path.
+- **(b) The PDF bug** — `pdf-parse` was bumped to **v2.4.5**, a pdfjs-dist rewrite that
+  needs `process.getBuiltinModule` (Node ≥20.16) to load its DOM polyfills. **Electron
+  31's bundled Node is BELOW that floor**, so `require('pdf-parse')` threw `DOMMatrix is
+  not defined` **AT LOAD TIME — before any file was read** — and **EVERY PDF upload failed
+  identically**. A bare `catch {}` swallowed it and wrote `'[PDF text extraction
+  unavailable]'` into the content column, so uploads looked successful and the AI
+  **dutifully analyzed the placeholder**. Fixed by pinning `pdf-parse` to **exactly
+  1.1.1** (thin Node wrapper, no pdfjs/DOM dependency, API-compatible with the existing
+  call site — no call-site change). Both the PDF and DOCX catches now bind `e` and
+  `console.warn`.
+  - **KEY TRAP: upgrading LOCAL Node would NOT have fixed this** — the app runs on
+    **ELECTRON's bundled Node**, not the system one. The standalone `node -e` test is what
+    proved the *lib itself* was broken rather than the bundling path.
+
+**RULE: never write a bare `catch {}`. Bind the error and log it. A placeholder that flows
+into the AI as content is worse than a visible failure.**
 
 **The arc (why):** make Source Intelligence human-first (researcher notes + on-demand
 AI, never auto-run) and route items into a specific project's Info Pages "New sources"
@@ -259,17 +294,27 @@ all four source types, plus project-scoped compose views.
   summary renders as a narrative paragraph, reasoning shrank to a verdict, SYSTEMS/KEY
   FACTS unchanged, both fields render on the New-sources card. Old rows keep the crammed
   reasoning until re-analyzed.
+- **Reconcile narrates from prior structure** (`edaab46`) — `priorAi` added to
+  `AnalyzeOpts`; a `priorStructureBlock` helper (empty-string-when-absent, mirrors
+  `tagReuseBlock`) injects the already-extracted `article_type`/`capabilities[]`/
+  `key_facts[]` into the **reconcile** prompt, so reconcile narrates *from* the catalogue
+  instead of re-deriving from raw text. Threaded from all four reconcile call sites (News
+  parses `analysis_json` in-handler; Documents/Social/Interviews pass the in-scope `ai`).
+  Reconcile summary widened to a 4–7 sentence paragraph matching the relevance path.
+  Reconcile does **NOT** return `capabilities`/`key_facts` — `analysis_json.ai` stays the
+  single extraction of record. Verified in-app on all four tabs. Closed the loop opened by
+  the reverted specificity experiment.
+- **PDF extraction fix** (`283dc38`) — Documents capture was **silently broken for ALL
+  PDFs in every installed build**. See the **silent-failure lesson** below for the full
+  root cause; the one-line version: `pdf-parse` v2.4.5 threw `DOMMatrix is not defined` at
+  load time on Electron 31's bundled Node, a bare `catch {}` swallowed it, and the
+  placeholder flowed into the content column as if extraction had succeeded. Fixed by
+  pinning `pdf-parse` to exactly **1.1.1** (no call-site change); both the PDF and DOCX
+  catches now bind and `console.warn` the error.
 
-**Immediate next task — RECONCILE REFINEMENT** (self-contained, needs a small opt): the
-summary half is DONE (`c0be06f`). What remains is the **reconcile** half — thread the
-structured `capabilities[]`/`key_facts[]` into the **reconcile** prompt in `ai/analyze.ts`
-by adding an opt (e.g. `priorAi`) to `AnalyzeOpts` and passing it from the 4 reconcile
-call sites (each has `analysis_json` in scope), so reconcile **narrates from the
-catalogue** rather than re-deriving from raw text. This closes the loop opened by the
-reverted specificity experiment. Testable by re-analyze + reconcile on a known article.
-
-**Then:** cut the **v2.1.0** release (ships the whole committed-but-unreleased batch), and
-scope the **Level-2 cross-source aggregation** (design-first).
+**v2.1.0 shipped this whole batch** (published 2026-07-15). Next up is the intel-process
+milestone in "Start here"; the Level-2 cross-source aggregation (design-first) remains on
+the backlog.
 
 ## Release status at a glance
 
@@ -282,20 +327,21 @@ scope the **Level-2 cross-source aggregation** (design-first).
 - **v2.0.21 — RELEASED** (superseded). Keyword-matcher word-boundary fix + the v2.0.20
   stack (board reorder, read-only visualizer, board-restore + card-revive fixes,
   PublishQueue dead-code removal, Restore-all route-by-source fix).
-- **v2.1.0 — PLANNED (not yet cut).** A **MINOR** bump, not another patch: the
-  committed-but-unreleased batch is feature-heavy, so Dorian chose `2.1.0` to ship it all
-  at once.
-- **Committed AFTER the v2.0.22 release, NOT yet in any released build** (ships in
-  **v2.1.0**): **3e-1** News rich capture (`73efd3a`), **Duplicate action** (`5702da5`),
-  **T6a** clickable chips (`650aeaa`), the **tag-delete no-project fix** (`3153587`),
-  **T7** AI tag reuse (`d78fd36`), the **persist-selection fix** (`f4e107e`), **Phase 1**
-  identifier guidance (`161a133`), **Path B — B1** (`dd37e40`) / **B2** (`e379d2f`) /
-  **B3** (`51a9569`), and the **narrative-summary fix** (`c0be06f`). (Docs commit
-  `0b1572e` + `801ec27` and the version-bump `937e220` sit between T5 and 3e-1.)
+- **v2.1.0 — RELEASED** (published 2026-07-15; version-bump commit `460a8b6`, tag `v2.1.0`
+  on the remote) to GitHub Releases (mac universal DMG/zip + win NSIS x64, `latest-mac.yml`
+  /`latest.yml` auto-update manifests live). A **MINOR** bump, not another patch — feature
+  volume (Dorian's call). Shipped everything committed after v2.0.22: **3e-1** News rich
+  capture (`73efd3a`), **Duplicate action** (`5702da5`), **T6a** clickable chips
+  (`650aeaa`), the **tag-delete no-project fix** (`3153587`), **T7** AI tag reuse
+  (`d78fd36`), the **persist-selection fix** (`f4e107e`), **Phase 1** identifier guidance
+  (`161a133`), **Path B — B1** (`dd37e40`) / **B2** (`e379d2f`) / **B3** (`51a9569`), the
+  **narrative-summary fix** (`c0be06f`), **reconcile-from-structure** (`edaab46`), and the
+  **PDF extraction fix** (`283dc38`). (Docs commit `0b1572e` + `801ec27` and the
+  version-bump `937e220` sit between T5 and 3e-1.)
 - **Working tree:** only these two docs (`HANDOFF.md`, `PROJECT_SUMMARY.txt`) are
-  modified — no source changes pending. Next unbuilt work is **reconcile refinement**
-  (thread the structured extraction into the reconcile prompt via a `priorAi` opt); then
-  **v2.1.0**; then the **Level-2 cross-source aggregation**. See "Start here" above.
+  modified — no source changes pending. Next work is the **intel-process milestone** —
+  cosmetic sweep → **cloud migration** → pre-route editing → T6b+per-card scoping →
+  feedback loop → dedup → span annotation (see "Start here" above).
 
 ## v2.0.21 — keyword matcher word-boundary fix (released)
 
@@ -406,6 +452,17 @@ table to cloud, aligned with the email-keyed `board_members` (= project members)
   (this is why the edit form drops keywords and other framework fields).
 - Standardize on the **`info_page_sources` stage table** (`new → review → committed`)
   for the source pipeline.
+- **Pre-route editing (locked, unbuilt).** Compose items (Social/Documents/Interviews)
+  must be **EDITABLE UNTIL ROUTED** — same model as News, whose cards stay editable in the
+  queue until Approve routes them. Once routed (`status='routed'`) the item belongs to the
+  publication side and is **NOT editable in place**; to edit, **MOVE IT BACK TO INTEL**
+  (reuse 3c-2b `moveBackToIntel`), edit, re-send. One uniform rule across all four types;
+  resolves "who owns the content at which stage". Today compose items go read-only the
+  moment they're saved because card fields bind to compose-time state and the tab load
+  filter excludes `status='routed'`. **HYPOTHESIS (unverified — needs a diagnose):** the
+  persistence plumbing already exists (`updateNotes`/`updateContent`/`setArticleTags`), so
+  the gap is likely that saved cards stop **OFFERING** the edit affordances, not that they
+  can't persist. May be small.
 
 ## Prior release detail (v2.0.20)
 
@@ -484,30 +541,28 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
 
 ### On the horizon — deferred / next up (priority order)
 
-- **1. NEXT — Narrative refinement (HALF DONE).** The **summary half shipped** (`c0be06f`):
-  the relevance prompt now has its own `summary` key, so the AI narrative stopped cramming
-  into `relevance_reasoning`. What **remains is the RECONCILE half** — feed the structured
-  `capabilities[]` / `key_facts[]` into the **reconcile** prompt in `src/main/ai/analyze.ts`
-  (add a `priorAi` opt to `AnalyzeOpts`, thread it from the 4 reconcile call sites) so
-  reconcile **REFERENCES the specifics precisely** — narrating *from* the already-extracted
-  structure rather than re-deriving from raw text. Instead of begging prose to be specific
-  (which **failed** — see "Key design insight"), we hand it the catalogue. Testable by
-  re-analyze → reconcile on a known article.
+- **1. DONE (shipped in v2.1.0) — Narrative refinement.** Both halves landed: the summary
+  half (`c0be06f`, own `summary` key) and the **reconcile half** (`edaab46`, reconcile
+  narrates *from* the structured `capabilities[]`/`key_facts[]` via the `priorAi` opt).
+  No longer a to-do — kept here only as the resolved anchor for "Key design insight".
 - **2. Level 2 — cross-source aggregation (BIG, design-first).** Aggregate `capabilities[]`
   across an Info Page's **committed sources** into the **"who has what across VNSAs vs
   states"** reconstruction — the payoff the whole Path B arc was built for, and the natural
   destination of the Info Pages publication-stages work. **Design-first: start with a mockup
   conversation**, not code.
-- **3. v2.1.0 release.** Ship the whole committed-but-unreleased batch (3e-1, Duplicate,
-  T6a, tag-delete fix, T7, persist fix, Phase 1, B1, B2, B3) once the Path B arc is
-  complete. **MINOR**, not patch — feature volume (Dorian's call).
-- **4. T6b — clickable suggested-tag chips on the compose tabs.** Extend the T6a
-  `SuggestedTagChip` (already shared) to Documents/Social/Interviews. Blocker: those
-  chips render **inside** the `DocumentCompose`/`SocialCompose`/`InterviewCompose`
-  sub-components, which only receive `{ doc, project, onPatch, formatDate }` — so
-  `knownThematic` + the `handleSetTags`/`handleCreateTag` handlers must be **threaded in
-  as new props** (+ their call sites). `themaTags`/`projectBoardSel` are derivable locally
-  from `doc`+`project`. (News was clean because it has no sub-component.)
+- **3. DONE — v2.1.0 released** (published 2026-07-15; shipped the whole batch — 3e-1,
+  Duplicate, T6a, tag-delete fix, T7, persist fix, Phase 1, Path B B1/B2/B3, `c0be06f`,
+  `edaab46`, `283dc38`). MINOR, not patch — feature volume (Dorian's call).
+- **4. T6b + per-card tag scoping — COMBINE into ONE slice (next-up item 4).** Extend the
+  T6a `SuggestedTagChip` (already shared) to Documents/Social/Interviews. **T6b confirmed
+  live in testing** — suggested-tag chips are not clickable on Interviews (observed), same
+  for Documents/Social. Blocker: those chips render **inside** the
+  `DocumentCompose`/`SocialCompose`/`InterviewCompose` sub-components, which only receive
+  `{ doc, project, onPatch, formatDate }` — so `knownThematic` + the
+  `handleSetTags`/`handleCreateTag` handlers must be **threaded in as new props** (+ their
+  call sites). `themaTags`/`projectBoardSel` are derivable locally from `doc`+`project`.
+  (News was clean because it has no sub-component.) **Combine with per-card tag scoping
+  (below)** — same prop threading; doing them separately means threading twice.
 - **Per-card tag scoping.** Each card's picker + AI chips should load/check against **that
   card's OWN `project_board_id`** vocabulary, independent of the top project picker.
   Deferred at T5 (compose views keep visible cards aligned to the selected project, so it
@@ -524,6 +579,10 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   dedup **downstream**, plus **AI duplicate-detection on push**. The **Duplicate-link**
   (`duplicate_of`) and the **structured date/location/actors** from B1 are the natural
   **prefilter feed** for that detector. Not app-code; deferred to a pipeline session.
+  **BLOCKED BY the cloud migration** — the Haiku gate runs in GitHub Actions and CANNOT
+  read local SQLite, so today the loop isn't just inert, it's **unbuildable**. Both the
+  feedback loop and dedup live in the **PIPELINE repo**, not the app — per the Social-b
+  lesson, **VERIFY THE TARGET REPO before any git op there.**
 - **Sidebar "N new" badge likely counts the wrong table.** The Info Pages sidebar badge
   appears to still count the legacy `info_page_items` table, not `info_page_sources`
   `stage='new'` (observed mismatch: the New-sources tab showed **4**, the sidebar badge
@@ -545,17 +604,25 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   `…Z`); local is **CEST = UTC+2**. A UTC-vs-local mismatch cost real debugging time during
   T1 testing (fresh writes looked ~2h stale). Convert (+2h) before concluding "nothing was
   written."
-- **Watch: does `relevance_reasoning` stay short?** The 1–2 sentence verdict guidance is
-  new (`c0be06f`) and only applies to rows re-analyzed after it. Verified on one source. If
-  the model drifts back to long reasoning as more rows are re-analyzed, **tune the prompt
-  wording** (firmer split instruction) — do NOT accept it, and do NOT fight it by removing
-  the summary. Re-check before the v2.1.0 release.
+- **Watch: does `relevance_reasoning` stay short?** The 1–2 sentence verdict guidance
+  (`c0be06f`) **held on the sources tested and shipped in v2.1.0** — the reasoning shrank
+  to a verdict and the narrative moved to `summary`. **Keep checking as more rows are
+  re-analyzed;** if it drifts long, **tune the prompt wording** (firmer split instruction)
+  — do NOT accept it, and do NOT remove the summary.
 - **The `'summarize'` task branch in `analyze.ts` is DEAD CODE** — grep found zero call
   sites (only the type union in `env.d.ts:774`). All four tabs use `'relevance'` and
   `'reconcile'`. Candidate for removal in a cleanup slice.
 
 ### Standing issues
 
+- **Analytical frameworks were NEVER authored.** `analytical_framework` in `board_config`
+  does not exist yet — every "Analyze with AI" across all four types currently runs
+  against **KEYWORDS + BOARD NAME** as an interim stand-in. This is a **QUALITY CEILING on
+  the whole intel product**, not a missing feature. Deferred by Dorian until the intel
+  process is complete (needs real design).
+- **Only Contested Skies has news-pull architecture.** Hollow Border, Immigration Undone,
+  The Stated Order remain grayed out (Phase 2 unbuilt). **"Everyone does intel" currently
+  means Contested Skies only.**
 - **Info-page CONTENT is still local + per-machine.** After B0 the board *rows* are
   cloud, but every `info_page_*` table (items, sources, commits, published, changes,
   chat, owners) and `intelligence_sources` are still **local SQLite** keyed by page

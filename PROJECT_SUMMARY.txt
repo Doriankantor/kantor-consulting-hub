@@ -1,31 +1,33 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-15
-  Current version: v2.0.22 (RELEASED)  |   274 commits   |   ~35,250 lines of TS/TSX
+  Current version: v2.1.0 (RELEASED)  |   278 commits   |   ~35,275 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
-  v2.0.22 shipped the INTELLIGENCE RESTRUCTURE (Slices 1–3d-3: human-first capture +
-  Send-to-New-sources + move-back across News/Documents/Social/Interviews) AND the
-  TAG/SCOPING SERIES T1–T5 (project-scoped topic tags + shared TagPicker + project-scoped
-  compose views), plus Phase B B0.3/B0.5/B0.6/B1 + the member-add hang fix.
-  NOTE: a large batch is COMMITTED but UNRELEASED at HEAD c0be06f — a v2.1.0 MINOR release
-  (not another patch; feature volume) is planned to ship it all: 3e-1 News rich capture,
-  the DUPLICATE action, T6a clickable chips, the tag-delete fix, T7 (AI reuses existing
-  project tags), the persist-selection fix, Phase 1 (article-type-aware identifier
-  guidance), the PATH B ARC — STRUCTURED IDENTIFIER EXTRACTION: the AI analysis now
-  emits article_type + capabilities[] {system, actor, actor_type (VNSA/state/commercial/
-  unknown), cost, category, relationship} + key_facts[] {label, value} into
-  analysis_json.ai (B1), rendered on the News card (B2) and on the Info Pages New-sources
-  cards (B3) — color-coded amber VNSA / blue state — and the NARRATIVE SUMMARY FIX
-  (c0be06f): the relevance prompt now requests its own `summary` key so the AI narrative
-  stopped cramming into relevance_reasoning (which is back to a 1–2 sentence verdict).
+  v2.1.0 RELEASED (published 2026-07-15; mac universal DMG/zip + win NSIS x64, auto-update
+  manifests live). A MINOR bump (not a patch) shipping the whole post-v2.0.22 batch: the
+  INTELLIGENCE RESTRUCTURE + TAG/SCOPING SERIES were already in v2.0.22; v2.1.0 adds 3e-1
+  News rich capture, the DUPLICATE action, T6a clickable chips, the tag-delete fix, T7 (AI
+  reuses existing project tags), the persist-selection fix, Phase 1 (article-type-aware
+  identifier guidance), the PATH B ARC — STRUCTURED IDENTIFIER EXTRACTION: the AI analysis
+  now emits article_type + capabilities[] {system, actor, actor_type (VNSA/state/commercial/
+  unknown), cost, category, relationship} + key_facts[] {label, value} into analysis_json.ai
+  (B1), rendered on the News card (B2) and on the Info Pages New-sources cards (B3) —
+  color-coded amber VNSA / blue state — the NARRATIVE SUMMARY FIX (c0be06f: the relevance
+  prompt now requests its own `summary` key so the AI narrative stopped cramming into
+  relevance_reasoning), RECONCILE-FROM-STRUCTURE (edaab46: reconcile narrates from the
+  already-extracted catalogue via a priorAi opt), and — the HEADLINE fix — the PDF
+  EXTRACTION FIX (283dc38): Documents capture was SILENTLY BROKEN for ALL PDFs in every
+  installed build (pdf-parse v2 threw DOMMatrix-is-not-defined at load on Electron's Node;
+  a bare catch swallowed it and analyzed a placeholder). Pinned pdf-parse to 1.1.1.
   KEY DESIGN INSIGHT: prose summarizes, structure catalogues — named specifics belong in
-  capabilities[], NOT in the prose summary (proven empirically; see the changelog). AMENDED
-  by c0be06f: the regression ALSO had a schema bug — the relevance prompt never requested a
-  `summary` key, so there was no narrative slot at all; giving it its own field (while
-  keeping specifics in the structure) is consistent with the insight, not a reversal of it.
-  Working tree is otherwise CLEAN (docs only). Next: RECONCILE REFINEMENT (thread the
-  structure into the reconcile prompt via a priorAi opt so reconcile narrates from the
-  catalogue), then v2.1.0, then Level-2 cross-source aggregation.
+  capabilities[], NOT in the prose summary (proven empirically; see the changelog).
+  RECURRING BUG CLASS: SILENT FAILURE — a swallowed error, wrong output accepted as real
+  (B1 max_tokens truncation + the PDF bare catch). Never write a bare catch {}.
+  Working tree is otherwise CLEAN (docs only). NEXT MILESTONE (locked): COMPLETE THE INTEL
+  PROCESS BY END OF JULY, publishing in August — cosmetic sweep → CLOUD MIGRATION
+  (intelligence_sources + known_tags + info_page_sources; needed for INTEL's six-person
+  team, not for Dorian-alone publishing) → pre-route editing → T6b + per-card scoping →
+  feedback loop → dedup → span annotation.
   See HANDOFF.md "Start here" for the resume point.
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -317,8 +319,8 @@ DESIGN PRINCIPLES / CONVENTIONS
       selected project, so its TagPicker vocabulary always matches — resolving the
       cross-project tag-scoping bug. Renderer-only (no backend/IPC/preload change).
 
-  POST-v2.0.22 — NEWS ENRICHMENT + PATH B STRUCTURED EXTRACTION
-  (all committed but UNRELEASED; ships in a v2.1.0 MINOR release)
+  POST-v2.0.22 — NEWS ENRICHMENT + PATH B STRUCTURED EXTRACTION + PDF FIX
+  (ALL SHIPPED in v2.1.0, RELEASED 2026-07-15 — MINOR bump, feature volume)
     * v2.0.22 RELEASED (937e220) -- shipped the Intelligence restructure (1–3d-3) + tag
       series T1–T5 + Phase B B0.3/B0.5/B0.6/B1 + member-add hang fix to installed apps
       (mac universal DMG/zip + win NSIS x64).
@@ -416,13 +418,44 @@ DESIGN PRINCIPLES / CONVENTIONS
       (4000-char cap) and both cards already had a `summary &&` render slot; the field was simply
       never asked for. Consistent with the KEY DESIGN INSIGHT (specifics still live in the
       structure); it just gives the narrative its own home. Verified in-app on csa-rg-02.
-    * NEXT -- (1) RECONCILE REFINEMENT (summary half DONE at c0be06f): thread the structured
-      capabilities[]/key_facts[] into the RECONCILE prompt via a priorAi opt on AnalyzeOpts +
-      the 4 reconcile call sites, so reconcile narrates FROM the catalogue instead of re-deriving
-      from raw text. (2) LEVEL 2 (big, design-first): aggregate capabilities[] across an
-      Info Page's committed sources into the "who has what across VNSAs vs states"
-      reconstruction — the Info Pages publication-stages destination. (3) v2.1.0 MINOR release
-      shipping this whole batch. (4) T6b (clickable chips on the compose tabs).
+    * RECONCILE-FROM-STRUCTURE (edaab46) -- the reconcile half of the narrative refinement.
+      priorAi added to AnalyzeOpts; a priorStructureBlock helper (empty-string-when-absent,
+      mirrors tagReuseBlock) injects the already-extracted article_type/capabilities[]/
+      key_facts[] into the RECONCILE prompt, so reconcile narrates FROM the catalogue instead
+      of re-deriving from raw text. Threaded from all four reconcile call sites (News parses
+      analysis_json in-handler; Documents/Social/Interviews pass the in-scope ai). Reconcile
+      summary widened to a 4–7 sentence paragraph matching the relevance path. Reconcile does
+      NOT return capabilities/key_facts — analysis_json.ai stays the single extraction of
+      record. Verified in-app on all four tabs. Closes the loop opened by the reverted
+      specificity experiment.
+    * PDF EXTRACTION FIX (283dc38) -- the HEADLINE fix. Documents capture was SILENTLY BROKEN
+      for ALL PDFs in every installed build. pdf-parse had been bumped to v2.4.5, a pdfjs-dist
+      rewrite needing process.getBuiltinModule (Node >=20.16) to load DOM polyfills; Electron
+      31's bundled Node is BELOW that floor, so require('pdf-parse') threw "DOMMatrix is not
+      defined" AT LOAD TIME — before any file was read — and EVERY PDF upload failed
+      identically. A bare catch {} swallowed it and wrote '[PDF text extraction unavailable]'
+      into the content column, so uploads looked successful and the AI dutifully analyzed the
+      placeholder. Fixed by pinning pdf-parse to EXACTLY 1.1.1 (thin Node wrapper, no
+      pdfjs/DOM dependency, API-compatible with the existing call site — no call-site change;
+      verified standalone: 6 pages, 14,664 chars). Both the PDF and DOCX catches now bind and
+      console.warn the error (the DOCX catch had the identical silent bug, just hadn't bitten).
+      TRAP: upgrading LOCAL Node would NOT have fixed this — the app runs on ELECTRON's bundled
+      Node, not the system one. RULE: never write a bare catch {}; a placeholder that flows
+      into the AI as content is worse than a visible failure.
+    * NEXT MILESTONE (locked) -- COMPLETE THE INTEL PROCESS BY END OF JULY; publishing moves to
+      August. Rationale: intel is done by SIX people and is currently local-SQLite-per-machine
+      (impossible as a team activity); publishing is Dorian alone and can stay local. This
+      INVERTS the old Phase-B priority — the CLOUD MIGRATION is needed for INTEL, not for the
+      info-page content tables. Order: (1) cosmetic sweep (T1 test tags, dead 'summarize'
+      branch, attached-interface removal, sidebar badge); (2) CLOUD MIGRATION of
+      intelligence_sources + known_tags + info_page_sources (the big one; UNBLOCKS 5 & 6);
+      (3) pre-route editing (compose items editable until routed, then move-back-to-intel to
+      edit); (4) T6b + per-card tag scoping COMBINED (same prop threading); (5) human-relevance
+      feedback loop into the Haiku gate (PIPELINE repo — blocked by the migration); (6)
+      collection dedup + outlet targeting (PIPELINE repo); (7) interview span annotation
+      (design-first). Then narrow publish v1 in August. LEVEL 2 (aggregate capabilities[]
+      across committed sources into "who has what across VNSAs vs states") remains on the
+      backlog, design-first.
 
   PHASE B — CLOUD BRIDGE FOR INFO PAGES (post-v2.0.21; needs a v2.0.22 to ship)
     Goal: make the 4 info-page projects real cloud boards (membership/heads work),
