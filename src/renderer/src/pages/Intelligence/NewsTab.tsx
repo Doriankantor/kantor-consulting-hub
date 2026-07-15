@@ -184,12 +184,14 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
         setSources(prev => prev.map(s => s.id === id ? { ...s, intel_notes: notesHtml || null } : s))
       }
       const text = contentDrafts[id] ?? (src.content || '')
+      const priorAi = (parseAnalysis(src.analysis_json) as any).ai as Record<string, any> | undefined
       const boardId = src.project_board_id
       const proj = boardId ? projects.find(p => p.id === boardId) : null
       const res = await window.api.intelligence.analyzeText({
         task: 'reconcile', text, userNotes: plainNotes,
         projectConfig: proj ? { name: proj.name, keywords: (proj as any).keywords } : null,
         existingTags: knownThematic,   // T7: bias the AI toward reusing existing project tags
+        priorAi,
       })
       if (!res.ok) { setAiErr(p => ({ ...p, [id]: res.error || 'Reconcile failed.' })); return }
       const savedMeta = await window.api.intelligence.saveReconciled(id, res.result)

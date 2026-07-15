@@ -418,6 +418,7 @@ function InterviewCompose({
         text: transcript,
         userNotes: plain,
         projectConfig: project ? { name: project.name, keywords: project.keywords } : null,
+        priorAi: ai,
       })
       if (!res.ok) { setError(res.error); return }
       const savedMeta = await window.api.intelligence.saveReconciled(doc.id, res.result)

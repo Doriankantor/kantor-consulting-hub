@@ -43,6 +43,11 @@ export interface AnalyzeOpts {
   // already-loaded knownThematic). When present, the prompt nudges the model to
   // reuse these before coining new tags. Empty/absent → unchanged behaviour.
   existingTags?: string[]
+  // Reconcile refinement: the source's EXISTING analysis_json.ai block (B1
+  // structured extraction). When present, the reconcile prompt narrates FROM
+  // the already-extracted capabilities[]/key_facts[] instead of re-deriving
+  // them from raw text. Absent/empty → prompt unchanged (re-derives as before).
+  priorAi?: Record<string, unknown> | null
 }
 
 export interface AnalyzeResult {
@@ -71,7 +76,7 @@ export async function analyzeWithClaude(opts: AnalyzeOpts): Promise<AnalyzeRespo
     if (!apiKey) return { ok: false, error: 'No Anthropic API key configured.' }
 
     const client = new Anthropic({ apiKey })
-    const { system, user } = buildPrompt(opts.task, text, opts.projectConfig, opts.userNotes, opts.existingTags)
+    const { system, user } = buildPrompt(opts.task, text, opts.projectConfig, opts.userNotes, opts.existingTags, opts.priorAi)
 
     let raw = ''
     try {
@@ -141,12 +146,59 @@ When suggesting thematic tags, PREFER reusing tags from the existing list above 
 `
 }
 
+// Reconcile refinement: an already-extracted-structure block. The specifics were
+// extracted verbatim on the relevance pass (B1) — reconcile should REFERENCE them,
+// not re-derive them from prose. Empty string when there's no prior structure
+// (e.g. researcher reconciles without ever running Analyze) — prompt unchanged.
+function priorStructureBlock(priorAi?: Record<string, unknown> | null): string {
+  if (!priorAi || typeof priorAi !== 'object') return ''
+  const articleType = typeof (priorAi as any).article_type === 'string' ? (priorAi as any).article_type.trim() : ''
+  const caps = Array.isArray((priorAi as any).capabilities) ? (priorAi as any).capabilities : []
+  const facts = Array.isArray((priorAi as any).key_facts) ? (priorAi as any).key_facts : []
+  if (!articleType && !caps.length && !facts.length) return ''
+  const lines: string[] = []
+  if (articleType) lines.push(`Article type: ${articleType}`)
+  if (caps.length) {
+    lines.push('Systems / capabilities already extracted (VERBATIM from this source):')
+    for (const c of caps) {
+      if (!c || typeof c !== 'object') continue
+      const parts = [String((c as any).system ?? '').trim()].filter(Boolean)
+      for (const k of ['actor', 'actor_type', 'cost', 'category', 'relationship']) {
+        const v = (c as any)[k]
+        if (v != null && String(v).trim()) parts.push(`${k}: ${String(v).trim()}`)
+      }
+      if (parts.length) lines.push(`- ${parts.join(' | ')}`)
+    }
+  }
+  if (facts.length) {
+    lines.push('Key facts already extracted (VERBATIM from this source):')
+    for (const f of facts) {
+      if (!f || typeof f !== 'object') continue
+      const label = String((f as any).label ?? '').trim()
+      const value = String((f as any).value ?? '').trim()
+      if (label && value) lines.push(`- ${label}: ${value}`)
+    }
+  }
+  if (!lines.length) return ''
+  return `ALREADY-EXTRACTED STRUCTURE FOR THIS SOURCE (do not re-derive; narrate FROM this):
+${lines.join('\n')}
+
+These specifics were extracted verbatim from the source in a prior pass and are
+already catalogued and displayed separately. Write your reconciled narrative so it
+REFERENCES these precisely — use the exact system names, actors and figures above
+rather than abstracting them into generic descriptions. Do NOT re-list the full
+catalogue in the prose. Do NOT invent specifics that are not above or in the source.
+
+`
+}
+
 function buildPrompt(
   task: AnalyzeTask,
   text: string,
   projectConfig?: ProjectConfig | null,
   userNotes?: string | null,
   existingTags?: string[],
+  priorAi?: Record<string, unknown> | null,
 ): { system: string; user: string } {
   const system =
     'You are an intelligence analyst assistant for a security-focused consultancy. ' +
@@ -156,6 +208,7 @@ function buildPrompt(
   const context = projectBlock(projectConfig)
   const body = text.slice(0, 8000) // cost/context cap, matches the doc-analysis path
   const tagsReuse = tagReuseBlock(existingTags) // T7: '' when no existing vocabulary
+  const priorStructure = priorStructureBlock(priorAi) // '' when no prior extraction
 
   if (task === 'summarize') {
     return {
@@ -183,9 +236,9 @@ ${body}`,
 A researcher reviewed the following source and added their own interpretation. Integrate the
 researcher's notes into your analysis — weigh their interpretation, do not ignore it — and produce
 a reconciled assessment for this project.
-${tagsReuse}Return ONLY JSON with exactly these keys:
+${priorStructure}${tagsReuse}Return ONLY JSON with exactly these keys:
 {
-  "summary": "<reconciled 2-4 sentence summary that incorporates the researcher's notes>",
+  "summary": "<A substantive reconciled analytical paragraph (roughly 4-7 sentences) that integrates the researcher's notes with your analysis. Narrate the situation and its significance for THIS project. Where structure was already extracted above, REFERENCE those exact system names / actors / figures rather than abstracting them — but do NOT re-list the full catalogue.>",
   "relevance_score": <integer 0-10 for this project's relevance>,
   "relevance_reasoning": "<one or two sentences>",
   "suggested_tags": ["<short topical tag>", "..."]
