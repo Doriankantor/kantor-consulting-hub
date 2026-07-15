@@ -22,7 +22,9 @@ import {
   addClientContact, deleteClientContact, seedContactsToCloud,
 } from '../cloud/contacts'
 import * as boardsCloud from '../cloud/boards'
-import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag, normalizeTag } from '../cloud/tags'
+import * as intelCloud from '../cloud/intel'
+import { isOnline } from '../cloud/connection'
+import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag } from '../cloud/tags'
 import { seedBoardsToCloud } from '../cloud/boardsSeed'
 import { startRealtime, rescope as rescopeRealtime, teardownAll as teardownRealtime } from '../cloud/realtimeManager'
 import {
@@ -2102,27 +2104,18 @@ Source: ${article.source || 'Unknown'}`,
 // the human already confirmed (geography_confirmed=1) is never overwritten.
 // FAIL-OPEN per row; never throws.
 async function classifyUnscoredArticles(limit = GATE_MAX_PER_RUN): Promise<number> {
+  // RMW → cloud-only: reads unscored rows from CLOUD, writes scores to CLOUD (+ mirror
+  // re-sync) via intel helpers. FAIL-OPEN per row; never throws. Offline / no-key → 0.
+  if (!isOnline()) {
+    console.log('[Gate] Offline — skipping relevance gate (fail-open).')
+    return 0
+  }
   const apiKey = getGlobalAnthropicKey()
   if (!apiKey) {
     console.log('[Gate] No Anthropic API key set — skipping relevance gate (fail-open).')
     return 0
   }
-  const db = getDatabase()
-  let rows: Array<{ id: string; title: string | null; snippet: string | null; content: string | null; source_name: string | null }> = []
-  try {
-    rows = db.prepare(`
-      SELECT id, title, snippet, content, source_name
-      FROM intelligence_sources
-      WHERE type='article'
-        AND (gate_processed IS NULL OR gate_processed=0)
-        AND COALESCE(added_by_name,'') != 'Kantor Framework'
-      ORDER BY added_at DESC
-      LIMIT ?
-    `).all(limit) as typeof rows
-  } catch (e) {
-    console.warn('[Gate] could not load unscored rows:', (e as Error)?.message)
-    return 0
-  }
+  const rows = await intelCloud.getUnscoredForGate(limit)
   let scored = 0
   let failed = 0
   for (const row of rows) {
@@ -2135,25 +2128,17 @@ async function classifyUnscoredArticles(limit = GATE_MAX_PER_RUN): Promise<numbe
       // relevance_score stays NULL (distinguishable via gate_processed=1 + NULL score).
       const reason = `gate failed: ${result.error}`.slice(0, 300)
       console.warn('[Gate] row failed — tombstoning:', row.id, reason)
-      try {
-        db.prepare('UPDATE intelligence_sources SET gate_processed=1, gate_reasoning=? WHERE id=?')
-          .run(reason, row.id)
-      } catch (e) { console.warn('[Gate] could not write tombstone for', row.id, (e as Error)?.message) }
+      const t = await intelCloud.tombstoneGate(row.id, reason)
+      if (!t.ok) console.warn('[Gate] could not write tombstone for', row.id, t.error)
       failed++
       continue
     }
-    try {
-      db.prepare(`
-        UPDATE intelligence_sources
-        SET relevance_score=?, relevance_type=?, gate_reasoning=?, gate_processed=1,
-            geography = CASE WHEN COALESCE(geography_confirmed,0)=1 THEN geography ELSE ? END,
-            region    = CASE WHEN COALESCE(geography_confirmed,0)=1 THEN region    ELSE ? END
-        WHERE id=?
-      `).run(result.relevance_score, result.relevance_type, result.reasoning, result.geography, result.region, row.id)
-      scored++
-    } catch (e) {
-      console.warn('[Gate] could not persist score for', row.id, (e as Error)?.message)
-    }
+    const w = await intelCloud.applyGateResult(row.id, {
+      relevance_score: result.relevance_score, relevance_type: result.relevance_type,
+      reasoning: result.reasoning, geography: result.geography, region: result.region,
+    })
+    if (w.ok) scored++
+    else console.warn('[Gate] could not persist score for', row.id, w.error)
   }
   if (scored || failed) console.log(`[Gate] Scored ${scored} article(s), tombstoned ${failed} permanently-failed article(s).`)
   return scored
@@ -2198,7 +2183,6 @@ function inferLanguage(title: string | null, url: string | null): 'es' | 'pt' | 
 // IMPORTANT: imported rows arrive with gate_processed=1 — the local relevance
 // gate DOES NOT run on them (they are already scored by the GDELT pipeline).
 async function syncFromContestedSkies(): Promise<{ imported: number; skipped: number; total: number }> {
-  const db = getDatabase()
   const { data: rows, error } = await supabaseAdmin
     .from('cs_articles')
     .select('*')
@@ -2214,18 +2198,14 @@ async function syncFromContestedSkies(): Promise<{ imported: number; skipped: nu
   }
 
   const { randomUUID } = require('crypto') as typeof import('crypto')
-  const insert = db.prepare(`
-    INSERT OR IGNORE INTO intelligence_sources
-      (id, type, title, snippet, content, url, source_name, published_at,
-       status, confidence, categories_json, geography, region,
-       relevance_score, gate_processed, language, added_by_name)
-    VALUES (?, 'article', ?, ?, ?, ?, ?, ?, 'unreviewed', ?, ?, ?, ?, ?, 1, ?, 'Contested Skies Pipeline')
-  `)
 
-  let imported = 0
   let skipped = 0
-  const importedUrls: string[] = []
-
+  // Build the candidate rows (identical field mapping to the old local INSERT),
+  // then hand them to intel.insertPipelineArticles which upserts into CLOUD
+  // (ignore-on-url, so it stays idempotent like INSERT OR IGNORE) and mirrors the
+  // rows that were actually inserted. Cloud-authoritative: pipeline rows land in
+  // cloud first, mirror second.
+  const candidates: Record<string, unknown>[] = []
   for (const row of rows) {
     const url: string | null = row.url || null
     if (!url) { skipped++; continue }
@@ -2262,29 +2242,19 @@ async function syncFromContestedSkies(): Promise<{ imported: number; skipped: nu
     // language: inferred (cs_articles has no language column)
     const language = inferLanguage(title, url)
 
-    const r = insert.run(
-      randomUUID(),
-      title,
-      snippet,
-      content,
-      url,
-      sourceName,
-      publishedAt,
-      confidence,
-      JSON.stringify(allCats),
-      geography,
-      geography,      // region mirrors geography
-      relevanceScore,
-      language,
-    )
-
-    if (r.changes > 0) {
-      imported++
-      importedUrls.push(url)
-    } else {
-      skipped++ // URL already in DB — INSERT OR IGNORE fired
-    }
+    candidates.push({
+      id: randomUUID(), type: 'article', title, snippet, content, url,
+      source_name: sourceName, published_at: publishedAt, status: 'unreviewed',
+      confidence, categories_json: JSON.stringify(allCats),
+      geography, region: geography, relevance_score: relevanceScore,
+      gate_processed: 1, language, added_by_name: 'Contested Skies Pipeline',
+    })
   }
+
+  const { inserted } = await intelCloud.insertPipelineArticles(candidates)
+  const imported = inserted.length
+  skipped += candidates.length - imported   // url already present → ignored by upsert
+  const importedUrls = inserted.map((r) => String(r.url)).filter(Boolean)
 
   // Mark the successfully inserted rows as imported in Supabase so they aren't
   // re-pulled next sync. Fire-and-forget: a Supabase failure here is non-fatal
@@ -2634,140 +2604,85 @@ function registerIntelligenceHandlers(): void {
     console.warn('[Learning] backfill guard check failed:', (e as Error)?.message)
   }
 
+  // Cloud-first (mirror-fallback, sync-on-read). Channel/args/return shape unchanged.
   ipcMain.handle('intelligence:getSources', (_e, params: {
     type?: string; status?: string; confidence?: string;
     category?: string; search?: string; limit?: number; offset?: number
-  } = {}) => {
-    let sql = 'SELECT * FROM intelligence_sources WHERE 1=1'
-    const args: unknown[] = []
-    if (params.type)       { sql += ' AND type=?';              args.push(params.type) }
-    if (params.status)     { sql += ' AND status=?';            args.push(params.status) }
-    if (params.confidence) { sql += ' AND confidence=?';        args.push(params.confidence) }
-    if (params.category)   { sql += " AND categories_json LIKE ?"; args.push(`%${params.category}%`) }
-    if (params.search)     {
-      sql += ' AND (title LIKE ? OR snippet LIKE ? OR source_name LIKE ? OR content LIKE ?)'
-      const s = `%${params.search}%`
-      args.push(s, s, s, s)
-    }
-    sql += ' ORDER BY added_at DESC, published_at DESC'
-    sql += ` LIMIT ${params.limit ?? 100} OFFSET ${params.offset ?? 0}`
-    return db().prepare(sql).all(...args)
-  })
+  } = {}) => intelCloud.getSources(params))
 
-  ipcMain.handle('intelligence:getUnreviewedCount', () => {
-    const row = db().prepare("SELECT COUNT(*) as c FROM intelligence_sources WHERE status='unreviewed'").get() as { c: number }
-    return row.c
-  })
+  ipcMain.handle('intelligence:getUnreviewedCount', () => intelCloud.getUnreviewedCount())
 
   // Mark a news article as a duplicate. Removes it from the review queue WITHOUT any
   // learning signal (no verdict to cs_articles, no decision log) - a duplicate is
   // relevant-but-redundant, not a relevance rejection. Optionally links to the original.
-  ipcMain.handle('intelligence:markDuplicate', (_e, id: string, duplicateOf: string | null) => {
-    const now = new Date().toISOString()
-    db().prepare(
-      "UPDATE intelligence_sources SET status='duplicate', duplicate_of=?, reviewed_at=? WHERE id=?"
-    ).run(duplicateOf || null, now, id)
-    return { ok: true }
-  })
+  // RMW → cloud-only (intel.markDuplicate). Offline → { ok:false, error }.
+  ipcMain.handle('intelligence:markDuplicate', (_e, id: string, duplicateOf: string | null) =>
+    intelCloud.markDuplicate(id, duplicateOf))
 
-  ipcMain.handle('intelligence:updateStatus', (_e, id: string, status: string, notes?: string, reviewedById?: string, reviewedByName?: string) => {
-    const now2 = new Date().toISOString()
-    // The article URL is the join key for mirroring this verdict to cs_articles.
-    const meta = db().prepare('SELECT url FROM intelligence_sources WHERE id=?').get(id) as { url?: string } | undefined
+  // RMW → cloud-only. The cloud write derives queue_section from categories_json
+  // read from CLOUD; routing (local info_page_sources) and the cs_articles verdict
+  // write-back stay HERE. On the approve path, intel.updateStatus returns the
+  // project_board_id + url it read from cloud so we don't re-read the mirror.
+  ipcMain.handle('intelligence:updateStatus', async (_e, id: string, status: string, notes?: string, reviewedById?: string, reviewedByName?: string) => {
+    const res = await intelCloud.updateStatus(id, status, notes, reviewedById, reviewedByName)
+    if (!res.ok) return res
     if (status === 'approved') {
-      const row = db().prepare('SELECT categories_json, project_board_id FROM intelligence_sources WHERE id=?').get(id) as { categories_json: string; project_board_id: string | null } | undefined
-      const cats: string[] = JSON.parse(row?.categories_json || '[]')
-      let section = 'source-archive'
-      if (cats.includes('Incident')) section = 'incident-feed'
-      else if (cats.includes('Investment & Procurement')) section = 'investment-procurement'
-      else if (cats.includes('Finance & Sanctions')) section = 'finance-nexus'
-      else if (cats.includes('Innovation & Technology') || cats.includes('State Military Activity')) section = 'platforms'
-      db().prepare(`
-        UPDATE intelligence_sources SET status=?, review_notes=?, reviewed_by_id=?, reviewed_by_name=?, reviewed_at=?, queue_section=? WHERE id=?
-      `).run(status, notes ?? null, reviewedById ?? null, reviewedByName ?? null, now2, section, id)
       // 3c: route this approved source into its project's "New sources"
       // (info_page_sources, stage='new') by its reliable board id (project_board_id).
-      // RETIRES the old keyword fan-out (addApprovedSourceToInfoPages → info_page_items)
-      // and the disposition-based addToInfoPagePipeline — neither is called anymore.
       let addedToPages: string[] = []
       try {
-        const routed = routeToNewSources(id, row?.project_board_id)
+        const routed = routeToNewSources(id, res.projectBoardId)
         if (routed.ok && routed.pageName) addedToPages = [routed.pageName]
         else if (!routed.ok) console.warn('[3c] routeToNewSources skipped:', routed.error)
       } catch (e) { console.warn('[3c] routing failed', e) }
-      // Learning loop: mirror the verdict up to Supabase (fire-and-forget).
-      void pushVerdictToSupabase(meta?.url, status, reviewedByName)
+      void pushVerdictToSupabase(res.url, status, reviewedByName)
       return { ok: true, addedToPages }
-    } else {
-      db().prepare(`
-        UPDATE intelligence_sources SET status=?, review_notes=?, reviewed_by_id=?, reviewed_by_name=?, reviewed_at=? WHERE id=?
-      `).run(status, notes ?? null, reviewedById ?? null, reviewedByName ?? null, now2, id)
     }
     // Learning loop: mirror approve/reject up to Supabase (fire-and-forget).
-    void pushVerdictToSupabase(meta?.url, status, reviewedByName)
+    void pushVerdictToSupabase(res.url, status, reviewedByName)
     return { ok: true }
   })
 
-  // Pipeline counters for the Intelligence left/header panel.
-  ipcMain.handle('intelligence:getPipelineStats', () => {
-    const pending = (db().prepare("SELECT COUNT(*) as c FROM intelligence_sources WHERE status='unreviewed'").get() as { c: number }).c
+  // Pipeline counters. `pending` (intel) is cloud-first; `sentToPages` reads the
+  // LOCAL info_page_items table (not migrated) and stays local.
+  ipcMain.handle('intelligence:getPipelineStats', async () => {
+    const pending = await intelCloud.getPipelinePending()
     const sentToPages = (db().prepare("SELECT COUNT(DISTINCT origin_source_id) as c FROM info_page_items WHERE sub_type='intelligence_source' AND origin_source_id IS NOT NULL").get() as { c: number }).c
     return { pending, sentToPages }
   })
 
-  // Phase 3: live queue counts for the News Articles filter bar.
-  ipcMain.handle('intelligence:getStatusCounts', () => {
-    const rows = db().prepare(
-      "SELECT status, COUNT(*) as c FROM intelligence_sources WHERE type='article' GROUP BY status"
-    ).all() as { status: string; c: number }[]
-    const m: Record<string, number> = {}
-    for (const r of rows) m[r.status] = r.c
-    return { unreviewed: m['unreviewed'] ?? 0, approved: m['approved'] ?? 0, rejected: m['rejected'] ?? 0 }
-  })
+  // Phase 3: live queue counts for the News Articles filter bar. Cloud-first.
+  ipcMain.handle('intelligence:getStatusCounts', () => intelCloud.getStatusCounts())
 
   // Count articles still waiting for gate scoring (gate_processed=0 or NULL).
   // Excludes 'Kantor Framework' rows — same filter as classifyUnscoredArticles —
-  // so authoritative fixed references never inflate the counter.
-  ipcMain.handle('intelligence:getUnscoredCount', () => {
-    const row = db().prepare(
-      "SELECT COUNT(*) as c FROM intelligence_sources WHERE type='article' AND (gate_processed IS NULL OR gate_processed=0) AND COALESCE(added_by_name,'') != 'Kantor Framework'"
-    ).get() as { c: number }
-    return row.c
-  })
+  // so authoritative fixed references never inflate the counter. Cloud-first.
+  ipcMain.handle('intelligence:getUnscoredCount', () => intelCloud.getUnscoredCount())
 
   // Re-score the backlog of unscored articles using the same gate path.
   // Runs the existing classifyUnscoredArticles() in sequential batches of 10
   // so cost and rate-limit exposure are bounded. Progress is logged after each batch.
   // Returns totals: { processed, relevant, failed, remaining }.
+  // RMW → cloud-only: reads unscored rows from CLOUD, writes scores to CLOUD (+ mirror
+  // re-sync) via intel helpers. The AI loop stays here. Offline → { ok:false } (the gate
+  // needs cloud + the Anthropic API anyway; the commit-2 lockout also disables the button).
   ipcMain.handle('intelligence:rescoreUnscored', async () => {
     const BATCH = 10
     let totalProcessed = 0
     let totalRelevant = 0
     let totalFailed = 0
 
+    if (!isOnline()) return { ok: false, error: 'Unavailable while offline', processed: 0, relevant: 0, failed: 0, remaining: 0 }
     const apiKey = getGlobalAnthropicKey()
     if (!apiKey) return { ok: false, error: 'No Anthropic API key configured', processed: 0, relevant: 0, failed: 0, remaining: 0 }
 
-    const database = getDatabase()
-    // Count total unscored before starting
-    const totalUnscored = (database.prepare(
-      "SELECT COUNT(*) as c FROM intelligence_sources WHERE type='article' AND (gate_processed IS NULL OR gate_processed=0) AND COALESCE(added_by_name,'') != 'Kantor Framework'"
-    ).get() as { c: number }).c
-
+    // Count total unscored before starting (cloud-first)
+    const totalUnscored = await intelCloud.getUnscoredCount()
     console.log(`[Gate:rescore] Starting — ${totalUnscored} unscored article(s) to process in batches of ${BATCH}`)
 
     // Process until no unscored rows remain
     while (true) {
-      const rows = database.prepare(`
-        SELECT id, title, snippet, content, source_name
-        FROM intelligence_sources
-        WHERE type='article'
-          AND (gate_processed IS NULL OR gate_processed=0)
-          AND COALESCE(added_by_name,'') != 'Kantor Framework'
-        ORDER BY added_at DESC
-        LIMIT ?
-      `).all(BATCH) as Array<{ id: string; title: string | null; snippet: string | null; content: string | null; source_name: string | null }>
-
+      const rows = await intelCloud.getUnscoredForGate(BATCH)
       if (rows.length === 0) break
 
       let batchProcessed = 0
@@ -2783,18 +2698,15 @@ function registerIntelligenceHandlers(): void {
           if ('error' in result) {
             // Permanent failure: tombstone so it's never retried.
             const reason = `gate failed: ${result.error}`.slice(0, 300)
-            database.prepare('UPDATE intelligence_sources SET gate_processed=1, gate_reasoning=? WHERE id=?').run(reason, row.id)
+            await intelCloud.tombstoneGate(row.id, reason)
             batchFailed++
             totalFailed++
             continue
           }
-          database.prepare(`
-            UPDATE intelligence_sources
-            SET relevance_score=?, relevance_type=?, gate_reasoning=?, gate_processed=1,
-                geography = CASE WHEN COALESCE(geography_confirmed,0)=1 THEN geography ELSE ? END,
-                region    = CASE WHEN COALESCE(geography_confirmed,0)=1 THEN region    ELSE ? END
-            WHERE id=?
-          `).run(result.relevance_score, result.relevance_type, result.reasoning, result.geography, result.region, row.id)
+          await intelCloud.applyGateResult(row.id, {
+            relevance_score: result.relevance_score, relevance_type: result.relevance_type,
+            reasoning: result.reasoning, geography: result.geography, region: result.region,
+          })
           batchProcessed++
           totalProcessed++
           if (result.relevance_score >= 4) { batchRelevant++; totalRelevant++ }
@@ -2808,131 +2720,82 @@ function registerIntelligenceHandlers(): void {
       console.log(`[Gate:rescore] Batch done — processed=${batchProcessed} relevant(≥4)=${batchRelevant} failed=${batchFailed} | running totals: ${totalProcessed}/${totalUnscored}`)
     }
 
-    const remaining = (database.prepare(
-      "SELECT COUNT(*) as c FROM intelligence_sources WHERE type='article' AND (gate_processed IS NULL OR gate_processed=0) AND COALESCE(added_by_name,'') != 'Kantor Framework'"
-    ).get() as { c: number }).c
-
+    const remaining = await intelCloud.getUnscoredCount()
     console.log(`[Gate:rescore] Complete — processed=${totalProcessed} relevant=${totalRelevant} failed=${totalFailed} remaining=${remaining}`)
     return { ok: true, processed: totalProcessed, relevant: totalRelevant, failed: totalFailed, remaining }
   })
 
-  ipcMain.handle('intelligence:updateConfidence', (_e, id: string, confidence: string) => {
-    db().prepare('UPDATE intelligence_sources SET confidence=?, confidence_override=1 WHERE id=?').run(confidence, id)
-    return { ok: true }
-  })
+  // Pure write → cloud + mirror. Offline → { ok:false, error }.
+  ipcMain.handle('intelligence:updateConfidence', (_e, id: string, confidence: string) =>
+    intelCloud.updateConfidence(id, confidence))
 
   // Phase 3: confirm or correct the AI-proposed geography. Either action marks
   // the geography human-confirmed (geography_confirmed=1) so the gate won't
-  // overwrite it on future passes.
-  ipcMain.handle('intelligence:updateGeography', (_e, id: string, geography: string) => {
-    const geo = (geography ?? '').trim()
-    db().prepare('UPDATE intelligence_sources SET geography=?, geography_confirmed=1 WHERE id=?')
-      .run(geo || null, id)
-    return { ok: true }
-  })
+  // overwrite it on future passes. Pure write → cloud + mirror.
+  ipcMain.handle('intelligence:updateGeography', (_e, id: string, geography: string) =>
+    intelCloud.updateGeography(id, geography))
 
   // 3a: reliable board-id project association. Sets project_board_id to a board id
   // (e.g. 'board-info-latam'); empty/null clears it. Does NOT touch disposition_tags.
-  // No routing here — routing lands in 3c.
-  ipcMain.handle('intelligence:setProject', (_e, id: string, boardId: string | null) => {
-    const bid = (boardId ?? '').trim()
-    db().prepare('UPDATE intelligence_sources SET project_board_id=? WHERE id=?').run(bid || null, id)
-    return { ok: true }
-  })
+  // No routing here — routing lands in 3c. Pure write → cloud + mirror.
+  ipcMain.handle('intelligence:setProject', (_e, id: string, boardId: string | null) =>
+    intelCloud.setProject(id, boardId))
 
   // 3d: explicit "Send to New sources" for composed items (documents/social/interviews).
-  // Decoupled from the approve/verdict path: sets project_board_id, routes via
-  // routeToNewSources, marks the source status='routed' so it leaves the compose
-  // queue (its home is now the pipeline; move-back sets it back to 'unreviewed').
-  // No queue_section calc, no pushVerdictToSupabase, no review_notes.
-  ipcMain.handle('intelligence:routeToProject', (_e, sourceId: string, boardId: string) => {
+  // Cross-tier: the two intelligence_sources writes (project_board_id, status='routed')
+  // go cloud + mirror; routeToNewSources (LOCAL info_page_sources) stays here. Offline →
+  // { ok:false } from setProjectBoard before any local write, so nothing half-applies.
+  ipcMain.handle('intelligence:routeToProject', async (_e, sourceId: string, boardId: string) => {
     const bid = (boardId ?? '').trim()
     if (!bid) return { ok: false, error: 'No project selected.' }
-    db().prepare('UPDATE intelligence_sources SET project_board_id=? WHERE id=?').run(bid, sourceId)
+    const set = await intelCloud.setProjectBoard(sourceId, bid)
+    if (!set.ok) return set
     const routed = routeToNewSources(sourceId, bid)
     if (!routed.ok) return routed
-    db().prepare("UPDATE intelligence_sources SET status='routed' WHERE id=?").run(sourceId)
+    const marked = await intelCloud.markRouted(sourceId)
+    if (!marked.ok) return marked
     return { ok: true, pageName: routed.pageName }
   })
 
   // 2b: persist the researcher's rich-text notes (HTML) for a source. Separate
-  // column from review_notes — approve/reject never touches this. Empty → null.
-  ipcMain.handle('intelligence:updateNotes', (_e, id: string, notesHtml: string) => {
-    const html = (notesHtml ?? '').trim()
-    db().prepare('UPDATE intelligence_sources SET intel_notes=? WHERE id=?').run(html || null, id)
-    return { ok: true }
-  })
+  // column from review_notes — approve/reject never touches this. Pure write.
+  ipcMain.handle('intelligence:updateNotes', (_e, id: string, notesHtml: string) =>
+    intelCloud.updateNotes(id, notesHtml))
 
-  // 3e: save researcher-pasted full article text into content (pipeline only captures a snippet).
-  ipcMain.handle('intelligence:updateContent', (_e, id: string, content: string) => {
-    db().prepare('UPDATE intelligence_sources SET content=? WHERE id=?').run(content ?? '', id)
-    return { ok: true }
-  })
+  // 3e: save researcher-pasted full article text into content. Pure write.
+  ipcMain.handle('intelligence:updateContent', (_e, id: string, content: string) =>
+    intelCloud.updateContent(id, content))
 
   // 2b: store a reconciled AI read UNDER analysis_json.reconciled, leaving the
   // original top-level analysis untouched. Stamps reconciled_at server-side and
   // returns the stored block so the renderer can merge it without a refetch.
+  // RMW → cloud-only: reads analysis_json from CLOUD, merges .reconciled, writes
+  // CLOUD (+ mirror re-sync). Reading cloud (not the mirror) is what prevents a
+  // stale read from clobbering the .ai / .human siblings. Offline → { ok:false }.
   ipcMain.handle('intelligence:saveReconciled', (_e, id: string, reconciled: {
     relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]
-  }) => {
-    const row = db().prepare('SELECT analysis_json FROM intelligence_sources WHERE id=?').get(id) as { analysis_json: string | null } | undefined
-    if (!row) return { ok: false, error: 'Source not found.' }
-    let analysis: Record<string, unknown> = {}
-    try { analysis = row.analysis_json ? JSON.parse(row.analysis_json) : {} } catch { analysis = {} }
-    const block = { ...reconciled, reconciled_at: new Date().toISOString() }
-    analysis.reconciled = block
-    db().prepare('UPDATE intelligence_sources SET analysis_json=? WHERE id=?').run(JSON.stringify(analysis), id)
-    return { ok: true, reconciled: block }
-  })
+  }) => intelCloud.saveReconciled(id, reconciled))
 
   // News human layer: store a researcher's RELEVANCE OVERRIDE under
   // analysis_json.human — NOT the relevance_score column (the gate owns that and
   // would clobber a human value on the next rescore). Merge-in-place like
   // saveReconciled so other analysis_json keys (.ai / .reconciled) are preserved.
   // Passing null/'' clears the override.
-  ipcMain.handle('intelligence:setHumanRelevance', (_e, id: string, value: string | null) => {
-    const row = db().prepare('SELECT analysis_json FROM intelligence_sources WHERE id=?').get(id) as { analysis_json: string | null } | undefined
-    if (!row) return { ok: false, error: 'Source not found.' }
-    let analysis: Record<string, unknown> = {}
-    try { analysis = row.analysis_json ? JSON.parse(row.analysis_json) : {} } catch { analysis = {} }
-    const human = (analysis.human && typeof analysis.human === 'object') ? analysis.human as Record<string, unknown> : {}
-    const v = (value ?? '').trim()
-    if (!v) {
-      delete human.relevance
-      delete human.overridden_at
-    } else {
-      human.relevance = v
-      human.overridden_at = new Date().toISOString()
-    }
-    if (Object.keys(human).length) analysis.human = human
-    else delete analysis.human
-    db().prepare('UPDATE intelligence_sources SET analysis_json=? WHERE id=?').run(JSON.stringify(analysis), id)
-    return { ok: true, human: analysis.human ?? null }
-  })
+  // RMW → cloud-only (analysis_json.human merge). Offline → { ok:false }.
+  ipcMain.handle('intelligence:setHumanRelevance', (_e, id: string, value: string | null) =>
+    intelCloud.setHumanRelevance(id, value))
 
   // 2b (human-first): store the on-demand "Analyze with AI" read UNDER
   // analysis_json.ai (separate box from the researcher's notes). Re-running
-  // replaces .ai only. Stamps analyzed_at server-side; returns the stored block.
+  // replaces .ai only. RMW → cloud-only. Offline → { ok:false }.
   ipcMain.handle('intelligence:saveAiAnalysis', (_e, id: string, ai: {
     relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]
-  }) => {
-    const row = db().prepare('SELECT analysis_json FROM intelligence_sources WHERE id=?').get(id) as { analysis_json: string | null } | undefined
-    if (!row) return { ok: false, error: 'Source not found.' }
-    let analysis: Record<string, unknown> = {}
-    try { analysis = row.analysis_json ? JSON.parse(row.analysis_json) : {} } catch { analysis = {} }
-    const block = { ...ai, analyzed_at: new Date().toISOString() }
-    analysis.ai = block
-    db().prepare('UPDATE intelligence_sources SET analysis_json=? WHERE id=?').run(JSON.stringify(analysis), id)
-    return { ok: true, ai: block }
-  })
+  }) => intelCloud.saveAiAnalysis(id, ai))
 
   // 2b (human-first): persist the EDITABLE reconciled read (HTML) the researcher
-  // can amend before commit — its own column, never overwrites intel_notes. Empty → null.
-  ipcMain.handle('intelligence:updateReconciledNotes', (_e, id: string, html: string) => {
-    const h = (html ?? '').trim()
-    db().prepare('UPDATE intelligence_sources SET reconciled_notes=? WHERE id=?').run(h || null, id)
-    return { ok: true }
-  })
+  // can amend before commit — its own column, never overwrites intel_notes. Pure write.
+  ipcMain.handle('intelligence:updateReconciledNotes', (_e, id: string, html: string) =>
+    intelCloud.updateReconciledNotes(id, html))
 
   // ── Phase 4: disposition + thematic tag registry & per-article tagging ───────
   // known_tags is now CLOUD-sourced with a local offline mirror (see cloud/tags.ts).
@@ -2954,13 +2817,8 @@ function registerIntelligenceHandlers(): void {
 
   // Replace an article's tag set for one type. Tags are normalized + de-duped,
   // and the row is updated immediately (no Approve needed).
-  ipcMain.handle('intelligence:setArticleTags', (_e, id: string, type: string, tags: string[]) => {
-    const col = type === 'disposition' ? 'disposition_tags' : 'thematic_tags'
-    const clean = Array.from(new Set((tags || []).map(normalizeTag).filter(Boolean)))
-    db().prepare(`UPDATE intelligence_sources SET ${col}=? WHERE id=?`)
-      .run(JSON.stringify(clean), id)
-    return { ok: true, tags: clean }
-  })
+  ipcMain.handle('intelligence:setArticleTags', (_e, id: string, type: string, tags: string[]) =>
+    intelCloud.setArticleTags(id, type, tags))
 
   // ── Phase 5: capture-only decision log ──────────────────────────────────────
   // Records one row per Approve/Reject/Save(correct) with the AI proposal and the
@@ -2986,23 +2844,14 @@ function registerIntelligenceHandlers(): void {
     }
   })
 
+  // Cloud delete + mirror delete, behind the same type-aware permission gate
+  // (resolveActor + can()), now inside intel.deleteSource. Offline → { ok:false }.
   ipcMain.handle('intelligence:deleteSource', async (_e, id: string) => {
-    // Type-aware gate: the row's `type` selects which permission is required.
-    const row = db().prepare('SELECT type FROM intelligence_sources WHERE id=?').get(id) as { type?: string } | undefined
-    if (!row) return { ok: true } // already gone
-    const key = row.type === 'document' ? 'delete_intel_doc'
-              : row.type === 'article'  ? 'delete_intel_news'
-              : row.type === 'social'   ? 'delete_intel_social'
-              : null
-    const actor = await boardsCloud.resolveActor(currentActingUserId)
-    // Unknown/unmapped type → root-only (key is null, so non-root is denied).
-    if (!actor.isRoot && (!key || !actor.can(key))) {
-      return { ok: false, error: 'You do not have permission to delete this item.' }
-    }
-    db().prepare('DELETE FROM intelligence_sources WHERE id=?').run(id)
-    return { ok: true }
+    return intelCloud.deleteSource(currentActingUserId, id)
   })
 
+  // Pure write (INSERT) → cloud + mirror. Category auto-detect stays here; the id
+  // is minted here so the return shape ({ ok, id }) is unchanged. Offline → { ok:false }.
   ipcMain.handle('intelligence:addSocial', (_e, post: {
     platform: string; handle: string; post_date: string; content: string;
     location_mentioned?: string; actors_mentioned?: string; url?: string;
@@ -3013,16 +2862,7 @@ function registerIntelligenceHandlers(): void {
     const id = randomUUID()
     const categories = JSON.parse(post.categories_json || '[]')
     const cats = categories.length ? categories : autoDetectCategories(post.content)
-    db().prepare(`
-      INSERT INTO intelligence_sources
-        (id, type, platform, handle, published_at, content, url, location_mentioned, actors_mentioned,
-         categories_json, confidence, added_by_id, added_by_name)
-      VALUES (?, 'social', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, post.platform, post.handle, post.post_date, post.content,
-           post.url || null, post.location_mentioned || null, post.actors_mentioned || null,
-           JSON.stringify(cats), post.confidence || 'low',
-           post.added_by_id || null, post.added_by_name || null)
-    return { ok: true, id }
+    return intelCloud.addSocial(post, id, JSON.stringify(cats))
   })
 
   // 2c: manual interview capture. Transcript is stored as PLAIN TEXT in `content`
@@ -3036,13 +2876,7 @@ function registerIntelligenceHandlers(): void {
   }) => {
     const { randomUUID } = require('crypto')
     const id = randomUUID()
-    db().prepare(`
-      INSERT INTO intelligence_sources
-        (id, type, title, content, published_at, added_by_id, added_by_name)
-      VALUES (?, 'interview', ?, ?, ?, ?, ?)
-    `).run(id, (iv.title || '').trim() || 'Untitled interview', iv.transcript || '',
-           iv.date || null, iv.added_by_id || null, iv.added_by_name || null)
-    return { ok: true, id }
+    return intelCloud.addInterview(iv, id)
   })
 
   // Intelligence restructure 2a: thin IPC over the shared project-aware AI helper.
@@ -3117,22 +2951,20 @@ function registerIntelligenceHandlers(): void {
         const analysis = analysisJson ? JSON.parse(analysisJson) : null
         const { randomUUID: newUUID } = require('crypto')
         const docId = newUUID()
-        db().prepare(`
-          INSERT INTO intelligence_sources
-            (id, type, title, file_name, local_path, content, analysis_json, categories_json, confidence, added_by_id, added_by_name)
-          VALUES (?, 'document', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          docId,
-          fileName,
-          fileName,
-          filePath,
-          textContent.slice(0, 10000),
-          analysisJson,
-          JSON.stringify(analysis?.suggested_categories || []),
-          analysis?.confidence || 'low',
-          params.userId || null,
-          params.addedByName || null
-        )
+        // Pure write (INSERT) → cloud + mirror. The file dialog + text extraction
+        // above stay local; only the row persist delegates. Offline → { ok:false }.
+        const added = await intelCloud.addDocument({
+          id: docId,
+          file_name: fileName,
+          local_path: filePath,
+          content: textContent.slice(0, 10000),
+          analysis_json: analysisJson,
+          categories_json: JSON.stringify(analysis?.suggested_categories || []),
+          confidence: analysis?.confidence || 'low',
+          added_by_id: params.userId || null,
+          added_by_name: params.addedByName || null,
+        })
+        if (!added.ok) { console.warn('[Intelligence] Upload persist failed for', fileName, added.error); continue }
         results.push({ id: docId, file_name: fileName })
       } catch (e: any) {
         console.warn('[Intelligence] Upload error for', filePath, e)
@@ -3159,37 +2991,30 @@ function registerIntelligenceHandlers(): void {
   })
 
   // Count of sources still pending confirmation from the Contested Skies import.
-  ipcMain.handle('intelligence:getImportedCount', () => {
-    return (db().prepare("SELECT COUNT(*) as c FROM intelligence_sources WHERE status='imported'").get() as { c: number }).c
-  })
+  // Cloud-first (mirror-fallback).
+  ipcMain.handle('intelligence:getImportedCount', () => intelCloud.getImportedCount())
 
   // Bulk-confirm all imported sources at a chosen confidence, approving them so
-  // they flow into the matching Info Pages' Sources tabs.
-  ipcMain.handle('intelligence:confirmImported', (_e, params: {
+  // they flow into the matching Info Pages' Sources tabs. RMW → cloud-only:
+  // intel.confirmImported does the cloud SELECT + per-row cloud UPDATE (+ mirror
+  // re-sync); routing (LOCAL info_page_sources) and the cs_articles verdict
+  // write-back stay HERE. Offline → { ok:false }.
+  ipcMain.handle('intelligence:confirmImported', async (_e, params: {
     confidence?: string; reviewedById?: string; reviewedByName?: string
   }) => {
-    const conf = params.confidence || 'medium'
-    const now2 = new Date().toISOString()
-    const rows = db().prepare("SELECT id, url, project_board_id FROM intelligence_sources WHERE status='imported'").all() as { id: string; url?: string; project_board_id?: string | null }[]
+    const res = await intelCloud.confirmImported(params)
+    if (!res.ok) return res
     const addedAll = new Set<string>()
-    const upd = db().prepare(`
-      UPDATE intelligence_sources
-      SET confidence=?, confidence_override=1, status='approved',
-          reviewed_by_id=?, reviewed_by_name=?, reviewed_at=?, queue_section='source-archive'
-      WHERE id=?
-    `)
-    for (const r of rows) {
-      upd.run(conf, params.reviewedById || null, params.reviewedByName || null, now2, r.id)
-      // 3c: bulk-confirm is also an approve path — route via the reliable board id
-      // (retires the keyword fan-out here too).
+    for (const r of res.rows) {
+      // 3c: bulk-confirm is also an approve path — route via the reliable board id.
       try {
         const routed = routeToNewSources(r.id, r.project_board_id)
         if (routed.ok && routed.pageName) addedAll.add(routed.pageName)
       } catch (e) { console.warn('[3c] confirmImported routing failed', e) }
     }
     // Learning loop: mirror this bulk approval up to Supabase (fire-and-forget).
-    void pushVerdictsToSupabase(rows.map((r) => r.url), 'approved', params.reviewedByName)
-    return { ok: true, count: rows.length, addedToPages: [...addedAll] }
+    void pushVerdictsToSupabase(res.rows.map((r) => r.url), 'approved', params.reviewedByName)
+    return { ok: true, count: res.rows.length, addedToPages: [...addedAll] }
   })
 }
 
@@ -3358,7 +3183,7 @@ export function registerInfoPageHandlers(): void {
     return db().prepare('SELECT * FROM info_page_published WHERE page_id=? ORDER BY date_implemented DESC LIMIT 50').all(pageId)
   })
 
-  ipcMain.handle('infoPages:logPublished', (_e, entry: {
+  ipcMain.handle('infoPages:logPublished', async (_e, entry: {
     pageId: string; whatChanged: string; committedById: string; committedByName: string;
     approvedById: string; approvedByName: string; promptUsed: string; itemIds: string[]; commitCount: number
   }) => {
@@ -3370,16 +3195,16 @@ export function registerInfoPageHandlers(): void {
     const pageRow = db().prepare('SELECT name FROM workspace_boards WHERE id=?').get(entry.pageId) as { name: string } | undefined
     const pageName = pageRow?.name || entry.pageId
     const nowIso = new Date().toISOString()
-    // Mark items as implemented
+    // Mark items as implemented (info_page_items / info_page_commits stay LOCAL).
     for (const id of entry.itemIds) {
       db().prepare("UPDATE info_page_items SET status='implemented',updated_at=datetime('now') WHERE id=?").run(id)
       db().prepare("UPDATE info_page_commits SET status='implemented' WHERE item_id=?").run(id)
-      // Feedback loop: if this item came from an intelligence source, flag the
-      // source as published so it isn't re-suggested for this page.
+      // Feedback loop: flag the origin intelligence source as published (cloud +
+      // mirror, best-effort — never blocks publish). The intel write is the only
+      // migrated line here.
       const item = db().prepare('SELECT origin_source_id FROM info_page_items WHERE id=?').get(id) as { origin_source_id: string | null } | undefined
       if (item?.origin_source_id) {
-        db().prepare("UPDATE intelligence_sources SET used_in_page=?, used_in_page_at=? WHERE id=?")
-          .run(pageName, nowIso, item.origin_source_id)
+        await intelCloud.markUsedInPage(item.origin_source_id, pageName, nowIso)
       }
     }
     return { ok: true }
@@ -3502,7 +3327,8 @@ export function registerInfoPageHandlers(): void {
       db().prepare("UPDATE info_page_commits SET status='implemented' WHERE item_id=?").run(id)
       const item = db().prepare('SELECT origin_source_id FROM info_page_items WHERE id=?').get(id) as { origin_source_id: string | null } | undefined
       if (item?.origin_source_id) {
-        db().prepare("UPDATE intelligence_sources SET used_in_page=?, used_in_page_at=? WHERE id=?").run(page.name, nowIso, item.origin_source_id)
+        // Only the intel feedback flag is migrated (cloud + mirror, best-effort).
+        await intelCloud.markUsedInPage(item.origin_source_id, page.name, nowIso)
       }
     }
     return { ok: true, count: commits.length, repo, url: htmlUrl }
@@ -3831,20 +3657,25 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
   // Deletes the pointer row (intel row + its content/analysis/notes are untouched)
   // and returns the intel source to status='unreviewed' so it reappears in News.
   // Guarded: only acts on stage='new'; intel status flips ONLY if a row was deleted.
-  ipcMain.handle('infoPages:moveBackToIntel', (_e, pageId: string, articleId: string) => {
+  ipcMain.handle('infoPages:moveBackToIntel', async (_e, pageId: string, articleId: string) => {
     const now = new Date().toISOString()
-    const r = db().prepare(
+    // Cross-tier: the info_page_sources DELETE + info_page_changes log stay LOCAL;
+    // the intel status flip is cloud-authoritative. Check existence FIRST, do the
+    // cloud write, and only then apply the local writes — so an offline/failed
+    // cloud write can never leave the pointer deleted but the intel status unmoved.
+    const exists = db().prepare(
+      "SELECT 1 FROM info_page_sources WHERE article_id=? AND info_page=? AND stage='new'"
+    ).get(articleId, pageId)
+    if (!exists) return { ok: true, movedBack: false }
+    const reverted = await intelCloud.revertToUnreviewed(articleId)
+    if (!reverted.ok) return { ok: false, error: reverted.error, movedBack: false }
+    db().prepare(
       "DELETE FROM info_page_sources WHERE article_id=? AND info_page=? AND stage='new'"
     ).run(articleId, pageId)
-    if (r.changes > 0) {
-      db().prepare(
-        "UPDATE intelligence_sources SET status='unreviewed' WHERE id=?"
-      ).run(articleId)
-      db().prepare(
-        "INSERT INTO info_page_changes (article_id, info_page, from_stage, to_stage, created_at) VALUES (?,?,'new','intel',?)"
-      ).run(articleId, pageId, now)
-    }
-    return { ok: true, movedBack: r.changes > 0 }
+    db().prepare(
+      "INSERT INTO info_page_changes (article_id, info_page, from_stage, to_stage, created_at) VALUES (?,?,'new','intel',?)"
+    ).run(articleId, pageId, now)
+    return { ok: true, movedBack: true }
   })
 
   // Commit all 'review' items to 'committed'. Saves design_notes onto each row.
