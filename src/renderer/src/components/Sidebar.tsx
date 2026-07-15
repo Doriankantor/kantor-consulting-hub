@@ -356,14 +356,13 @@ function SortableBoardItem({ board, isActive, onOpen }: {
 
 export default function Sidebar() {
   const { isRoot, localUser } = useAuth()
-  const { boards, archivedBoards, activeBoard, setActiveBoardId, createBoard, refreshBoards, reorderBoards, areas } = useWorkspace()
+  const { boards, activeBoard, setActiveBoardId, createBoard, refreshBoards, reorderBoards, areas } = useWorkspace()
   const { state: updateState } = useUpdate()
   const updateAvailable = updateState === 'available' || updateState === 'downloading' || updateState === 'ready'
   const navigate = useNavigate()
   const location = useLocation()
   const [inboxUnread,    setInboxUnread]    = useState(0)
   const [intelUnreviewed, setIntelUnreviewed] = useState(0)
-  const [archiveOpen,  setArchiveOpen]  = useState(false)
   const [memberBoardIds, setMemberBoardIds] = useState<string[]>([])
   const [newBoardModal, setNewBoardModal] = useState(false)
 
@@ -573,48 +572,6 @@ export default function Sidebar() {
           <span className="flex-1 text-left">Team Chat</span>
         </button>
       </div>
-
-      {/* Archive section */}
-      {archivedBoards.length > 0 && (
-        <div className="px-2.5 mt-2 mb-1">
-          <button
-            onClick={() => setArchiveOpen(v => !v)}
-            className="titlebar-no-drag w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-[#888] dark:text-white/40 hover:text-[#555] dark:hover:text-white/60 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition"
-          >
-            {/* Archive box icon */}
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" className="shrink-0">
-              <rect x="1" y="3.5" width="11" height="8.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
-              <path d="M1 3.5l1.5-2.5h8L12 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
-              <path d="M4.5 7h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-            </svg>
-            <span className="flex-1 text-left font-medium">Archive</span>
-            <span className="text-[10px] opacity-60">{archivedBoards.length}</span>
-            {/* chevron */}
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className={`transition-transform ${archiveOpen ? 'rotate-180' : ''}`}>
-              <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-
-          {archiveOpen && (
-            <div className="mt-1 space-y-0.5">
-              {archivedBoards.map(board => (
-                <button
-                  key={board.id}
-                  onClick={() => { setActiveBoardId(board.id); navigate('/workspace') }}
-                  className="titlebar-no-drag w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-[#888] dark:text-white/40 hover:text-[#555] dark:hover:text-white/60 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] transition group"
-                >
-                  <svg width="11" height="11" viewBox="0 0 13 13" fill="none" className="shrink-0 opacity-50">
-                    <rect x="1" y="3.5" width="11" height="8.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
-                    <path d="M1 3.5l1.5-2.5h8L12 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
-                    <path d="M4.5 7h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-                  </svg>
-                  <span className="flex-1 text-left italic truncate opacity-70">{board.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Admin indicator */}
       {isRoot && (
