@@ -126,7 +126,9 @@ export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefre
     if (pages.length) loadCommits()
   }, [pages])
 
-  // Per-page pipeline counters (sync then read), polled every 20s.
+  // Per-page pipeline counters, polled every 20s. (No longer runs the keyword
+  // fan-out — getSourceStats reads info_page_sources directly now; syncSources
+  // was the retired 3c fan-out that only inflated the legacy info_page_items.)
   useEffect(() => {
     if (!pages.length) return
     let cancelled = false
@@ -134,7 +136,6 @@ export default function InfoPagesList({ pages, selectedPageId, onSelect, onRefre
       const results: Record<string, { newAvailable: number; inAnalysis: number }> = {}
       for (const page of pages) {
         try {
-          await window.api.infoPages.syncSources(page.id)
           results[page.id] = await window.api.infoPages.getSourceStats(page.id)
         } catch {
           results[page.id] = { newAvailable: 0, inAnalysis: 0 }

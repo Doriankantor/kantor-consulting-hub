@@ -3572,7 +3572,10 @@ export function registerInfoPageHandlers(): void {
 
   // Counters for the Info Pages left panel.
   ipcMain.handle('infoPages:getSourceStats', (_e, pageId: string) => {
-    const newAvailable = (db().prepare("SELECT COUNT(*) as c FROM info_page_items WHERE page_id=? AND sub_type='intelligence_source' AND status='ready_for_analysis'").get(pageId) as { c: number }).c
+    // newAvailable now reads the REAL 3c pipeline table (info_page_sources stage='new'),
+    // matching getSourcePipelineCounts so the list badge and the New Sources tab agree.
+    // inAnalysis still reflects the legacy manual flow (info_page_items in_analysis).
+    const newAvailable = (db().prepare("SELECT COUNT(*) as c FROM info_page_sources WHERE info_page=? AND stage='new'").get(pageId) as { c: number }).c
     const inAnalysis = (db().prepare("SELECT COUNT(*) as c FROM info_page_items WHERE page_id=? AND sub_type='intelligence_source' AND status='in_analysis'").get(pageId) as { c: number }).c
     return { newAvailable, inAnalysis }
   })
