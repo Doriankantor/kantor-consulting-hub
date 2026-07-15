@@ -290,6 +290,17 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     })()
   }, [selectedProjectId])
 
+  // Realtime: re-fetch this project's tag vocabulary when known_tags changes in cloud.
+  useEffect(() => {
+    const boardId = selectedProjectId && selectedProjectId !== 'all' ? selectedProjectId : ''
+    window.api.intelligence.onTagsInvalidate((d) => {
+      if (!boardId) return
+      if (d.boardId && d.boardId !== boardId) return
+      window.api.intelligence.getKnownTags('thematic', boardId).then(setKnownThematic).catch(() => {})
+    })
+    return () => window.api.intelligence.removeTagsInvalidateListeners()
+  }, [selectedProjectId])
+
   // Duplicate slice: search candidate originals while the modal is open (excludes self).
   useEffect(() => {
     if (!dupModalFor || dupSearch.trim().length < 2) { setDupResults([]); return }
@@ -457,7 +468,12 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     if (!boardId) return
     try {
       const res = await window.api.intelligence.createTag(name, type, boardId)
-      if (!res?.ok || !res.name) return
+      if (!res?.ok || !res.name) {
+        console.warn('[NewsTab] createTag failed:', res?.error)
+        // Cloud write failed — refetch so the picker reflects cloud truth (no phantom).
+        window.api.intelligence.getKnownTags(type, boardId).then(setKnownThematic).catch(() => {})
+        return
+      }
       setKnownThematic(prev => prev.includes(res.name) ? prev : [...prev, res.name].sort((a, b) => a.localeCompare(b)))
       if (!current.includes(res.name)) await handleSetTags(id, type, [...current, res.name])
     } catch (e) { console.warn('[NewsTab] createTag failed:', e) }
@@ -470,7 +486,13 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     if (!boardId) return
     if (!confirm(`Delete tag "${name}" from the registry? Articles that already use it will keep it as a chip.`)) return
     try {
-      await window.api.intelligence.deleteTag(name, type, boardId)
+      const res = await window.api.intelligence.deleteTag(name, type, boardId)
+      if (!res?.ok) {
+        console.warn('[NewsTab] deleteTag failed:', res?.error)
+        window.api.intelligence.getKnownTags(type, boardId).then(setKnownThematic).catch(() => {})
+        alert(res?.error || 'Could not delete the tag.')
+        return
+      }
       setKnownThematic(prev => prev.filter(t => t !== name))
     } catch (e) { console.warn('[NewsTab] deleteTag failed:', e) }
   }

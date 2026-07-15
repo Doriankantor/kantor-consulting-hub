@@ -285,6 +285,10 @@ const api = {
     getKnownTags:         (type: string, boardId: string)              => ipcRenderer.invoke('intelligence:getKnownTags', type, boardId),
     createTag:            (name: string, type: string, boardId: string) => ipcRenderer.invoke('intelligence:createTag', name, type, boardId),
     deleteTag:            (name: string, type: string, boardId: string) => ipcRenderer.invoke('intelligence:deleteTag', name, type, boardId),
+    // Realtime invalidate push from main (reuses the workspace:remoteChange pattern).
+    onTagsInvalidate:     (cb: (d: { boardId: string | null; scope: 'list' | 'board' }) => void) =>
+      ipcRenderer.on('intel:tagsInvalidate', (_e, d) => cb(d)),
+    removeTagsInvalidateListeners: () => ipcRenderer.removeAllListeners('intel:tagsInvalidate'),
     setArticleTags:       (id: string, type: string, tags: string[]) => ipcRenderer.invoke('intelligence:setArticleTags', id, type, tags),
     logDecision:          (payload: Record<string, unknown>)        => ipcRenderer.invoke('intelligence:logDecision', payload),
     deleteSource:         (id: string)                       => ipcRenderer.invoke('intelligence:deleteSource', id),

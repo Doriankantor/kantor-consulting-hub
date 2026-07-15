@@ -139,6 +139,17 @@ export default function SocialTab({ onApprove, project = null }: Props) {
       .then(setKnownThematic).catch(() => setKnownThematic([]))
   }, [project?.id])
 
+  // Realtime: re-fetch this project's tag vocabulary when known_tags changes in cloud.
+  useEffect(() => {
+    const boardId = project?.id
+    window.api.intelligence.onTagsInvalidate((d) => {
+      if (!boardId) return
+      if (d.boardId && d.boardId !== boardId) return
+      window.api.intelligence.getKnownTags('thematic', boardId).then(setKnownThematic).catch(() => {})
+    })
+    return () => window.api.intelligence.removeTagsInvalidateListeners()
+  }, [project?.id])
+
   function toggleCategory(cat: string) {
     setForm(f => ({
       ...f,
@@ -269,7 +280,11 @@ export default function SocialTab({ onApprove, project = null }: Props) {
     if (!boardId) return
     try {
       const res = await window.api.intelligence.createTag(name, 'thematic', boardId)
-      if (!res?.ok || !res.name) return
+      if (!res?.ok || !res.name) {
+        console.warn('[SocialTab] createTag failed:', res?.error)
+        window.api.intelligence.getKnownTags('thematic', boardId).then(setKnownThematic).catch(() => {})
+        return
+      }
       setKnownThematic(prev => prev.includes(res.name) ? prev : [...prev, res.name].sort((a, b) => a.localeCompare(b)))
       if (!current.includes(res.name)) await handleSetTags(id, [...current, res.name])
     } catch (e) { console.warn('[SocialTab] createTag failed:', e) }
@@ -278,7 +293,13 @@ export default function SocialTab({ onApprove, project = null }: Props) {
     if (!boardId) return
     if (!confirm(`Delete tag "${name}" from this project's registry?`)) return
     try {
-      await window.api.intelligence.deleteTag(name, 'thematic', boardId)
+      const res = await window.api.intelligence.deleteTag(name, 'thematic', boardId)
+      if (!res?.ok) {
+        console.warn('[SocialTab] deleteTag failed:', res?.error)
+        window.api.intelligence.getKnownTags('thematic', boardId).then(setKnownThematic).catch(() => {})
+        alert(res?.error || 'Could not delete the tag.')
+        return
+      }
       setKnownThematic(prev => prev.filter(t => t !== name))
     } catch (e) { console.warn('[SocialTab] deleteTag failed:', e) }
   }

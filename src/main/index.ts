@@ -10,6 +10,7 @@ import { registerIpcHandlers, startIntelligenceAutoRefresh, triggerInitialNewsFe
 import { initRealtime, teardownAll as teardownRealtime } from './cloud/realtimeManager'
 import { registerBoardsRealtime } from './cloud/boardsRealtime'
 import { registerContactsRealtime } from './cloud/contactsRealtime'
+import { registerIntelRealtime } from './cloud/intelRealtime'
 import { runCompletedProjectsSweep } from './cloud/completedSweep'
 
 // Module-level reference so the updater can push events to the window
@@ -78,6 +79,7 @@ app.whenReady().then(() => {
   initRealtime(() => mainWindow)
   registerBoardsRealtime()
   registerContactsRealtime()
+  registerIntelRealtime()
 
   // ── Intelligence: start auto-refresh and trigger initial fetch ─────────
   startIntelligenceAutoRefresh()

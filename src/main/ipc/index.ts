@@ -22,6 +22,7 @@ import {
   addClientContact, deleteClientContact, seedContactsToCloud,
 } from '../cloud/contacts'
 import * as boardsCloud from '../cloud/boards'
+import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag, normalizeTag } from '../cloud/tags'
 import { seedBoardsToCloud } from '../cloud/boardsSeed'
 import { startRealtime, rescope as rescopeRealtime, teardownAll as teardownRealtime } from '../cloud/realtimeManager'
 import {
@@ -2934,43 +2935,22 @@ function registerIntelligenceHandlers(): void {
   })
 
   // ── Phase 4: disposition + thematic tag registry & per-article tagging ───────
-  // Normalize a free-text tag: trim, lowercase, collapse whitespace → hyphens.
-  function normalizeTag(name: string): string {
-    return (name ?? '').trim().toLowerCase().replace(/\s+/g, '-')
-  }
+  // known_tags is now CLOUD-sourced with a local offline mirror (see cloud/tags.ts).
+  // These three handlers delegate; the renderer contract (channels, arg order) is
+  // unchanged. normalizeTag is imported from cloud/tags (single source of truth).
 
   // Return all registered tags of a type ('disposition' | 'thematic'), A→Z.
-  ipcMain.handle('intelligence:getKnownTags', (_e, type: string, boardId: string) => {
-    const t = type === 'disposition' ? 'disposition' : 'thematic'
-    const rows = db().prepare(
-      'SELECT name FROM known_tags WHERE type=? AND project_board_id=? ORDER BY name COLLATE NOCASE ASC'
-    ).all(t, boardId) as { name: string }[]
-    return rows.map(r => r.name)
-  })
+  ipcMain.handle('intelligence:getKnownTags', (_e, type: string, boardId: string) =>
+    cloudGetKnownTags(type, boardId))
 
   // Create (or upsert) a tag in the registry; returns the normalized name.
-  ipcMain.handle('intelligence:createTag', (_e, name: string, type: string, boardId: string) => {
-    const t = type === 'disposition' ? 'disposition' : 'thematic'
-    const norm = normalizeTag(name)
-    if (!norm) return { ok: false, name: '' }
-    if (!boardId) return { ok: false, name: '' }
-    db().prepare(
-      'INSERT OR IGNORE INTO known_tags (name, type, project_board_id, created_at) VALUES (?, ?, ?, ?)'
-    ).run(norm, t, boardId, new Date().toISOString())
-    return { ok: true, name: norm }
-  })
+  ipcMain.handle('intelligence:createTag', (_e, name: string, type: string, boardId: string) =>
+    cloudCreateTag(currentActingUserId, name, type, boardId))
 
   // Admin: remove a tag from the registry. Existing article chips are preserved
   // (articles keep their stored JSON) but the tag won't appear in autocomplete.
-  ipcMain.handle('intelligence:deleteTag', async (_e, name: string, type: string, boardId: string) => {
-    const actor = await boardsCloud.resolveActor(currentActingUserId)
-    if (!actor.isRoot && !actor.can('delete_intel_tag')) {
-      return { ok: false, error: 'You do not have permission to delete intelligence tags.' }
-    }
-    const t = type === 'disposition' ? 'disposition' : 'thematic'
-    db().prepare('DELETE FROM known_tags WHERE name=? AND type=? AND project_board_id=?').run(name, t, boardId)
-    return { ok: true }
-  })
+  ipcMain.handle('intelligence:deleteTag', async (_e, name: string, type: string, boardId: string) =>
+    cloudDeleteTag(currentActingUserId, name, type, boardId))
 
   // Replace an article's tag set for one type. Tags are normalized + de-duped,
   // and the row is updated immediately (no Approve needed).
