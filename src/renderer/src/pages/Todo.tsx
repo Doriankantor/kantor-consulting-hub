@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { useConnection } from '../contexts/ConnectionContext'
 import { useNavigate } from 'react-router-dom'
 
 // Types
@@ -45,6 +46,7 @@ type Group = 'today' | 'week' | 'upcoming' | 'nodate' | 'done'
 export default function Todo() {
   const { localUser, isRoot } = useAuth()
   const { areas, openTask, setActiveBoardId } = useWorkspace()
+  const { online } = useConnection()
   const navigate = useNavigate()
   const userId = localUser?.id ?? 'local-admin'
   const userName = localUser?.name ?? 'Admin'
@@ -197,6 +199,7 @@ export default function Todo() {
   }
 
   async function handleComplete(task: TodoTask) {
+    if (!online) return   // read-only offline
     if (completing.has(task.id)) return
     setCompleting(prev => new Set([...prev, task.id]))
     try {
@@ -208,6 +211,7 @@ export default function Todo() {
   }
 
   async function handleUncomplete(task: TodoTask) {
+    if (!online) return   // read-only offline
     await window.api.todo.uncomplete(task.id)
     setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed_at: null, column_id: 'col-drafting' } : t))
   }
@@ -225,6 +229,7 @@ export default function Todo() {
   }
 
   async function handleAddPersonal() {
+    if (!online) return   // read-only offline
     if (!newPersonalTitle.trim()) return
     setAddingPersonal(true)
     try {
@@ -246,6 +251,7 @@ export default function Todo() {
   }
 
   async function handlePersonalComplete(item: PersonalTodoItem) {
+    if (!online) return   // read-only offline
     if (item.completed) {
       await window.api.personalTodo.uncomplete(item.id)
     } else {
@@ -255,6 +261,7 @@ export default function Todo() {
   }
 
   async function handlePersonalDelete(id: string) {
+    if (!online) return   // read-only offline
     setPersonalTodos(prev => prev.filter(i => i.id !== id))
     await window.api.personalTodo.delete(id)
   }

@@ -11,6 +11,7 @@ import { initRealtime, teardownAll as teardownRealtime } from './cloud/realtimeM
 import { registerBoardsRealtime } from './cloud/boardsRealtime'
 import { registerContactsRealtime } from './cloud/contactsRealtime'
 import { registerIntelRealtime } from './cloud/intelRealtime'
+import { initConnection, isOnline } from './cloud/connection'
 import { runCompletedProjectsSweep } from './cloud/completedSweep'
 
 // Module-level reference so the updater can push events to the window
@@ -80,6 +81,12 @@ app.whenReady().then(() => {
   registerBoardsRealtime()
   registerContactsRealtime()
   registerIntelRealtime()
+
+  // ── Connection state: derived from cloud call outcomes, pushed to the renderer
+  // (connection:changed). The renderer shows the offline banner, locks editing,
+  // and refetches on reconnect.
+  initConnection(() => mainWindow)
+  ipcMain.handle('connection:get', () => isOnline())
 
   // ── Intelligence: start auto-refresh and trigger initial fetch ─────────
   startIntelligenceAutoRefresh()

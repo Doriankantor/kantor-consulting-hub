@@ -11,6 +11,17 @@ import { arrayMove } from '@dnd-kit/sortable'
 import { DEFAULT_COLUMNS } from '../types'
 import type { Task, Column, TeamMember, ViewMode, Area, Board } from '../types'
 import { useAuth } from './AuthContext'
+import { useConnection } from './ConnectionContext'
+
+// Fallback areas used when the cloud areas list is unavailable (offline → the
+// main process returns [] rather than throwing, so apply defaults on empty too).
+const DEFAULT_AREAS: Area[] = [
+  { id: 'latin-america',          name: 'Latin America',         color: '#22c55e', is_default: 1, position: 0, created_at: '' },
+  { id: 'us-foreign-policy',      name: 'US Foreign Policy',     color: '#3b82f6', is_default: 1, position: 1, created_at: '' },
+  { id: 'european-politics',      name: 'European Politics',     color: '#a855f7', is_default: 1, position: 2, created_at: '' },
+  { id: 'international-security', name: 'International Security', color: '#ef4444', is_default: 1, position: 3, created_at: '' },
+  { id: 'security-technology',    name: 'Security Technology',   color: '#06b6d4', is_default: 1, position: 4, created_at: '' },
+]
 
 // ── Context shape ──────────────────────────────────────────────────────────
 
@@ -99,6 +110,7 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const { localUser, permsVersion } = useAuth()
+  const { online } = useConnection()
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS)
   const [tasks, setTasks] = useState<Task[]>([])
   const [members, setMembers] = useState<TeamMember[]>([])
@@ -138,15 +150,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const loadAreas = useCallback(async () => {
     try {
       const data = await window.api.areas.list()
-      setAreas(data)
+      setAreas(data.length ? data : DEFAULT_AREAS)   // offline returns [] → keep the default areas
     } catch {
-      setAreas([
-        { id: 'latin-america',           name: 'Latin America',          color: '#22c55e', is_default: 1, position: 0, created_at: '' },
-        { id: 'us-foreign-policy',       name: 'US Foreign Policy',      color: '#3b82f6', is_default: 1, position: 1, created_at: '' },
-        { id: 'european-politics',       name: 'European Politics',      color: '#a855f7', is_default: 1, position: 2, created_at: '' },
-        { id: 'international-security',  name: 'International Security', color: '#ef4444', is_default: 1, position: 3, created_at: '' },
-        { id: 'security-technology',     name: 'Security Technology',    color: '#06b6d4', is_default: 1, position: 4, created_at: '' },
-      ])
+      setAreas(DEFAULT_AREAS)
     }
   }, [])
 
@@ -185,7 +191,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         return prev
       })
     } catch (e: any) {
-      // Cloud unreachable — surface inline; do NOT silently fall back to stale local data.
+      // Board reads now fall back to a FRESH local mirror in main (never throw
+      // offline), and the app-wide offline banner is the offline signal. This
+      // only fires on an unexpected error, so keep the inline note as a backstop.
       setCloudError(`Couldn't reach the server — boards may be out of date. (${e?.message ?? 'network error'})`)
     }
   }, [localUser?.id])
@@ -403,6 +411,36 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     return () => { window.api.workspace.removeRemoteChangeListeners() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadBoards, localUser?.id])
+
+  // ── Refetch on RECONNECT ────────────────────────────────────────────────────
+  // The mount-time load runs once and never again on its own, so when the probe
+  // flips offline→online we must re-pull everything or the sidebar/board/cards
+  // stay frozen on the mirror snapshot. Fire the same loaders the mount effect
+  // uses. Guard on the false→true transition so we don't double-load on start.
+  const prevOnlineRef = useRef(online)
+  useEffect(() => {
+    const wasOnline = prevOnlineRef.current
+    prevOnlineRef.current = online
+    if (!online || wasOnline) return
+    const actorId = localUser?.id
+    loadBoards()
+    loadAreas()
+    loadLabels()
+    refreshTasks()
+    ;(async () => {
+      try {
+        const cols = await window.api.workspace.getColumns(activeBoardIdRef.current, actorId)
+        setColumns(cols)
+      } catch { /* mirror covers it */ }
+    })()
+    window.api.team.list().then(teamList => {
+      setMembers(teamList.map(m => ({
+        id: m.id, email: m.email, full_name: m.full_name,
+        avatar_url: null, role: (m.role as 'admin' | 'member') ?? 'member',
+      })))
+    }).catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online])
 
   // ── Re-fetch the board list when permissions change LIVE ────────────────────
   // The list is filtered server-side (main scopes by membership / isRoot), so a live

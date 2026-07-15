@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import { useAuth } from '../../contexts/AuthContext'
+import { useConnection } from '../../contexts/ConnectionContext'
 import { ADMIN_EMAIL } from '../../supabase/client'
 import KanbanView from './KanbanView'
 import TimelineView from './TimelineView'
@@ -194,9 +195,10 @@ export default function Workspace() {
   const {
     viewMode, setViewMode, tasks, columns, selectedTask, createTask, selectTask,
     boards, activeBoard, archiveBoard, deleteBoard, duplicateBoard, renameBoard,
-    createBoard, setActiveBoardId, archivedBoards, restoreBoard, cloudError, boardContentVersion, openTask, restoreTask, requestHighlight, refreshTasks, setTasks,
+    createBoard, setActiveBoardId, archivedBoards, restoreBoard, boardContentVersion, openTask, restoreTask, requestHighlight, refreshTasks, setTasks,
   } = useWorkspace()
   const { localUser, isRoot, can } = useAuth()
+  const { online } = useConnection()
 
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -420,7 +422,7 @@ export default function Workspace() {
           case 'k': e.preventDefault(); setShowSearch(v => !v); break
           case 'n': e.preventDefault(); {
             const firstCol = columns[0]
-            if (firstCol) createTask(firstCol.id, { title: 'New deliverable', content_type: 'policy-brief', priority: 'medium' })
+            if (firstCol && online) createTask(firstCol.id, { title: 'New deliverable', content_type: 'policy-brief', priority: 'medium' })
             break
           }
           case '1': e.preventDefault(); setViewMode('kanban'); break
@@ -433,7 +435,7 @@ export default function Workspace() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [columns, createTask, setViewMode])
+  }, [columns, createTask, setViewMode, online])
 
   const inProgress = boardTasks.filter(t =>
     ['col-drafting', 'col-review', 'col-delivery'].includes(t.column_id)
@@ -684,12 +686,7 @@ export default function Workspace() {
         </div>
       )}
 
-      {/* Cloud connection error — inline, no stale-local fallback, no crash */}
-      {cloudError && (
-        <div className="shrink-0 mx-4 mt-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/25 text-[12px] text-red-600 dark:text-red-400">
-          {cloudError}
-        </div>
-      )}
+      {/* Offline is surfaced by the app-wide banner in Layout (OfflineBanner). */}
 
       {/* View content */}
       <div className="flex-1 overflow-hidden">

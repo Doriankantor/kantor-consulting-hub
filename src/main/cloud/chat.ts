@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { cloud, CLOUD_ADMIN_EMAIL } from './client'
+import { isOnline } from './connection'
 import { getDatabase } from '../db'
 
 // ── Team chat: cloud-sourced (the reusable per-category template) ────────────
@@ -21,6 +22,7 @@ const COLS = 'id, author_id, author_name, content, created_at'
 // READ — newest `limit` messages, returned oldest→newest (matches the prior
 // local ordering the UI expects). Throws on any cloud error (no local fallback).
 export async function listChatMessages(limit = 100): Promise<ChatRow[]> {
+  if (!isOnline()) return []   // offline: chat unavailable (no local mirror)
   const { data, error } = await cloud
     .from('chat_messages')
     .select(COLS)

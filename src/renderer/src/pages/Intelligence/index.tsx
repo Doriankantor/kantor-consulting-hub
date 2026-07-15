@@ -7,6 +7,7 @@ import ProjectSelect from './ProjectSelect'
 import FrameworkPanel from './FrameworkPanel'
 import { parseConfig } from './frameworkConfig'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
+import { useConnection } from '../../contexts/ConnectionContext'
 
 // Phase 7: the Publish Queue / "Push to Contested Skies" tab has been removed.
 // Approved articles now flow to the linked Info Page's New Sources, where they
@@ -27,6 +28,7 @@ export default function Intelligence() {
   // does NOT filter the source list (per-project filtering is Slice 3), so
   // selectedProjectId is intentionally never threaded into the tab reads.
   const { boards } = useWorkspace()
+  const { online } = useConnection()
   const projects = useMemo(
     () => boards.filter(b => b.board_type === 'info-page').sort((a, b) => a.position - b.position),
     [boards],
@@ -98,6 +100,7 @@ export default function Intelligence() {
   }, [handleApproved, refreshStats, refreshUnscoredCount])
 
   async function handleRescore() {
+    if (!online) return   // read-only offline
     setRescoring(true)
     setRescoreResult(null)
     try {
@@ -146,9 +149,9 @@ export default function Intelligence() {
               <div className="flex flex-col items-end gap-0.5">
                 <button
                   onClick={handleRescore}
-                  disabled={rescoring}
+                  disabled={rescoring || !online}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-violet-300 dark:border-violet-500/40 text-violet-700 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 text-xs font-medium transition disabled:opacity-50"
-                  title="Run the relevance gate over all articles that haven't been scored yet"
+                  title={online ? 'Run the relevance gate over all articles that haven\'t been scored yet' : 'Unavailable while offline'}
                 >
                   {rescoring ? (
                     <span className="w-3 h-3 border-2 border-violet-400/30 border-t-violet-500 rounded-full animate-spin" />

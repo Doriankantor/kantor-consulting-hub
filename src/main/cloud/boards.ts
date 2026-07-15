@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { cloud, CLOUD_ADMIN_EMAIL } from './client'
+import { isOnline, reportCloudResult } from './connection'
 import { getDatabase } from '../db'
 // Lazy import to avoid a circular dependency (attachmentsCloud imports boards).
 async function getBlobHelpers() {
@@ -68,7 +69,9 @@ export function resolveIdentity(actingUserOrId?: string | null): { email: string
 export async function resolveActor(actingUserOrId?: string | null): Promise<Actor> {
   const { email, isRoot } = resolveIdentity(actingUserOrId)
   let permKeys: Set<string> = new Set()
-  if (!isRoot && email) {
+  // Skip the permissions lookup when offline (deny-all) rather than waiting out
+  // postgrest's retries on every actor resolution.
+  if (!isRoot && email && isOnline()) {
     try {
       const { data } = await cloud
         .from('member_permissions')
@@ -87,6 +90,7 @@ export async function resolveActor(actingUserOrId?: string | null): Promise<Acto
 // email-keyed board_members_mirror, refreshed on each successful online read.
 async function visibleBoardIds(actor: Actor): Promise<Set<string>> {
   if (actor.isRoot) {
+    if (!isOnline()) return localBoardIds()                     // offline: skip cloud
     const { data, error } = await cloud.from('workspace_boards').select('id').eq('deleted', 0)
     if (error) {
       console.warn('[boards] cloud visibleBoardIds(root) failed, serving local mirror:', error.message)
@@ -95,6 +99,7 @@ async function visibleBoardIds(actor: Actor): Promise<Set<string>> {
     return new Set((data ?? []).map((r: { id: string }) => r.id))
   }
   if (!actor.email) return new Set()
+  if (!isOnline()) return readMembersMirror(actor.email)        // offline: skip cloud
   const { data, error } = await cloud
     .from('board_members').select('board_id').eq('user_email', actor.email)
   if (error) {
@@ -351,9 +356,11 @@ function resolveEmail(idOrEmail: string): string {
 export async function listBoards(actingUserId: string | undefined, includeArchived = false): Promise<Record<string, unknown>[]> {
   const actor = await resolveActor(actingUserId)
   const visible = await visibleBoardIds(actor)
+  if (!isOnline()) return readBoardsMirror(actor, visible, includeArchived)   // offline: serve mirror immediately
   let q = cloud.from('workspace_boards').select('*').eq('deleted', 0)
   if (!includeArchived) q = q.eq('archived', 0)
   const { data, error } = await q.order('position', { ascending: true }).order('created_at', { ascending: true })
+  reportCloudResult(!error)
   if (error) {
     console.warn('[boards] cloud listBoards failed, serving local mirror:', error.message)
     return readBoardsMirror(actor, visible, includeArchived)
@@ -366,9 +373,11 @@ export async function listBoards(actingUserId: string | undefined, includeArchiv
 export async function listArchivedBoards(actingUserId?: string): Promise<Record<string, unknown>[]> {
   const actor = await resolveActor(actingUserId)
   const visible = await visibleBoardIds(actor)
+  if (!isOnline()) return readArchivedBoardsMirror(actor, visible)            // offline: serve mirror immediately
   const { data, error } = await cloud
     .from('workspace_boards').select('*').eq('deleted', 0).eq('archived', 1)
     .order('archived_at', { ascending: false })
+  reportCloudResult(!error)
   if (error) {
     console.warn('[boards] cloud listArchivedBoards failed, serving local mirror:', error.message)
     return readArchivedBoardsMirror(actor, visible)
@@ -514,9 +523,11 @@ export async function boardTaskCount(id: string): Promise<number> {
 export async function getColumns(actingUserId: string | undefined, boardId?: string): Promise<Record<string, unknown>[]> {
   const actor = await resolveActor(actingUserId)
   const visible = await visibleBoardIds(actor)
+  if (!isOnline()) return readColumnsMirror(actor, visible, boardId)          // offline: serve mirror immediately
   let q = cloud.from('workspace_columns').select('*')
   if (boardId) q = q.eq('board_id', boardId)
   const { data, error } = await q.order('position', { ascending: true })
+  reportCloudResult(!error)
   if (error) {
     console.warn('[boards] cloud getColumns failed, serving local mirror:', error.message)
     return readColumnsMirror(actor, visible, boardId)
@@ -578,8 +589,10 @@ export async function getTasks(actingUserId?: string): Promise<Record<string, un
   const actor = await resolveActor(actingUserId)
   const visible = await visibleBoardIds(actor)
   if (!actor.isRoot && visible.size === 0) return []
+  if (!isOnline()) return readTasksMirror(actor, visible)                     // offline: serve mirror immediately
   // Active tasks on non-archived boards. Filter to visible boards in JS.
   const { data: boards, error: bErr } = await cloud.from('workspace_boards').select('id').eq('deleted', 0).eq('archived', 0)
+  reportCloudResult(!bErr)
   if (bErr) {
     console.warn('[boards] cloud getTasks board filter failed, serving local mirror:', bErr.message)
     return readTasksMirror(actor, visible)
@@ -590,6 +603,7 @@ export async function getTasks(actingUserId?: string): Promise<Record<string, un
   const { data, error } = await cloud.from('workspace_tasks').select('*')
     .in('board_id', activeBoardIds).or('archived.is.null,archived.eq.0')
     .order('position', { ascending: true })
+  reportCloudResult(!error)
   if (error) {
     console.warn('[boards] cloud getTasks failed, serving local mirror:', error.message)
     return readTasksMirror(actor, visible)
@@ -815,6 +829,7 @@ export async function deleteTask(taskId: string, deletedById?: string, deletedBy
 
 // List members of a board, enriched with name/role from local_users by email.
 export async function listMembers(boardId: string): Promise<{ user_id: string; user_email: string; full_name: string | null; email: string; role: string; added_at: string }[]> {
+  if (!isOnline()) return []   // offline: member list unavailable
   const { data, error } = await cloud.from('board_members').select('*').eq('board_id', boardId).order('added_at', { ascending: true })
   if (error) throw new Error(`members list failed: ${error.message}`)
   return ((data ?? []) as { user_email: string; added_at: string }[]).map(m => {
@@ -947,10 +962,17 @@ export async function memberTaskCount(boardId: string, userId: string): Promise<
 // Board ids visible to a user (admin: all non-archived; else their memberships on non-archived boards).
 export async function listForUser(actingUserId?: string): Promise<string[]> {
   const actor = await resolveActor(actingUserId)
+  // Offline: skip cloud, serve the local active-board mirror ∩ membership. This
+  // feeds the Sidebar's memberBoardIds — a throw here empties a NON-root user's
+  // sidebar even when the board mirror is fresh (root is unaffected: all boards).
+  if (!isOnline()) {
+    const localActive = localActiveBoardIds()
+    if (actor.isRoot) return [...localActive]
+    const visible = await visibleBoardIds(actor)   // → board_members_mirror offline
+    return [...visible].filter(id => localActive.has(id))
+  }
   const { data: boards, error } = await cloud.from('workspace_boards').select('id').eq('deleted', 0).eq('archived', 0)
-  // Offline: fall back to the local active-board mirror (never throw). This feeds
-  // the Sidebar's memberBoardIds — a throw here empties a NON-root user's sidebar
-  // even when the board mirror is fresh (root is unaffected: it renders all boards).
+  reportCloudResult(!error)
   let activeIds: Set<string>
   if (error) {
     console.warn('[boards] cloud listForUser failed, serving local mirror:', error.message)
@@ -959,7 +981,7 @@ export async function listForUser(actingUserId?: string): Promise<string[]> {
     activeIds = new Set((boards ?? []).map((b: { id: string }) => b.id))
   }
   if (actor.isRoot) return [...activeIds]
-  const visible = await visibleBoardIds(actor)   // offline non-root → board_members_mirror
+  const visible = await visibleBoardIds(actor)
   return [...visible].filter(id => activeIds.has(id))
 }
 
@@ -968,6 +990,7 @@ export async function listForUser(actingUserId?: string): Promise<string[]> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getComments(taskId: string): Promise<Record<string, unknown>[]> {
+  if (!isOnline()) return []   // offline: no mirror for comments — view shows "offline — unavailable"
   const { data, error } = await cloud.from('task_comments').select('*').eq('task_id', taskId).order('created_at', { ascending: true })
   if (error) throw new Error(`comments get failed: ${error.message}`)
   return (data ?? []) as Record<string, unknown>[]
@@ -1028,6 +1051,7 @@ export async function addActivity(e: { task_id: string; actor_name: string; acti
 
 // Global feed of recent activity + comments across the actor's visible boards.
 export async function getFeed(actingUserId?: string): Promise<Record<string, unknown>[]> {
+  if (!isOnline()) return []   // offline: activity feed unavailable
   const actor = await resolveActor(actingUserId)
   const visible = await visibleBoardIds(actor)
   // Resolve which task ids are visible (root: all; else tasks on visible boards).
@@ -1064,6 +1088,7 @@ export async function getFeed(actingUserId?: string): Promise<Record<string, unk
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getChecklists(taskId: string): Promise<Record<string, unknown>[]> {
+  if (!isOnline()) return []   // offline: no mirror for checklists
   const { data: lists, error } = await cloud.from('task_checklists').select('*').eq('task_id', taskId).order('position', { ascending: true })
   if (error) throw new Error(`checklists get failed: ${error.message}`)
   const out: Record<string, unknown>[] = []
@@ -1123,6 +1148,7 @@ export async function updateChecklistItem(itemId: string, text: string): Promise
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function listLabels(): Promise<Record<string, unknown>[]> {
+  if (!isOnline()) return []   // offline: labels unavailable
   const { data, error } = await cloud.from('labels').select('*').order('position', { ascending: true })
   if (error) throw new Error(`labels list failed: ${error.message}`)
   return (data ?? []) as Record<string, unknown>[]
@@ -1151,6 +1177,7 @@ export async function deleteLabel(id: string): Promise<{ ok: boolean }> {
 }
 
 export async function getTaskLabels(taskId: string): Promise<Record<string, unknown>[]> {
+  if (!isOnline()) return []   // offline: no mirror for task labels
   const { data: links, error } = await cloud.from('task_labels').select('label_id').eq('task_id', taskId)
   if (error) throw new Error(`task labels get failed: ${error.message}`)
   const ids = (links ?? []).map((l: { label_id: string }) => l.label_id)
@@ -1175,6 +1202,7 @@ export async function setTaskLabels(taskId: string, labelIds: string[]): Promise
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function listAreas(): Promise<Record<string, unknown>[]> {
+  if (!isOnline()) return []   // offline: renderer falls back to the default areas (see loadAreas)
   const { data, error } = await cloud.from('areas').select('*').order('is_default', { ascending: false }).order('position', { ascending: true })
   if (error) throw new Error(`areas list failed: ${error.message}`)
   return (data ?? []) as Record<string, unknown>[]

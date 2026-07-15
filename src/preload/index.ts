@@ -369,6 +369,11 @@ const api = {
     setAutoInstall: (val: boolean) => ipcRenderer.invoke('updater:setAutoInstall', val),
     getAutoInstall: () => ipcRenderer.invoke('updater:getAutoInstall'),
   },
+  connection: {
+    get:         ()                              => ipcRenderer.invoke('connection:get'),
+    onChange:    (cb: (online: boolean) => void) => ipcRenderer.on('connection:changed', (_e, d) => cb(d.online)),
+    removeChangeListeners: ()                     => ipcRenderer.removeAllListeners('connection:changed'),
+  },
 }
 
 if (process.contextIsolated) {

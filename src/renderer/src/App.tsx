@@ -1,5 +1,6 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { ConnectionProvider } from './contexts/ConnectionContext'
 import { WorkspaceProvider } from './contexts/WorkspaceContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { UpdateProvider } from './contexts/UpdateContext'
@@ -59,6 +60,7 @@ function AppRoutes() {
 
   return (
     <UpdateProvider>
+    <ConnectionProvider>
     <WorkspaceProvider>
       <Routes>
         <Route element={<Layout />}>
@@ -82,6 +84,7 @@ function AppRoutes() {
       </Routes>
       <ChatPanel />
     </WorkspaceProvider>
+    </ConnectionProvider>
     </UpdateProvider>
   )
 }

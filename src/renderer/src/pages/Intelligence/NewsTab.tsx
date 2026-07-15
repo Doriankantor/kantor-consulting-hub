@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import { useConnection } from '../../contexts/ConnectionContext'
 import RichTextEditor from '../../components/RichTextEditor'
 import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
@@ -80,6 +81,7 @@ interface Props {
 
 export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const { localUser, isRoot, can } = useAuth()
+  const { online } = useConnection()
   const [sources, setSources] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -332,6 +334,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   }
 
   async function handleConfirmImported() {
+    if (!online) return   // read-only offline (bulk approve)
     setConfirmingImported(true)
     try {
       const res = await window.api.intelligence.confirmImported({
@@ -347,6 +350,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   }
 
   async function handleStatus(id: string, status: string) {
+    if (!online) return   // read-only offline (Approve/Reject/Save)
     setPendingStatus(p => ({ ...p, [id]: true }))
     // Snapshot BEFORE write for decision log (Phase 5).
     const snap = sources.find(s => s.id === id)
@@ -415,6 +419,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   function openDupModal(id: string) { setDupModalFor(id); setDupSearch(''); setDupResults([]); setDupChosen(null) }
   function closeDupModal() { setDupModalFor(null); setDupSearch(''); setDupResults([]); setDupChosen(null) }
   async function markDuplicate(id: string, originalId: string | null) {
+    if (!online) return   // read-only offline (Duplicate — creates a row)
     try {
       await window.api.intelligence.markDuplicate(id, originalId)
       // drop from the current (unreviewed) view like reject does, no learning signal
@@ -622,7 +627,8 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           {isRoot && (
             <button
               onClick={handleConfirmImported}
-              disabled={confirmingImported}
+              disabled={confirmingImported || !online}
+              title={!online ? 'Unavailable while offline' : undefined}
               className="shrink-0 px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold transition disabled:opacity-50"
             >
               {confirmingImported ? 'Confirming…' : 'Confirm all as Medium confidence'}
@@ -1007,8 +1013,8 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                       }
                       handleStatus(source.id, 'approved')
                     }}
-                    disabled={isPending}
-                    title={gateTooltip}
+                    disabled={isPending || !online}
+                    title={!online ? 'Unavailable while offline' : gateTooltip}
                     className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-white text-xs font-medium transition ${
                       canApprove
                         ? 'bg-green-500 hover:bg-green-600 disabled:opacity-50'
@@ -1023,7 +1029,8 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                 {source.status !== 'saved' && source.status !== 'approved' && source.status !== 'pushed' && (
                   <button
                     onClick={() => handleStatus(source.id, 'saved')}
-                    disabled={isPending}
+                    disabled={isPending || !online}
+                    title={!online ? 'Unavailable while offline' : undefined}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition disabled:opacity-50"
                   >
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v5M3 4l2 2 2-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M1 7.5v1a.5.5 0 0 0 .5.5h7a.5.5 0 0 0 .5-.5v-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
@@ -1034,7 +1041,8 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                 {source.status !== 'rejected' && (
                   <button
                     onClick={() => handleStatus(source.id, 'rejected')}
-                    disabled={isPending}
+                    disabled={isPending || !online}
+                    title={!online ? 'Unavailable while offline' : undefined}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-medium transition disabled:opacity-50"
                   >
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
@@ -1045,9 +1053,9 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                 {source.status !== 'duplicate' && (
                   <button
                     onClick={() => openDupModal(source.id)}
-                    disabled={isPending}
+                    disabled={isPending || !online}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-200 hover:bg-gray-300 dark:bg-white/[0.08] dark:hover:bg-white/[0.14] text-gray-700 dark:text-white/70 text-xs font-medium transition disabled:opacity-50"
-                    title="Mark as a duplicate of another article (no learning signal)"
+                    title={!online ? 'Unavailable while offline' : 'Mark as a duplicate of another article (no learning signal)'}
                   >
                     Duplicate
                   </button>

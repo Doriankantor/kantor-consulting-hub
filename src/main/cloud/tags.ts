@@ -1,4 +1,5 @@
 import { cloud } from './client'
+import { isOnline, reportCloudResult } from './connection'
 import { getDatabase } from '../db'
 import { resolveActor } from './boards'
 
@@ -57,12 +58,14 @@ function readMirror(type: TagType, boardId: string): string[] {
 export async function getKnownTags(type: string, boardId: string): Promise<string[]> {
   const t = coerceType(type)
   if (!boardId) return []
+  if (!isOnline()) return readMirror(t, boardId)   // offline: serve mirror immediately
   const { data, error } = await cloud
     .from('known_tags')
     .select('name')
     .eq('type', t)
     .eq('project_board_id', boardId)
     .order('name', { ascending: true })
+  reportCloudResult(!error)
   if (error) {
     console.warn('[tags] cloud getKnownTags failed, serving local mirror:', error.message)
     return readMirror(t, boardId)

@@ -3,12 +3,14 @@ import Header from './Header'
 import Sidebar from './Sidebar'
 import SyncStatus from './SyncStatus'
 import UpdateBanner from './UpdateBanner'
+import OfflineBanner from './OfflineBanner'
 
 export default function Layout() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <Header />
       <UpdateBanner />
+      <OfflineBanner />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-hidden flex flex-col">

@@ -636,6 +636,11 @@ interface Window {
       setAutoInstall:     (val: boolean) => Promise<boolean>
       getAutoInstall:     () => Promise<boolean>
     }
+    connection: {
+      get:                   () => Promise<boolean>
+      onChange:              (cb: (online: boolean) => void) => void
+      removeChangeListeners: () => void
+    }
     contacts: {
       list:              ()                                              => Promise<Contact[]>
       listTrash:         ()                                              => Promise<Contact[]>

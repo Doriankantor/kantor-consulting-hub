@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useConnection } from '../../contexts/ConnectionContext'
 import RichTextEditor from '../../components/RichTextEditor'
 import TagPicker from './TagPicker'
 
@@ -92,6 +93,7 @@ function readTags(raw: string | null): string[] {
 
 export default function SocialTab({ onApprove, project = null }: Props) {
   const { localUser, isRoot, can } = useAuth()
+  const { online } = useConnection()
   const [posts, setPosts] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -233,6 +235,7 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   }
 
   async function handleStatus(id: string, status: string) {
+    if (!online) return   // read-only offline (Save)
     setPendingStatus(p => ({ ...p, [id]: true }))
     try {
       const res = await window.api.intelligence.updateStatus(id, status, undefined, localUser?.id, localUser?.name)
@@ -259,6 +262,7 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   // 3d: Send to New sources — route into the selected project's pipeline (stage='new')
   // and drop the item from the compose list (status='routed').
   const handleSend = async (id: string, boardId: string) => {
+    if (!online) return   // read-only offline (Send to New sources)
     const res = await window.api.intelligence.routeToProject(id, boardId)
     if (res?.ok) {
       setPosts(prev => prev.filter(p => p.id !== id))
@@ -623,14 +627,15 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                   <span className="text-[10px] text-gray-400 dark:text-white/30 italic">Select a project to tag</span>
                 )}
                 {post.status !== 'saved' && (
-                  <button onClick={() => handleStatus(post.id, 'saved')} disabled={isPending}
+                  <button onClick={() => handleStatus(post.id, 'saved')} disabled={isPending || !online}
+                    title={!online ? 'Unavailable while offline' : undefined}
                     className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition disabled:opacity-50">Save</button>
                 )}
                 {/* 3d: Send to New sources — routes into the selected project's pipeline */}
                 <button
                   onClick={() => handleSend(post.id, projectBoardSel)}
-                  disabled={!projectBoardSel}
-                  title={projectBoardSel ? 'Route this post into the project’s New sources' : 'Select a project first'}
+                  disabled={!projectBoardSel || !online}
+                  title={!online ? 'Unavailable while offline' : projectBoardSel ? 'Route this post into the project’s New sources' : 'Select a project first'}
                   className="px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   ➤ Send to New sources
