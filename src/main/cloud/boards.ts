@@ -81,17 +81,217 @@ export async function resolveActor(actingUserOrId?: string | null): Promise<Acto
 }
 
 // Board ids the actor may see. Root → all (non-deleted). Else → membership by email.
+// OFFLINE (cloud error): do NOT throw — this is the single funnel all three readers
+// call first, so a throw here is what breaks offline reads. Root falls back to the
+// local board mirror (all non-deleted local boards); non-root falls back to the
+// email-keyed board_members_mirror, refreshed on each successful online read.
 async function visibleBoardIds(actor: Actor): Promise<Set<string>> {
   if (actor.isRoot) {
     const { data, error } = await cloud.from('workspace_boards').select('id').eq('deleted', 0)
-    if (error) throw new Error(`boards visibility failed: ${error.message}`)
+    if (error) {
+      console.warn('[boards] cloud visibleBoardIds(root) failed, serving local mirror:', error.message)
+      return localBoardIds()
+    }
     return new Set((data ?? []).map((r: { id: string }) => r.id))
   }
   if (!actor.email) return new Set()
   const { data, error } = await cloud
     .from('board_members').select('board_id').eq('user_email', actor.email)
-  if (error) throw new Error(`membership lookup failed: ${error.message}`)
-  return new Set((data ?? []).map((r: { board_id: string }) => r.board_id))
+  if (error) {
+    // OFFLINE, non-root: serve the email-keyed local mirror (synced on the last
+    // successful online read). Empty if this user has never been read online.
+    console.warn('[boards] cloud membership lookup failed offline, serving local members mirror:', error.message)
+    return readMembersMirror(actor.email)
+  }
+  const ids = new Set((data ?? []).map((r: { board_id: string }) => r.board_id))
+  syncMembersMirror(actor.email, [...ids])
+  return ids
+}
+
+// ── LOCAL MIRROR of cloud boards/columns/tasks (offline reads) ───────────────
+// Same shape as cloud/tags.ts: on a successful cloud read we refresh the local
+// SQLite mirror (SCOPED delete-then-insert in ONE transaction); on a cloud error
+// we serve the mirror. Best-effort — a mirror write never fails the read. The
+// local tables are a SUPERSET of the cloud columns (verified against db.ts), so
+// every cloud row inserts cleanly; we whitelist local columns (below) so an
+// unknown cloud column can never break the insert. Local-only rows cloud does NOT
+// own (info-page boards, archived tasks) are preserved by SCOPING each delete.
+const BOARD_COLS = ['id','name','position','archived','archived_at','archived_by','created_at','updated_at','deleted','board_type','board_config'] as const
+const COLUMN_COLS = ['id','name','position','color','board_id'] as const
+const TASK_COLS = ['id','board_id','column_id','title','content_type','client','client_id','client_org','area_of_analysis','assignees_json','due_date','start_date','priority','description','notes','sources_json','position','recurrence_json','archived','published_at','deletion_scheduled_at','pre_deletion_archived','created_at','updated_at'] as const
+
+function rowFor(cols: readonly string[], src: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const c of cols) out[c] = src[c] === undefined ? null : src[c]
+  return out
+}
+function insertSql(table: string, cols: readonly string[]): string {
+  return `INSERT OR REPLACE INTO ${table} (${cols.join(',')}) VALUES (${cols.map(c => '@' + c).join(',')})`
+}
+
+// All non-deleted local board ids (root offline fallback for visibleBoardIds).
+function localBoardIds(): Set<string> {
+  try {
+    const rows = getDatabase().prepare('SELECT id FROM workspace_boards WHERE COALESCE(deleted,0)=0').all() as { id: string }[]
+    return new Set(rows.map(r => r.id))
+  } catch (e) { console.warn('[boards] local board id read failed:', (e as Error)?.message); return new Set() }
+}
+
+// Non-deleted, non-archived local board ids (offline fallback for listForUser —
+// mirrors its cloud query `deleted=0 AND archived=0`).
+function localActiveBoardIds(): Set<string> {
+  try {
+    const rows = getDatabase()
+      .prepare('SELECT id FROM workspace_boards WHERE COALESCE(deleted,0)=0 AND COALESCE(archived,0)=0')
+      .all() as { id: string }[]
+    return new Set(rows.map(r => r.id))
+  } catch (e) { console.warn('[boards] local active board id read failed:', (e as Error)?.message); return new Set() }
+}
+
+// BOARD_MEMBERS mirror (email-keyed) — non-root offline visibility. A SEPARATE
+// table (board_members_mirror); the legacy user_id-keyed board_members table is
+// left untouched. Synced on the visibleBoardIds success path for the acting user:
+// replace exactly that email's rows with the fresh cloud set (delete-then-insert
+// in one transaction). Best-effort — a mirror write never fails the read.
+function syncMembersMirror(email: string, boardIds: string[]): void {
+  if (!email) return
+  try {
+    const db = getDatabase()
+    const tx = db.transaction((ids: string[]) => {
+      db.prepare('DELETE FROM board_members_mirror WHERE user_email=?').run(email)
+      const ins = db.prepare('INSERT OR IGNORE INTO board_members_mirror (board_id, user_email) VALUES (?, ?)')
+      for (const id of ids) ins.run(id, email)
+    })
+    tx(boardIds)
+  } catch (e) { console.warn('[boards] local members mirror sync failed (read served from cloud):', (e as Error)?.message) }
+}
+function readMembersMirror(email: string): Set<string> {
+  if (!email) return new Set()
+  try {
+    const rows = getDatabase().prepare('SELECT board_id FROM board_members_mirror WHERE user_email=?').all(email) as { board_id: string }[]
+    return new Set(rows.map(r => r.board_id))
+  } catch (e) { console.warn('[boards] local members mirror read failed:', (e as Error)?.message); return new Set() }
+}
+
+// BOARDS mirror. Scope: cloud owns STANDARD boards. Info-page boards are created
+// LOCAL-ONLY (ipc infoPages:create) and must never be wiped by a cloud sync, so the
+// delete excludes board_type='info-page'. When the read excluded archived boards,
+// the delete also keeps archived=0 so archived standard boards survive locally.
+function syncBoardsMirror(rows: Record<string, unknown>[], includeArchived: boolean): void {
+  try {
+    const db = getDatabase()
+    const tx = db.transaction((boards: Record<string, unknown>[]) => {
+      const del = includeArchived
+        ? "DELETE FROM workspace_boards WHERE COALESCE(board_type,'standard')<>'info-page'"
+        : "DELETE FROM workspace_boards WHERE COALESCE(board_type,'standard')<>'info-page' AND COALESCE(archived,0)=0"
+      db.prepare(del).run()
+      const ins = db.prepare(insertSql('workspace_boards', BOARD_COLS))
+      for (const b of boards) ins.run(rowFor(BOARD_COLS, b))
+    })
+    tx(rows)
+  } catch (e) { console.warn('[boards] local boards mirror sync failed (read served from cloud):', (e as Error)?.message) }
+}
+function readBoardsMirror(actor: Actor, visible: Set<string>, includeArchived: boolean): Record<string, unknown>[] {
+  try {
+    // Mirror online listBoards EXACTLY: non-deleted, archive-filtered, visibility-
+    // filtered — and NO board_type filter. Info-page boards must stay in the result
+    // so the `boards` array feeds Intelligence's project picker + the Info Pages list
+    // offline (Intelligence/index.tsx, InfoPages/index.tsx read them from here). The
+    // sidebar excludes them via its own renderer filter (Sidebar.tsx). Note: the
+    // DELETE guard in syncBoardsMirror still keeps board_type='info-page' — that's a
+    // write-side protection for LOCAL-ONLY rows, unrelated to this read.
+    let sql = 'SELECT * FROM workspace_boards WHERE COALESCE(deleted,0)=0'
+    if (!includeArchived) sql += ' AND COALESCE(archived,0)=0'
+    sql += ' ORDER BY position ASC, created_at ASC'
+    const rows = getDatabase().prepare(sql).all() as Record<string, unknown>[]
+    return rows.filter(b => actor.isRoot || visible.has(String(b.id)))
+  } catch (e) { console.warn('[boards] local boards mirror read failed:', (e as Error)?.message); return [] }
+}
+
+// ARCHIVED-boards mirror. Separate from syncBoardsMirror because the scopes are
+// COMPLEMENTARY: listBoards syncs archived=0 standard boards, this syncs archived=1
+// standard boards. Reusing syncBoardsMirror(…, true) would delete BOTH and wipe the
+// active boards. Delete guard still excludes info-page (local-only rows).
+function syncArchivedBoardsMirror(rows: Record<string, unknown>[]): void {
+  try {
+    const db = getDatabase()
+    const tx = db.transaction((boards: Record<string, unknown>[]) => {
+      db.prepare("DELETE FROM workspace_boards WHERE COALESCE(board_type,'standard')<>'info-page' AND COALESCE(archived,0)=1").run()
+      const ins = db.prepare(insertSql('workspace_boards', BOARD_COLS))
+      for (const b of boards) ins.run(rowFor(BOARD_COLS, b))
+    })
+    tx(rows)
+  } catch (e) { console.warn('[boards] local archived boards mirror sync failed (read served from cloud):', (e as Error)?.message) }
+}
+function readArchivedBoardsMirror(actor: Actor, visible: Set<string>): Record<string, unknown>[] {
+  try {
+    // Match online listArchivedBoards: non-deleted, archived=1, visibility-filtered,
+    // no board_type filter (parity with readBoardsMirror).
+    const rows = getDatabase()
+      .prepare('SELECT * FROM workspace_boards WHERE COALESCE(deleted,0)=0 AND COALESCE(archived,0)=1 ORDER BY archived_at DESC')
+      .all() as Record<string, unknown>[]
+    return rows.filter(b => actor.isRoot || visible.has(String(b.id)))
+  } catch (e) { console.warn('[boards] local archived boards mirror read failed:', (e as Error)?.message); return [] }
+}
+
+// COLUMNS mirror. Scope: the board_ids just read (a single board when boardId is
+// passed, else every board in the result). Columns have no local-only writer.
+function syncColumnsMirror(rows: Record<string, unknown>[], boardId?: string): void {
+  try {
+    const db = getDatabase()
+    const boardIds = boardId ? [boardId] : [...new Set(rows.map(r => String(r.board_id)))]
+    const tx = db.transaction((cols: Record<string, unknown>[]) => {
+      if (boardIds.length) {
+        const ph = boardIds.map(() => '?').join(',')
+        db.prepare(`DELETE FROM workspace_columns WHERE board_id IN (${ph})`).run(...boardIds)
+      }
+      const ins = db.prepare(insertSql('workspace_columns', COLUMN_COLS))
+      for (const c of cols) ins.run(rowFor(COLUMN_COLS, c))
+    })
+    tx(rows)
+  } catch (e) { console.warn('[boards] local columns mirror sync failed (read served from cloud):', (e as Error)?.message) }
+}
+function readColumnsMirror(actor: Actor, visible: Set<string>, boardId?: string): Record<string, unknown>[] {
+  try {
+    let sql = 'SELECT * FROM workspace_columns'
+    const params: string[] = []
+    if (boardId) { sql += ' WHERE board_id=?'; params.push(boardId) }
+    sql += ' ORDER BY position ASC'
+    const rows = getDatabase().prepare(sql).all(...params) as Record<string, unknown>[]
+    return rows.filter(c => actor.isRoot || visible.has(String(c.board_id)))
+  } catch (e) { console.warn('[boards] local columns mirror read failed:', (e as Error)?.message); return [] }
+}
+
+// TASKS mirror. Scope: ACTIVE (archived=0/NULL) tasks on the boards just read.
+// Archived tasks, and tasks on boards not in this read, survive untouched.
+// NOTE: this OVERWRITES local task rows from cloud — see COMMIT 1 report (To-Do):
+// todo:complete/uncomplete write column_id/completed_at LOCAL-ONLY, so those local
+// changes are reverted here on the next Workspace load until the To-Do write path
+// is migrated to cloud.
+function syncTasksMirror(rows: Record<string, unknown>[], activeBoardIds: string[]): void {
+  try {
+    const db = getDatabase()
+    const tx = db.transaction((tasks: Record<string, unknown>[]) => {
+      if (activeBoardIds.length) {
+        const ph = activeBoardIds.map(() => '?').join(',')
+        db.prepare(`DELETE FROM workspace_tasks WHERE board_id IN (${ph}) AND COALESCE(archived,0)=0`).run(...activeBoardIds)
+      }
+      const ins = db.prepare(insertSql('workspace_tasks', TASK_COLS))
+      for (const t of tasks) ins.run(rowFor(TASK_COLS, t))
+    })
+    tx(rows)
+  } catch (e) { console.warn('[boards] local tasks mirror sync failed (read served from cloud):', (e as Error)?.message) }
+}
+function readTasksMirror(actor: Actor, visible: Set<string>): Record<string, unknown>[] {
+  try {
+    const rows = getDatabase().prepare(`
+      SELECT t.* FROM workspace_tasks t
+      JOIN workspace_boards b ON b.id = t.board_id
+      WHERE COALESCE(b.deleted,0)=0 AND COALESCE(b.archived,0)=0 AND COALESCE(t.archived,0)=0
+      ORDER BY t.position ASC
+    `).all() as Record<string, unknown>[]
+    return rows.filter(t => actor.isRoot || visible.has(String(t.board_id))).map(mapTask)
+  } catch (e) { console.warn('[boards] local tasks mirror read failed:', (e as Error)?.message); return [] }
 }
 
 async function actorCanAccessBoard(actor: Actor, boardId: string): Promise<boolean> {
@@ -154,8 +354,13 @@ export async function listBoards(actingUserId: string | undefined, includeArchiv
   let q = cloud.from('workspace_boards').select('*').eq('deleted', 0)
   if (!includeArchived) q = q.eq('archived', 0)
   const { data, error } = await q.order('position', { ascending: true }).order('created_at', { ascending: true })
-  if (error) throw new Error(`boards list failed: ${error.message}`)
-  return (data ?? []).filter((b: { id: string }) => actor.isRoot || visible.has(b.id)) as Record<string, unknown>[]
+  if (error) {
+    console.warn('[boards] cloud listBoards failed, serving local mirror:', error.message)
+    return readBoardsMirror(actor, visible, includeArchived)
+  }
+  const rows = (data ?? []).filter((b: { id: string }) => actor.isRoot || visible.has(b.id)) as Record<string, unknown>[]
+  syncBoardsMirror(rows, includeArchived)
+  return rows
 }
 
 export async function listArchivedBoards(actingUserId?: string): Promise<Record<string, unknown>[]> {
@@ -164,8 +369,13 @@ export async function listArchivedBoards(actingUserId?: string): Promise<Record<
   const { data, error } = await cloud
     .from('workspace_boards').select('*').eq('deleted', 0).eq('archived', 1)
     .order('archived_at', { ascending: false })
-  if (error) throw new Error(`boards listArchived failed: ${error.message}`)
-  return (data ?? []).filter((b: { id: string }) => actor.isRoot || visible.has(b.id)) as Record<string, unknown>[]
+  if (error) {
+    console.warn('[boards] cloud listArchivedBoards failed, serving local mirror:', error.message)
+    return readArchivedBoardsMirror(actor, visible)
+  }
+  const rows = (data ?? []).filter((b: { id: string }) => actor.isRoot || visible.has(b.id)) as Record<string, unknown>[]
+  syncArchivedBoardsMirror(rows)
+  return rows
 }
 
 export async function createBoard(
@@ -307,8 +517,13 @@ export async function getColumns(actingUserId: string | undefined, boardId?: str
   let q = cloud.from('workspace_columns').select('*')
   if (boardId) q = q.eq('board_id', boardId)
   const { data, error } = await q.order('position', { ascending: true })
-  if (error) throw new Error(`columns get failed: ${error.message}`)
-  return (data ?? []).filter((c: { board_id: string }) => actor.isRoot || visible.has(c.board_id)) as Record<string, unknown>[]
+  if (error) {
+    console.warn('[boards] cloud getColumns failed, serving local mirror:', error.message)
+    return readColumnsMirror(actor, visible, boardId)
+  }
+  const rows = (data ?? []).filter((c: { board_id: string }) => actor.isRoot || visible.has(c.board_id)) as Record<string, unknown>[]
+  syncColumnsMirror(rows, boardId)
+  return rows
 }
 
 const SYSTEM_COLUMN_IDS = new Set([
@@ -365,15 +580,23 @@ export async function getTasks(actingUserId?: string): Promise<Record<string, un
   if (!actor.isRoot && visible.size === 0) return []
   // Active tasks on non-archived boards. Filter to visible boards in JS.
   const { data: boards, error: bErr } = await cloud.from('workspace_boards').select('id').eq('deleted', 0).eq('archived', 0)
-  if (bErr) throw new Error(`tasks board filter failed: ${bErr.message}`)
+  if (bErr) {
+    console.warn('[boards] cloud getTasks board filter failed, serving local mirror:', bErr.message)
+    return readTasksMirror(actor, visible)
+  }
   const activeBoardIds = (boards ?? []).map((b: { id: string }) => b.id)
     .filter((id: string) => actor.isRoot || visible.has(id))
   if (activeBoardIds.length === 0) return []
   const { data, error } = await cloud.from('workspace_tasks').select('*')
     .in('board_id', activeBoardIds).or('archived.is.null,archived.eq.0')
     .order('position', { ascending: true })
-  if (error) throw new Error(`tasks get failed: ${error.message}`)
-  return (data ?? []).map(mapTask)
+  if (error) {
+    console.warn('[boards] cloud getTasks failed, serving local mirror:', error.message)
+    return readTasksMirror(actor, visible)
+  }
+  const rows = (data ?? []) as Record<string, unknown>[]
+  syncTasksMirror(rows, activeBoardIds)
+  return rows.map(mapTask)
 }
 
 export async function getBoardTasks(actingUserId: string | undefined, boardId: string): Promise<Record<string, unknown>[]> {
@@ -725,10 +948,18 @@ export async function memberTaskCount(boardId: string, userId: string): Promise<
 export async function listForUser(actingUserId?: string): Promise<string[]> {
   const actor = await resolveActor(actingUserId)
   const { data: boards, error } = await cloud.from('workspace_boards').select('id').eq('deleted', 0).eq('archived', 0)
-  if (error) throw new Error(`listForUser failed: ${error.message}`)
-  const activeIds = new Set((boards ?? []).map((b: { id: string }) => b.id))
+  // Offline: fall back to the local active-board mirror (never throw). This feeds
+  // the Sidebar's memberBoardIds — a throw here empties a NON-root user's sidebar
+  // even when the board mirror is fresh (root is unaffected: it renders all boards).
+  let activeIds: Set<string>
+  if (error) {
+    console.warn('[boards] cloud listForUser failed, serving local mirror:', error.message)
+    activeIds = localActiveBoardIds()
+  } else {
+    activeIds = new Set((boards ?? []).map((b: { id: string }) => b.id))
+  }
   if (actor.isRoot) return [...activeIds]
-  const visible = await visibleBoardIds(actor)
+  const visible = await visibleBoardIds(actor)   // offline non-root → board_members_mirror
   return [...visible].filter(id => activeIds.has(id))
 }
 

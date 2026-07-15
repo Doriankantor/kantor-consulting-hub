@@ -599,6 +599,24 @@ export function initDatabase(): void {
     console.warn('[DB] board_members migration warning:', err)
   }
 
+  // ── Board membership OFFLINE MIRROR (email-keyed) ─────────────────────────
+  // Cloud board_members is the source of truth (email-keyed, cross-device). This
+  // is a SEPARATE, initially-empty local mirror kept fresh on the visibleBoardIds
+  // success path (see cloud/boards.ts) so non-root users get correct offline board
+  // visibility. It is NOT the legacy board_members table above (that one is
+  // user_id-keyed + seeded and is left untouched).
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS board_members_mirror (
+        board_id   TEXT NOT NULL,
+        user_email TEXT NOT NULL,
+        PRIMARY KEY (board_id, user_email)
+      );
+    `)
+  } catch (err) {
+    console.warn('[DB] board_members_mirror migration warning:', err)
+  }
+
   // To-Do: completed_at for workspace tasks
   try { db.exec('ALTER TABLE workspace_tasks ADD COLUMN completed_at DATETIME;') } catch {}
 
