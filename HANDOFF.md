@@ -1,17 +1,59 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-15 · **v2.1.0 RELEASED** (published 2026-07-15, mac universal DMG/zip + win NSIS, auto-update manifests live) — the Path B arc, summary-key fix, **reconcile-from-structure** (`edaab46`), and the **PDF extraction fix** (`283dc38`) all shipped. The "committed-but-unreleased batch" framing is now OBSOLETE — that batch shipped. **New milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-15 · **v2.1.0 RELEASED**, plus **6 commits since on `main` — COMMITTED BUT UNRELEASED** (HEAD `23de14d`, `origin/main` up to date, tree clean). Since the release: the **cosmetic sweep** (remove dead `'summarize'` task `7f36605`, remove sidebar Archive expander `ff2bd9a`, Info-Pages badge fix `0425f19`), the **`known_tags` cloud migration** (`0865948` — first of the three intel migrations, the reusable template), and the **OFFLINE ARC** — Commit 1 **live cloud mirror** for boards/columns/tasks (`504bf1f`) and Commit 2 **connection state + offline banner + edit lockout + reconnect refetch** (`23de14d`). None of these six is in a published build yet — next `npm run release` ships them. **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
-**Where we are: v2.1.0 is RELEASED** — published 2026-07-15 to GitHub Releases (mac
-universal DMG/zip + win NSIS x64, `latest-mac.yml`/`latest.yml` auto-update manifests
-live). HEAD = `460a8b6` (the `2.1.0` version bump; tag `v2.1.0` on the remote),
-`origin/main` up to date, working tree clean apart from these two docs. The old
-"committed-but-unreleased batch" framing is **obsolete — it all shipped.** v2.1.0 shipped:
-**3e-1, Duplicate, T6a, tag-delete fix, T7, persist fix, Phase 1, Path B (B1/B2/B3), the
-summary-key fix (`c0be06f`), reconcile-from-structure (`edaab46`), and the PDF extraction
-fix (`283dc38`).**
+**Where we are: v2.1.0 RELEASED + 6 commits on `main` (unreleased).** HEAD = `23de14d`,
+`origin/main` up to date, working tree clean apart from these two docs. v2.1.0 itself
+(`460a8b6`) shipped 2026-07-15 to GitHub Releases. **Since then, six commits are on `main`
+but NOT in any published build** — the next `npm run release` ships them:
+
+1. **Cosmetic sweep** (3 commits): removed the dead `'summarize'` analyze task (`7f36605`),
+   removed the sidebar Archive expander (`ff2bd9a`), fixed the Info-Pages list badge that
+   counted the legacy table and was refilled by a zombie `syncSources` poll (`0425f19`).
+2. **`known_tags` cloud migration** (`0865948`) — the FIRST of the three intel cloud
+   migrations and the **reusable template**: cloud is the source of truth, a local
+   `known_tags` table is kept as an OFFLINE MIRROR (sync-on-read in a transaction, fall
+   back to mirror on cloud error, never throw), realtime invalidation via
+   `intel:tagsInvalidate`. `intelligence_sources` and `info_page_sources` follow this shape.
+3. **OFFLINE ARC — Commit 1 (`504bf1f`): live cloud mirror for boards/columns/tasks.**
+   `cloud/boards.ts` `listBoards`/`listArchivedBoards`/`getColumns`/`getTasks`/`listForUser`
+   now sync a scoped local mirror on cloud success and serve it on cloud error. Scoped
+   deletes protect rows cloud doesn't own (info-page boards are LOCAL-ONLY via
+   `infoPages:create`; archived boards/tasks; other-board tasks). New email-keyed
+   `board_members_mirror` gives non-root users correct offline visibility (fails closed if
+   never synced online). This also fixed To-Do⇄Kanban disagreement (local `workspace_tasks`
+   was frozen pre-migration seed data; the mirror makes `todo:getMyTasks` read fresh).
+4. **OFFLINE ARC — Commit 2 (`23de14d`): connection state + banner + lockout + reconnect.**
+   `cloud/connection.ts` derives an `online` flag from cloud call OUTCOMES (hysteresis: 2
+   consecutive failures → offline, first success → online) with a ~10s recovery probe that
+   runs ONLY while offline, pushed to the renderer over `connection:changed`. **When
+   offline, the reads SKIP cloud entirely** (offline load is now instant instead of ~30s of
+   postgrest retries) — the 6 mirror reads + `visibleBoardIds` + `resolveActor`'s
+   permission lookup + the Group-B reads all short-circuit on `!isOnline()`. `ConnectionContext`
+   → one app-wide `OfflineBanner` in `Layout` (the dead Workspace `cloudError` banner is
+   retired). **Reconnect refetch** on the false→true flip re-pulls boards/areas/labels/tasks/
+   columns/team. **Edit lockout** (read-only offline): To-Do handlers, Workspace Cmd-N,
+   Intelligence Rescore, and per-card routing across all four Intelligence tabs
+   (Approve/Reject/Save/Duplicate/Send + bulk confirm) are disabled with tooltips; AI calls
+   and tag writes rely on the write-hard-fail backstop + the banner.
+
+v2.1.0 itself shipped: **3e-1, Duplicate, T6a, tag-delete fix, T7, persist fix, Phase 1,
+Path B (B1/B2/B3), the summary-key fix (`c0be06f`), reconcile-from-structure (`edaab46`),
+and the PDF extraction fix (`283dc38`).**
+
+**KNOWN GAPS (tracked, not yet fixed):**
+- **To-Do write-through revert** — `todo:complete`/`uncomplete`/`dismiss` still write
+  `column_id`/`completed_at` to LOCAL `workspace_tasks` only, so a To-Do completion now
+  REVERTS on the next successful `getTasks` (the mirror overwrites it from cloud). Fix =
+  route those writes through cloud (`updateTask`/archive). Its own slice.
+- **Realtime dead after reconnect** — realtime channels go `CHANNEL_ERROR` when the network
+  drops and do NOT resubscribe on reconnect; they stay dead until an app restart.
+- **Group-B reads offline** — comments/checklists/task-labels/labels/areas/members/chat/feed
+  return empty offline (no mirror); their views show empty. Each is mirrorable later.
+- **Third intel migrations pending** — `intelligence_sources`, then `info_page_sources`,
+  using the `known_tags` mirror pattern.
 
 **NEW MILESTONE (Dorian, locked): END OF JULY = COMPLETE INTEL PROCESS. PUBLISHING MOVES
 TO AUGUST.** Rationale: **intel is done by SIX people** and is currently
@@ -20,10 +62,13 @@ DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B p
 — the cloud migration is needed for **INTEL**, not for the info-page content tables.
 
 **NEXT UP, in order:**
-1. **Cosmetic sweep** — T1 test tags (`alpha`/`beta`/`test-tag-alpha`), dead `'summarize'`
-   branch in `analyze.ts`, attached-interface removal, sidebar "N new" badge.
-2. **CLOUD MIGRATION** — `intelligence_sources` + `known_tags` + `info_page_sources`.
-   **The big one. UNBLOCKS items 5 and 6 below.**
+1. ~~**Cosmetic sweep**~~ — ✅ DONE (`7f36605`/`ff2bd9a`/`0425f19`).
+2. **CLOUD MIGRATION** — `known_tags` ✅ DONE (`0865948`, the template); **`intelligence_sources`
+   then `info_page_sources` still pending** — the big one, UNBLOCKS items 5 and 6 below.
+   (The boards/columns/tasks live mirror + offline arc — `504bf1f`/`23de14d` — also shipped
+   the reusable mirror + connection-state infrastructure these will build on.)
+2b. **To-Do write-through** — route `todo:complete`/`uncomplete`/`dismiss` through cloud so
+   To-Do completions stop reverting on the next `getTasks` (see KNOWN GAPS). Small slice.
 3. **Pre-route editing** (locked decision — see the locked-decisions section below).
 4. **T6b + per-card tag scoping — COMBINED into one slice** (same prop threading; doing
    them separately means threading twice).

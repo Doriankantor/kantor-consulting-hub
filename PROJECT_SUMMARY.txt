@@ -1,7 +1,8 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-15
-  Current version: v2.1.0 (RELEASED)  |   278 commits   |   ~35,275 lines of TS/TSX
+  Current version: v2.1.0 (RELEASED) + 6 commits on main, UNRELEASED (HEAD 23de14d)
+                   285 commits   |   ~35,938 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
   v2.1.0 RELEASED (published 2026-07-15; mac universal DMG/zip + win NSIS x64, auto-update
   manifests live). A MINOR bump (not a patch) shipping the whole post-v2.0.22 batch: the
@@ -24,11 +25,44 @@
   RECURRING BUG CLASS: SILENT FAILURE — a swallowed error, wrong output accepted as real
   (B1 max_tokens truncation + the PDF bare catch). Never write a bare catch {}.
   Working tree is otherwise CLEAN (docs only). NEXT MILESTONE (locked): COMPLETE THE INTEL
-  PROCESS BY END OF JULY, publishing in August — cosmetic sweep → CLOUD MIGRATION
-  (intelligence_sources + known_tags + info_page_sources; needed for INTEL's six-person
-  team, not for Dorian-alone publishing) → pre-route editing → T6b + per-card scoping →
-  feedback loop → dedup → span annotation.
+  PROCESS BY END OF JULY, publishing in August — cosmetic sweep (DONE) → CLOUD MIGRATION
+  (known_tags DONE; intelligence_sources + info_page_sources pending — needed for INTEL's
+  six-person team, not for Dorian-alone publishing) → pre-route editing → T6b + per-card
+  scoping → feedback loop → dedup → span annotation.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── SINCE v2.1.0 — 6 commits on main, UNRELEASED (next `npm run release` ships them) ──
+  • COSMETIC SWEEP: removed dead 'summarize' analyze task (7f36605); removed sidebar Archive
+    expander (ff2bd9a); fixed Info-Pages list badge counting the legacy table + killed a
+    zombie syncSources poll (0425f19).
+  • known_tags CLOUD MIGRATION (0865948) — FIRST of three intel migrations + the reusable
+    TEMPLATE: cloud = source of truth; local known_tags kept as an OFFLINE MIRROR
+    (sync-on-read in a transaction, fall back to mirror on cloud error, never throw);
+    realtime invalidation via intel:tagsInvalidate. intelligence_sources + info_page_sources
+    will follow this exact shape.
+  • OFFLINE ARC, Commit 1 (504bf1f) — LIVE CLOUD MIRROR for boards/columns/tasks.
+    cloud/boards.ts listBoards/listArchivedBoards/getColumns/getTasks/listForUser sync a
+    SCOPED local mirror on cloud success and serve it on cloud error. Scoped deletes protect
+    rows cloud doesn't own (info-page boards are LOCAL-ONLY via infoPages:create; archived
+    boards/tasks; other-board tasks). New email-keyed board_members_mirror gives non-root
+    users correct offline visibility (fails closed if never synced). Also fixed To-Do⇄Kanban
+    disagreement (local workspace_tasks was frozen pre-migration seed; mirror makes
+    todo:getMyTasks read fresh).
+  • OFFLINE ARC, Commit 2 (23de14d) — CONNECTION STATE + OFFLINE BANNER + EDIT LOCKOUT +
+    RECONNECT REFETCH. cloud/connection.ts derives an `online` flag from cloud call OUTCOMES
+    (hysteresis: 2 consecutive failures → offline, first success → online) + a ~10s recovery
+    probe that runs ONLY while offline, pushed over connection:changed. When offline the reads
+    SKIP cloud entirely (instant offline load vs ~30s of postgrest retries): the 6 mirror
+    reads + visibleBoardIds + resolveActor's permission lookup + Group-B reads short-circuit
+    on !isOnline(). ConnectionContext → one app-wide OfflineBanner in Layout (dead Workspace
+    cloudError banner retired). Reconnect refetch on the false→true flip. Edit lockout
+    (read-only offline): To-Do handlers, Workspace Cmd-N, Intelligence Rescore, per-card
+    routing across all four Intelligence tabs (Approve/Reject/Save/Duplicate/Send + bulk).
+  • KNOWN GAPS: (1) todo:complete/uncomplete/dismiss still write local-only, so a To-Do
+    completion now REVERTS on the next getTasks — route through cloud (own slice); (2)
+    realtime channels go CHANNEL_ERROR on network drop and do NOT resubscribe until restart;
+    (3) Group-B reads (comments/checklists/task-labels/labels/areas/members/chat/feed) return
+    empty offline — mirrorable later.
 ═══════════════════════════════════════════════════════════════════════════════
 
 ───────────────────────────────────────────────────────────────────────────────
