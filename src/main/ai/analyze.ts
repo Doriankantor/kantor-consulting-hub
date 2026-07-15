@@ -2,7 +2,6 @@
 // Shared, project-aware Claude analysis helper (Intelligence restructure — 2a).
 //
 // One reusable main-process function that the Intelligence AI features will call:
-//   • 'summarize'  — social/URL text → concise summary + suggested tags
 //   • 'relevance'  — interview/article text → relevance_score (0-10) + reasoning
 //   • 'reconcile'  — document text + researcher notes → integrated summary + score
 //
@@ -23,10 +22,10 @@ import { resolveAnthropicKey } from '../ipc'
 // constant is GATE_MODEL = 'claude-haiku-4-5' in ipc/index.ts — a current Haiku 4.5
 // id. We deliberately do NOT copy the stale 'claude-opus-4-5' string still present
 // in the older bespoke call sites. Bump this SINGLE const (e.g. to 'claude-opus-4-8')
-// if summarize/reconcile need more headroom than Haiku provides.
+// if reconcile needs more headroom than Haiku provides.
 const MODEL = 'claude-haiku-4-5'
 
-export type AnalyzeTask = 'summarize' | 'relevance' | 'reconcile'
+export type AnalyzeTask = 'relevance' | 'reconcile'
 
 export interface ProjectConfig {
   name?: string
@@ -209,23 +208,6 @@ function buildPrompt(
   const body = text.slice(0, 8000) // cost/context cap, matches the doc-analysis path
   const tagsReuse = tagReuseBlock(existingTags) // T7: '' when no existing vocabulary
   const priorStructure = priorStructureBlock(priorAi) // '' when no prior extraction
-
-  if (task === 'summarize') {
-    return {
-      system,
-      user: `${context}
-
-Summarize the following source for an analyst tracking this project. Be concise and factual.
-${tagsReuse}Return ONLY JSON with exactly these keys:
-{
-  "summary": "<2-4 sentence summary>",
-  "suggested_tags": ["<short topical tag>", "..."]
-}
-
-Source:
-${body}`,
-    }
-  }
 
   if (task === 'reconcile') {
     const notes = (userNotes ?? '').trim()
