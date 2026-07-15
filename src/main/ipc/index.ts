@@ -3113,13 +3113,19 @@ function registerIntelligenceHandlers(): void {
             const buffer = readFileSync(filePath)
             const pdfData = await pdfParse(buffer)
             textContent = pdfData.text?.slice(0, 50000) || ''
-          } catch { textContent = '[PDF text extraction unavailable]' }
+          } catch (e) {
+            console.warn('[Intelligence] PDF text extraction FAILED for', fileName, e)
+            textContent = '[PDF text extraction unavailable]'
+          }
         } else if (ext === 'docx') {
           try {
             const mammoth = require('mammoth')
             const mammothResult = await mammoth.extractRawText({ path: filePath })
             textContent = mammothResult.value?.slice(0, 50000) || ''
-          } catch { textContent = '[DOCX text extraction unavailable]' }
+          } catch (e) {
+            console.warn('[Intelligence] DOCX text extraction FAILED for', fileName, e)
+            textContent = '[DOCX text extraction unavailable]'
+          }
         }
 
         // 2b (human-first): AI does NOT auto-run on upload. The document just
