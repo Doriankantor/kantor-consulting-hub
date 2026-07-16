@@ -1,13 +1,16 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-15 · **v2.1.0 RELEASED**, plus **6 commits since on `main` — COMMITTED BUT UNRELEASED** (HEAD `23de14d`, `origin/main` up to date, tree clean). Since the release: the **cosmetic sweep** (remove dead `'summarize'` task `7f36605`, remove sidebar Archive expander `ff2bd9a`, Info-Pages badge fix `0425f19`), the **`known_tags` cloud migration** (`0865948` — first of the three intel migrations, the reusable template), and the **OFFLINE ARC** — Commit 1 **live cloud mirror** for boards/columns/tasks (`504bf1f`) and Commit 2 **connection state + offline banner + edit lockout + reconnect refetch** (`23de14d`). None of these six is in a published build yet — next `npm run release` ships them. **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-16 · **v2.2.0 RELEASED** (published 2026-07-16, tag `v2.2.0`, HEAD `3dc945a`, `origin/main` up to date, tree clean). **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
-**Where we are: v2.1.0 RELEASED + 6 commits on `main` (unreleased).** HEAD = `23de14d`,
-`origin/main` up to date, working tree clean apart from these two docs. v2.1.0 itself
-(`460a8b6`) shipped 2026-07-15 to GitHub Releases. **Since then, six commits are on `main`
-but NOT in any published build** — the next `npm run release` ships them:
+**Where we are: v2.2.0 RELEASED** (published 2026-07-16; version-bump commit `3dc945a`,
+tag `v2.2.0` pushed BEFORE the release build — no tag race). HEAD = `3dc945a`,
+`origin/main` up to date, working tree clean apart from these two docs. 8 assets live on
+GitHub Releases including both auto-update manifests, so every installed build (incl. the
+Mac mini) self-updates to 2.2.0 — which is what unlocks the pending cross-device
+verification. v2.2.0 shipped the 8 commits since v2.1.0. What they are, and **why they
+took the shape they did**:
 
 1. **Cosmetic sweep** (3 commits): removed the dead `'summarize'` analyze task (`7f36605`),
    removed the sidebar Archive expander (`ff2bd9a`), fixed the Info-Pages list badge that
@@ -15,45 +18,105 @@ but NOT in any published build** — the next `npm run release` ships them:
 2. **`known_tags` cloud migration** (`0865948`) — the FIRST of the three intel cloud
    migrations and the **reusable template**: cloud is the source of truth, a local
    `known_tags` table is kept as an OFFLINE MIRROR (sync-on-read in a transaction, fall
-   back to mirror on cloud error, never throw), realtime invalidation via
-   `intel:tagsInvalidate`. `intelligence_sources` and `info_page_sources` follow this shape.
+   back to mirror on cloud error, never throw), skip-cloud-when-offline, realtime
+   invalidation via `intel:tagsInvalidate`. **Deliberate cloud/local schema divergence:**
+   the cloud table OMITS the global `(name,type)` unique index so per-project uniqueness
+   works as T1 intended — but `db.ts` RECREATES that index locally on every startup.
+   **LOCAL BUG STILL OPEN:** the resurrected index means the local mirror cannot hold the
+   same tag name under two different projects — **fix `db.ts:770` BEFORE Phase 2 lights up
+   a second project's tags**, or the mirror sync will silently skip them.
 3. **OFFLINE ARC — Commit 1 (`504bf1f`): live cloud mirror for boards/columns/tasks.**
    `cloud/boards.ts` `listBoards`/`listArchivedBoards`/`getColumns`/`getTasks`/`listForUser`
-   now sync a scoped local mirror on cloud success and serve it on cloud error. Scoped
+   sync a scoped local mirror on cloud success and serve it on cloud error. Scoped
    deletes protect rows cloud doesn't own (info-page boards are LOCAL-ONLY via
    `infoPages:create`; archived boards/tasks; other-board tasks). New email-keyed
-   `board_members_mirror` gives non-root users correct offline visibility (fails closed if
-   never synced online). This also fixed To-Do⇄Kanban disagreement (local `workspace_tasks`
-   was frozen pre-migration seed data; the mirror makes `todo:getMyTasks` read fresh).
+   `board_members_mirror` gives non-root users correct offline visibility. Also fixed
+   To-Do⇄Kanban disagreement (local `workspace_tasks` was frozen pre-migration seed data).
+   **The lesson that cost real debugging time:** `listArchivedBoards` had NO fallback and
+   sits in `loadBoards`' `Promise.all` NEXT TO `listBoards` — one unguarded throw
+   **discarded BOTH results** and emptied the sidebar offline even though the mirror was
+   correct and `listBoards` had succeeded. **Promise.all poisoning is a real bug class
+   here**: every read that lands in a `Promise.all` needs its own fallback, or it poisons
+   its siblings.
 4. **OFFLINE ARC — Commit 2 (`23de14d`): connection state + banner + lockout + reconnect.**
    `cloud/connection.ts` derives an `online` flag from cloud call OUTCOMES (hysteresis: 2
    consecutive failures → offline, first success → online) with a ~10s recovery probe that
-   runs ONLY while offline, pushed to the renderer over `connection:changed`. **When
-   offline, the reads SKIP cloud entirely** (offline load is now instant instead of ~30s of
-   postgrest retries) — the 6 mirror reads + `visibleBoardIds` + `resolveActor`'s
-   permission lookup + the Group-B reads all short-circuit on `!isOnline()`. `ConnectionContext`
-   → one app-wide `OfflineBanner` in `Layout` (the dead Workspace `cloudError` banner is
-   retired). **Reconnect refetch** on the false→true flip re-pulls boards/areas/labels/tasks/
-   columns/team. **Edit lockout** (read-only offline): To-Do handlers, Workspace Cmd-N,
-   Intelligence Rescore, and per-card routing across all four Intelligence tabs
-   (Approve/Reject/Save/Duplicate/Send + bulk confirm) are disabled with tooltips; AI calls
-   and tag writes rely on the write-hard-fail backstop + the banner.
+   runs ONLY while offline, pushed to the renderer over `connection:changed`. When offline,
+   reads SKIP cloud entirely (instant offline load vs ~30s of postgrest retries).
+   `ConnectionContext` → one app-wide `OfflineBanner` in `Layout`; reconnect refetch on the
+   false→true flip; edit lockout (To-Do, Workspace Cmd-N, Rescore, per-card routing on all
+   four Intelligence tabs). **The trap this fixed:** Commit 1's mirror fallback had
+   SILENTLY KILLED the app's only offline signal — the reads stopped throwing, so the old
+   `cloudError` banner became dead code and the app had no idea it was offline. **A
+   fallback that swallows the error also swallows the diagnosis** — hence the dedicated
+   outcome-derived connection state.
+5. **`intelligence_sources` CLOUD MIGRATION (`cfdd4b1`) — the big one.** 242 rows
+   backfilled and **byte-verified** (id/url set equality, status distribution, and
+   byte-for-byte parity on all 21 irreplaceable `analysis_json` blobs + the 23.5KB content
+   row). 48-column strict mirror; timestamps stay `text` so date-only `published_at`
+   values survive. **The two-tier rule that governs every handler:**
+   - **PURE READS** are cloud-first / mirror-fallback / skip-when-offline, and the read
+     sync is **UPSERT-ONLY** — `getSources` is filtered AND paginated, so a scoped
+     delete-then-insert would wipe mirror rows the current view didn't return, and the
+     five info-page JOINs read that mirror (two of them INNER: wiped rows would silently
+     vanish from New Sources).
+   - **READ-MODIFY-WRITE** (updateStatus, the three `analysis_json` sub-object mergers,
+     confirmImported, gate, rescore) is **CLOUD-AUTHORITATIVE and never reads the
+     mirror** — three handlers merge sub-objects (`.ai`/`.human`/`.reconciled`) into the
+     SAME `analysis_json` blob, so a stale mirror read + cloud write would silently
+     clobber a sibling. Offline they return `{ok:false,'Unavailable while offline'}` (the
+     commit-2 lockout already disables the controls; this is the backstop).
+   Also proven during investigation: **the GDELT Action writes `cs_articles`, NOT
+   `intelligence_sources`** — the pipeline is upstream of the app and needed NO change;
+   only `syncFromContestedSkies`' insert moved to cloud (upsert-ignore-on-url) + mirror.
+   Translation details that would otherwise drift: `ilike` not `like` (SQLite LIKE is
+   case-insensitive), `nullsFirst:false` on both order keys (SQLite sorts NULLs last on
+   DESC, Postgres first), and `, ( )` stripped from search terms (PostgREST logic tree).
+6. **Realtime on `intelligence_sources` + resubscribe-on-reconnect (`aba6b91`).**
+   Channels went CHANNEL_ERROR on any network drop and stayed dead until restart — all of
+   them, silently (the subscribe callback only warned). **The subtle part: even if the
+   library rejoins on its own, `postgres_changes` never replays the outage window**, so a
+   silent rejoin leaves you stale with no refetch trigger. Hence: deterministic
+   teardown+resubscribe (`rescope()`) on the offline→online edge via a new
+   `onReconnect` registry in `connection.ts` (decoupled — wired in `main/index.ts`),
+   PLUS a renderer refetch on the same edge (all four Intelligence tabs, `prevOnlineRef`
+   guard). `intelligence_sources` is a second intel realtime source
+   (`intel:sourcesInvalidate`, separate channel because the renderer contract differs
+   from tags), and a new optional `applyToMirror` hook on `RealtimeSourceConfig` lets the
+   intel source remove the mirror row on a cross-device DELETE — the one change the
+   upsert-only read sync can never propagate. Verified live: reconnect fires
+   teardown+resubscribe (18 channels / 6 sources) and a cloud UPDATE propagates to the
+   open News tab with no interaction.
 
 v2.1.0 itself shipped: **3e-1, Duplicate, T6a, tag-delete fix, T7, persist fix, Phase 1,
 Path B (B1/B2/B3), the summary-key fix (`c0be06f`), reconcile-from-structure (`edaab46`),
 and the PDF extraction fix (`283dc38`).**
 
-**KNOWN GAPS (tracked, not yet fixed):**
+**KNOWN GAPS (tracked):**
+- ~~**Realtime dead after reconnect**~~ — **CLOSED** (`aba6b91`): deterministic
+  teardown+resubscribe on the online edge + renderer refetch.
+- **Cross-device verification pending** — no second Mac for ~2 weeks; will test via a
+  second macOS user account instead (it gets its own `userData` and therefore its own
+  local DB/mirror, so it exercises the same two-device paths).
+- **Cross-device DELETE relies on realtime's `applyToMirror`** — the read sync is
+  upsert-only and never removes; if the DELETE event is missed (app closed during it),
+  the stale mirror row lingers until the row is touched again.
 - **To-Do write-through revert** — `todo:complete`/`uncomplete`/`dismiss` still write
-  `column_id`/`completed_at` to LOCAL `workspace_tasks` only, so a To-Do completion now
+  `column_id`/`completed_at` to LOCAL `workspace_tasks` only, so a To-Do completion
   REVERTS on the next successful `getTasks` (the mirror overwrites it from cloud). Fix =
   route those writes through cloud (`updateTask`/archive). Its own slice.
-- **Realtime dead after reconnect** — realtime channels go `CHANNEL_ERROR` when the network
-  drops and do NOT resubscribe on reconnect; they stay dead until an app restart.
+- **`info_page_sources` migration** — the LAST table; the pointer tier under the
+  already-migrated `intelligence_sources`.
+- **Local `known_tags` global-unique index** — `db.ts:770` recreates the `(name,type)`
+  unique index the cloud schema deliberately dropped; the local mirror can't hold the
+  same tag name under two projects. Fix BEFORE a second project's tags go live.
 - **Group-B reads offline** — comments/checklists/task-labels/labels/areas/members/chat/feed
   return empty offline (no mirror); their views show empty. Each is mirrorable later.
-- **Third intel migrations pending** — `intelligence_sources`, then `info_page_sources`,
-  using the `known_tags` mirror pattern.
+- **Contested Skies renders BOTH source surfaces** — "New Sources" (pipeline,
+  `info_page_sources`) AND the legacy manual "Sources" tab (`info_page_items`): two
+  surfaces, different tables, UX confusion. Needs a consolidation decision.
+- **`addApprovedSourceToInfoPages` is defined-but-uncalled dead code** (retired in 3c;
+  still reads local `intelligence_sources`). Delete when convenient.
 
 **NEW MILESTONE (Dorian, locked): END OF JULY = COMPLETE INTEL PROCESS. PUBLISHING MOVES
 TO AUGUST.** Rationale: **intel is done by SIX people** and is currently
@@ -62,19 +125,18 @@ DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B p
 — the cloud migration is needed for **INTEL**, not for the info-page content tables.
 
 **NEXT UP, in order:**
-1. ~~**Cosmetic sweep**~~ — ✅ DONE (`7f36605`/`ff2bd9a`/`0425f19`).
-2. **CLOUD MIGRATION** — `known_tags` ✅ DONE (`0865948`, the template); **`intelligence_sources`
-   then `info_page_sources` still pending** — the big one, UNBLOCKS items 5 and 6 below.
-   (The boards/columns/tasks live mirror + offline arc — `504bf1f`/`23de14d` — also shipped
-   the reusable mirror + connection-state infrastructure these will build on.)
-2b. **To-Do write-through** — route `todo:complete`/`uncomplete`/`dismiss` through cloud so
+1. **`info_page_sources` migration** — the LAST table (the pointer tier under the
+   migrated `intelligence_sources`; same template).
+2. **To-Do write-through** — route `todo:complete`/`uncomplete`/`dismiss` through cloud so
    To-Do completions stop reverting on the next `getTasks` (see KNOWN GAPS). Small slice.
-3. **Pre-route editing** (locked decision — see the locked-decisions section below).
-4. **T6b + per-card tag scoping — COMBINED into one slice** (same prop threading; doing
+3. **To-Do data half** — `personal_todos` → cloud, personal steps,
+   `board_members.can_assign`, `assigned_by`, completion notification.
+4. **Pre-route editing** (locked decision — see the locked-decisions section below).
+5. **T6b + per-card tag scoping — COMBINED into one slice** (same prop threading; doing
    them separately means threading twice).
-5. **Human-relevance feedback loop** into the Haiku gate (**PIPELINE repo**).
-6. **Collection dedup + outlet targeting** (**PIPELINE repo**).
-7. **Interview span annotation** (design-first; at risk of slipping to August).
+6. **Human-relevance feedback loop** into the Haiku gate (**PIPELINE repo**).
+7. **Collection dedup + outlet targeting** (**PIPELINE repo**).
+8. **Interview span annotation** (design-first; at risk of slipping to August).
 
 Then: **narrow publish v1 in August.**
 
@@ -151,8 +213,8 @@ Still do NOT re-attempt "make the summary hold verbatim specifics."
 
 ## ⚠ Lesson — SILENT FAILURE IS THE RECURRING BUG CLASS
 
-**Two instances now, same shape: a failure swallowed with no logging, wrong output
-accepted as real.**
+**FOUR instances now, same shape: a failure swallowed with no logging (or a fallback that
+hides it), wrong output accepted as real.**
 
 - **(a) B1 — `max_tokens: 1024`** truncated the structured JSON → parse failure →
   `{ok:false}` with **NO console output** (only a tiny footer line). Raised to 4096 + a
@@ -170,9 +232,20 @@ accepted as real.**
   - **KEY TRAP: upgrading LOCAL Node would NOT have fixed this** — the app runs on
     **ELECTRON's bundled Node**, not the system one. The standalone `node -e` test is what
     proved the *lib itself* was broken rather than the bundling path.
+- **(c) `listArchivedBoards` throwing into a `Promise.all`** (offline arc) — it had no
+  mirror fallback, and `loadBoards` awaits it in a `Promise.all` next to `listBoards`:
+  one throw **discarded the sibling's perfectly good result** and blanked the sidebar
+  offline. The failure wasn't even in the code being debugged. A read that can throw
+  inside a `Promise.all` silently poisons everything joined with it.
+- **(d) The mirror fallback killing `cloudError`** (offline arc) — Commit 1's fallback
+  made the board reads stop throwing, which **silently killed the app's only offline
+  signal**: the `cloudError` banner became dead code and nothing knew the app was
+  offline. **A fallback that swallows the error also swallows the diagnosis** — fixed by
+  the dedicated outcome-derived connection state (`reportCloudResult`).
 
-**RULE: never write a bare `catch {}`. Bind the error and log it. A placeholder that flows
-into the AI as content is worse than a visible failure.**
+**RULE: never write a bare `catch {}`. Bind the error and log it. A fallback must not
+swallow the signal that something failed. A placeholder that flows into the AI as content
+is worse than a visible failure.**
 
 **The arc (why):** make Source Intelligence human-first (researcher notes + on-demand
 AI, never auto-run) and route items into a specific project's Info Pages "New sources"
@@ -363,6 +436,14 @@ the backlog.
 
 ## Release status at a glance
 
+- **v2.2.0 — RELEASED** (published 2026-07-16; version-bump `3dc945a`, tag `v2.2.0`
+  pushed before the build — no tag race). 8 assets: mac universal DMG/zip + blockmaps,
+  win NSIS x64 exe + blockmap, and both auto-update manifests (`latest-mac.yml`/
+  `latest.yml`). A **MINOR** bump shipping the 8 post-v2.1.0 commits: cosmetic sweep
+  (`7f36605`/`ff2bd9a`/`0425f19`), `known_tags` migration (`0865948`), offline arc
+  (`504bf1f`/`23de14d`), **`intelligence_sources` cloud migration** (`cfdd4b1`), and
+  **realtime + resubscribe-on-reconnect** (`aba6b91`). Docs commit for the intel arc
+  (`8aae3fc`) sits between `23de14d` and `cfdd4b1`.
 - **v2.0.22 — RELEASED** (`937e220`) to GitHub Releases (mac universal DMG/zip + win NSIS
   x64). Contains everything committed since the v2.0.21 tag: member-add hang fix
   (`81e9eea`); Phase-B **B0.3** (`a1ca0d4`), **B0.5** (`f9a5db4`), **B0.6** (`a0a67b3`),
@@ -385,8 +466,9 @@ the backlog.
   version-bump `937e220` sit between T5 and 3e-1.)
 - **Working tree:** only these two docs (`HANDOFF.md`, `PROJECT_SUMMARY.txt`) are
   modified — no source changes pending. Next work is the **intel-process milestone** —
-  cosmetic sweep → **cloud migration** → pre-route editing → T6b+per-card scoping →
-  feedback loop → dedup → span annotation (see "Start here" above).
+  `info_page_sources` migration → To-Do write-through → To-Do data half → pre-route
+  editing → T6b+per-card scoping → feedback loop → dedup → span annotation (see
+  "Start here" above).
 
 ## v2.0.21 — keyword matcher word-boundary fix (released)
 
@@ -711,13 +793,18 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   (`electron-builder --mac --universal`), the native module is left in a state the
   dev Electron can't `dlopen` ("slice is not valid mach-o file"). Run
   `npm run rebuild` before the next `npm run dev`.
+- **MAIN-PROCESS CODE DOES NOT HOT-RELOAD.** HMR refreshes the RENDERER only. Any
+  change under `src/main/**` needs a full `npm run dev` restart to rebuild
+  `out/main`. **Testing a main change against a stale build produces a CONVINCING
+  FALSE NEGATIVE**: the old handler runs, returns ok, the UI updates optimistically,
+  nothing errors — the new code simply never executed. This cost an hour chasing a
+  phantom during the tags migration. If a main-process change "isn't working",
+  check `out/main`'s mtime before debugging the code.
 - **Never run `npm run dev` while a release is packaging** — both write to `out/`
   and you can corrupt the DMG mid-build.
 - **Two apps share one local DB.** A running *installed* production app and a dev
   build both open the same SQLite file; an old installed app can undo cleanups /
   behave on old code. Quit the installed app when testing DB-level changes.
-- **Main-process changes need a dev restart.** HMR only refreshes the renderer, so
-  new IPC handlers / cloud functions won't exist until you relaunch `npm run dev`.
 - **Release tag race:** push commits+tags *before* `npm run release` (electron-builder
   creates the GitHub release/tag). The v2.0.20 release hit this; v2.0.21 avoided it.
 
