@@ -303,6 +303,24 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     return () => window.api.intelligence.removeTagsInvalidateListeners()
   }, [selectedProjectId])
 
+  // Realtime: re-fetch the list + count badges when intelligence_sources changes
+  // in cloud (another device approved/rejected/deleted). load() already refetches
+  // sources + the counts.
+  useEffect(() => {
+    window.api.intelligence.onSourcesInvalidate(() => { load() })
+    return () => window.api.intelligence.removeSourcesInvalidateListeners()
+  }, [load])
+
+  // Reconnect: on offline→online, refetch — realtime's postgres_changes never
+  // replays the outage window. prevOnlineRef avoids a double-load on mount.
+  const prevOnlineRef = useRef(online)
+  useEffect(() => {
+    const wasOnline = prevOnlineRef.current
+    prevOnlineRef.current = online
+    if (!online || wasOnline) return
+    load()
+  }, [online, load])
+
   // Duplicate slice: search candidate originals while the modal is open (excludes self).
   useEffect(() => {
     if (!dupModalFor || dupSearch.trim().length < 2) { setDupResults([]); return }

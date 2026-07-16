@@ -289,6 +289,10 @@ const api = {
     onTagsInvalidate:     (cb: (d: { boardId: string | null; scope: 'list' | 'board' }) => void) =>
       ipcRenderer.on('intel:tagsInvalidate', (_e, d) => cb(d)),
     removeTagsInvalidateListeners: () => ipcRenderer.removeAllListeners('intel:tagsInvalidate'),
+    // intelligence_sources realtime → re-fetch getSources + the count badges.
+    onSourcesInvalidate:  (cb: (d: { boardId: string | null; scope: 'list' | 'board' }) => void) =>
+      ipcRenderer.on('intel:sourcesInvalidate', (_e, d) => cb(d)),
+    removeSourcesInvalidateListeners: () => ipcRenderer.removeAllListeners('intel:sourcesInvalidate'),
     setArticleTags:       (id: string, type: string, tags: string[]) => ipcRenderer.invoke('intelligence:setArticleTags', id, type, tags),
     logDecision:          (payload: Record<string, unknown>)        => ipcRenderer.invoke('intelligence:logDecision', payload),
     deleteSource:         (id: string)                       => ipcRenderer.invoke('intelligence:deleteSource', id),

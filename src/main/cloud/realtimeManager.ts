@@ -28,6 +28,11 @@ export interface RealtimeSourceConfig {
   isRelevant: (resolved: ResolvedScope, table: string, row: Record<string, unknown>, eventType: RealtimeEventType) => Promise<boolean>
   // Renderer channel to send the invalidate on.
   pushChannel: string
+  // OPTIONAL data-plane hook: apply a cloud change to the local mirror (e.g. a
+  // DELETE removes the mirror row the upsert-only read sync can't drop). The
+  // manager stays data-agnostic — it only invokes this, guarded, before the push;
+  // the source owns the semantics. A mirror-write failure must never kill the push.
+  applyToMirror?: (table: string, row: Record<string, unknown>, eventType: RealtimeEventType) => void
 }
 
 const DEBOUNCE_MS = 250
@@ -70,6 +75,14 @@ function handleEvent(source: RealtimeSourceConfig, table: string, payload: { eve
   const eventType = (payload.eventType ?? 'UPDATE') as RealtimeEventType
   const newRow = payload.new && Object.keys(payload.new).length ? payload.new : undefined
   const row = (newRow ?? payload.old ?? {}) as Record<string, unknown>
+  // Data-plane: let the source apply this change to its local mirror (e.g. a
+  // cross-device DELETE removes the row). Runs regardless of relevance — the
+  // mirror only holds rows the user has read, so an unowned-row delete is a
+  // harmless no-op. Guarded so a mirror-write failure never kills the invalidate.
+  if (source.applyToMirror) {
+    try { source.applyToMirror(table, row, eventType) }
+    catch (e) { console.warn(`[realtime] ${source.name} applyToMirror failed for ${table}:`, (e as Error)?.message) }
+  }
   void (async () => {
     try {
       const resolved = await source.resolveBoardId(table, row, eventType)

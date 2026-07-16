@@ -86,6 +86,14 @@ function mirrorDeleteOne(id: string): void {
   catch (e) { console.warn('[intel] local mirror delete failed (cloud delete succeeded):', (e as Error)?.message) }
 }
 
+// Realtime hook: apply a cross-device cloud DELETE to the local mirror. The
+// upsert-only read sync can never remove a row, so this is the mirror's only
+// removal path besides local deleteSource. REPLICA IDENTITY FULL puts the id on
+// the DELETE old-row, so this is reachable. Best-effort (warns, never throws).
+export function applyCloudDelete(id: string): void {
+  if (id) mirrorDeleteOne(id)
+}
+
 // Re-fetch ONE full cloud row and mirror it. Used after every RMW / pure write so
 // the mirror row is byte-identical to cloud (no field drift from DB defaults).
 async function resyncRow(id: string): Promise<void> {

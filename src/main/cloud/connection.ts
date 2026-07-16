@@ -21,6 +21,16 @@ let getWindow: () => BrowserWindow | null = () => null
 const FAILURE_THRESHOLD = 2
 const PROBE_INTERVAL_MS = 10_000
 
+// Offline→online callbacks, invoked once per recovery (from goOnline, after the
+// renderer broadcast). This file stays DECOUPLED from the realtime manager — the
+// wiring (register rescope here) lives in main/index.ts. Used to deterministically
+// tear down and resubscribe realtime channels on reconnect, because the library's
+// auto-rejoin is unobservable and postgres_changes never replays the outage window.
+const reconnectCallbacks: Array<() => void> = []
+export function onReconnect(cb: () => void): void {
+  reconnectCallbacks.push(cb)
+}
+
 export function initConnection(windowGetter: () => BrowserWindow | null): void {
   getWindow = windowGetter
 }
@@ -48,6 +58,10 @@ function goOnline(): void {
   console.log('[connection] ONLINE — cloud reachable again')
   stopProbe()
   broadcast()
+  // Fire reconnect hooks (realtime resubscribe) AFTER the renderer knows we're back.
+  for (const cb of reconnectCallbacks) {
+    try { cb() } catch (e) { console.warn('[connection] reconnect callback failed:', (e as Error)?.message) }
+  }
 }
 
 // Report the outcome of a real cloud attempt. ok=true (no error) → online now;

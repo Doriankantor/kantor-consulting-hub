@@ -7,11 +7,11 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { initDatabase, getDatabase } from './db'
 import { registerIpcHandlers, startIntelligenceAutoRefresh, triggerInitialNewsFetch } from './ipc'
-import { initRealtime, teardownAll as teardownRealtime } from './cloud/realtimeManager'
+import { initRealtime, rescope as rescopeRealtime, teardownAll as teardownRealtime } from './cloud/realtimeManager'
 import { registerBoardsRealtime } from './cloud/boardsRealtime'
 import { registerContactsRealtime } from './cloud/contactsRealtime'
 import { registerIntelRealtime } from './cloud/intelRealtime'
-import { initConnection, isOnline } from './cloud/connection'
+import { initConnection, isOnline, onReconnect } from './cloud/connection'
 import { runCompletedProjectsSweep } from './cloud/completedSweep'
 
 // Module-level reference so the updater can push events to the window
@@ -87,6 +87,16 @@ app.whenReady().then(() => {
   // and refetches on reconnect.
   initConnection(() => mainWindow)
   ipcMain.handle('connection:get', () => isOnline())
+
+  // On offline→online, deterministically tear down and resubscribe every realtime
+  // channel. We do NOT rely on the library's auto-rejoin: it's unobservable to us
+  // and postgres_changes never replays the outage window, so a silent rejoin would
+  // leave the mirror + renderer stale with no refetch trigger. rescope() is the
+  // clean re-init (teardownAll resets `started`, then startRealtime reopens).
+  onReconnect(() => {
+    console.log('[realtime] reconnect — tearing down and resubscribing all channels')
+    rescopeRealtime()
+  })
 
   // ── Intelligence: start auto-refresh and trigger initial fetch ─────────
   startIntelligenceAutoRefresh()

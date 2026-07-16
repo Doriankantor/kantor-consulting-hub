@@ -152,6 +152,22 @@ export default function SocialTab({ onApprove, project = null }: Props) {
     return () => window.api.intelligence.removeTagsInvalidateListeners()
   }, [project?.id])
 
+  // Realtime: re-fetch the social list when intelligence_sources changes in cloud.
+  useEffect(() => {
+    window.api.intelligence.onSourcesInvalidate(() => { load() })
+    return () => window.api.intelligence.removeSourcesInvalidateListeners()
+  }, [load])
+
+  // Reconnect: on offline→online, refetch — postgres_changes never replays the
+  // outage window. prevOnlineRef avoids a double-load on mount.
+  const prevOnlineRef = useRef(online)
+  useEffect(() => {
+    const wasOnline = prevOnlineRef.current
+    prevOnlineRef.current = online
+    if (!online || wasOnline) return
+    load()
+  }, [online, load])
+
   function toggleCategory(cat: string) {
     setForm(f => ({
       ...f,

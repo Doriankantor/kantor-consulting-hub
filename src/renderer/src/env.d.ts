@@ -799,6 +799,8 @@ interface Window {
       deleteTag:            (name: string, type: string, boardId: string) => Promise<{ ok: boolean; error?: string }>
       onTagsInvalidate:     (cb: (d: { boardId: string | null; scope: 'list' | 'board' }) => void) => void
       removeTagsInvalidateListeners: () => void
+      onSourcesInvalidate:  (cb: (d: { boardId: string | null; scope: 'list' | 'board' }) => void) => void
+      removeSourcesInvalidateListeners: () => void
       setArticleTags:       (id: string, type: string, tags: string[]) => Promise<{ ok: boolean; tags: string[] }>
       logDecision:          (payload: { articleId: string; action: string; aiProposed?: unknown; humanFinal?: unknown; reason?: string | null }) => Promise<{ ok: boolean }>
       deleteSource:         (id: string)                       => Promise<{ ok: boolean }>
