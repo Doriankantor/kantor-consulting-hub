@@ -2,8 +2,9 @@
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-17
   Current version: v2.2.0 (RELEASED 2026-07-16, tag v2.2.0) — UNRELEASED code on main
-                   since: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334 (scroll-jump fix)
-                   295 commits   |   ~36,579 lines of TS/TSX
+                   since: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334 (scroll-jump fix),
+                   a5d4b20 (0a-2 — intel read-tier membership gate)   |   HEAD a5d4b20
+                   296 commits   |   ~36,668 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
   PRIOR RELEASE — v2.1.0 (published 2026-07-15; mac universal DMG/zip + win NSIS x64,
   auto-update manifests live). A MINOR bump shipping the whole post-v2.0.22 batch: the
@@ -27,14 +28,39 @@
   NOW FIVE INSTANCES (see the v2.2.0 + cross-device-test blocks below). Never write a
   bare catch {}; never hardcode a success message after a pipeline.
   Working tree is otherwise CLEAN (docs only). NEXT MILESTONE (locked): COMPLETE THE INTEL
-  PROCESS BY END OF JULY, publishing in August. NEXT UP: ⛔ THE INTEL ACCESS GATE — IN
-  PROGRESS: 0a-1 (compose stamps a project, 8eae348) + 0a-1b (pipeline writer stamps it,
-  2e22178) DONE; 0a-2 (the gate query itself) is the immediate next slice; 0b = realtime
+  PROCESS BY END OF JULY, publishing in August. NEXT UP: ⛔ THE INTEL ACCESS GATE — READ
+  TIER CLOSED: 0a-1 (compose stamps a project, 8eae348) + 0a-1b (pipeline writer stamps it,
+  2e22178) + 0a-2 (intel read-tier membership gate, a5d4b20) DONE; the immediate next slice
+  is 0a-3 (the info_page_* pageId-visibility read tier — the four pipeline reads +
+  infoPages:list + getSourceStats + getSourcePipelineCounts + addMatchingSources; plus the
+  infoPages:list deleted=0 bug and the client-side-picker-filter question); then 0b = realtime
   health-detection (membership propagation) → info_page_sources migration (the LAST table)
   → To-Do write-through → To-Do data half (personal_todos → cloud, personal steps,
   board_members.can_assign, assigned_by, completion notification) → pre-route editing →
   T6b + per-card tag scoping → feedback loop → dedup → span annotation.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-17 — INTEL READ GATE (0a-2, a5d4b20, UNRELEASED) ──
+  • 0a-2 (a5d4b20) — GATE INTEL READS ON BOARD MEMBERSHIP. getSources + the five count reads
+    (getUnreviewedCount, getPipelinePending, getStatusCounts, getUnscoredCount,
+    getImportedCount) had NO membership gate — any signed-in user read every project's
+    intelligence_sources (service-role bypasses RLS, so there was no backstop). Each now
+    gates on BOTH the cloud path (.in('project_board_id', ids) before .range(), and on all
+    three of getStatusCounts' head:true fan-out counts) AND the mirror/offline fallback
+    (AND project_board_id IN (?,…)). ROOT SKIPS THE FILTER entirely (byte-identical to
+    before); an EMPTY visible set SHORT-CIRCUITS before any query (SQLite IN () is a syntax
+    error). New exported boards.ts helper visibleBoardIdsFor() funnels this; visibleBoardIds
+    stays private. It uses resolveIdentity (LOCAL-only), NOT resolveActor — the latter does a
+    member_permissions cloud roundtrip and the gate runs 6× per tab load (DON'T "fix" this).
+    NO preload/renderer change — the actor is ambient via currentActingUserId (the
+    boards:list pattern). TESTED: root sees all 3 socials (filter skipped); dk@ with zero
+    memberships sees nothing everywhere, no crash; dk@ granted Contested Skies sees 2 socials,
+    NOT the board-info-trump one. THE ID NAMESPACE IS UNIFIED (settled): project_board_id
+    values ARE info-page board ids (board-info-latam / board-info-trump are both
+    board_type='info-page') — membership on the info-page board grants intel access, and
+    0a-3's pageId check asks the SAME question. Cloud verified: 251 rows, 0 NULLs, 0 orphans,
+    ZERO documents. NEXT: 0a-3 (the info_page_* read tier; 0a-2 does NOT retract already-
+    leaked mirror rows, which the info-page JOINs still read via raw SQL).
 
   ── 2026-07-17 — INTEL ACCESS-GATE PREP (0a-1 / 0a-1b) + scroll-jump fix (UNRELEASED) ──
   • 0a-1 (8eae348) — STAMP project_board_id AT COMPOSE TIME. addSocial/addInterview/
