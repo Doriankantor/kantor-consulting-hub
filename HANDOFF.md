@@ -1,6 +1,6 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-17 · **v2.2.0 RELEASED** (published 2026-07-16, tag `v2.2.0`). **Last code HEAD `46be18e` after today's (2026-07-17) work (this docs commit sits on top) — the ENTIRE ACCESS-GATE READ TIER IS CLOSED on both tiers: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel gate query — `getSources` + the five counts membership-scoped, cloud + mirror, root sees all, empty-set short-circuits), and 0a-3 (`46be18e`, the `info_page_*` READ tier — 11 reads got an ENTRY GUARD, `infoPages:list` got the `deleted=0` fix + a visibility intersection, `syncSources` got a target-page gate) are all DONE. The next slices are 0b (realtime health) and the NEW 0a-4 (the WRITE surface — still ungated). Also today: a pipeline NULL-writer bug found+fixed (part of `2e22178`), and the aba6b91 scroll-jump regression fixed (`923f334`).** `origin/main` up to date, tree clean. `46be18e` joins `8eae348`/`2e22178`/`923f334`/`a5d4b20` (+ docs `8662b68`) as **UNRELEASED on main** (installed app is 2.2.0). **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1's READ HALF is now FULLY CLOSED on both tiers (intel via 0a-2, `info_page_*` via 0a-3); the WRITE surface (0a-4) and realtime health (0b) remain open — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-17 · **v2.2.0 RELEASED** (published 2026-07-16, tag `v2.2.0`). **Last code HEAD `26ee18c` after today's (2026-07-17) work (this docs commit sits on top) — the ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. The next step is a RELEASE (v2.3.0 — the whole tier is proven and unreleased; researchers are still on ungated 2.2.0), then 0b (realtime health). Also today: a pipeline NULL-writer bug found+fixed (part of `2e22178`), and the aba6b91 scroll-jump regression fixed (`923f334`).** `origin/main` up to date, tree clean. `26ee18c` joins `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`46be18e` (+ docs `8662b68`/`f80b17d`) as **UNRELEASED on main** (installed app is 2.2.0). **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
@@ -101,10 +101,14 @@ mechanism — **nothing is fixed yet**. Each item records what was OBSERVED in t
 what the DIAGNOSTIC then established. Several initial hypotheses were REFUTED — the
 corrected mechanisms matter for the fixes, so both are kept.
 
-1. **ACCESS-CONTROL GAP — intel reads had NO membership gate. → READ HALF FULLY CLOSED
-   (2026-07-17): the intel READ TIER is gated (0a-2, `a5d4b20`) AND the `info_page_*`
-   READ TIER is gated (0a-3, `46be18e`). Still open: the WRITE surface (0a-4) and
-   realtime health (0b).** See the **RESOLUTION** subsection at the end of this finding.
+1. **ACCESS-CONTROL GAP — intel/info-page reads AND writes had NO membership gate. →
+   CLOSED END-TO-END (2026-07-17): intel READ tier gated (0a-2, `a5d4b20`), `info_page_*`
+   READ tier gated (0a-3, `46be18e`), and the `info_page_*` WRITE surface gated (0a-4,
+   `26ee18c`, three axes M/A/R). Reads and writes are now membership-scoped on every
+   surface.** ★ **THE HEADLINE LESSON: before 0a-4, ALL authorization for these writes
+   lived in the RENDERER (`canApprove`/`isAdmin` gate the UI only) — nothing checked
+   server-side. A UI-only permission is a SUGGESTION, not a gate.** See the two **RESOLUTION**
+   subsections at the end of this finding (reads, then writes).
    *Observed:* dk@ had ZERO `board_members` rows (Board Access shows TOTAL MEMBERS 0 on
    every info-page project) yet saw **all articles across all projects**.
    *Diagnosed:* `getSources` filters ONLY on type/status/confidence/category/search — it
@@ -192,7 +196,58 @@ corrected mechanisms matter for the fixes, so both are kept.
    root's**; dk@ revoked sees an EMPTY list, no crash. **Method matters:** a misfiring entry
    guard renders as "empty page," NOT as an error — so only the tab-by-tab comparison of the
    member's page against root's discriminates a correct gate from a broken one.
-   ***STILL OPEN under this finding:*** the WRITE surface (0a-4) and realtime health (0b).
+   ***RESOLUTION — 0a-4 DONE (`26ee18c`, 2026-07-17): the WRITE surface is gated.*** ~20
+   `infoPages:*` mutation handlers took a pageId and checked NOTHING; a non-member could
+   mutate a page they cannot read. 0a-4 added the FIRST server-side check to each, across
+   **three deliberately-distinct axes** (do not mix them up):
+   - **M = membership (`isBoardVisibleFor`)** — content + pipeline writes: `addItem`,
+     `updateItem`, `deleteItem`, `commitItems`, `sendSourcesToAnalysis`, `sendToReview`,
+     `backSourceToNew`, `moveBackToIntel`, `commitSources`, `saveReviewNotes`, `clearChat`,
+     `chat`, `getOwners` (the one READ 0a-3's sweep misfiled under the ownership axis), and
+     `routeToNewSources` (the target-page write, shared by three `intelligence:*` callers).
+   - **A = canApprove** — publication writes: `reviewCommit`, `adminReviewCommit`,
+     `logPublished`, `publishToRepo`. **NOT membership** — that would deny a legitimate owner
+     who isn't a board member (the `isOwner` trap 0a-3 avoided). ★ **KEY FINDING (Task-1
+     verify-before-build paid for itself): `isOwner` ALREADY folds in root (`isRoot → true`),
+     so `isOwner` IS `canApprove`** — no new primitive, `boards.ts` UNTOUCHED.
+   - **R = root** — the four ORPHANED handlers: `create`, `delete`, `saveConfig`,
+     `updateMeta`. ZERO renderer call sites (the UI routes through the root-gated cloud
+     `boards:*` path, superseded at B0.6), so console-reachable only. ⚠ **`infoPages:delete`
+     is a HARD delete** of `workspace_boards` + `info_page_items`/`_commits`/`_owners` while
+     the cloud path it replaced does a root-gated SOFT delete — now root-gated, behavior
+     unchanged. Deleting the four dead handlers is its own cleanup slice (see NEXT UP).
+   ***THE FIVE NO-pageId RESOLVES (where a bug would have hidden):*** `updateItem`,
+   `deleteItem`, `reviewCommit`, `adminReviewCommit`, `sendSourcesToAnalysis` key on an
+   item/commit id — each resolves `page_id` first (`SELECT page_id FROM info_page_items
+   WHERE id=?` / `… info_page_commits …`, both columns verified against db.ts) and **DENIES
+   on a no-row resolve**. `sendSourcesToAnalysis` **fails closed on the WHOLE batch** — no
+   filter-and-partial-apply. **Principle:** a wrong resolve either denies everything or gates
+   nothing, and both look plausible in testing.
+   ***DENY SHAPE — silent-failure class, INSTANCE SIX:*** deny returns `{ ok: false, error }`
+   + a main-side `console.warn` (handler, actor, pageId). **NOT a throw** — most renderer call
+   sites are fire-and-forget and ignore the return, so a denied write would no-op SILENTLY
+   while the UI shows optimistic state until the next refetch. (Exceptions that DO check:
+   `publishToRepo` reads `res.ok`; `addItem` captures the new id.) The `console.warn` is the
+   audit trail. Logged as the SIXTH instance of the documented silent-failure class.
+   ***TEST THAT PROVED IT (record the method):*** as dk@ (member of Contested Skies only).
+   **ALLOW via UI:** approve→route (`routeToNewSources` — the riskiest change, shared by three
+   intel callers), `sendToReview`, `saveReviewNotes`, `backSourceToNew`, `moveBackToIntel`
+   (cross-tier: the intel row correctly reverted to `unreviewed`), `chat`. **DENY via devtools
+   `window.api`:** `saveReviewNotes('board-info-trump',…)` → `{ok:false,'Not authorized'}` [M];
+   `getOwners('board-info-trump')` → `[]` [M]; `saveConfig('board-info-latam',…)` →
+   `{ok:false,'Only an admin can edit page settings.'}` [R]. ★ **The third is the sharp one:
+   dk IS a member of latam, so the M gate would have ALLOWED it — blocked anyway means the R
+   axis works INDEPENDENTLY of membership.** Testing pattern: to prove an axis, find the case
+   where ONLY that axis can produce the result. **The deny half is CONSOLE-testable, not
+   UI-testable** — a non-member has no UI path to a page they can't see; the one real UI
+   trigger is the revoke-with-open-tab race (stale `selectedPageId`), same class as findings 3/4.
+   ***CORRECTIONS to 0a-3's write inventory:*** `analyzeWithClaude` (`3412`) and
+   `summarizeAnalysis` (`3541`) are **NOT writes** — no INSERT/UPDATE/DELETE; they read
+   chat/prefs, call the Anthropic API, and return. They are **reads-with-API-cost** (a page
+   you can't see could still burn the API key) — left ungated; flag as an OPTIONAL
+   cost-protection item, not a state-integrity gap. `generatePrompt` (`3581`) is pure compute.
+   ***STILL OPEN under this finding:*** none — finding 1 is CLOSED. (Remaining from the
+   original five: finding 3 = 0b realtime health, finding 4 downstream of 3, finding 5 updater.)
    See NEXT UP.
 
 2. **PICKER OFFERED A PHANTOM PROJECT — approve routed under a stale seed name.**
@@ -478,8 +533,10 @@ DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B p
 — the cloud migration is needed for **INTEL**, not for the info-page content tables.
 
 **NEXT UP, in order:**
-0. **⛔ THE INTEL ACCESS GATE — READ TIER FULLY CLOSED (both tiers).** Split into 0a-1 /
-   0a-1b / 0a-2 / 0a-3 (all DONE); still open: 0b (realtime health) and the NEW 0a-4 (writes):
+0. **⛔ THE INTEL ACCESS GATE — CLOSED END-TO-END (reads + writes).** Split into 0a-1 /
+   0a-1b / 0a-2 / 0a-3 / 0a-4 (ALL DONE). Finding 1 is closed. **The immediate next step is
+   a RELEASE (v2.3.0)** — the whole tier is proven and UNRELEASED; researchers are still
+   running the ungated 2.2.0. Then 0b (realtime health):
    - **0a-1 — DONE (`8eae348`):** compose stamps a project at INSERT; NULL rows can no
      longer be created (the LOCKED C1/Option-1 decision — see finding 1).
    - **0a-1b — DONE (`2e22178`):** the pipeline writer stamps a project too; found+fixed a
@@ -498,32 +555,45 @@ DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B p
      the ▲ 2026-07-17 INFO_PAGE READ GATE block. (The historical-leak note is now resolved for
      the READ paths — see the MIRROR PURGE gap under KNOWN GAPS; the raw JOINs are gated, the
      on-disk rows remain until a purge.)
-   - **0b — NEXT (the membership-propagation fix, was finding 3):** now scoped as a REALTIME
-     HEALTH-DETECTION gap (detect + recover from channel death independent of the HTTP
-     online flag), NOT a schema fix — the publication + REPLICA IDENTITY FULL theories are
-     both refuted (see finding 3). The last piece of finding 1's original five.
-   - **0a-4 — NEW (the WRITE surface — do not bury this):** the READ tier is closed but the
-     WRITE tier is UNGATED. ~20 `infoPages:*` mutation handlers (`saveConfig`, `updateMeta`,
-     `addItem`, `updateItem`, `deleteItem`, `commitItems`, `reviewCommit`, `adminReviewCommit`,
-     `logPublished`, `publishToRepo`, `sendSourcesToAnalysis`, `sendToReview`, `backSourceToNew`,
-     `moveBackToIntel`, `commitSources`, `saveReviewNotes`, `clearChat`, `chat`,
-     `analyzeWithClaude`, `summarizeAnalysis`) take a `pageId` and check NOTHING — a non-member
-     could mutate a page they cannot read. **Mitigating:** no UI path exposes it, and
-     publish-class actions are separately owner-gated (`isOwner`). **Not a live exploit — an
-     unenforced invariant one bug away from being one.** Also in 0a-4: **`getOwners` (`ipc:3099`)
-     is an ungated READ** that enumerates a page's heads (names, not intel — low severity;
-     missed by 0a-3's sweep because it was misfiled under the ownership axis). ⚠ **`isOwner` is
-     correctly left ungated** — gating it by membership could deny a legitimate owner who isn't
-     a board member.
-   - **[higher stakes, its OWN slice — do NOT fold into 0a-4] the `visibleBoardIds` non-root
+   - **0a-4 — DONE (`26ee18c`):** the `info_page_*` WRITE surface gate — the first
+     server-side check on ~20 mutation handlers (before this, ALL authorization was
+     renderer-side: a UI-only permission is a suggestion, not a gate). Three axes:
+     **M**=membership (content/pipeline writes + `getOwners` + `routeToNewSources`),
+     **A**=canApprove (`reviewCommit`/`adminReviewCommit`/`logPublished`/`publishToRepo` —
+     `isOwner` IS canApprove because it folds in root, so NO new primitive and `boards.ts`
+     untouched), **R**=root (the four orphaned `create`/`delete`/`saveConfig`/`updateMeta`).
+     Five id-only handlers resolve `page_id` first and deny on a no-row resolve;
+     `sendSourcesToAnalysis` fails closed on the whole batch. Deny = `{ok:false,error}` +
+     `console.warn` (silent-failure class instance six). Full mechanics + the M/A/R map + the
+     proving test are in finding 1's third RESOLUTION.
+   - **RELEASE v2.3.0 — NEXT (before 0b):** the access-control tier (0a-1…0a-4 + the
+     scroll-jump fix) is proven and unreleased. Cut it so researchers stop running the ungated
+     2.2.0. This also UNBLOCKS 0b's verification (below).
+   - **0b — after the release (the membership-propagation fix, was finding 3):** now scoped
+     as a REALTIME HEALTH-DETECTION gap (detect + recover from channel death independent of the
+     HTTP online flag), NOT a schema fix — the publication + REPLICA IDENTITY FULL theories are
+     both refuted (see finding 3). The last piece of finding 1's original five. ⚠ **Its
+     verification is build → RELEASE → observe in the field** — it needs two concurrent sessions
+     on separate DBs, and dk's macOS account has no dev build; so it can only be proven once
+     shipped. That's the second reason the release comes first.
+   - **[higher stakes, its OWN slice — do NOT fold in] the `visibleBoardIds` non-root
      no-join:** `visibleBoardIds`' non-root path (`boards.ts:103-104`) reads `board_members` by
      email with NO JOIN to `workspace_boards`, so it never applies `deleted=0` or `archived=0`
      — **a member of a soft-deleted or archived board KEEPS VISIBILITY.** This affects EVERY
-     gated read in the app (boards, 0a-2's intel gate, 0a-3's page gate all rest on this
+     gated read in the app (boards, 0a-2's intel gate, 0a-3/0a-4's page gates all rest on this
      primitive). Root's path is also loose: `isBoardVisible` short-circuits to `true` before
      consulting the set, so root passes for a deleted or even nonexistent board id. Needs a
      soft-deleted board with live memberships to trigger, so not urgent — but it is a gap in
-     the primitive BOTH gates rest on, and it deserves its own slice with its own test.
+     the primitive ALL the gates rest on, and it deserves its own slice with its own test.
+   - **[cleanup slice] delete the four orphaned handlers** (`infoPages:create`/`delete`/
+     `saveConfig`/`updateMeta` — zero renderer call sites, now root-gated as a stopgap) and,
+     optionally, add M cost-protection to `analyzeWithClaude`/`summarizeAnalysis` (reads that
+     burn the API key on a page you can't see — not a state-integrity gap).
+   - **[still worth checking] finding 2's stale seed** — `infoPages:list` is now gated +
+     `deleted`-filtered, so the phantom-picker half is moot; but `db.ts:977-978` still seeds
+     `board-info-latam`/`board-info-trump` under their STALE PRE-RENAME names on a fresh
+     non-root machine. Confirm whether that's still worth fixing (low severity now that the
+     list is gated, but the wrong name can still surface).
 
    **★ NOTE (kept for 0a-3's own reads) — the boards precedent does NOT transfer.** Boards
    fetch-ALL-then-filter-in-JS (`rows.filter(b => actor.isRoot || visible.has(b.id))`).
@@ -921,9 +991,11 @@ the backlog.
   compose stamps `project_board_id`), `2e22178` (0a-1b — pipeline writer stamps it + the
   hand-run backfill record), `923f334` (scroll-jump fix — background refetch), `a5d4b20`
   (0a-2 — intel read-tier membership gate), `8662b68` (docs — 0a-2), `46be18e` (0a-3 —
-  `info_page_*` read-tier membership gate). All renderer/main code + docs; **no new release
-  cut yet** (the installed app is still 2.2.0). Next code slice is **0b — realtime health
-  detection**, then **0a-4 — the WRITE surface** (see "Start here" / NEXT UP item 0).
+  `info_page_*` read-tier membership gate), `f80b17d` (docs — 0a-3), `26ee18c` (0a-4 —
+  `info_page_*` WRITE surface gate, M/A/R). All renderer/main code + docs; **no new release
+  cut yet** (the installed app is still 2.2.0). **The whole access-control tier is now
+  proven and unreleased — the next step is to CUT v2.3.0** (see "Start here" / NEXT UP item 0),
+  which also unblocks 0b's field verification.
 - **Working tree:** only these two docs (`HANDOFF.md`, `PROJECT_SUMMARY.txt`) are
   modified — no source changes pending.
 

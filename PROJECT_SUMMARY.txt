@@ -3,9 +3,12 @@
   Generated: 2026-07-17
   Current version: v2.2.0 (RELEASED 2026-07-16, tag v2.2.0) — UNRELEASED code on main
                    since: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334 (scroll-jump fix),
-                   a5d4b20 (0a-2 — intel read-tier gate), 8662b68 (docs 0a-2),
-                   46be18e (0a-3 — info_page_* read-tier gate)   |   HEAD 46be18e
-                   298 commits   |   ~36,700 lines of TS/TSX
+                   a5d4b20 (0a-2 — intel read gate), 8662b68 (docs 0a-2),
+                   46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
+                   26ee18c (0a-4 — info_page_* WRITE gate, M/A/R)   |   HEAD 26ee18c
+                   299 commits   |   ~36,800 lines of TS/TSX
+                   ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes.
+                   NEXT STEP: cut v2.3.0 (tier proven, unreleased; researchers on 2.2.0).
   Repo: github.com/Doriankantor/kantor-consulting-hub
   PRIOR RELEASE — v2.1.0 (published 2026-07-15; mac universal DMG/zip + win NSIS x64,
   auto-update manifests live). A MINOR bump shipping the whole post-v2.0.22 batch: the
@@ -29,20 +32,73 @@
   NOW FIVE INSTANCES (see the v2.2.0 + cross-device-test blocks below). Never write a
   bare catch {}; never hardcode a success message after a pipeline.
   Working tree is otherwise CLEAN (docs only). NEXT MILESTONE (locked): COMPLETE THE INTEL
-  PROCESS BY END OF JULY, publishing in August. NEXT UP: ⛔ THE INTEL ACCESS GATE — READ
-  TIER FULLY CLOSED (both tiers): 0a-1 (compose stamps a project, 8eae348) + 0a-1b (pipeline
-  writer stamps it, 2e22178) + 0a-2 (intel read-tier gate, a5d4b20) + 0a-3 (info_page_*
-  read-tier gate, 46be18e — 11 reads got an ENTRY GUARD, infoPages:list got the deleted=0 fix
-  + a visibility intersection, syncSources got a target-page gate) all DONE. Still open: 0b =
-  realtime health-detection (detect + recover from channel death independent of the HTTP online
-  flag; the last piece of finding 1's five) and the NEW 0a-4 = the WRITE surface (~20 ungated
-  infoPages:* mutation handlers + the ungated getOwners read). Order: 0b → 0a-4 → the
+  PROCESS BY END OF JULY, publishing in August. NEXT UP: ⛔ THE INTEL ACCESS GATE — CLOSED
+  END-TO-END (reads + writes): 0a-1 (compose stamps a project, 8eae348) + 0a-1b (pipeline
+  writer stamps it, 2e22178) + 0a-2 (intel read gate, a5d4b20) + 0a-3 (info_page_* read gate,
+  46be18e) + 0a-4 (info_page_* WRITE surface gate, 26ee18c — ~20 mutation handlers across three
+  axes M=membership / A=canApprove / R=root; the first server-side check on these writes, all
+  authorization previously lived in the renderer) all DONE. Finding 1 CLOSED. Order: RELEASE
+  v2.3.0 (the tier is proven + unreleased; researchers still on ungated 2.2.0 — and 0b can only
+  be verified in the field, so ship first) → 0b = realtime health-detection (detect + recover
+  from channel death independent of the HTTP online flag; the last of finding 1's five) → the
   visibleBoardIds non-root no-join (its own slice — a member of a soft-deleted board keeps
-  visibility; affects EVERY gated read) → info_page_sources migration (the LAST table) →
+  visibility; affects EVERY gated read) → cleanup (delete the 4 orphaned handlers; optional M
+  on analyzeWithClaude/summarizeAnalysis) → info_page_sources migration (the LAST table) →
   To-Do write-through → To-Do data half (personal_todos → cloud, personal steps,
   board_members.can_assign, assigned_by, completion notification) → pre-route editing →
   T6b + per-card tag scoping → feedback loop → dedup → span annotation. Mirror purge unscheduled.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-17 — INFO_PAGE WRITE SURFACE GATE (0a-4, 26ee18c, UNRELEASED) ──
+  • 0a-4 (26ee18c) — GATE THE info_page_* WRITE SURFACE. Closes the access-control gap
+    end-to-end (0a-2 intel reads + 0a-3 info_page reads + 0a-4 writes = finding 1 CLOSED).
+    ~20 mutation handlers took a pageId and checked NOTHING — a non-member could mutate a
+    page they cannot read.
+  • ★ HEADLINE LESSON — a UI-only permission is a SUGGESTION, not a gate. Before 0a-4, ALL
+    authorization for these writes lived in the RENDERER (canApprove/isAdmin gate the UI
+    only). 0a-4 added the FIRST server-side check to each.
+  • THREE AXES, deliberately distinct:
+    - M = membership (isBoardVisibleFor): addItem, updateItem, deleteItem, commitItems,
+      sendSourcesToAnalysis, sendToReview, backSourceToNew, moveBackToIntel, commitSources,
+      saveReviewNotes, clearChat, chat, getOwners (the one READ 0a-3 misfiled under the
+      ownership axis), routeToNewSources (the target-page write, shared by three
+      intelligence:* callers, all now awaited).
+    - A = canApprove: reviewCommit, adminReviewCommit, logPublished, publishToRepo. NOT
+      membership — that would deny a legitimate owner who isn't a board member (the isOwner
+      trap). KEY FINDING: isOwner ALREADY folds in root (isRoot -> true), so isOwner IS
+      canApprove — NO new primitive, boards.ts UNTOUCHED. (Task-1 verify-before-build paid
+      for itself.)
+    - R = root: create, delete, saveConfig, updateMeta — the four ORPHANED handlers (zero
+      renderer call sites; the UI routes through the root-gated cloud boards:* path,
+      superseded at B0.6). Console-reachable only. infoPages:delete is a HARD delete of
+      workspace_boards + cascade while the cloud path it replaced does a root-gated SOFT
+      delete; now root-gated, behavior unchanged. Deleting the four is its own cleanup slice.
+  • THE FIVE NO-pageId RESOLVES (where a bug would hide): updateItem, deleteItem,
+    reviewCommit, adminReviewCommit, sendSourcesToAnalysis key on an item/commit id — each
+    resolves page_id first (info_page_items / info_page_commits, both columns verified) and
+    DENIES on a no-row resolve. sendSourcesToAnalysis fails closed on the WHOLE batch (no
+    partial apply). Principle: a wrong resolve either denies everything or gates nothing, and
+    both look plausible in testing.
+  • DENY SHAPE — silent-failure class, INSTANCE SIX: { ok:false, error } + a main-side
+    console.warn (handler, actor, pageId). NOT a throw — most renderer call sites are
+    fire-and-forget, so a denied write would no-op SILENTLY while the UI shows optimistic
+    state until the next refetch. The warn is the audit trail.
+  • CORRECTIONS to 0a-3's write inventory: analyzeWithClaude (3412) and summarizeAnalysis
+    (3541) are NOT writes — they read chat/prefs + call the API + return. Reads-with-API-cost
+    (a page you can't see could still burn the API key), left ungated — optional
+    cost-protection, not a state-integrity gap. generatePrompt (3581) is pure compute.
+  • TESTED as dk@ (member of Contested Skies only). ALLOW via UI: approve->route
+    (routeToNewSources), sendToReview, saveReviewNotes, backSourceToNew, moveBackToIntel
+    (cross-tier — intel row correctly reverted to unreviewed), chat. DENY via console:
+    saveReviewNotes('board-info-trump') -> {ok:false,'Not authorized'} [M]; getOwners(same)
+    -> [] [M]; saveConfig('board-info-latam') -> {ok:false,'Only an admin can edit page
+    settings.'} [R]. ★ The R case is the sharp one: dk IS a member of latam, so the M gate
+    would have allowed it — blocked anyway => the R axis works INDEPENDENTLY of membership.
+    Pattern: to prove an axis, find the case where ONLY that axis can produce the result.
+    The deny half is CONSOLE-testable, not UI-testable (a non-member has no UI path to a page
+    they can't see; the one real UI trigger is the revoke-with-open-tab race).
+  • tsc held at the 8-error node baseline (zero new). No preload/renderer/boards.ts touched —
+    only src/main/ipc/index.ts.
 
   ── 2026-07-17 — INFO_PAGE READ GATE (0a-3, 46be18e, UNRELEASED) ──
   • 0a-3 (46be18e) — GATE THE info_page_* READ TIER ON BOARD MEMBERSHIP. The info_page_*
