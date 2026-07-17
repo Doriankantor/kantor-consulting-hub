@@ -1,6 +1,6 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-17 · **v2.2.0 RELEASED** (published 2026-07-16, tag `v2.2.0`). **Last code HEAD `a5d4b20` after today's (2026-07-17) work (this docs commit sits on top) — the intel access gate's READ TIER IS CLOSED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), and 0a-2 (`a5d4b20`, the gate query itself — `getSources` + the five counts are membership-scoped, cloud + mirror, root sees all, empty-set short-circuits) are all DONE. The immediate next slice is 0a-3 (the `info_page_*` pageId-visibility read tier). Also today: a pipeline NULL-writer bug found+fixed (part of `2e22178`), and the aba6b91 scroll-jump regression fixed (`923f334`).** `origin/main` up to date, tree clean. `a5d4b20` joins `8eae348`/`2e22178`/`923f334` as **UNRELEASED on main** (installed app is 2.2.0). **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now PARTIALLY CLOSED (intel read tier gated by 0a-2; `info_page_*` reads + realtime health remain open) — see the ⛔ block below; the gate remains top priority, ahead of `info_page_sources`.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-17 · **v2.2.0 RELEASED** (published 2026-07-16, tag `v2.2.0`). **Last code HEAD `46be18e` after today's (2026-07-17) work (this docs commit sits on top) — the ENTIRE ACCESS-GATE READ TIER IS CLOSED on both tiers: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel gate query — `getSources` + the five counts membership-scoped, cloud + mirror, root sees all, empty-set short-circuits), and 0a-3 (`46be18e`, the `info_page_*` READ tier — 11 reads got an ENTRY GUARD, `infoPages:list` got the `deleted=0` fix + a visibility intersection, `syncSources` got a target-page gate) are all DONE. The next slices are 0b (realtime health) and the NEW 0a-4 (the WRITE surface — still ungated). Also today: a pipeline NULL-writer bug found+fixed (part of `2e22178`), and the aba6b91 scroll-jump regression fixed (`923f334`).** `origin/main` up to date, tree clean. `46be18e` joins `8eae348`/`2e22178`/`923f334`/`a5d4b20` (+ docs `8662b68`) as **UNRELEASED on main** (installed app is 2.2.0). **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1's READ HALF is now FULLY CLOSED on both tiers (intel via 0a-2, `info_page_*` via 0a-3); the WRITE surface (0a-4) and realtime health (0b) remain open — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
@@ -101,10 +101,10 @@ mechanism — **nothing is fixed yet**. Each item records what was OBSERVED in t
 what the DIAGNOSTIC then established. Several initial hypotheses were REFUTED — the
 corrected mechanisms matter for the fixes, so both are kept.
 
-1. **ACCESS-CONTROL GAP — intel reads had NO membership gate. → PARTIALLY CLOSED
-   (2026-07-17): the intel READ TIER is gated (0a-2, `a5d4b20`); the `info_page_*`
-   read tier (0a-3) and realtime health (0b) remain open.** See the **RESOLUTION**
-   subsection at the end of this finding.
+1. **ACCESS-CONTROL GAP — intel reads had NO membership gate. → READ HALF FULLY CLOSED
+   (2026-07-17): the intel READ TIER is gated (0a-2, `a5d4b20`) AND the `info_page_*`
+   READ TIER is gated (0a-3, `46be18e`). Still open: the WRITE surface (0a-4) and
+   realtime health (0b).** See the **RESOLUTION** subsection at the end of this finding.
    *Observed:* dk@ had ZERO `board_members` rows (Board Access shows TOTAL MEMBERS 0 on
    every info-page project) yet saw **all articles across all projects**.
    *Diagnosed:* `getSources` filters ONLY on type/status/confidence/category/search — it
@@ -169,8 +169,31 @@ corrected mechanisms matter for the fixes, so both are kept.
    the cross-project exclusion). Picker on "all projects" throughout (so no client-side
    filter confound), and both builds share one DB whose mirror holds all three socials — so
    the exclusion is the GATE, not a stale mirror.
-   ***STILL OPEN under this finding:*** the `info_page_*` read tier (0a-3) and realtime
-   health (0b). See NEXT UP.
+   ***RESOLUTION — 0a-3 DONE (`46be18e`, 2026-07-17):*** the `info_page_*` READ TIER is now
+   membership-scoped too. **DIFFERENT MECHANISM from 0a-2 — the reusable insight: a gate's
+   shape follows the table's keying.** The `info_page_*` tables have NO `project_board_id`
+   column and are ALREADY pageId-scoped in their WHERE clauses, so the gate is an **ENTRY
+   GUARD** (`if (!(await isBoardVisibleFor(actor, pageId))) return <empty>`) — "may this
+   actor see this pageId at all?", **all-or-nothing per page**. It cannot drop rows inside a
+   JOIN, so it is **structurally safer than 0a-2's per-row `.in()`** (no pagination/`head:true`
+   corruption risk). 11 reads gated (`getConfig`, `getItems`, `getCommits`, `getPublished`,
+   `getSourceItems`, `getSourceStats`, `getAnalysisSources`, `getChat`, `getSourcePipeline`,
+   `getSourceChanges`, `getSourcePipelineCounts`), each returning its EXISTING empty shape on
+   deny. `infoPages:list` (no pageId) got the `deleted=0` fix + a `visibleBoardIdsFor`
+   intersection; `syncSources` got a target-page gate. **New primitive:** `isBoardVisibleFor`
+   (`boards.ts`) — the pageId analog of `visibleBoardIdsFor`. ⚠ **SAME DON'T-"FIX"-THIS-LATER
+   NOTE:** it does NOT use the existing `isBoardVisible`, which calls `resolveActor` (a
+   `member_permissions` roundtrip) PLUS `visibleBoardIds` = TWO cloud calls per invocation, in
+   handlers the Info Pages left panel polls. **Gate axis SETTLED:** membership (`board_members`)
+   governs READ visibility; `info_page_owners` governs `canApprove` on the PUBLICATION side —
+   the codebase already had this split right; 0a-3 did not invent it, only enforced reads.
+   ***TEST THAT PROVED IT:*** root sees all 4 pages ("blahblah" gone — the `deleted` fix);
+   dk@ (member of Contested Skies) sees ONLY Contested Skies and **every tab is identical to
+   root's**; dk@ revoked sees an EMPTY list, no crash. **Method matters:** a misfiring entry
+   guard renders as "empty page," NOT as an error — so only the tab-by-tab comparison of the
+   member's page against root's discriminates a correct gate from a broken one.
+   ***STILL OPEN under this finding:*** the WRITE surface (0a-4) and realtime health (0b).
+   See NEXT UP.
 
 2. **PICKER OFFERED A PHANTOM PROJECT — approve routed under a stale seed name.**
    *Observed:* with no visible info-page project, dk@'s per-card picker offered a
@@ -319,20 +342,24 @@ Members = per-project `board_members` = the intel side); and **0a-3's pageId-vis
 check asks the SAME question as the intel gate**, not a different one. Do NOT design 0a-3
 around a namespace split.
 
-**F. NEW OPEN QUESTION — the picker DOES filter, client-side (for 0a-3).** The 0a-2
-diagnosis stated "the picker isn't even a filter — no tab threads the selected project into
-`getSources`." Observed during testing: root sees **2** socials with a project selected and
-**3** with "all projects" — so something filters the tab AFTER the fetch. `SocialTab.tsx:121`
-calls `getSources({type:'social'})` with no project param, so it's NOT in the query; the
-client-side filters are `SocialTab.tsx:344` and `NewsTab.tsx:549` (see finding 1's
-correction). **Why it matters:** a client-side project filter and a server-side gate can
-produce the SAME number for DIFFERENT reasons — this nearly invalidated 0a-2's test. Correct
-the "picker is not a filter" claim wherever it's asserted, as part of 0a-3.
+**F. CLOSED (0a-3) — the client-side picker filter is a NON-BUG.** The 0a-2 diagnosis
+stated "the picker isn't even a filter — no tab threads the selected project into
+`getSources`." The 0a-3 diagnosis answered it fully: the client-side filter
+(`NewsTab.tsx:540`, `SocialTab.tsx:340`, `InterviewsTab.tsx:240`, `DocumentsTab.tsx:252`)
+compares `project_board_id` against the selected project, and it is **COMPLEMENTARY and SAFE,
+not contradictory.** The picker's list comes from `boards.filter(b => b.board_type ===
+'info-page')` over `useWorkspace().boards`, which is populated by `boards:list` — **ALREADY
+GATED**. A non-root picker can only ever list boards the actor is a member of, so the filter
+**narrows an already-gated set and can never widen visibility.** A stale localStorage id is
+reset to `'all'` by the guard at `Intelligence/index.tsx:59-63`, and 0a-2 has already excluded
+those rows anyway. **Nothing to fix.** The "picker is not a filter" claim was wrong — it IS a
+filter, client-side, and that is fine.
 
-**G. NEW BUG — `infoPages:list` ignores `deleted` (assign to 0a-3).** `ipc/index.ts:3039`
-filters `archived=0` but NOT `deleted=0`, so **soft-deleted info pages still populate the
-list and its pickers** (observed: a `deleted=1` board named "blahblah" came back).
-`visibleBoardIds` does `.eq('deleted', 0)`; `infoPages:list` is the outlier. Sibling of
+**G. FIXED (0a-3, `46be18e`) — `infoPages:list` `deleted` bug.** `ipc/index.ts:3039` filtered
+`archived=0` but NOT `deleted`, so **soft-deleted info pages still populated the list and its
+pickers** (observed: a `deleted=1` board named "blahblah" came back). Now
+`COALESCE(deleted,0)=0 AND COALESCE(archived,0)=0`, plus a `visibleBoardIdsFor` intersection
+(small, unpaginated read → a JS filter is safe here, unlike `getSources`). Was the sibling of
 finding 2 (the other unfiltered local `infoPages:list` read).
 
 **H. TESTING GOTCHAS (new, cost real time this session):**
@@ -354,12 +381,51 @@ finding 2 (the other unfiltered local `infoPages:list` read).
   three candidate causes (gate / stale mirror / client-side picker filter) and was consistent
   with all three. **Design tests where only ONE mechanism can produce the observed number.**
 
-**I. STILL UNTESTED (fold into 0a-3 testing):**
+**I. STILL UNTESTED (carry forward — 0a-3 did not exercise these):**
 - **The offline mirror gate** — `readMirrorSources`' own `IN (?,…)` never ran; every reading
-  was online. Exercise it offline.
+  was online. Exercise it offline. **`isBoardVisibleFor` inherits the SAME offline path** via
+  `visibleBoardIdsFor` → `board_members_mirror`, so 0a-3's gate is equally unexercised offline.
 - **`getStatusCounts`' three-way `head:true` fan-out** — all articles are `board-info-latam`,
   so root and dk's News counts are identical either way. To exercise it, compose an article
   under a SECOND project (e.g. Immigration Undone) first.
+
+**▲ 2026-07-17 — INFO_PAGE READ GATE (0a-3, `46be18e`): a gate whose shape follows the
+table's keying, and a new primitive.** (Full mechanics + the proving test also live under
+finding 1's second RESOLUTION above.)
+
+**J. ★ THE REUSABLE INSIGHT — a gate's SHAPE follows the TABLE's KEYING.** 0a-2 gated intel
+with a per-row `.in('project_board_id', ids)` because `intelligence_sources` HAS a
+`project_board_id` column and its reads are paginated/`head:true` (JS-filtering impossible).
+0a-3 could NOT reuse that: the `info_page_*` tables have **NO `project_board_id` column** and
+are **ALREADY pageId-scoped in their WHERE clauses**. So the gate is an **ENTRY GUARD** —
+`if (!(await isBoardVisibleFor(actor, pageId))) return <empty>` — "may this actor see this
+pageId at all?", **all-or-nothing per page.** It cannot drop rows inside a JOIN, so it is
+**structurally safer than 0a-2's per-row `.in()`** (no pagination/count corruption risk). Two
+different mechanisms for the same invariant, each dictated by how its table is keyed.
+
+**K. NEW PRIMITIVE — `isBoardVisibleFor` (`boards.ts`), the pageId analog of
+`visibleBoardIdsFor`.** `if (!boardId) return false; const {isRoot, ids} = await
+visibleBoardIdsFor(actor); return isRoot || ids.has(boardId)`. ⚠ **SAME DON'T-"FIX"-THIS-LATER
+NOTE as 0a-2:** it does NOT use the existing `isBoardVisible` (`boards.ts:337`), which calls
+`resolveActor` (a `member_permissions` cloud roundtrip) PLUS `visibleBoardIds` = **two cloud
+calls per invocation**, in handlers the Info Pages left panel polls. `isBoardVisibleFor` rides
+the LOCAL-only `resolveIdentity` path via `visibleBoardIdsFor`. Leave `isBoardVisible` for its
+existing Realtime callers.
+
+**L. GATE AXIS — SETTLED (the codebase already had it right).** MEMBERSHIP (`board_members`,
+via `visibleBoardIds`) governs READ visibility; `info_page_owners` governs `canApprove` on the
+PUBLICATION side. 0a-3 did not invent this split — it only ENFORCED the read half. `getOwners`
+and `isOwner` were deliberately left on the ownership axis (see 0a-4 in NEXT UP for why
+`isOwner` must stay ungated).
+
+**M. WHAT GATED (11 reads) + the two specials.** Entry guard on `getConfig`, `getItems`,
+`getCommits`, `getPublished`, `getSourceItems`, `getSourceStats`, `getAnalysisSources`,
+`getChat`, `getSourcePipeline`, `getSourceChanges`, `getSourcePipelineCounts` — each returns
+its EXISTING empty shape on deny (`[]`, `{}`, `{newAvailable:0,inAnalysis:0}`,
+`{new:0,review:0,committed:0}`). `infoPages:list` (no pageId): `deleted=0` fix + a
+`visibleBoardIdsFor` intersection. `syncSources`: target-page gate only. The Task-5 sweep found
+NO main-process caller that would now receive a Promise (handlers are inline anonymous), and
+tsc held at the 8-error baseline (zero new).
 
 **KNOWN GAPS (tracked):**
 - **Background refetch failures are silently swallowed** (2026-07-17) — the scroll-jump fix
@@ -372,6 +438,14 @@ finding 2 (the other unfiltered local `infoPages:list` read).
 - **Stale mirror rows (244-vs-242, now 2 local-only articles)** — the upsert-only read sync
   can never remove a row, so mirror rows cloud no longer has (or never had) linger until
   touched. Keep tracking; cross-device DELETE via `applyToMirror` is the only removal path.
+- **MIRROR PURGE — still open, now the last read-path residue.** 0a-3 closed the four
+  info-page JOINs (the raw-SQL mirror reads that bypassed the gated `readMirrorSources`), so
+  leaked intel rows are no longer REACHABLE through the pipeline. But they still sit on disk in
+  non-root local mirrors, and the read sync is upsert-only so it can never remove them.
+  Remaining UNSCOPED raw mirror reads (deliberately left): `syncSources`' cross-project source
+  read (`ipc:3358`, commented in place as a known defense-in-depth gap) and the two dedup url
+  reads (`ipc:113/114` — urls only, no content; flagged, not gated). A purge remains its own
+  cleanup step, unscheduled.
 - ~~**Realtime dead after reconnect**~~ — **CLOSED** (`aba6b91`): deterministic
   teardown+resubscribe on the online edge + renderer refetch.
 - **Cross-device verification pending** — no second Mac for ~2 weeks; will test via a
@@ -404,8 +478,8 @@ DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B p
 — the cloud migration is needed for **INTEL**, not for the info-page content tables.
 
 **NEXT UP, in order:**
-0. **⛔ THE INTEL ACCESS GATE — IN PROGRESS (read tier CLOSED).** Split into 0a-1 / 0a-1b /
-   0a-2 (all DONE) / 0a-3 / 0b:
+0. **⛔ THE INTEL ACCESS GATE — READ TIER FULLY CLOSED (both tiers).** Split into 0a-1 /
+   0a-1b / 0a-2 / 0a-3 (all DONE); still open: 0b (realtime health) and the NEW 0a-4 (writes):
    - **0a-1 — DONE (`8eae348`):** compose stamps a project at INSERT; NULL rows can no
      longer be created (the LOCKED C1/Option-1 decision — see finding 1).
    - **0a-1b — DONE (`2e22178`):** the pipeline writer stamps a project too; found+fixed a
@@ -416,21 +490,40 @@ DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B p
      no preload/renderer change. Full mechanics + the resolveIdentity-not-resolveActor
      decision + the proving test are in finding 1's RESOLUTION and the ▲ 2026-07-17 READ
      GATE block.
-   - **0a-3 — NEXT (the `info_page_*` pageId-visibility read tier):** gate the four pipeline
-     reads (`getSourcePipeline`/`getAnalysisSources`/`getSourceItems`/`getSourceChanges`) +
-     `infoPages:list` + `getSourceStats` + `getSourcePipelineCounts` + `addMatchingSources`
-     on **pageId visibility** (the SAME question as the intel gate — the id namespace is
-     unified, see ▲ block item E). ALSO in 0a-3: the **`infoPages:list` `deleted=0` bug**
-     (▲ item G) and the **client-side-picker-filter question** (▲ item F). **⚠ 0a-2 does NOT
-     retract the historical leak:** already-leaked rows sit in non-root LOCAL mirrors, and
-     the four info-page JOINs read the mirror table with RAW SQL that never passes through
-     the gated `readMirrorSources` — so leaked rows stay readable via Info Pages until 0a-3.
-     The read sync is upsert-only and can never remove them, so **a mirror purge may need its
-     own step.**
-   - **0b — the membership-propagation fix (was finding 3):** now scoped as a REALTIME
+   - **0a-3 — DONE (`46be18e`):** the `info_page_*` READ tier gate. 11 reads got an ENTRY
+     GUARD (all-or-nothing per page, structurally safer than 0a-2's per-row `.in()`);
+     `infoPages:list` got the `deleted=0` fix + a visibility intersection; `syncSources` got a
+     target-page gate. New primitive `isBoardVisibleFor` (NOT `isBoardVisible` — same roundtrip
+     note as 0a-2). Full mechanics + the proving test are in finding 1's second RESOLUTION and
+     the ▲ 2026-07-17 INFO_PAGE READ GATE block. (The historical-leak note is now resolved for
+     the READ paths — see the MIRROR PURGE gap under KNOWN GAPS; the raw JOINs are gated, the
+     on-disk rows remain until a purge.)
+   - **0b — NEXT (the membership-propagation fix, was finding 3):** now scoped as a REALTIME
      HEALTH-DETECTION gap (detect + recover from channel death independent of the HTTP
      online flag), NOT a schema fix — the publication + REPLICA IDENTITY FULL theories are
-     both refuted (see finding 3).
+     both refuted (see finding 3). The last piece of finding 1's original five.
+   - **0a-4 — NEW (the WRITE surface — do not bury this):** the READ tier is closed but the
+     WRITE tier is UNGATED. ~20 `infoPages:*` mutation handlers (`saveConfig`, `updateMeta`,
+     `addItem`, `updateItem`, `deleteItem`, `commitItems`, `reviewCommit`, `adminReviewCommit`,
+     `logPublished`, `publishToRepo`, `sendSourcesToAnalysis`, `sendToReview`, `backSourceToNew`,
+     `moveBackToIntel`, `commitSources`, `saveReviewNotes`, `clearChat`, `chat`,
+     `analyzeWithClaude`, `summarizeAnalysis`) take a `pageId` and check NOTHING — a non-member
+     could mutate a page they cannot read. **Mitigating:** no UI path exposes it, and
+     publish-class actions are separately owner-gated (`isOwner`). **Not a live exploit — an
+     unenforced invariant one bug away from being one.** Also in 0a-4: **`getOwners` (`ipc:3099`)
+     is an ungated READ** that enumerates a page's heads (names, not intel — low severity;
+     missed by 0a-3's sweep because it was misfiled under the ownership axis). ⚠ **`isOwner` is
+     correctly left ungated** — gating it by membership could deny a legitimate owner who isn't
+     a board member.
+   - **[higher stakes, its OWN slice — do NOT fold into 0a-4] the `visibleBoardIds` non-root
+     no-join:** `visibleBoardIds`' non-root path (`boards.ts:103-104`) reads `board_members` by
+     email with NO JOIN to `workspace_boards`, so it never applies `deleted=0` or `archived=0`
+     — **a member of a soft-deleted or archived board KEEPS VISIBILITY.** This affects EVERY
+     gated read in the app (boards, 0a-2's intel gate, 0a-3's page gate all rest on this
+     primitive). Root's path is also loose: `isBoardVisible` short-circuits to `true` before
+     consulting the set, so root passes for a deleted or even nonexistent board id. Needs a
+     soft-deleted board with live memberships to trigger, so not urgent — but it is a gap in
+     the primitive BOTH gates rest on, and it deserves its own slice with its own test.
 
    **★ NOTE (kept for 0a-3's own reads) — the boards precedent does NOT transfer.** Boards
    fetch-ALL-then-filter-in-JS (`rows.filter(b => actor.isRoot || visible.has(b.id))`).
@@ -827,9 +920,10 @@ the backlog.
 - **UNRELEASED on `main` since v2.2.0 (2026-07-17, all pushed):** `8eae348` (0a-1 —
   compose stamps `project_board_id`), `2e22178` (0a-1b — pipeline writer stamps it + the
   hand-run backfill record), `923f334` (scroll-jump fix — background refetch), `a5d4b20`
-  (0a-2 — intel read-tier membership gate). All renderer/main code; **no new release cut
-  yet** (the installed app is still 2.2.0). Next code slice is **0a-3 — the `info_page_*`
-  pageId-visibility read tier** (see "Start here" / NEXT UP item 0).
+  (0a-2 — intel read-tier membership gate), `8662b68` (docs — 0a-2), `46be18e` (0a-3 —
+  `info_page_*` read-tier membership gate). All renderer/main code + docs; **no new release
+  cut yet** (the installed app is still 2.2.0). Next code slice is **0b — realtime health
+  detection**, then **0a-4 — the WRITE surface** (see "Start here" / NEXT UP item 0).
 - **Working tree:** only these two docs (`HANDOFF.md`, `PROJECT_SUMMARY.txt`) are
   modified — no source changes pending.
 

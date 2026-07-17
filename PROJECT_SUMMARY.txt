@@ -3,8 +3,9 @@
   Generated: 2026-07-17
   Current version: v2.2.0 (RELEASED 2026-07-16, tag v2.2.0) — UNRELEASED code on main
                    since: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334 (scroll-jump fix),
-                   a5d4b20 (0a-2 — intel read-tier membership gate)   |   HEAD a5d4b20
-                   296 commits   |   ~36,668 lines of TS/TSX
+                   a5d4b20 (0a-2 — intel read-tier gate), 8662b68 (docs 0a-2),
+                   46be18e (0a-3 — info_page_* read-tier gate)   |   HEAD 46be18e
+                   298 commits   |   ~36,700 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
   PRIOR RELEASE — v2.1.0 (published 2026-07-15; mac universal DMG/zip + win NSIS x64,
   auto-update manifests live). A MINOR bump shipping the whole post-v2.0.22 batch: the
@@ -29,16 +30,61 @@
   bare catch {}; never hardcode a success message after a pipeline.
   Working tree is otherwise CLEAN (docs only). NEXT MILESTONE (locked): COMPLETE THE INTEL
   PROCESS BY END OF JULY, publishing in August. NEXT UP: ⛔ THE INTEL ACCESS GATE — READ
-  TIER CLOSED: 0a-1 (compose stamps a project, 8eae348) + 0a-1b (pipeline writer stamps it,
-  2e22178) + 0a-2 (intel read-tier membership gate, a5d4b20) DONE; the immediate next slice
-  is 0a-3 (the info_page_* pageId-visibility read tier — the four pipeline reads +
-  infoPages:list + getSourceStats + getSourcePipelineCounts + addMatchingSources; plus the
-  infoPages:list deleted=0 bug and the client-side-picker-filter question); then 0b = realtime
-  health-detection (membership propagation) → info_page_sources migration (the LAST table)
-  → To-Do write-through → To-Do data half (personal_todos → cloud, personal steps,
+  TIER FULLY CLOSED (both tiers): 0a-1 (compose stamps a project, 8eae348) + 0a-1b (pipeline
+  writer stamps it, 2e22178) + 0a-2 (intel read-tier gate, a5d4b20) + 0a-3 (info_page_*
+  read-tier gate, 46be18e — 11 reads got an ENTRY GUARD, infoPages:list got the deleted=0 fix
+  + a visibility intersection, syncSources got a target-page gate) all DONE. Still open: 0b =
+  realtime health-detection (detect + recover from channel death independent of the HTTP online
+  flag; the last piece of finding 1's five) and the NEW 0a-4 = the WRITE surface (~20 ungated
+  infoPages:* mutation handlers + the ungated getOwners read). Order: 0b → 0a-4 → the
+  visibleBoardIds non-root no-join (its own slice — a member of a soft-deleted board keeps
+  visibility; affects EVERY gated read) → info_page_sources migration (the LAST table) →
+  To-Do write-through → To-Do data half (personal_todos → cloud, personal steps,
   board_members.can_assign, assigned_by, completion notification) → pre-route editing →
-  T6b + per-card tag scoping → feedback loop → dedup → span annotation.
+  T6b + per-card tag scoping → feedback loop → dedup → span annotation. Mirror purge unscheduled.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-17 — INFO_PAGE READ GATE (0a-3, 46be18e, UNRELEASED) ──
+  • 0a-3 (46be18e) — GATE THE info_page_* READ TIER ON BOARD MEMBERSHIP. The info_page_*
+    reads were pageId-scoped with NO actor gate — any signed-in user could read any page's
+    sources, config, commits, chat and analysis queue (cross-device finding 1, second half).
+    0a-2 gated the intel reads, but the four info-page JOINs read the intelligence_sources
+    mirror with RAW SQL that bypasses the gated readMirrorSources, so leaked rows stayed
+    reachable until now.
+  • REUSABLE INSIGHT — a gate's SHAPE follows the TABLE's KEYING. Unlike 0a-2's per-row
+    .in('project_board_id', ids), these tables have NO project_board_id column and are ALREADY
+    pageId-scoped in their WHERE clauses, so the gate is an ENTRY GUARD ("may this actor see
+    this pageId at all?") — all-or-nothing per page. It cannot drop rows inside a JOIN, so it
+    is structurally SAFER than 0a-2 (no pagination/head:true corruption risk).
+  • NEW PRIMITIVE — isBoardVisibleFor(actor, pageId) in boards.ts, the pageId analog of
+    visibleBoardIdsFor. Does NOT use the existing isBoardVisible, which calls resolveActor (a
+    member_permissions roundtrip) PLUS visibleBoardIds = two cloud calls per invocation, in
+    handlers the Info Pages left panel polls. Same don't-fix-this-later note as 0a-2's
+    resolveIdentity decision.
+  • 11 READS gated (getConfig, getItems, getCommits, getPublished, getSourceItems,
+    getSourceStats, getAnalysisSources, getChat, getSourcePipeline, getSourceChanges,
+    getSourcePipelineCounts) — each returns its EXISTING empty shape on deny. infoPages:list
+    (no pageId): fixed a real bug — it filtered archived=0 but NOT deleted, so cloud-soft-
+    deleted pages still appeared (observed: a deleted=1 board "blahblah"); now
+    COALESCE(deleted,0)=0 AND COALESCE(archived,0)=0 + a visibleBoardIdsFor intersection.
+    syncSources: target-page gate only (the cross-project source read is a known
+    defense-in-depth gap, commented in place).
+  • GATE AXIS SETTLED — MEMBERSHIP (board_members) governs READ visibility; info_page_owners
+    governs canApprove on the PUBLICATION side. The codebase already had this right; 0a-3 only
+    enforced the read half. getOwners/isOwner left on the ownership axis (isOwner MUST stay
+    ungated — gating it by membership could deny a legitimate owner who isn't a board member).
+  • CLIENT-FILTER OPEN QUESTION CLOSED — a NON-BUG. The client-side project filter (NewsTab:540,
+    SocialTab:340, Interviews:240, Documents:252) is COMPLEMENTARY and safe: the picker is fed
+    by boards:list (already gated), so it narrows an already-gated set and can never widen
+    visibility.
+  • NEW QUEUE ITEM 0a-4 — the WRITE surface is still UNGATED: ~20 infoPages:* mutation handlers
+    take a pageId and check nothing (no live exploit — no UI path, publish-class actions
+    owner-gated — but an unenforced invariant). Plus the ungated getOwners read.
+  • TESTED: root sees all 4 pages (blahblah gone); dk@ (member of Contested Skies) sees only
+    Contested Skies and EVERY tab is identical to root's; dk@ revoked sees an empty list, no
+    crash. Method: compare the member's page against root's tab by tab — a misfiring guard
+    renders as "empty page," not an error, so only the comparison discriminates.
+  • tsc held at the 8-error node baseline (zero new). No preload/renderer file touched.
 
   ── 2026-07-17 — INTEL READ GATE (0a-2, a5d4b20, UNRELEASED) ──
   • 0a-2 (a5d4b20) — GATE INTEL READS ON BOARD MEMBERSHIP. getSources + the five count reads
