@@ -245,8 +245,13 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     } catch { /* ignore */ }
   }, [])
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (opts?: { background?: boolean }) => {
+    // Background refetch (realtime echo / reconnect): swap the data under the
+    // existing stable keys WITHOUT flipping `loading`, so the card list stays
+    // mounted and scroll position is preserved. Only the initial/foreground load
+    // (and explicit user reloads) show the spinner via the !loading list gate.
+    const background = opts?.background ?? false
+    if (!background) setLoading(true)
     try {
       const params: Record<string, string> = { type: 'article' }
       if (statusFilter)     params.status     = statusFilter
@@ -260,7 +265,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     } catch (e) {
       console.error('[NewsTab] load error:', e)
     } finally {
-      setLoading(false)
+      if (!background) setLoading(false)
     }
     refreshImportedCount()
     refreshStatusCounts()
@@ -307,7 +312,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   // in cloud (another device approved/rejected/deleted). load() already refetches
   // sources + the counts.
   useEffect(() => {
-    window.api.intelligence.onSourcesInvalidate(() => { load() })
+    window.api.intelligence.onSourcesInvalidate(() => { load({ background: true }) })
     return () => window.api.intelligence.removeSourcesInvalidateListeners()
   }, [load])
 
@@ -318,7 +323,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     const wasOnline = prevOnlineRef.current
     prevOnlineRef.current = online
     if (!online || wasOnline) return
-    load()
+    load({ background: true })
   }, [online, load])
 
   // Duplicate slice: search candidate originals while the modal is open (excludes self).

@@ -111,14 +111,18 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   const [knownThematic, setKnownThematic] = useState<string[]>([])
   const handleRef = useRef<HTMLInputElement>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (opts?: { background?: boolean }) => {
+    // Background refetch (realtime echo / reconnect): swap the data under the
+    // existing stable keys WITHOUT flipping `loading`, so the card list stays
+    // mounted and scroll is preserved. Only the initial/foreground load spins.
+    const background = opts?.background ?? false
+    if (!background) setLoading(true)
     try {
       const data = await window.api.intelligence.getSources({ type: 'social' })
       // 3d: sent items (status='routed') live in the pipeline now — drop from compose.
       setPosts(data.filter((d: any) => d.status !== 'routed'))
     } catch { /* ignore */ }
-    setLoading(false)
+    if (!background) setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -154,7 +158,7 @@ export default function SocialTab({ onApprove, project = null }: Props) {
 
   // Realtime: re-fetch the social list when intelligence_sources changes in cloud.
   useEffect(() => {
-    window.api.intelligence.onSourcesInvalidate(() => { load() })
+    window.api.intelligence.onSourcesInvalidate(() => { load({ background: true }) })
     return () => window.api.intelligence.removeSourcesInvalidateListeners()
   }, [load])
 
@@ -165,7 +169,7 @@ export default function SocialTab({ onApprove, project = null }: Props) {
     const wasOnline = prevOnlineRef.current
     prevOnlineRef.current = online
     if (!online || wasOnline) return
-    load()
+    load({ background: true })
   }, [online, load])
 
   function toggleCategory(cat: string) {
