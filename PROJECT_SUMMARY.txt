@@ -1,8 +1,9 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-07-16
-  Current version: v2.2.0 (RELEASED 2026-07-16, HEAD 3dc945a, tag v2.2.0)
-                   289 commits   |   ~36,565 lines of TS/TSX
+  Generated: 2026-07-17
+  Current version: v2.2.0 (RELEASED 2026-07-16, tag v2.2.0) — UNRELEASED code on main
+                   since: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334 (scroll-jump fix)
+                   295 commits   |   ~36,579 lines of TS/TSX
   Repo: github.com/Doriankantor/kantor-consulting-hub
   PRIOR RELEASE — v2.1.0 (published 2026-07-15; mac universal DMG/zip + win NSIS x64,
   auto-update manifests live). A MINOR bump shipping the whole post-v2.0.22 batch: the
@@ -26,13 +27,47 @@
   NOW FIVE INSTANCES (see the v2.2.0 + cross-device-test blocks below). Never write a
   bare catch {}; never hardcode a success message after a pipeline.
   Working tree is otherwise CLEAN (docs only). NEXT MILESTONE (locked): COMPLETE THE INTEL
-  PROCESS BY END OF JULY, publishing in August. NEXT UP: ⛔ THE INTEL ACCESS GATE +
-  membership-event fixes (see the cross-device-test block below — moved to FIRST) →
-  info_page_sources migration (the LAST table) → To-Do write-through → To-Do data half
-  (personal_todos → cloud, personal steps, board_members.can_assign, assigned_by,
-  completion notification) → pre-route editing → T6b + per-card tag scoping → feedback
-  loop → dedup → span annotation.
+  PROCESS BY END OF JULY, publishing in August. NEXT UP: ⛔ THE INTEL ACCESS GATE — IN
+  PROGRESS: 0a-1 (compose stamps a project, 8eae348) + 0a-1b (pipeline writer stamps it,
+  2e22178) DONE; 0a-2 (the gate query itself) is the immediate next slice; 0b = realtime
+  health-detection (membership propagation) → info_page_sources migration (the LAST table)
+  → To-Do write-through → To-Do data half (personal_todos → cloud, personal steps,
+  board_members.can_assign, assigned_by, completion notification) → pre-route editing →
+  T6b + per-card tag scoping → feedback loop → dedup → span annotation.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-17 — INTEL ACCESS-GATE PREP (0a-1 / 0a-1b) + scroll-jump fix (UNRELEASED) ──
+  • 0a-1 (8eae348) — STAMP project_board_id AT COMPOSE TIME. addSocial/addInterview/
+    addDocument now REQUIRE a project and stamp it at INSERT (buttons disabled with an
+    inline hint until one is selected; cloud fns refuse to insert without one). Removes the
+    possibility of a NULL project_board_id row. LOCKED DECISION — C1/Option 1: no NULL rows
+    EVER (the rejected alternative was "creator+root sees NULLs"); this is why C1 had to
+    land BEFORE the gate — SQL IN never matches NULL.
+  • 0a-1b (2e22178) — STAMP project_board_id ON PIPELINE ARTICLES + a NEW BUG FIXED.
+    syncFromContestedSkies built candidate rows with NO project_board_id, so every GDELT
+    article since cfdd4b1 landed in cloud NULL — cfdd4b1 backfilled the DATA but never
+    fixed the WRITER. 7 NULL rows (09:47:12Z) hand-backfilled via the SQL editor, recorded
+    in sql/2026-07-17_intel_project_board_backfill.sql (a committed RECORD — new discipline:
+    backfill scripts get committed). Fixed with a named CONTESTED_SKIES_BOARD_ID constant on
+    the candidate object (cs_articles has no project column; the pipeline is single-project).
+    ★ THE MASKING SEED (db.ts:1036): a LOCAL-MIRROR-ONLY startup UPDATE stamped the mirror
+    on every launch, so the app always looked correct and the writer bug survived the whole
+    cfdd4b1 migration undetected — AND it's where the 242 historical rows' value was
+    laundered in (the backfill inherited a value never computed from a source of truth).
+    LESSON: a local fixup that papers over a cloud writer hides the writer's bug and
+    launders fake provenance. Verified live: article 79d326b3 (11:53Z) landed board-info-latam.
+  • SCROLL-JUMP FIX (923f334) — background refetch without unmounting the list. aba6b91's
+    onSourcesInvalidate→load() echoed our OWN cloud writes back (postgres_changes is a WAL
+    feed, no origin concept; self:false is Broadcast-only) and load() flipped `loading`, so
+    the {!loading && visible.map(...)} list UNMOUNTED and scroll reset ~250ms after every
+    tag/Analyze/approve. Fixed via load({background:true}) on the realtime + reconnect
+    refetches (mount/filter/user reloads keep the spinner). COROLLARY: a refetch must swap
+    data under stable keys, never unmount the list. Echo suppression deliberately NOT built
+    (would risk dropping invalidates — against fail-open). Renderer-only; tsc web 55 unchanged.
+  • FINDING 3 UPDATE — three hypotheses now REFUTED: own-email grant filter (recorded);
+    board_members IS in supabase_realtime (verified); board_members IS REPLICA IDENTITY FULL
+    (relreplident='f', verified — the thin-DELETE revoke theory is DEAD). Sole remaining
+    suspect: realtime channel death while HTTP stays healthy → 0b is a health-detection gap.
 
   ── v2.2.0 — RELEASED 2026-07-16 (8 assets: mac universal DMG/zip + win NSIS x64 exe +
      blockmaps + BOTH auto-update manifests latest-mac.yml/latest.yml — installed builds

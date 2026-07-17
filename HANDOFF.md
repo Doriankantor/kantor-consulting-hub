@@ -1,6 +1,6 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-16 · **v2.2.0 RELEASED** (published 2026-07-16, tag `v2.2.0`, HEAD `3dc945a`, `origin/main` up to date, tree clean). **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + a follow-up read-only diagnostic surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings, ALL UNFIXED) — see the ⛔ block below; that gate is now the top priority, ahead of `info_page_sources`.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-17 · **v2.2.0 RELEASED** (published 2026-07-16, tag `v2.2.0`). **Last code HEAD `923f334` after today's (2026-07-17) work (this docs commit sits on top) — the intel access gate is IN PROGRESS: 0a-1 (`8eae348`, compose stamps a project) and 0a-1b (`2e22178`, pipeline writer stamps a project) are DONE; 0a-2 (the gate query itself) is the immediate next slice. Also today: a pipeline NULL-writer bug found+fixed (part of `2e22178`), and the aba6b91 scroll-jump regression fixed (`923f334`).** `origin/main` up to date, tree clean. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + a follow-up read-only diagnostic surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings, ALL UNFIXED) — see the ⛔ block below; that gate is now the top priority, ahead of `info_page_sources`.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
@@ -121,12 +121,22 @@ corrected mechanisms matter for the fixes, so both are kept.
    intel on login. The service-role key bypasses RLS — there is no backstop.
    *Fix shape:* `project_board_id IN (visibleBoardIds)`, root sees all — the boards
    pattern (needs `visibleBoardIds` exported from boards.ts + an actor arg threaded
-   through the intel reads and ipc). **NULL check (done):** 0 rows have NULL/empty
-   `project_board_id` in cloud AND local today — BUT `addSocial`/`addInterview`/
-   `addDocument` create rows with NULL `project_board_id` by design, and SQL `IN` never
-   matches NULL, so a naive gate hides a researcher's own just-captured compose items.
-   The gate needs an explicit NULL rule (creator+root, or unassigned-pool visible to
-   intel members) — a design fork to settle in the spec.
+   through the intel reads and ipc). **NULL fork — SETTLED (LOCKED, 2026-07-17): C1 /
+   Option 1 — NO NULL `project_board_id` ROWS, EVER.** The rejected alternative was
+   "creator+root sees NULL/unassigned-pool rows"; it was turned down so the gate needs
+   **no NULL branch at all** — a plain `IN (…)` is correct and complete. This is why C1
+   had to land BEFORE the gate: SQL `IN` never matches NULL, so any NULL-project row
+   would be invisible to every non-root user (and, under Option 2, would have needed a
+   messy OR-branch on both the cloud query and the mirror). **0a-1 DONE (`8eae348`):**
+   compose (`addSocial`/`addInterview`/`addDocument`) now REQUIRES a project — the
+   Add/Save/Upload buttons are disabled with an inline hint until one is selected, the
+   row is stamped at INSERT (not a follow-up `setProject`), and the cloud fns refuse to
+   insert without one (backstop). **0a-1b DONE (`2e22178`):** the pipeline writer stamps
+   too (see the ▲ 2026-07-17 block below). Cloud is now **0 NULLs** and stays that way, so 0a-2 is a
+   plain in-query gate. ⚠ **0a-2 caveat (see NOTE at the end of NEXT UP): the boards
+   fetch-all-then-JS-filter precedent does NOT transfer** — `getSources` is paginated
+   (`.range()`) and the counts can't be JS-filtered, so intel's gate must live IN THE
+   QUERY (`.in()` cloud-side, `IN (?,…)` mirror-side).
 
 2. **PICKER OFFERED A PHANTOM PROJECT — approve routed under a stale seed name.**
    *Observed:* with no visible info-page project, dk@'s per-card picker offered a
@@ -155,26 +165,31 @@ corrected mechanisms matter for the fixes, so both are kept.
    *Observed:* root granting dk@ board access didn't reach the dk@ session until a full
    app restart. Initial hypothesis: "the event granting access is filtered out by the
    access check it grants" (isRelevant → isBoardVisible fails pre-membership).
-   *Diagnosed (hypothesis REFUTED for grants):* `board_members` events do NOT use
-   `isBoardVisible` — they route to `boardMembersRelevant`, which passes on **own-email
-   FIRST** (`rowEmail === actor.email`) before any visibility check; a grant to your own
-   email is relevant by design. Likely real culprits (unverified): **(a)** realtime-only
-   channel death — the v2.2.0 resubscribe fires ONLY on the HTTP-derived offline→online
-   edge, so a realtime socket failure while HTTP stays healthy never rescopes
-   (CHANNEL_ERROR is still terminal for that class); **(b)** `board_members` possibly
-   missing from the `supabase_realtime` publication (hand-applied schema — verify:
-   `select * from pg_publication_tables where pubname='supabase_realtime'`).
-   **The REVOKE half is plausibly real:** `board_members` has no surrogate id and is NOT
-   in the REPLICA-IDENTITY-FULL set, so a DELETE payload may be thin →
-   `boardMembersRelevant` gets an empty row → false → invalidate dropped → **the revoked
-   user keeps seeing the board until restart.** That is an access-control gap.
-   *Correct gate (design):* judge membership events from the EVENT ROW, never from
-   current visibility — own-email always relevant (both INSERT and DELETE; needs REPLICA
-   IDENTITY FULL on `board_members` so the DELETE carries the email), else
-   visible-board, else on a thin payload FAIL OPEN (push the invalidate — the refetch is
-   membership-gated and cheap; a spurious invalidate is harmless, a dropped one is an
-   access failure). Renderer note: a membership invalidate is scope `'list'` →
-   `loadBoards` only; tasks/columns need refetching too or finding 4 recurs post-fix.
+   *Diagnosed — THREE hypotheses now REFUTED (2026-07-17 verification):*
+   **(1) own-email-filtered grant — REFUTED (recorded earlier):** `board_members` events
+   do NOT use `isBoardVisible`; they route to `boardMembersRelevant`, which passes on
+   **own-email FIRST** (`rowEmail === actor.email`) before any visibility check, so a
+   grant to your own email is relevant by design.
+   **(2) `board_members` missing from the publication — REFUTED:** verified in the SQL
+   editor — `board_members` **IS in `supabase_realtime`**, all 4 columns, rowfilter null.
+   **(3) thin-DELETE-payload revoke gap — DEAD:** verified `board_members` **IS REPLICA
+   IDENTITY FULL** (`relreplident='f'`), so DELETE old-rows carry the full row incl.
+   `user_email`. The docs that listed only tasks/columns/comments/activity/checklists/
+   items in the FULL set are **STALE**. So the revoke DELETE is NOT thin, and the
+   "revoked user keeps seeing the board because the payload is empty" theory is wrong —
+   **the revoke gap is not what we thought.**
+   *Sole remaining suspect (now the whole of finding 3):* **realtime channel death while
+   HTTP stays healthy.** The `aba6b91` resubscribe fires ONLY on the HTTP-derived
+   offline→online edge, so a socket-only failure (CHANNEL_ERROR while HTTP probes keep
+   succeeding) never rescopes and never refetches — the grant/revoke event is simply
+   never delivered to a dead channel. **This makes 0b a REALTIME HEALTH-DETECTION gap
+   (detect + recover from channel death independent of the HTTP online flag), NOT a
+   schema fix.** Finding 4 (truncated board view) remains a downstream symptom of this.
+   *Correct gate (design, still holds):* judge membership events from the EVENT ROW, not
+   current visibility — own-email always relevant (both INSERT and DELETE; the verified
+   REPLICA IDENTITY FULL guarantees the DELETE carries the email), else visible-board,
+   else FAIL OPEN on a thin payload. Renderer note: a membership invalidate is scope
+   `'list'` → `loadBoards` only; tasks/columns need refetching too or finding 4 recurs.
 
 4. **TRUNCATED BOARD VIEW (member board, no columns/cards) until restart.**
    *Observed:* dk@ IS a member of Think Tank (green check in Board Access) but the board
@@ -206,7 +221,61 @@ corrected mechanisms matter for the fixes, so both are kept.
    that half ships instantly on push; the wrapper lives in `src/main/index.ts` and needs
    a release.
 
+**▲ 2026-07-17 — INTEL ACCESS-GATE PREP (0a-1 + 0a-1b): a pipeline NULL-writer bug and
+the sharpest lesson of the batch.**
+
+**A. NEW BUG — the pipeline NULL writer (found + fixed today).** `syncFromContestedSkies`
+built its candidate rows with **no `project_board_id`**, so every GDELT article inserted
+since the `cfdd4b1` migration landed in cloud with `project_board_id=NULL`. The crucial
+detail: **`cfdd4b1` backfilled the DATA (the 242 historical rows) but never fixed the
+WRITER**, so each subsequent sync silently minted fresh NULL-project articles. 7 such rows
+existed (inserted 2026-07-17 09:47:12Z); they were **hand-backfilled** via the SQL editor
+and the run is recorded in `sql/2026-07-17_intel_project_board_backfill.sql`. Fixed by
+stamping a named constant `CONTESTED_SKIES_BOARD_ID='board-info-latam'` onto the candidate
+object (`insertPipelineArticles` still writes faithfully what it's handed; the caller owns
+the mapping — `cs_articles` has NO project column, the pipeline is single-project by
+design). The dormant NewsAPI writer got the same constant. **Verified live:** article
+`79d326b3` synced 2026-07-17 11:53Z landed in cloud with `project_board_id='board-info-latam'`.
+
+**B. ★ THE MASKING SEED — `db.ts:1036` (first-class lesson, the sharpest thing found this
+batch).** At every startup this runs `UPDATE intelligence_sources SET
+project_board_id='board-info-latam' WHERE type='article' AND project_board_id IS NULL` —
+**LOCAL MIRROR ONLY, never cloud.** It **completely masked the broken writer**: the local
+mirror always looked correct, so the NULL-writer bug survived the ENTIRE `cfdd4b1`
+migration undetected — the app looked right on every machine. Worse: **it is where the 242
+historical rows' `project_board_id` CAME FROM.** `cfdd4b1`'s backfill read the LOCAL mirror
+and inherited a value the seed had laundered in — the value was **never computed from any
+source of truth.** Generalize this: **A LOCAL FIXUP THAT PAPERS OVER A CLOUD WRITER HIDES
+THE WRITER'S BUG AND LAUNDERS FAKE PROVENANCE.** It's the sibling of the SILENT-FAILURE
+rule "a fallback that swallows the error also swallows the signal" — here a fixup that
+swallows the *defect* also swallows the *provenance*. The seed is **still live and still
+masking**; it becomes removable now that the cloud writer is verified stamping (its comment
+now records all of this; behavior unchanged this slice).
+
+**C. DISCIPLINE — commit backfill scripts/SQL.** `cfdd4b1`'s own backfill script was **never
+committed** (a scratchpad file, since deleted), which is exactly why the 242 rows'
+provenance had to be reverse-engineered today. New rule: **backfill scripts/SQL get a
+committed, dated file under `sql/`** (hence `sql/2026-07-17_intel_project_board_backfill.sql`,
+a RECORD — not auto-run).
+
+**D. GOTCHA — how to actually test the pipeline sync.** It imports only `cs_articles` rows
+with `imported_to_hub=false`, AND `insertPipelineArticles` upserts `onConflict:'url',
+ignoreDuplicates:true`. So **un-importing an already-imported row proves NOTHING** — its
+URL already exists in `intelligence_sources`, so the upsert silently skips it and no row is
+written. To force a real test, find a `cs_articles` row whose `url` is **not yet** in
+`intelligence_sources` (a not-exists query), then flip `imported_to_hub=false` on that one.
+
 **KNOWN GAPS (tracked):**
+- **Background refetch failures are silently swallowed** (2026-07-17) — the scroll-jump fix
+  (`923f334`) made the realtime/reconnect refetch a `background` load that skips the spinner;
+  its failure still hits the pre-existing `catch` that swallows the error and leaves the
+  last-known data on screen. Pre-existing behavior, but now more consequential: a
+  cross-device change that fails to land is **invisible** (no spinner, no error surface).
+  Acceptable for now (fail-open, keeps stale-but-usable data), tracked for a later
+  surfaced-error pass.
+- **Stale mirror rows (244-vs-242, now 2 local-only articles)** — the upsert-only read sync
+  can never remove a row, so mirror rows cloud no longer has (or never had) linger until
+  touched. Keep tracking; cross-device DELETE via `applyToMirror` is the only removal path.
 - ~~**Realtime dead after reconnect**~~ — **CLOSED** (`aba6b91`): deterministic
   teardown+resubscribe on the online edge + renderer refetch.
 - **Cross-device verification pending** — no second Mac for ~2 weeks; will test via a
@@ -239,11 +308,34 @@ DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B p
 — the cloud migration is needed for **INTEL**, not for the info-page content tables.
 
 **NEXT UP, in order:**
-0. **⛔ THE INTEL ACCESS GATE + membership-event fixes** (see the findings block above) —
-   moved to FIRST, ahead of `info_page_sources`: gate getSources/counts/Info-Pages reads
-   on `visibleBoardIds` (with the NULL `project_board_id` design fork settled), fix
-   `board_members` event relevance (+ REPLICA IDENTITY FULL / publication verification),
-   and make `infoPages:list` visibility-aware.
+0. **⛔ THE INTEL ACCESS GATE — IN PROGRESS (partially done).** Split into 0a-1 / 0a-1b /
+   0a-2, with 0b broken out:
+   - **0a-1 — DONE (`8eae348`):** compose stamps a project at INSERT; NULL rows can no
+     longer be created (the LOCKED C1/Option-1 decision — see finding 1).
+   - **0a-1b — DONE (`2e22178`):** the pipeline writer stamps a project too; found+fixed a
+     NULL-writer bug in the process (see the ▲ 2026-07-17 block).
+   - **0a-2 — NEXT (the gate itself):** gate `getSources`/counts/Info-Pages reads on
+     `visibleBoardIds` (root sees all). Needs `visibleBoardIds` exported from boards.ts +
+     an actor arg threaded through the intel reads and ipc. Now that cloud is 0-NULL, a
+     plain `IN (…)` is complete — **no NULL branch.**
+   - **0b — the membership-propagation fix (was finding 3):** now scoped as a REALTIME
+     HEALTH-DETECTION gap (detect + recover from channel death independent of the HTTP
+     online flag), NOT a schema fix — the publication + REPLICA IDENTITY FULL theories are
+     both refuted (see finding 3). Also make `infoPages:list` visibility-aware here or in 0a-2.
+
+   **★ NOTE for 0a-2 — the boards precedent does NOT transfer.** Boards
+   fetch-ALL-then-filter-in-JS (`rows.filter(b => actor.isRoot || visible.has(b.id))`).
+   `getSources` is **PAGINATED** (`.range(offset, offset+limit-1)`), so a JS filter would
+   run AFTER the range and silently corrupt pagination (drop rows from an already-capped
+   page); and the **count reads can't be JS-filtered at all** (they're `head:true`
+   count-only). So intel's gate MUST live **IN THE QUERY**: `.in('project_board_id',
+   visibleBoardIds)` cloud-side and `AND project_board_id IN (?,…)` mirror-side, plus the
+   same `.in()` on every count. **C1 (0a-1/0a-1b) is what makes an unbranched `IN` safe.**
+   **Testing prep:** `dk@kantor-consulting.com` has **ZERO `board_members` rows** on any
+   info-page project, so post-gate dk sees NOTHING — **grant dk membership on Contested
+   Skies before testing**, or you only exercise the blocking half, never the allow half.
+   **Cloud state for reference (2026-07-17): 253 rows, 0 NULLs** — 246 articles + 4 social
+   + 1 document + 1 interview; all `board-info-latam` except one social on `board-info-trump`.
 1. **`info_page_sources` migration** — the LAST table (the pointer tier under the
    migrated `intelligence_sources`; same template).
 2. **To-Do write-through** — route `todo:complete`/`uncomplete`/`dismiss` through cloud so
@@ -372,6 +464,34 @@ hides it), wrong output accepted as real.**
 swallow the signal that something failed. A success message must be derived from the
 outcome, never hardcoded after it. A placeholder that flows into the AI as content is
 worse than a visible failure.**
+
+## ⚠ Lesson — A REFETCH MUST SWAP DATA UNDER STABLE KEYS, NEVER UNMOUNT THE LIST
+
+**The scroll-jump regression (`aba6b91` → fixed `923f334`, 2026-07-17).** `aba6b91` added
+`onSourcesInvalidate(() => load())` to all four Intelligence tabs so cross-device changes
+refetch. But **Supabase `postgres_changes` is a WAL feed with NO origin concept** — there
+is no "ignore my own writes" (the `self:false` option exists only for Broadcast, not
+postgres_changes). So the app's OWN cloud writes — tag add, Analyze, approve, reject,
+geography, confidence — echoed back to its OWN subscription ~250 ms later and called
+`load()`. `load()` began with `setLoading(true)`, and every list renders as
+`{!loading && visible.map(...)}`, so **the whole card list UNMOUNTED and remounted**,
+resetting `scrollTop` to 0 a beat after every click.
+
+**The defect was the REFETCH, not the echo** — an inversion of the standing rule "any
+mutation that changes what should be visible must trigger a refetch." A legitimate
+cross-device invalidate would have broken scroll **identically**; suppressing self-echo
+would have masked one trigger while leaving the real bug (the unmount) in place.
+**COROLLARY (record it): a refetch must swap data UNDER STABLE KEYS, never unmount the
+list.** Keys were already stable ids, so React reconciles in place the moment the list
+stops being torn down. Fixed with `load({ background: true })`: background refetches skip
+the `setLoading` pair entirely (list stays mounted), while mount / filter-change /
+user-triggered reloads keep the foreground spinner.
+
+**Echo suppression was DELIBERATELY NOT built.** It would need hand-rolled write-tracking
+(remember every id/column we just wrote, diff incoming events against it) and risks
+DROPPING real invalidates — a dropped invalidate is an access/consistency failure, against
+the fail-open discipline. Fixing the unmount is strictly better: it's correct for BOTH
+self-echo and genuine cross-device events, with no state to keep.
 
 **The arc (why):** make Source Intelligence human-first (researcher notes + on-demand
 AI, never auto-run) and route items into a specific project's Info Pages "New sources"
@@ -590,11 +710,13 @@ the backlog.
   **narrative-summary fix** (`c0be06f`), **reconcile-from-structure** (`edaab46`), and the
   **PDF extraction fix** (`283dc38`). (Docs commit `0b1572e` + `801ec27` and the
   version-bump `937e220` sit between T5 and 3e-1.)
+- **UNRELEASED on `main` since v2.2.0 (2026-07-17, all pushed):** `8eae348` (0a-1 —
+  compose stamps `project_board_id`), `2e22178` (0a-1b — pipeline writer stamps it + the
+  hand-run backfill record), `923f334` (scroll-jump fix — background refetch). All
+  renderer/main code; **no new release cut yet** (the installed app is still 2.2.0). Next
+  code slice is **0a-2 — the intel access gate** (see "Start here" / NEXT UP item 0).
 - **Working tree:** only these two docs (`HANDOFF.md`, `PROJECT_SUMMARY.txt`) are
-  modified — no source changes pending. Next work is the **intel-process milestone** —
-  `info_page_sources` migration → To-Do write-through → To-Do data half → pre-route
-  editing → T6b+per-card scoping → feedback loop → dedup → span annotation (see
-  "Start here" above).
+  modified — no source changes pending.
 
 ## v2.0.21 — keyword matcher word-boundary fix (released)
 
