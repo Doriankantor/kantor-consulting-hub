@@ -23,12 +23,15 @@
   KEY DESIGN INSIGHT: prose summarizes, structure catalogues — named specifics belong in
   capabilities[], NOT in the prose summary (proven empirically; see the changelog).
   RECURRING BUG CLASS: SILENT FAILURE — a swallowed error, wrong output accepted as real.
-  NOW FOUR INSTANCES (see the v2.2.0 block below). Never write a bare catch {}.
+  NOW FIVE INSTANCES (see the v2.2.0 + cross-device-test blocks below). Never write a
+  bare catch {}; never hardcode a success message after a pipeline.
   Working tree is otherwise CLEAN (docs only). NEXT MILESTONE (locked): COMPLETE THE INTEL
-  PROCESS BY END OF JULY, publishing in August. NEXT UP: info_page_sources migration (the
-  LAST table) → To-Do write-through → To-Do data half (personal_todos → cloud, personal
-  steps, board_members.can_assign, assigned_by, completion notification) → pre-route
-  editing → T6b + per-card tag scoping → feedback loop → dedup → span annotation.
+  PROCESS BY END OF JULY, publishing in August. NEXT UP: ⛔ THE INTEL ACCESS GATE +
+  membership-event fixes (see the cross-device-test block below — moved to FIRST) →
+  info_page_sources migration (the LAST table) → To-Do write-through → To-Do data half
+  (personal_todos → cloud, personal steps, board_members.can_assign, assigned_by,
+  completion notification) → pre-route editing → T6b + per-card tag scoping → feedback
+  loop → dedup → span annotation.
   See HANDOFF.md "Start here" for the resume point.
 
   ── v2.2.0 — RELEASED 2026-07-16 (8 assets: mac universal DMG/zip + win NSIS x64 exe +
@@ -103,6 +106,29 @@
     known_tags global-unique index (see above); Contested Skies renders BOTH New Sources
     (pipeline) and Sources (legacy manual) — two source surfaces, different tables, UX
     confusion; addApprovedSourceToInfoPages is defined-but-uncalled dead code.
+
+  ── 2026-07-16 EVENING — v2.2.0 CROSS-DEVICE TEST + SAME-DAY DIAGNOSTIC (findings only,
+     NOTHING FIXED; full detail + refuted-vs-verified mechanisms in HANDOFF.md's ⛔ block) ──
+  dk@kantor-consulting.com (full-admin, NON-root, second macOS account, own local
+  DB/mirror) surfaced an ACCESS-CONTROL GAP: intel reads have NO membership gate —
+  getSources, all five count reads, the four Info-Pages pipeline reads, and infoPages:list
+  are authenticated-only, not membership-scoped. dk@ with ZERO board_members rows saw all
+  242 articles; the project picker is neither permission NOR filter (it is deliberately
+  not threaded into the tab reads at all — "All sources" means all sources). Service-role
+  bypasses RLS, so there is no backstop. Plus three related findings from the same test:
+  the per-card picker offered a stale db.ts SEED ("LATAM Drone Threat" = board-info-latam)
+  via the visibility-unfiltered LOCAL infoPages:list (the initial 3c4671de/local-only
+  attribution was REFUTED by the diagnostic — archive filters all verify correct);
+  membership grants/revokes don't propagate live (the "grant filtered by its own access
+  check" hypothesis was REFUTED — an own-email rule exists; suspects are realtime-only
+  channel death, which the reconnect fix doesn't cover, and publication/replica-identity
+  gaps on board_members — the REVOKE half is itself an access hole); a member board
+  rendered with no columns/cards until restart (diagnosed as downstream of the propagation
+  bug, NOT a mirror-ordering bug). And SILENT FAILURE #5: the Terminal updater prints
+  "✓ Update complete" unconditionally — the installed app was still 2.0.22.
+  THE INTEL ACCESS GATE IS NOW TOP PRIORITY, AHEAD OF info_page_sources. Gate design must
+  settle NULL project_board_id semantics first (0 NULL rows today in cloud AND local, but
+  compose items are born NULL and SQL IN never matches NULL).
 ═══════════════════════════════════════════════════════════════════════════════
 
 ───────────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-16 · **v2.2.0 RELEASED** (published 2026-07-16, tag `v2.2.0`, HEAD `3dc945a`, `origin/main` up to date, tree clean). **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-16 · **v2.2.0 RELEASED** (published 2026-07-16, tag `v2.2.0`, HEAD `3dc945a`, `origin/main` up to date, tree clean). **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + a follow-up read-only diagnostic surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings, ALL UNFIXED) — see the ⛔ block below; that gate is now the top priority, ahead of `info_page_sources`.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
@@ -92,6 +92,120 @@ v2.1.0 itself shipped: **3e-1, Duplicate, T6a, tag-delete fix, T7, persist fix, 
 Path B (B1/B2/B3), the summary-key fix (`c0be06f`), reconcile-from-structure (`edaab46`),
 and the PDF extraction fix (`283dc38`).**
 
+**⛔ CROSS-DEVICE TEST FINDINGS (2026-07-16) — ACCESS-CONTROL GAP + 4 MORE. TOP PRIORITY, ALL UNFIXED.**
+
+v2.2.0 was cross-device-tested the day of release: dk@kantor-consulting.com (full-admin,
+NOT root) in a second macOS account with its own local DB/mirror. The test surfaced five
+findings, and a same-day READ-ONLY DIAGNOSTIC session traced each to its verified
+mechanism — **nothing is fixed yet**. Each item records what was OBSERVED in the test and
+what the DIAGNOSTIC then established. Several initial hypotheses were REFUTED — the
+corrected mechanisms matter for the fixes, so both are kept.
+
+1. **ACCESS-CONTROL GAP — intel reads have NO membership gate (highest priority).**
+   *Observed:* dk@ had ZERO `board_members` rows (Board Access shows TOTAL MEMBERS 0 on
+   every info-page project) yet saw **all 242 articles across all projects**.
+   *Diagnosed:* `getSources` filters ONLY on type/status/confidence/category/search — it
+   never resolves an actor, never calls `visibleBoardIds`, never touches `board_members`.
+   And it's worse than "the picker is a filter, not a permission": **the picker isn't
+   even a filter** — no tab threads the selected project into `getSources`
+   (Intelligence/index.tsx:29 does this deliberately), so the list is the ENTIRE TABLE
+   for any signed-in user; "All sources" means all sources. The count reads
+   (`getUnreviewedCount`/`getStatusCounts`/`getPipelineStats.pending`/`getUnscoredCount`/
+   `getImportedCount`) are ALL ungated global counts. The Info-Pages pipeline reads
+   (`getSourcePipeline`/`getAnalysisSources`/`getSourceItems`/`getSourceChanges`) are
+   pageId-scoped with NO actor gate, and `infoPages:list` itself is an unfiltered LOCAL
+   read. Boards/columns/tasks gate through `visibleBoardIds` (isRoot || board_members);
+   intel never got that tier — it predates the per-project model, and `cfdd4b1`
+   translated the query FAITHFULLY, which faithfully preserved the missing gate. Harmless
+   when intel was local-per-machine; in cloud, every researcher reads every project's
+   intel on login. The service-role key bypasses RLS — there is no backstop.
+   *Fix shape:* `project_board_id IN (visibleBoardIds)`, root sees all — the boards
+   pattern (needs `visibleBoardIds` exported from boards.ts + an actor arg threaded
+   through the intel reads and ipc). **NULL check (done):** 0 rows have NULL/empty
+   `project_board_id` in cloud AND local today — BUT `addSocial`/`addInterview`/
+   `addDocument` create rows with NULL `project_board_id` by design, and SQL `IN` never
+   matches NULL, so a naive gate hides a researcher's own just-captured compose items.
+   The gate needs an explicit NULL rule (creator+root, or unassigned-pool visible to
+   intel members) — a design fork to settle in the spec.
+
+2. **PICKER OFFERED A PHANTOM PROJECT — approve routed under a stale seed name.**
+   *Observed:* with no visible info-page project, dk@'s per-card picker offered a
+   LATAM-drone-named option and an approve routed there; read at the time as "LATAM
+   drone monitor" (`3c4671de`), archived + local-only.
+   *Diagnosed (initial attribution REFUTED):* `3c4671de` exists in CLOUD
+   (`board_type='standard'`, archived=1 — it's dk's archived Workspace board, dk IS a
+   member) and ZERO `intelligence_sources` rows point at it; every archive filter
+   (`listBoards` `.eq(archived,0)`, `readBoardsMirror` `COALESCE(archived,0)=0`,
+   `infoPages:list` `archived=0`) verifies correct. The REAL mechanism: `infoPages:list`
+   is a LOCAL, visibility-unfiltered read; on a fresh non-root machine `db.ts:977-978`
+   seeds `board-info-latam` under its STALE PRE-RENAME NAME **"LATAM Drone Threat"**
+   (+ `board-info-trump` "Trump Immigration"); the cloud rows never overwrite them
+   (`listBoards` is visibility-filtered and dk isn't a member) and `syncBoardsMirror`'s
+   DELETE deliberately excludes info-page rows — so the stale seeds survive forever and
+   feed the picker. The routed target was `board-info-latam` — the right project wearing
+   a 2025 name, selectable by a user the top picker says can't see it.
+   *Also real:* `routeToNewSources` never validates the target is an info-page (its board
+   lookup is display-name only), and the per-card picker has three first-item defaults:
+   the Approve gate passes on `projects[0].name` with nothing chosen; a set-but-unlisted
+   `project_board_id` makes the `<select>` silently DISPLAY the first option; and Approve
+   AUTO-COMMITS the displayed value via `handleProjectSelect` when the source had no
+   project.
+
+3. **MEMBERSHIP CHANGES DON'T PROPAGATE until restart.**
+   *Observed:* root granting dk@ board access didn't reach the dk@ session until a full
+   app restart. Initial hypothesis: "the event granting access is filtered out by the
+   access check it grants" (isRelevant → isBoardVisible fails pre-membership).
+   *Diagnosed (hypothesis REFUTED for grants):* `board_members` events do NOT use
+   `isBoardVisible` — they route to `boardMembersRelevant`, which passes on **own-email
+   FIRST** (`rowEmail === actor.email`) before any visibility check; a grant to your own
+   email is relevant by design. Likely real culprits (unverified): **(a)** realtime-only
+   channel death — the v2.2.0 resubscribe fires ONLY on the HTTP-derived offline→online
+   edge, so a realtime socket failure while HTTP stays healthy never rescopes
+   (CHANNEL_ERROR is still terminal for that class); **(b)** `board_members` possibly
+   missing from the `supabase_realtime` publication (hand-applied schema — verify:
+   `select * from pg_publication_tables where pubname='supabase_realtime'`).
+   **The REVOKE half is plausibly real:** `board_members` has no surrogate id and is NOT
+   in the REPLICA-IDENTITY-FULL set, so a DELETE payload may be thin →
+   `boardMembersRelevant` gets an empty row → false → invalidate dropped → **the revoked
+   user keeps seeing the board until restart.** That is an access-control gap.
+   *Correct gate (design):* judge membership events from the EVENT ROW, never from
+   current visibility — own-email always relevant (both INSERT and DELETE; needs REPLICA
+   IDENTITY FULL on `board_members` so the DELETE carries the email), else
+   visible-board, else on a thin payload FAIL OPEN (push the invalidate — the refetch is
+   membership-gated and cheap; a spurious invalidate is harmless, a dropped one is an
+   access failure). Renderer note: a membership invalidate is scope `'list'` →
+   `loadBoards` only; tasks/columns need refetching too or finding 4 recurs post-fix.
+
+4. **TRUNCATED BOARD VIEW (member board, no columns/cards) until restart.**
+   *Observed:* dk@ IS a member of Think Tank (green check in Board Access) but the board
+   listed with NO columns and NO cards. Initial suspicion: fresh-account ordering —
+   getColumns/getTasks running before `board_members_mirror` is populated.
+   *Diagnosed (suspicion REFUTED):* the members mirror is ONLY the offline/cloud-error
+   fallback; online, every read (`listBoards`/`getColumns`/`getTasks`) independently runs
+   `resolveActor → visibleBoardIds` against CLOUD per call — identical gating, no cache,
+   no mirror-ordering window (on cloud error a fresh account fails CLOSED by design).
+   Real mechanism: dk's state was loaded BEFORE the grant; the grant invalidate never
+   arrived (finding 3); whatever later re-ran `loadBoards` made the board row appear, but
+   tasks refetch only on `'board'`-scope invalidates that never came — board visible,
+   content frozen pre-grant. **A downstream symptom of finding 3, not a separate gate or
+   ordering bug.**
+
+5. **UPDATER REPORTS SUCCESS AFTER TOTAL FAILURE — SILENT FAILURE #5.**
+   *Observed:* the installed app was still **2.0.22**, two releases stale; in the
+   Standard account the Terminal updater printed "✓ Update complete" after every `rm`
+   failed Permission denied.
+   *Diagnosed:* `updater:openTerminalUpdate` (src/main/index.ts:178-203) generates
+   `$TMPDIR/kch-update.command`, which pipes `install.sh` (fetched from GitHub raw,
+   `main`) into bash and then prints "✓ Update complete" **UNCONDITIONALLY** — no
+   `set -e`, no exit-code check. `install.sh` itself HAS `set -e` and correctly aborts
+   when `rm -rf /Applications/...` fails in a Standard account — and the wrapper ignores
+   bash's exit status. Worse: if `curl` itself fails (offline/404), bash receives EMPTY
+   input and exits 0 — success printed after doing literally nothing. Purest specimen of
+   the class yet: the success message is hardcoded.
+   *Asymmetry worth knowing:* `install.sh` is fetched from `main` at RUNTIME, so fixing
+   that half ships instantly on push; the wrapper lives in `src/main/index.ts` and needs
+   a release.
+
 **KNOWN GAPS (tracked):**
 - ~~**Realtime dead after reconnect**~~ — **CLOSED** (`aba6b91`): deterministic
   teardown+resubscribe on the online edge + renderer refetch.
@@ -125,6 +239,11 @@ DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B p
 — the cloud migration is needed for **INTEL**, not for the info-page content tables.
 
 **NEXT UP, in order:**
+0. **⛔ THE INTEL ACCESS GATE + membership-event fixes** (see the findings block above) —
+   moved to FIRST, ahead of `info_page_sources`: gate getSources/counts/Info-Pages reads
+   on `visibleBoardIds` (with the NULL `project_board_id` design fork settled), fix
+   `board_members` event relevance (+ REPLICA IDENTITY FULL / publication verification),
+   and make `infoPages:list` visibility-aware.
 1. **`info_page_sources` migration** — the LAST table (the pointer tier under the
    migrated `intelligence_sources`; same template).
 2. **To-Do write-through** — route `todo:complete`/`uncomplete`/`dismiss` through cloud so
@@ -213,7 +332,7 @@ Still do NOT re-attempt "make the summary hold verbatim specifics."
 
 ## ⚠ Lesson — SILENT FAILURE IS THE RECURRING BUG CLASS
 
-**FOUR instances now, same shape: a failure swallowed with no logging (or a fallback that
+**FIVE instances now, same shape: a failure swallowed with no logging (or a fallback that
 hides it), wrong output accepted as real.**
 
 - **(a) B1 — `max_tokens: 1024`** truncated the structured JSON → parse failure →
@@ -242,10 +361,17 @@ hides it), wrong output accepted as real.**
   signal**: the `cloudError` banner became dead code and nothing knew the app was
   offline. **A fallback that swallows the error also swallows the diagnosis** — fixed by
   the dedicated outcome-derived connection state (`reportCloudResult`).
+- **(e) The Terminal updater's hardcoded success** (cross-device test, UNFIXED — see the
+  ⛔ findings block) — the generated `kch-update.command` prints "✓ Update complete"
+  unconditionally after `curl install.sh | bash`, with no exit-code check; a
+  Permission-denied abort inside install.sh (or an empty curl) still prints success. The
+  purest specimen yet: the success message isn't even derived from an outcome — it's a
+  string literal after the pipeline.
 
 **RULE: never write a bare `catch {}`. Bind the error and log it. A fallback must not
-swallow the signal that something failed. A placeholder that flows into the AI as content
-is worse than a visible failure.**
+swallow the signal that something failed. A success message must be derived from the
+outcome, never hardcoded after it. A placeholder that flows into the AI as content is
+worse than a visible failure.**
 
 **The arc (why):** make Source Intelligence human-first (researcher notes + on-demand
 AI, never auto-run) and route items into a specific project's Info Pages "New sources"
