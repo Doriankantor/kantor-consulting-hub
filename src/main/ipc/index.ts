@@ -3036,11 +3036,18 @@ function registerIntelligenceHandlers(): void {
 export function registerInfoPageHandlers(): void {
   const db = () => getDatabase()
 
-  ipcMain.handle('infoPages:list', () => {
-    return db().prepare("SELECT * FROM workspace_boards WHERE board_type='info-page' AND archived=0 ORDER BY position ASC").all()
+  // Read gate (0a-3): no pageId, so not an entry guard. (a) deleted fix — was
+  // archived=0 only, so a cloud-soft-deleted info page still appeared; now excludes
+  // deleted too. (b) intersect with the acting user's visible board ids (root → all;
+  // non-root → only pages they're a member of). Small, unpaginated → a JS filter is fine.
+  ipcMain.handle('infoPages:list', async () => {
+    const rows = db().prepare("SELECT * FROM workspace_boards WHERE board_type='info-page' AND COALESCE(deleted,0)=0 AND COALESCE(archived,0)=0 ORDER BY position ASC").all() as Record<string, unknown>[]
+    const { isRoot, ids } = await boardsCloud.visibleBoardIdsFor(currentActingUserId)
+    return isRoot ? rows : rows.filter(r => ids.has(r.id as string))
   })
 
-  ipcMain.handle('infoPages:getConfig', (_e, pageId: string) => {
+  ipcMain.handle('infoPages:getConfig', async (_e, pageId: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return {}
     const row = db().prepare('SELECT board_config FROM workspace_boards WHERE id=?').get(pageId) as { board_config: string | null } | undefined
     try { return row?.board_config ? JSON.parse(row.board_config) : {} } catch { return {} }
   })
@@ -3101,7 +3108,8 @@ export function registerInfoPageHandlers(): void {
   ipcMain.handle('infoPages:removeOwner', (_e, pageId: string, userId: string) => boardsCloud.removeOwner(currentActingUserId, pageId, userId))
   ipcMain.handle('infoPages:isOwner', (_e, pageId: string) => boardsCloud.isOwner(currentActingUserId, pageId))
 
-  ipcMain.handle('infoPages:getItems', (_e, pageId: string, tab?: string) => {
+  ipcMain.handle('infoPages:getItems', async (_e, pageId: string, tab?: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return []
     if (tab) return db().prepare('SELECT * FROM info_page_items WHERE page_id=? AND tab=? ORDER BY created_at DESC').all(pageId, tab)
     return db().prepare('SELECT * FROM info_page_items WHERE page_id=? ORDER BY created_at DESC').all(pageId)
   })
@@ -3153,7 +3161,8 @@ export function registerInfoPageHandlers(): void {
     return { ok: true }
   })
 
-  ipcMain.handle('infoPages:getCommits', (_e, pageId: string, status?: string) => {
+  ipcMain.handle('infoPages:getCommits', async (_e, pageId: string, status?: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return []
     const sql = status
       ? `SELECT ipc.*, ipi.title, ipi.tab, ipi.sub_type, ipi.confidence, ipi.proposed_section, ipi.content_json
          FROM info_page_commits ipc LEFT JOIN info_page_items ipi ON ipi.id=ipc.item_id
@@ -3192,7 +3201,8 @@ export function registerInfoPageHandlers(): void {
     return { ok: true }
   })
 
-  ipcMain.handle('infoPages:getPublished', (_e, pageId: string) => {
+  ipcMain.handle('infoPages:getPublished', async (_e, pageId: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return []
     return db().prepare('SELECT * FROM info_page_published WHERE page_id=? ORDER BY date_implemented DESC LIMIT 50').all(pageId)
   })
 
@@ -3350,7 +3360,12 @@ export function registerInfoPageHandlers(): void {
   // ── Pipeline: Source Intelligence → Sources tab ──────────────────────────
   // Reconcile all approved intelligence sources matching this page's keywords
   // into 'ready_for_analysis' source items. Used for backfill + polling sync.
-  ipcMain.handle('infoPages:syncSources', (_e, pageId: string) => {
+  ipcMain.handle('infoPages:syncSources', async (_e, pageId: string) => {
+    // Gate the TARGET page (0a-3): a non-member can't backfill into a page they can't
+    // see. KNOWN GAP (defense-in-depth, deliberately out of scope): the cross-project
+    // source read below still scans ALL approved/pushed sources — but the caller is
+    // already entitled to this page and the matches are keyword-scoped to its config.
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return { added: 0 }
     const page = db().prepare("SELECT id,name,board_config FROM workspace_boards WHERE id=?").get(pageId) as { id: string; name: string; board_config: string | null } | undefined
     if (!page) return { added: 0 }
     const keywords = keywordsForInfoPage(page.board_config)
@@ -3369,7 +3384,8 @@ export function registerInfoPageHandlers(): void {
   })
 
   // Source items currently flowing through the Sources tab (ready or in analysis).
-  ipcMain.handle('infoPages:getSourceItems', (_e, pageId: string) => {
+  ipcMain.handle('infoPages:getSourceItems', async (_e, pageId: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return []
     return db().prepare(`
       SELECT i.*, s.used_in_page, s.used_in_page_at, s.status AS source_status
       FROM info_page_items i
@@ -3390,7 +3406,8 @@ export function registerInfoPageHandlers(): void {
   })
 
   // Counters for the Info Pages left panel.
-  ipcMain.handle('infoPages:getSourceStats', (_e, pageId: string) => {
+  ipcMain.handle('infoPages:getSourceStats', async (_e, pageId: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return { newAvailable: 0, inAnalysis: 0 }
     // newAvailable now reads the REAL 3c pipeline table (info_page_sources stage='new'),
     // matching getSourcePipelineCounts so the list badge and the New Sources tab agree.
     // inAnalysis still reflects the legacy manual flow (info_page_items in_analysis).
@@ -3400,7 +3417,8 @@ export function registerInfoPageHandlers(): void {
   })
 
   // Intelligence sources currently queued for analysis on this page (for ClaudeAnalysisTab).
-  ipcMain.handle('infoPages:getAnalysisSources', (_e, pageId: string) => {
+  ipcMain.handle('infoPages:getAnalysisSources', async (_e, pageId: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return []
     return db().prepare(`
       SELECT s.* FROM intelligence_sources s
       JOIN info_page_items i ON i.origin_source_id = s.id
@@ -3479,7 +3497,8 @@ Return ONLY the JSON array, no other text.`
   })
 
   // ── Claude Analysis chat (full interactive conversation per Info Page) ─────
-  ipcMain.handle('infoPages:getChat', (_e, pageId: string) => {
+  ipcMain.handle('infoPages:getChat', async (_e, pageId: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return []
     return db().prepare('SELECT * FROM info_page_chat WHERE page_id=? ORDER BY created_at ASC, rowid ASC').all(pageId)
   })
 
@@ -3617,7 +3636,8 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
 
   // Return all info_page_sources rows for a page (all stages), joined with full
   // intelligence_sources metadata so the UI has everything it needs to display.
-  ipcMain.handle('infoPages:getSourcePipeline', (_e, pageId: string) => {
+  ipcMain.handle('infoPages:getSourcePipeline', async (_e, pageId: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return []
     return db().prepare(`
       SELECT ips.id as pipeline_id, ips.article_id, ips.info_page, ips.stage,
              ips.design_notes, ips.added_at, ips.committed_at,
@@ -3721,7 +3741,8 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
   })
 
   // Return info_page_changes in reverse-chronological order (Recent Changes tab).
-  ipcMain.handle('infoPages:getSourceChanges', (_e, pageId: string) => {
+  ipcMain.handle('infoPages:getSourceChanges', async (_e, pageId: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return []
     return db().prepare(`
       SELECT ipc.*, is2.title, is2.source_name
       FROM info_page_changes ipc
@@ -3733,7 +3754,8 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
   })
 
   // Count items currently in each pipeline stage for a page (used by Intelligence tab).
-  ipcMain.handle('infoPages:getSourcePipelineCounts', (_e, pageId: string) => {
+  ipcMain.handle('infoPages:getSourcePipelineCounts', async (_e, pageId: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return { new: 0, review: 0, committed: 0 }
     const rows = db().prepare(
       'SELECT stage, COUNT(*) as c FROM info_page_sources WHERE info_page=? GROUP BY stage'
     ).all(pageId) as { stage: string; c: number }[]

@@ -314,6 +314,22 @@ export async function visibleBoardIdsFor(
   return { isRoot, ids }
 }
 
+// Cheap one-shot pageId visibility check for the info_page_* read gate (slice 0a-3).
+// Reuses visibleBoardIdsFor (resolveIdentity, LOCAL-ONLY) so it costs ONE local
+// resolve + one board_members/mirror read — NO member_permissions cloud roundtrip.
+// Deliberately does NOT use isBoardVisible (below): that calls resolveActor (a
+// member_permissions roundtrip) PLUS visibleBoardIds — two cloud calls per invocation
+// — which is exactly what these hot handlers (the Info Pages left panel polls counts)
+// must avoid. Leave isBoardVisible for its existing Realtime callers.
+export async function isBoardVisibleFor(
+  actingUserOrId: string | undefined,
+  boardId: string | null,
+): Promise<boolean> {
+  if (!boardId) return false
+  const { isRoot, ids } = await visibleBoardIdsFor(actingUserOrId)
+  return isRoot || ids.has(boardId)
+}
+
 async function actorCanAccessBoard(actor: Actor, boardId: string): Promise<boolean> {
   if (actor.isRoot) return true
   return (await visibleBoardIds(actor)).has(boardId)
