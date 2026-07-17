@@ -1,14 +1,18 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-07-17
-  Current version: v2.2.0 (RELEASED 2026-07-16, tag v2.2.0) — UNRELEASED code on main
-                   since: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334 (scroll-jump fix),
-                   a5d4b20 (0a-2 — intel read gate), 8662b68 (docs 0a-2),
-                   46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
-                   26ee18c (0a-4 — info_page_* WRITE gate, M/A/R)   |   HEAD 26ee18c
-                   299 commits   |   ~36,800 lines of TS/TSX
+  Generated: 2026-07-18
+  Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e) —
+                   NO unreleased code on main. Shipped in v2.3.0: 8eae348 (0a-1),
+                   2e22178 (0a-1b), 923f334 (scroll-jump fix), a5d4b20 (0a-2 — intel
+                   read gate), 8662b68 (docs 0a-2), 46be18e (0a-3 — info_page_* read
+                   gate), f80b17d (docs 0a-3), 26ee18c (0a-4 — info_page_* WRITE gate,
+                   M/A/R), 49b44fd (docs 0a-4).   |   HEAD a4b161e
+                   303 commits   |   ~36,800 lines of TS/TSX
+                   8 assets on GitHub Releases incl. BOTH auto-update manifests
+                   (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes.
-                   NEXT STEP: cut v2.3.0 (tier proven, unreleased; researchers on 2.2.0).
+                   v2.3.0 ships the complete access-control tier + the infoPages:list
+                   deleted=0 bug fix. NEXT STEP: 0b (realtime health).
   Repo: github.com/Doriankantor/kantor-consulting-hub
   PRIOR RELEASE — v2.1.0 (published 2026-07-15; mac universal DMG/zip + win NSIS x64,
   auto-update manifests live). A MINOR bump shipping the whole post-v2.0.22 batch: the
@@ -37,9 +41,9 @@
   writer stamps it, 2e22178) + 0a-2 (intel read gate, a5d4b20) + 0a-3 (info_page_* read gate,
   46be18e) + 0a-4 (info_page_* WRITE surface gate, 26ee18c — ~20 mutation handlers across three
   axes M=membership / A=canApprove / R=root; the first server-side check on these writes, all
-  authorization previously lived in the renderer) all DONE. Finding 1 CLOSED. Order: RELEASE
-  v2.3.0 (the tier is proven + unreleased; researchers still on ungated 2.2.0 — and 0b can only
-  be verified in the field, so ship first) → 0b = realtime health-detection (detect + recover
+  authorization previously lived in the renderer) all DONE. Finding 1 CLOSED. v2.3.0 RELEASED
+  2026-07-17 (tag v2.3.0, version-bump a4b161e; 8 assets incl. both auto-update manifests —
+  researchers self-update off 2.2.0). Order: 0b = realtime health-detection (detect + recover
   from channel death independent of the HTTP online flag; the last of finding 1's five) → the
   visibleBoardIds non-root no-join (its own slice — a member of a soft-deleted board keeps
   visibility; affects EVERY gated read) → cleanup (delete the 4 orphaned handlers; optional M
@@ -49,7 +53,26 @@
   T6b + per-card tag scoping → feedback loop → dedup → span annotation. Mirror purge unscheduled.
   See HANDOFF.md "Start here" for the resume point.
 
-  ── 2026-07-17 — INFO_PAGE WRITE SURFACE GATE (0a-4, 26ee18c, UNRELEASED) ──
+  ── 2026-07-17 — RELEASE v2.3.0 (a4b161e, tag v2.3.0) ──
+  • CUT v2.3.0 — a MINOR bump shipping the COMPLETE access-control tier (0a-1 / 0a-1b /
+    0a-2 / 0a-3 / 0a-4), closing finding 1 end-to-end, plus the infoPages:list deleted=0
+    bug fix and the scroll-jump fix. The unreleased-since-v2.2.0 list is now EMPTY.
+  • 8 assets on GitHub Releases: mac universal DMG + zip, win NSIS x64 exe, blockmaps, and
+    BOTH auto-update manifests (latest-mac.yml + latest.yml) — installed builds self-update
+    off the ungated 2.2.0. This also unblocks 0b's field verification (researchers land on
+    the gated build).
+  • GOTCHA (found during this release): THREE GH_TOKEN sources shadow each other. The
+    release script is ${GH_TOKEN:-<.env fallback>}, so an already-exported GH_TOKEN WINS
+    over .env. ~/.zshrc:4 AND ~/.zprofile:1 both actively export a STALE token — running
+    `npm run release` from Dorian's own terminal would publish with the OLD token and
+    silently ignore a .env edit. It worked this time only because Claude Code's Bash env has
+    GH_TOKEN unset, so the .env fallback fired (fingerprints: .env a71da25c vs stale login
+    237aaad5). Same var is read by the app at runtime for publishToRepo (ipc:3118,
+    3320-3321) — same name, different execution context. FIX (Dorian's own — dotfiles out of
+    scope for agents): delete the export lines from ~/.zshrc:4 and ~/.zprofile:1 so .env is
+    the single source.
+
+  ── 2026-07-17 — INFO_PAGE WRITE SURFACE GATE (0a-4, 26ee18c, RELEASED in v2.3.0) ──
   • 0a-4 (26ee18c) — GATE THE info_page_* WRITE SURFACE. Closes the access-control gap
     end-to-end (0a-2 intel reads + 0a-3 info_page reads + 0a-4 writes = finding 1 CLOSED).
     ~20 mutation handlers took a pageId and checked NOTHING — a non-member could mutate a

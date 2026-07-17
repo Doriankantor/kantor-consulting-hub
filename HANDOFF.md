@@ -1,16 +1,23 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-17 · **v2.2.0 RELEASED** (published 2026-07-16, tag `v2.2.0`). **Last code HEAD `26ee18c` after today's (2026-07-17) work (this docs commit sits on top) — the ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. The next step is a RELEASE (v2.3.0 — the whole tier is proven and unreleased; researchers are still on ungated 2.2.0), then 0b (realtime health). Also today: a pipeline NULL-writer bug found+fixed (part of `2e22178`), and the aba6b91 scroll-jump regression fixed (`923f334`).** `origin/main` up to date, tree clean. `26ee18c` joins `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`46be18e` (+ docs `8662b68`/`f80b17d`) as **UNRELEASED on main** (installed app is 2.2.0). **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-18 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
-**Where we are: v2.2.0 RELEASED** (published 2026-07-16; version-bump commit `3dc945a`,
-tag `v2.2.0` pushed BEFORE the release build — no tag race). HEAD = `3dc945a`,
-`origin/main` up to date, working tree clean apart from these two docs. 8 assets live on
-GitHub Releases including both auto-update manifests, so every installed build (incl. the
-Mac mini) self-updates to 2.2.0 — which is what unlocks the pending cross-device
-verification. v2.2.0 shipped the 8 commits since v2.1.0. What they are, and **why they
-took the shape they did**:
+**Where we are: v2.3.0 RELEASED** (published 2026-07-17; version-bump commit `a4b161e`,
+tag `v2.3.0` pushed BEFORE the release build — no tag race). HEAD = `a4b161e`,
+`origin/main` up to date, working tree clean apart from these two docs. **8 assets live on
+GitHub Releases** — mac universal DMG + zip, win NSIS x64 exe, blockmaps, and BOTH
+auto-update manifests (`latest-mac.yml` + `latest.yml`) — so every installed build (incl.
+the Mac mini) self-updates off the ungated 2.2.0. **v2.3.0 ships the COMPLETE
+access-control tier (0a-1 / 0a-1b / 0a-2 / 0a-3 / 0a-4), closing finding 1 end-to-end,
+plus the `infoPages:list` `deleted=0` bug fix and the scroll-jump fix.** The
+unreleased-since-v2.2.0 list is now EMPTY. Next is 0b (realtime health), whose field
+verification this release unblocks (researchers now self-update onto the gated build).
+
+(Historical — **v2.2.0 RELEASED** (published 2026-07-16; version-bump commit `3dc945a`,
+tag `v2.2.0`) shipped the 8 commits since v2.1.0. What they are, and **why they
+took the shape they did**:)
 
 1. **Cosmetic sweep** (3 commits): removed the dead `'summarize'` analyze task (`7f36605`),
    removed the sidebar Archive expander (`ff2bd9a`), fixed the Info-Pages list badge that
@@ -533,10 +540,10 @@ DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B p
 — the cloud migration is needed for **INTEL**, not for the info-page content tables.
 
 **NEXT UP, in order:**
-0. **⛔ THE INTEL ACCESS GATE — CLOSED END-TO-END (reads + writes).** Split into 0a-1 /
-   0a-1b / 0a-2 / 0a-3 / 0a-4 (ALL DONE). Finding 1 is closed. **The immediate next step is
-   a RELEASE (v2.3.0)** — the whole tier is proven and UNRELEASED; researchers are still
-   running the ungated 2.2.0. Then 0b (realtime health):
+0. **⛔ THE INTEL ACCESS GATE — CLOSED END-TO-END (reads + writes) AND SHIPPED.** Split into
+   0a-1 / 0a-1b / 0a-2 / 0a-3 / 0a-4 (ALL DONE). Finding 1 is closed. **RELEASED in v2.3.0
+   (2026-07-17, tag `v2.3.0`, version-bump `a4b161e`)** — researchers self-update off the
+   ungated 2.2.0. The next step is now 0b (realtime health):
    - **0a-1 — DONE (`8eae348`):** compose stamps a project at INSERT; NULL rows can no
      longer be created (the LOCKED C1/Option-1 decision — see finding 1).
    - **0a-1b — DONE (`2e22178`):** the pipeline writer stamps a project too; found+fixed a
@@ -566,9 +573,10 @@ DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B p
      `sendSourcesToAnalysis` fails closed on the whole batch. Deny = `{ok:false,error}` +
      `console.warn` (silent-failure class instance six). Full mechanics + the M/A/R map + the
      proving test are in finding 1's third RESOLUTION.
-   - **RELEASE v2.3.0 — NEXT (before 0b):** the access-control tier (0a-1…0a-4 + the
-     scroll-jump fix) is proven and unreleased. Cut it so researchers stop running the ungated
-     2.2.0. This also UNBLOCKS 0b's verification (below).
+   - **RELEASE v2.3.0 — ✅ DONE (2026-07-17, tag `v2.3.0`, version-bump `a4b161e`):** the
+     access-control tier (0a-1…0a-4 + the scroll-jump fix) shipped. 8 assets on GitHub
+     Releases incl. both auto-update manifests; researchers self-update off the ungated 2.2.0.
+     This UNBLOCKED 0b's verification (below).
    - **0b — after the release (the membership-propagation fix, was finding 3):** now scoped
      as a REALTIME HEALTH-DETECTION gap (detect + recover from channel death independent of the
      HTTP online flag), NOT a schema fix — the publication + REPLICA IDENTITY FULL theories are
@@ -959,6 +967,13 @@ the backlog.
 
 ## Release status at a glance
 
+- **v2.3.0 — RELEASED** (published 2026-07-17; version-bump commit `a4b161e`, tag `v2.3.0`
+  pushed before the build — no tag race). 8 assets: mac universal DMG/zip + blockmaps, win
+  NSIS x64 exe + blockmap, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`),
+  so installed builds self-update. A **MINOR** bump shipping the whole access-control tier
+  since v2.2.0: `8eae348` (0a-1), `2e22178` (0a-1b), `923f334` (scroll-jump fix), `a5d4b20`
+  (0a-2), `46be18e` (0a-3), `26ee18c` (0a-4) + docs `8662b68`/`f80b17d`/`49b44fd`. Closes
+  finding 1 end-to-end + the `infoPages:list` `deleted=0` fix.
 - **v2.2.0 — RELEASED** (published 2026-07-16; version-bump `3dc945a`, tag `v2.2.0`
   pushed before the build — no tag race). 8 assets: mac universal DMG/zip + blockmaps,
   win NSIS x64 exe + blockmap, and both auto-update manifests (`latest-mac.yml`/
@@ -987,15 +1002,13 @@ the backlog.
   **narrative-summary fix** (`c0be06f`), **reconcile-from-structure** (`edaab46`), and the
   **PDF extraction fix** (`283dc38`). (Docs commit `0b1572e` + `801ec27` and the
   version-bump `937e220` sit between T5 and 3e-1.)
-- **UNRELEASED on `main` since v2.2.0 (2026-07-17, all pushed):** `8eae348` (0a-1 —
-  compose stamps `project_board_id`), `2e22178` (0a-1b — pipeline writer stamps it + the
-  hand-run backfill record), `923f334` (scroll-jump fix — background refetch), `a5d4b20`
-  (0a-2 — intel read-tier membership gate), `8662b68` (docs — 0a-2), `46be18e` (0a-3 —
-  `info_page_*` read-tier membership gate), `f80b17d` (docs — 0a-3), `26ee18c` (0a-4 —
-  `info_page_*` WRITE surface gate, M/A/R). All renderer/main code + docs; **no new release
-  cut yet** (the installed app is still 2.2.0). **The whole access-control tier is now
-  proven and unreleased — the next step is to CUT v2.3.0** (see "Start here" / NEXT UP item 0),
-  which also unblocks 0b's field verification.
+- **UNRELEASED on `main` since v2.2.0: NONE — all shipped in v2.3.0 (2026-07-17).**
+  `8eae348` (0a-1 — compose stamps `project_board_id`), `2e22178` (0a-1b — pipeline writer
+  stamps it), `923f334` (scroll-jump fix), `a5d4b20` (0a-2 — intel read-tier gate), `8662b68`
+  (docs 0a-2), `46be18e` (0a-3 — `info_page_*` read-tier gate), `f80b17d` (docs 0a-3),
+  `26ee18c` (0a-4 — `info_page_*` WRITE surface gate, M/A/R), `49b44fd` (docs 0a-4) all
+  shipped in v2.3.0. **The whole access-control tier is now RELEASED**; researchers
+  self-update off 2.2.0, which also unblocks 0b's field verification.
 - **Working tree:** only these two docs (`HANDOFF.md`, `PROJECT_SUMMARY.txt`) are
   modified — no source changes pending.
 
@@ -1336,6 +1349,17 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   behave on old code. Quit the installed app when testing DB-level changes.
 - **Release tag race:** push commits+tags *before* `npm run release` (electron-builder
   creates the GitHub release/tag). The v2.0.20 release hit this; v2.0.21 avoided it.
+- **THREE `GH_TOKEN` sources shadow each other — `npm run release` can silently publish
+  with a STALE token.** The `release` script resolves `${GH_TOKEN:-<.env fallback>}`, so an
+  already-exported `GH_TOKEN` **WINS over `.env`**. `~/.zshrc:4` AND `~/.zprofile:1` both
+  actively `export` a stale token — so running `npm run release` from Dorian's own terminal
+  would publish with the OLD token and **silently ignore any `.env` edit**. v2.3.0 only used
+  the updated `.env` token because **Claude Code's Bash env has `GH_TOKEN` unset**, so the
+  `.env` fallback fired (verified by fingerprint: `.env` `a71da25c` vs stale login
+  `237aaad5`). The SAME variable is also read by the **app at runtime** for `publishToRepo`
+  (`ipc:3118`, `ipc:3320-3321`) — same name, different execution context. **FIX (Dorian's
+  own — dotfiles are out of scope for agents): delete the `export GH_TOKEN=` lines from
+  `~/.zshrc:4` and `~/.zprofile:1` so `.env` is the single source.**
 
 ## Working agreements
 
