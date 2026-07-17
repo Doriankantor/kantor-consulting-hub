@@ -2857,6 +2857,7 @@ function registerIntelligenceHandlers(): void {
     location_mentioned?: string; actors_mentioned?: string; url?: string;
     categories_json?: string; confidence?: string;
     added_by_id?: string; added_by_name?: string;
+    project_board_id?: string;
   }) => {
     const { randomUUID } = require('crypto')
     const id = randomUUID()
@@ -2873,6 +2874,7 @@ function registerIntelligenceHandlers(): void {
   ipcMain.handle('intelligence:addInterview', (_e, iv: {
     title: string; transcript: string; date?: string;
     added_by_id?: string; added_by_name?: string;
+    project_board_id?: string;
   }) => {
     const { randomUUID } = require('crypto')
     const id = randomUUID()
@@ -2898,7 +2900,7 @@ function registerIntelligenceHandlers(): void {
   })
 
   ipcMain.handle('intelligence:uploadDocument', async (_e, params: {
-    userId?: string; addedByName?: string
+    userId?: string; addedByName?: string; projectBoardId?: string
   }) => {
     const { dialog: dlg } = await import('electron')
     const result = await dlg.showOpenDialog({
@@ -2963,6 +2965,7 @@ function registerIntelligenceHandlers(): void {
           confidence: analysis?.confidence || 'low',
           added_by_id: params.userId || null,
           added_by_name: params.addedByName || null,
+          project_board_id: params.projectBoardId,   // every row in this upload gets the same project
         })
         if (!added.ok) { console.warn('[Intelligence] Upload persist failed for', fileName, added.error); continue }
         results.push({ id: docId, file_name: fileName })

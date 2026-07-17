@@ -563,22 +563,32 @@ export async function addSocial(post: {
   platform: string; handle: string; post_date: string; content: string;
   location_mentioned?: string; actors_mentioned?: string; url?: string;
   categories_json?: string; confidence?: string; added_by_id?: string; added_by_name?: string;
+  project_board_id?: string;
 }, id: string, categoriesJson: string): Promise<{ ok: boolean; id: string; error?: string }> {
+  // Compose sources must be born with a project (the gate uses SQL IN, which never
+  // matches NULL). Backstop for the renderer guard — no default/fallback board.
+  const boardId = (post.project_board_id ?? '').trim()
+  if (!boardId) return { ok: false, id: '', error: 'A project is required' }
   return insertSource({
     id, type: 'social', platform: post.platform, handle: post.handle, published_at: post.post_date,
     content: post.content, url: post.url || null, location_mentioned: post.location_mentioned || null,
     actors_mentioned: post.actors_mentioned || null, categories_json: categoriesJson,
     confidence: post.confidence || 'low', added_by_id: post.added_by_id || null, added_by_name: post.added_by_name || null,
+    project_board_id: boardId,
   })
 }
 
 export async function addInterview(iv: {
   title: string; transcript: string; date?: string; added_by_id?: string; added_by_name?: string;
+  project_board_id?: string;
 }, id: string): Promise<{ ok: boolean; id: string; error?: string }> {
+  const boardId = (iv.project_board_id ?? '').trim()
+  if (!boardId) return { ok: false, id: '', error: 'A project is required' }
   return insertSource({
     id, type: 'interview', title: (iv.title || '').trim() || 'Untitled interview',
     content: iv.transcript || '', published_at: iv.date || null,
     added_by_id: iv.added_by_id || null, added_by_name: iv.added_by_name || null,
+    project_board_id: boardId,
   })
 }
 
@@ -588,12 +598,16 @@ export async function addDocument(doc: {
   id: string; file_name: string; local_path: string; content: string;
   analysis_json: string | null; categories_json: string; confidence: string;
   added_by_id: string | null; added_by_name: string | null;
+  project_board_id?: string;
 }): Promise<{ ok: boolean; id: string; error?: string }> {
+  const boardId = (doc.project_board_id ?? '').trim()
+  if (!boardId) return { ok: false, id: '', error: 'A project is required' }
   return insertSource({
     id: doc.id, type: 'document', title: doc.file_name, file_name: doc.file_name,
     local_path: doc.local_path, content: doc.content, analysis_json: doc.analysis_json,
     categories_json: doc.categories_json, confidence: doc.confidence,
     added_by_id: doc.added_by_id, added_by_name: doc.added_by_name,
+    project_board_id: boardId,
   })
 }
 

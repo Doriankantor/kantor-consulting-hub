@@ -806,9 +806,9 @@ interface Window {
       deleteSource:         (id: string)                       => Promise<{ ok: boolean }>
       addSocial:            (post: Record<string, unknown>)    => Promise<{ ok: boolean; id?: string }>
       // 2c: manual interview capture — transcript stored plain-text in content, type='interview'.
-      addInterview:         (iv: { title: string; transcript: string; date?: string; added_by_id?: string; added_by_name?: string }) => Promise<{ ok: boolean; id?: string }>
+      addInterview:         (iv: { title: string; transcript: string; date?: string; added_by_id?: string; added_by_name?: string; project_board_id?: string }) => Promise<{ ok: boolean; id?: string }>
       fetchNews:            ()                                 => Promise<{ ok: boolean; count?: number; error?: string }>
-      uploadDocument:       (params: { userId?: string; addedByName?: string }) => Promise<{ ok: boolean; canceled?: boolean; results?: Array<{ id: string; file_name: string }>; error?: string }>
+      uploadDocument:       (params: { userId?: string; addedByName?: string; projectBoardId?: string }) => Promise<{ ok: boolean; canceled?: boolean; results?: Array<{ id: string; file_name: string }>; error?: string }>
       getPipelineStats:     ()                                 => Promise<{ pending: number; sentToPages: number }>
       getStatusCounts:      ()                                 => Promise<{ unreviewed: number; approved: number; rejected: number }>
       getUnscoredCount:     ()                                 => Promise<number>

@@ -222,7 +222,7 @@ export default function SocialTab({ onApprove, project = null }: Props) {
 
     setSaving(true)
     try {
-      const res = await window.api.intelligence.addSocial({
+      await window.api.intelligence.addSocial({
         platform: form.platform,
         handle: form.handle.trim(),
         post_date: form.post_date,
@@ -234,12 +234,10 @@ export default function SocialTab({ onApprove, project = null }: Props) {
         confidence: form.confidence,
         added_by_id: localUser?.id,
         added_by_name: localUser?.name,
+        // 0a-1: the source is born with its project (Save is disabled when none is
+        // selected). Replaces the former non-atomic follow-up setProject write.
+        project_board_id: project?.id,
       })
-      // T5: stamp the selected project onto the new post so it shows under that
-      // project (not only "All"). No stamp when "All" is selected (project null).
-      if (res?.ok && res.id && project?.id) {
-        await window.api.intelligence.setProject(res.id, project.id)
-      }
       setForm({ ...EMPTY_FORM })
       setErrors({})
       setUrlInput('')
@@ -501,10 +499,12 @@ export default function SocialTab({ onApprove, project = null }: Props) {
             </div>
           </div>
           <div className="flex items-center justify-between mt-3">
-            <p className="text-[11px] text-gray-400 dark:text-white/30">Add the post, then describe what's happening and analyze it on its card below.</p>
+            <p className="text-[11px] text-gray-400 dark:text-white/30">
+              {!project?.id ? 'Select a project above to add sources.' : "Add the post, then describe what's happening and analyze it on its card below."}
+            </p>
             <button
               onClick={handleSubmit}
-              disabled={saving}
+              disabled={saving || !project?.id}
               className="px-4 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium transition disabled:opacity-50"
             >
               {saving ? 'Adding...' : 'Add Post'}

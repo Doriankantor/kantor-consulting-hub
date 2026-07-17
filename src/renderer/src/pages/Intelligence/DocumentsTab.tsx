@@ -121,15 +121,11 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
       const result = await window.api.intelligence.uploadDocument({
         userId: localUser?.id,
         addedByName: localUser?.name,
+        // 0a-1: every uploaded doc is born with the selected project (Upload is
+        // disabled when none is selected). Replaces the former non-atomic setProject loop.
+        projectBoardId: project?.id,
       })
       if (result.ok && !result.canceled) {
-        // T5: stamp the selected project onto each new doc so it shows under that
-        // project (not only "All"). No stamp when "All" is selected (project null).
-        if (project?.id && Array.isArray(result.results)) {
-          for (const r of result.results) {
-            if (r?.id) await window.api.intelligence.setProject(r.id, project.id)
-          }
-        }
         await load()
       }
     } finally {
@@ -258,7 +254,7 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
       <div className="shrink-0 px-6 py-3 border-b border-gray-100 dark:border-white/[0.06] flex items-center gap-3">
         <button
           onClick={handleUpload}
-          disabled={uploading}
+          disabled={uploading || !project?.id}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium transition disabled:opacity-50"
         >
           {uploading ? (
@@ -276,7 +272,9 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
           )}
         </button>
         <span className="text-xs text-gray-400 dark:text-white/30">
-          Accepts PDF, DOCX, TXT — text is extracted on upload; AI analysis runs only when you ask
+          {!project?.id
+            ? 'Select a project above to add sources.'
+            : 'Accepts PDF, DOCX, TXT — text is extracted on upload; AI analysis runs only when you ask'}
         </span>
         <span className="ml-auto text-xs text-gray-400 dark:text-white/30">{visible.length} documents</span>
       </div>

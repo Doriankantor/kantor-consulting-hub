@@ -130,13 +130,11 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
         transcript,                 // plain text — do NOT JSON-wrap
         added_by_id: localUser?.id,
         added_by_name: localUser?.name,
+        // 0a-1: born with its project (Add is disabled when none is selected).
+        // Replaces the former non-atomic follow-up setProject write.
+        project_board_id: project?.id,
       })
       if (!res.ok) { setFormError('Could not save the interview.'); return }
-      // T5: stamp the selected project onto the new interview so it shows under that
-      // project (not only "All"). No stamp when "All" is selected (project null).
-      if (res.id && project?.id) {
-        await window.api.intelligence.setProject(res.id, project.id)
-      }
       setTitle('')
       setTranscript('')
       await load()
@@ -258,7 +256,7 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
         <div className="flex items-center gap-3">
           <button
             onClick={handleAdd}
-            disabled={saving || !transcript.trim()}
+            disabled={saving || !transcript.trim() || !project?.id}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium transition disabled:opacity-50"
           >
             {saving ? (
@@ -267,6 +265,7 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
               <>+ Add interview</>
             )}
           </button>
+          {!project?.id && <span className="text-xs text-gray-400 dark:text-white/30">Select a project above to add sources.</span>}
           {formError && <span className="text-xs text-red-500 dark:text-red-400">{formError}</span>}
           <span className="ml-auto text-xs text-gray-400 dark:text-white/30">{visible.length} interviews</span>
         </div>
