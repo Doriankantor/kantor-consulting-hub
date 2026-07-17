@@ -2550,13 +2550,20 @@ function addToInfoPagePipeline(sourceId: string): void {
 // move-back-able); source_type is denormalized for display. Idempotent via
 // UNIQUE(article_id, info_page) + INSERT OR IGNORE — re-approving never duplicates
 // or resets a row already at new/review/committed. Returns the target page name.
-function routeToNewSources(
+async function routeToNewSources(
   intelSourceId: string,
   boardId: string | null | undefined,
-): { ok: boolean; id?: number; pageName?: string; error?: string } {
+): Promise<{ ok: boolean; id?: number; pageName?: string; error?: string }> {
   const db = getDatabase()
   const bid = (boardId ?? '').trim()
   if (!bid) return { ok: false, error: 'No project assigned to this source.' }
+  // 0a-4: gate the TARGET page write on membership — the write-side sibling of 0a-3.
+  // Placed here so it covers all three intelligence:* callers (updateStatus,
+  // routeToProject, confirmImported) in one spot.
+  if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, bid))) {
+    console.warn(`[0a-4] deny routeToNewSources — actor=${currentActingUserId} pageId=${bid} sourceId=${intelSourceId}`)
+    return { ok: false, error: 'Not authorized' }
+  }
   const src = db.prepare('SELECT id, type FROM intelligence_sources WHERE id=?').get(intelSourceId) as { id: string; type: string } | undefined
   if (!src) return { ok: false, error: 'Source not found.' }
   const board = db.prepare("SELECT name FROM workspace_boards WHERE id=? AND board_type='info-page'").get(bid) as { name?: string } | undefined
@@ -2641,7 +2648,7 @@ function registerIntelligenceHandlers(): void {
       // (info_page_sources, stage='new') by its reliable board id (project_board_id).
       let addedToPages: string[] = []
       try {
-        const routed = routeToNewSources(id, res.projectBoardId)
+        const routed = await routeToNewSources(id, res.projectBoardId)
         if (routed.ok && routed.pageName) addedToPages = [routed.pageName]
         else if (!routed.ok) console.warn('[3c] routeToNewSources skipped:', routed.error)
       } catch (e) { console.warn('[3c] routing failed', e) }
@@ -2760,7 +2767,7 @@ function registerIntelligenceHandlers(): void {
     if (!bid) return { ok: false, error: 'No project selected.' }
     const set = await intelCloud.setProjectBoard(sourceId, bid)
     if (!set.ok) return set
-    const routed = routeToNewSources(sourceId, bid)
+    const routed = await routeToNewSources(sourceId, bid)
     if (!routed.ok) return routed
     const marked = await intelCloud.markRouted(sourceId)
     if (!marked.ok) return marked
@@ -3021,7 +3028,7 @@ function registerIntelligenceHandlers(): void {
     for (const r of res.rows) {
       // 3c: bulk-confirm is also an approve path — route via the reliable board id.
       try {
-        const routed = routeToNewSources(r.id, r.project_board_id)
+        const routed = await routeToNewSources(r.id, r.project_board_id)
         if (routed.ok && routed.pageName) addedAll.add(routed.pageName)
       } catch (e) { console.warn('[3c] confirmImported routing failed', e) }
     }
@@ -3053,12 +3060,23 @@ export function registerInfoPageHandlers(): void {
   })
 
   ipcMain.handle('infoPages:saveConfig', (_e, pageId: string, config: Record<string, unknown>) => {
+    // Orphaned handler (UI routes page edits through the root-gated boards:* cloud path);
+    // console-reachable only. Root-gate it (LOCAL-only isRoot check), do not change behavior.
+    if (!boardsCloud.resolveIdentity(currentActingUserId).isRoot) {
+      console.warn(`[0a-4] deny infoPages:saveConfig — actor=${currentActingUserId} pageId=${pageId}`)
+      return { ok: false, error: 'Only an admin can edit page settings.' }
+    }
     db().prepare("UPDATE workspace_boards SET board_config=?,updated_at=datetime('now') WHERE id=?").run(JSON.stringify(config), pageId)
     return { ok: true }
   })
 
   // Edit an existing page's name and/or link config (repo, live_url, keywords, file…) in one call.
   ipcMain.handle('infoPages:updateMeta', (_e, pageId: string, meta: { name?: string; config?: Record<string, unknown> }) => {
+    // Orphaned handler (see saveConfig). Root-gate it (LOCAL-only isRoot check).
+    if (!boardsCloud.resolveIdentity(currentActingUserId).isRoot) {
+      console.warn(`[0a-4] deny infoPages:updateMeta — actor=${currentActingUserId} pageId=${pageId}`)
+      return { ok: false, error: 'Only an admin can edit page settings.' }
+    }
     if (typeof meta?.name === 'string' && meta.name.trim()) {
       db().prepare("UPDATE workspace_boards SET name=?,updated_at=datetime('now') WHERE id=?").run(meta.name.trim(), pageId)
     }
@@ -3069,6 +3087,11 @@ export function registerInfoPageHandlers(): void {
   })
 
   ipcMain.handle('infoPages:create', (_e, params: { name: string; config: Record<string, unknown> }) => {
+    // Orphaned handler (see saveConfig); mirrors createBoard's admin-only standard.
+    if (!boardsCloud.resolveIdentity(currentActingUserId).isRoot) {
+      console.warn(`[0a-4] deny infoPages:create — actor=${currentActingUserId} name=${params?.name}`)
+      return { ok: false, error: 'Only an admin can create pages.' }
+    }
     const { randomUUID } = require('crypto')
     const id = randomUUID()
     const maxPos = (db().prepare("SELECT MAX(position) as mp FROM workspace_boards WHERE board_type='info-page'").get() as { mp: number | null })?.mp ?? 49
@@ -3077,6 +3100,12 @@ export function registerInfoPageHandlers(): void {
   })
 
   ipcMain.handle('infoPages:delete', (_e, pageId: string) => {
+    // Orphaned handler — an ungated HARD delete (the cloud path it replaced does a
+    // root-gated SOFT delete). Root-gate it; behavior unchanged (still a hard delete).
+    if (!boardsCloud.resolveIdentity(currentActingUserId).isRoot) {
+      console.warn(`[0a-4] deny infoPages:delete — actor=${currentActingUserId} pageId=${pageId}`)
+      return { ok: false, error: 'Only an admin can delete pages.' }
+    }
     db().prepare('DELETE FROM workspace_boards WHERE id=?').run(pageId)
     db().prepare('DELETE FROM info_page_items WHERE page_id=?').run(pageId)
     db().prepare('DELETE FROM info_page_commits WHERE page_id=?').run(pageId)
@@ -3103,7 +3132,13 @@ export function registerInfoPageHandlers(): void {
   // in place, unused. addOwner/removeOwner are root-gated in the cloud fn; isOwner
   // resolves the acting user to email (the renderer still passes localUser.id, which
   // the cloud path ignores in favor of the acting user).
-  ipcMain.handle('infoPages:getOwners', (_e, pageId: string) => boardsCloud.getOwners(pageId))
+  ipcMain.handle('infoPages:getOwners', async (_e, pageId: string) => {
+    // 0a-3 missed this read (misfiled under the ownership axis). Same entry guard as the
+    // 0a-3 reads: [] on deny. (getOwners throws on cloud error; this deny is its first
+    // non-throwing exit — fine, no restructure.)
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return []
+    return boardsCloud.getOwners(pageId)
+  })
   ipcMain.handle('infoPages:addOwner', (_e, pageId: string, userId: string) => boardsCloud.addOwner(currentActingUserId, pageId, userId))
   ipcMain.handle('infoPages:removeOwner', (_e, pageId: string, userId: string) => boardsCloud.removeOwner(currentActingUserId, pageId, userId))
   ipcMain.handle('infoPages:isOwner', (_e, pageId: string) => boardsCloud.isOwner(currentActingUserId, pageId))
@@ -3114,12 +3149,16 @@ export function registerInfoPageHandlers(): void {
     return db().prepare('SELECT * FROM info_page_items WHERE page_id=? ORDER BY created_at DESC').all(pageId)
   })
 
-  ipcMain.handle('infoPages:addItem', (_e, item: {
+  ipcMain.handle('infoPages:addItem', async (_e, item: {
     page_id: string; tab: string; sub_type?: string; title?: string;
     content_json?: string; priority?: string; proposed_section?: string;
     confidence?: string; source_ref?: string; analysis_json?: string;
     created_by_id?: string; created_by_name?: string
   }) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, item.page_id))) {
+      console.warn(`[0a-4] deny infoPages:addItem — actor=${currentActingUserId} pageId=${item.page_id}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     const { randomUUID } = require('crypto')
     const id = randomUUID()
     db().prepare(`
@@ -3132,7 +3171,13 @@ export function registerInfoPageHandlers(): void {
     return { ok: true, id }
   })
 
-  ipcMain.handle('infoPages:updateItem', (_e, id: string, updates: Record<string, unknown>) => {
+  ipcMain.handle('infoPages:updateItem', async (_e, id: string, updates: Record<string, unknown>) => {
+    // No pageId in scope — resolve it from the item. No row → DENY (do not fall through).
+    const owner = db().prepare('SELECT page_id FROM info_page_items WHERE id=?').get(id) as { page_id: string } | undefined
+    if (!owner || !(await boardsCloud.isBoardVisibleFor(currentActingUserId, owner.page_id))) {
+      console.warn(`[0a-4] deny infoPages:updateItem — actor=${currentActingUserId} itemId=${id} pageId=${owner?.page_id ?? 'NONE'}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     const allowed = ['title','content_json','status','priority','proposed_section','confidence','source_ref','analysis_json']
     const sets: string[] = ["updated_at=datetime('now')"]
     const vals: unknown[] = []
@@ -3143,15 +3188,25 @@ export function registerInfoPageHandlers(): void {
     return { ok: true }
   })
 
-  ipcMain.handle('infoPages:deleteItem', (_e, id: string) => {
+  ipcMain.handle('infoPages:deleteItem', async (_e, id: string) => {
+    // No pageId in scope — resolve it from the item. No row → DENY (do not fall through).
+    const owner = db().prepare('SELECT page_id FROM info_page_items WHERE id=?').get(id) as { page_id: string } | undefined
+    if (!owner || !(await boardsCloud.isBoardVisibleFor(currentActingUserId, owner.page_id))) {
+      console.warn(`[0a-4] deny infoPages:deleteItem — actor=${currentActingUserId} itemId=${id} pageId=${owner?.page_id ?? 'NONE'}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     db().prepare('DELETE FROM info_page_items WHERE id=?').run(id)
     db().prepare('DELETE FROM info_page_commits WHERE item_id=?').run(id)
     return { ok: true }
   })
 
-  ipcMain.handle('infoPages:commitItems', (_e, params: {
+  ipcMain.handle('infoPages:commitItems', async (_e, params: {
     pageId: string; itemIds: string[]; submittedById: string; submittedByName: string
   }) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, params.pageId))) {
+      console.warn(`[0a-4] deny infoPages:commitItems — actor=${currentActingUserId} pageId=${params.pageId}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     const { randomUUID } = require('crypto')
     for (const itemId of params.itemIds) {
       db().prepare("INSERT OR IGNORE INTO info_page_commits (id,page_id,item_id,submitted_by_id,submitted_by_name) VALUES (?,?,?,?,?)")
@@ -3173,9 +3228,16 @@ export function registerInfoPageHandlers(): void {
     return status ? db().prepare(sql).all(pageId, status) : db().prepare(sql).all(pageId)
   })
 
-  ipcMain.handle('infoPages:reviewCommit', (_e, commitId: string, action: 'approve'|'reject', params: {
+  ipcMain.handle('infoPages:reviewCommit', async (_e, commitId: string, action: 'approve'|'reject', params: {
     reviewedById: string; reviewedByName: string; rejectionNote?: string
   }) => {
+    // Publication side — gate on A (canApprove = isRoot || isOwner), NOT membership.
+    // Resolve the pageId from the commit; no row → DENY.
+    const owner = db().prepare('SELECT page_id FROM info_page_commits WHERE id=?').get(commitId) as { page_id: string } | undefined
+    if (!owner || !(await boardsCloud.isOwner(currentActingUserId, owner.page_id))) {
+      console.warn(`[0a-4] deny infoPages:reviewCommit — actor=${currentActingUserId} commitId=${commitId} pageId=${owner?.page_id ?? 'NONE'}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     const now = new Date().toISOString()
     const status = action === 'approve' ? 'approved' : 'rejected'
     db().prepare("UPDATE info_page_commits SET status=?,reviewed_by_id=?,reviewed_by_name=?,reviewed_at=?,rejection_note=? WHERE id=?")
@@ -3187,9 +3249,16 @@ export function registerInfoPageHandlers(): void {
     return { ok: true }
   })
 
-  ipcMain.handle('infoPages:adminReviewCommit', (_e, commitId: string, action: 'approve'|'reject', params: {
+  ipcMain.handle('infoPages:adminReviewCommit', async (_e, commitId: string, action: 'approve'|'reject', params: {
     reviewedById: string; reviewedByName: string; rejectionNote?: string
   }) => {
+    // Publication side — gate on A (canApprove = isRoot || isOwner), NOT membership.
+    // Resolve the pageId from the commit; no row → DENY.
+    const owner = db().prepare('SELECT page_id FROM info_page_commits WHERE id=?').get(commitId) as { page_id: string } | undefined
+    if (!owner || !(await boardsCloud.isOwner(currentActingUserId, owner.page_id))) {
+      console.warn(`[0a-4] deny infoPages:adminReviewCommit — actor=${currentActingUserId} commitId=${commitId} pageId=${owner?.page_id ?? 'NONE'}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     const now = new Date().toISOString()
     const status = action === 'approve' ? 'admin_approved' : 'rejected'
     db().prepare("UPDATE info_page_commits SET status=?,admin_approved=?,admin_reviewed_by=?,admin_reviewed_at=?,rejection_note=? WHERE id=?")
@@ -3210,6 +3279,11 @@ export function registerInfoPageHandlers(): void {
     pageId: string; whatChanged: string; committedById: string; committedByName: string;
     approvedById: string; approvedByName: string; promptUsed: string; itemIds: string[]; commitCount: number
   }) => {
+    // Publication side — gate on A (canApprove = isRoot || isOwner), NOT membership.
+    if (!(await boardsCloud.isOwner(currentActingUserId, entry.pageId))) {
+      console.warn(`[0a-4] deny infoPages:logPublished — actor=${currentActingUserId} pageId=${entry.pageId}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     const { randomUUID } = require('crypto')
     db().prepare(`INSERT INTO info_page_published (id,page_id,what_changed,committed_by_id,committed_by_name,approved_by_id,approved_by_name,prompt_used,item_ids_json,commit_count) VALUES (?,?,?,?,?,?,?,?,?,?)`)
       .run(randomUUID(), entry.pageId, entry.whatChanged, entry.committedById, entry.committedByName,
@@ -3238,6 +3312,11 @@ export function registerInfoPageHandlers(): void {
   ipcMain.handle('infoPages:publishToRepo', async (_e, params: {
     pageId: string; pushedById: string; pushedByName: string; whatChanged?: string
   }) => {
+    // Publication side — gate on A (canApprove = isRoot || isOwner), NOT membership.
+    if (!(await boardsCloud.isOwner(currentActingUserId, params.pageId))) {
+      console.warn(`[0a-4] deny infoPages:publishToRepo — actor=${currentActingUserId} pageId=${params.pageId}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     const token = process.env.GH_TOKEN
     if (!token) return { ok: false, error: 'GH_TOKEN not configured in .env' }
 
@@ -3397,8 +3476,17 @@ export function registerInfoPageHandlers(): void {
   })
 
   // Move selected source items into Claude Analysis.
-  ipcMain.handle('infoPages:sendSourcesToAnalysis', (_e, itemIds: string[]) => {
+  ipcMain.handle('infoPages:sendSourcesToAnalysis', async (_e, itemIds: string[]) => {
     if (!Array.isArray(itemIds) || !itemIds.length) return { ok: true, count: 0 }
+    // No pageId — resolve EVERY id's page. FAIL CLOSED: any missing id, or any page the
+    // actor cannot see, denies the WHOLE batch (no filter-and-partially-apply).
+    for (const id of itemIds) {
+      const owner = db().prepare('SELECT page_id FROM info_page_items WHERE id=?').get(id) as { page_id: string } | undefined
+      if (!owner || !(await boardsCloud.isBoardVisibleFor(currentActingUserId, owner.page_id))) {
+        console.warn(`[0a-4] deny infoPages:sendSourcesToAnalysis — actor=${currentActingUserId} itemId=${id} pageId=${owner?.page_id ?? 'NONE'}`)
+        return { ok: false, error: 'Not authorized' }
+      }
+    }
     const stmt = db().prepare("UPDATE info_page_items SET status='in_analysis',updated_at=datetime('now') WHERE id=? AND status='ready_for_analysis'")
     let count = 0
     for (const id of itemIds) { const r = stmt.run(id); count += r.changes }
@@ -3502,7 +3590,11 @@ Return ONLY the JSON array, no other text.`
     return db().prepare('SELECT * FROM info_page_chat WHERE page_id=? ORDER BY created_at ASC, rowid ASC').all(pageId)
   })
 
-  ipcMain.handle('infoPages:clearChat', (_e, pageId: string) => {
+  ipcMain.handle('infoPages:clearChat', async (_e, pageId: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) {
+      console.warn(`[0a-4] deny infoPages:clearChat — actor=${currentActingUserId} pageId=${pageId}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     db().prepare('DELETE FROM info_page_chat WHERE page_id=?').run(pageId)
     return { ok: true }
   })
@@ -3510,6 +3602,10 @@ Return ONLY the JSON array, no other text.`
   ipcMain.handle('infoPages:chat', async (_e, params: {
     pageId: string; pageName: string; userId?: string; message: string
   }) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, params.pageId))) {
+      console.warn(`[0a-4] deny infoPages:chat — actor=${currentActingUserId} pageId=${params.pageId}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     try {
       const apiKey = resolveAnthropicKey(params.userId)
       if (!apiKey) return { ok: false, error: 'No Anthropic API key configured. Add one in Settings.' }
@@ -3654,7 +3750,11 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
   })
 
   // Move checked 'new' items to 'review'. Logs each transition.
-  ipcMain.handle('infoPages:sendToReview', (_e, pageId: string, articleIds: string[]) => {
+  ipcMain.handle('infoPages:sendToReview', async (_e, pageId: string, articleIds: string[]) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) {
+      console.warn(`[0a-4] deny infoPages:sendToReview — actor=${currentActingUserId} pageId=${pageId}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     if (!articleIds?.length) return { ok: true, moved: 0 }
     const now = new Date().toISOString()
     let moved = 0
@@ -3673,7 +3773,11 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
   })
 
   // Move one 'review' item back to 'new' (back-out path).
-  ipcMain.handle('infoPages:backSourceToNew', (_e, pageId: string, articleId: string) => {
+  ipcMain.handle('infoPages:backSourceToNew', async (_e, pageId: string, articleId: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) {
+      console.warn(`[0a-4] deny infoPages:backSourceToNew — actor=${currentActingUserId} pageId=${pageId}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     const now = new Date().toISOString()
     const r = db().prepare(
       "UPDATE info_page_sources SET stage='new', design_notes=NULL WHERE article_id=? AND info_page=? AND stage='review'"
@@ -3691,6 +3795,12 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
   // and returns the intel source to status='unreviewed' so it reappears in News.
   // Guarded: only acts on stage='new'; intel status flips ONLY if a row was deleted.
   ipcMain.handle('infoPages:moveBackToIntel', async (_e, pageId: string, articleId: string) => {
+    // ONE gate on pageId (before the cloud write): the intel-row flip is a consequence
+    // of the authorized pointer delete, so membership on this page authorizes the whole op.
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) {
+      console.warn(`[0a-4] deny infoPages:moveBackToIntel — actor=${currentActingUserId} pageId=${pageId}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     const now = new Date().toISOString()
     // Cross-tier: the info_page_sources DELETE + info_page_changes log stay LOCAL;
     // the intel status flip is cloud-authoritative. Check existence FIRST, do the
@@ -3712,7 +3822,11 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
   })
 
   // Commit all 'review' items to 'committed'. Saves design_notes onto each row.
-  ipcMain.handle('infoPages:commitSources', (_e, pageId: string, designNotes: string) => {
+  ipcMain.handle('infoPages:commitSources', async (_e, pageId: string, designNotes: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) {
+      console.warn(`[0a-4] deny infoPages:commitSources — actor=${currentActingUserId} pageId=${pageId}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     const now = new Date().toISOString()
     // Collect review items before updating.
     const reviewItems = db().prepare(
@@ -3733,7 +3847,11 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
   // Persist the shared pre-publish design notes onto every item currently in the
   // 'review' stage, without committing. Lets the batch's design guidance survive
   // reloads and be read back when the user returns to Pre-Commit Review.
-  ipcMain.handle('infoPages:saveReviewNotes', (_e, pageId: string, designNotes: string) => {
+  ipcMain.handle('infoPages:saveReviewNotes', async (_e, pageId: string, designNotes: string) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) {
+      console.warn(`[0a-4] deny infoPages:saveReviewNotes — actor=${currentActingUserId} pageId=${pageId}`)
+      return { ok: false, error: 'Not authorized' }
+    }
     const r = db().prepare(
       "UPDATE info_page_sources SET design_notes=? WHERE info_page=? AND stage='review'"
     ).run(designNotes || null, pageId)
