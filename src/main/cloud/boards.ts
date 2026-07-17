@@ -299,6 +299,21 @@ function readTasksMirror(actor: Actor, visible: Set<string>): Record<string, unk
   } catch (e) { console.warn('[boards] local tasks mirror read failed:', (e as Error)?.message); return [] }
 }
 
+// Gate helper for the intel reads (slice 0a-2). Returns the acting user's root
+// flag + visible board id set in ONE call. Uses resolveIdentity (LOCAL-ONLY: email
+// + isRoot, no cloud) rather than resolveActor, which does a member_permissions
+// cloud roundtrip per call — the gate needs only email + isRoot and is called 6× per
+// tab load. visibleBoardIds reads ONLY .isRoot and .email off the Actor and never
+// calls .can(), so the synthesized `can: () => isRoot` is safe — do NOT "fix" this to
+// resolveActor; it would add six needless cloud roundtrips per tab load.
+export async function visibleBoardIdsFor(
+  actingUserOrId?: string | null,
+): Promise<{ isRoot: boolean; ids: Set<string> }> {
+  const { email, isRoot } = resolveIdentity(actingUserOrId)
+  const ids = await visibleBoardIds({ email, isRoot, can: () => isRoot })
+  return { isRoot, ids }
+}
+
 async function actorCanAccessBoard(actor: Actor, boardId: string): Promise<boolean> {
   if (actor.isRoot) return true
   return (await visibleBoardIds(actor)).has(boardId)

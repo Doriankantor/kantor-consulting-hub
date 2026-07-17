@@ -1,7 +1,7 @@
 import { cloud } from './client'
 import { isOnline, reportCloudResult } from './connection'
 import { getDatabase } from '../db'
-import { resolveActor } from './boards'
+import { resolveActor, visibleBoardIdsFor } from './boards'
 import { normalizeTag } from './tags'
 
 // ── intelligence_sources: cloud-sourced with a local offline MIRROR (Stage 2) ──
@@ -119,9 +119,16 @@ export interface GetSourcesOpts {
 
 // Offline / on-error fallback: the EXACT dynamic WHERE from the old handler,
 // run against the local mirror. Return shape is byte-identical to today's rows.
-function readMirrorSources(opts: GetSourcesOpts): Record<string, unknown>[] {
+// gate (slice 0a-2): when present and !isRoot, restrict to the actor's visible
+// project_board_ids. Root passes no gate (byte-identical to the ungated read); an
+// empty visible set is short-circuited by the caller (never reaches here).
+function readMirrorSources(opts: GetSourcesOpts, gate?: { isRoot: boolean; ids: Set<string> }): Record<string, unknown>[] {
   let sql = 'SELECT * FROM intelligence_sources WHERE 1=1'
   const args: unknown[] = []
+  if (gate && !gate.isRoot) {
+    sql += ` AND project_board_id IN (${[...gate.ids].map(() => '?').join(',')})`
+    args.push(...gate.ids)
+  }
   if (opts.type)       { sql += ' AND type=?';                 args.push(opts.type) }
   if (opts.status)     { sql += ' AND status=?';               args.push(opts.status) }
   if (opts.confidence) { sql += ' AND confidence=?';           args.push(opts.confidence) }
@@ -144,9 +151,13 @@ function readMirrorSources(opts: GetSourcesOpts): Record<string, unknown>[] {
 //   order     → added_at DESC, published_at DESC, NULLs LAST (matches SQLite;
 //               Postgres defaults NULLs FIRST in DESC, so nullsFirst:false)
 //   limit/off → .range(offset, offset+limit-1)  (inclusive)
-export async function getSources(opts: GetSourcesOpts = {}): Promise<Record<string, unknown>[]> {
-  if (!isOnline()) return readMirrorSources(opts)
+export async function getSources(opts: GetSourcesOpts = {}, actingUserId?: string): Promise<Record<string, unknown>[]> {
+  // Access gate (slice 0a-2): resolve the visible board set ONCE, before any query.
+  const gate = await visibleBoardIdsFor(actingUserId)
+  if (!gate.isRoot && gate.ids.size === 0) return []   // empty set → nothing visible (SQLite IN () is a syntax error)
+  if (!isOnline()) return readMirrorSources(opts, gate)
   let q = cloud.from('intelligence_sources').select('*')
+  if (!gate.isRoot) q = q.in('project_board_id', [...gate.ids])   // root skips the filter entirely
   if (opts.type)       q = q.eq('type', opts.type)
   if (opts.status)     q = q.eq('status', opts.status)
   if (opts.confidence) q = q.eq('confidence', opts.confidence)
@@ -167,7 +178,7 @@ export async function getSources(opts: GetSourcesOpts = {}): Promise<Record<stri
   reportCloudResult(!error)
   if (error) {
     console.warn('[intel] cloud getSources failed, serving local mirror:', error.message)
-    return readMirrorSources(opts)
+    return readMirrorSources(opts, gate)
   }
   const rows = (data ?? []) as Record<string, unknown>[]
   mirrorUpsertRows(rows)
@@ -176,28 +187,38 @@ export async function getSources(opts: GetSourcesOpts = {}): Promise<Record<stri
 
 // Count reads: cloud-first (head+count), fall back to the mirror on offline/error.
 // No mirror sync — the count is derived; row syncing is getSources' job.
-export async function getUnreviewedCount(): Promise<number> {
-  const localSql = "SELECT COUNT(*) as c FROM intelligence_sources WHERE status='unreviewed'"
-  if (!isOnline()) return localScalar(localSql)
-  const { count, error } = await cloud.from('intelligence_sources')
-    .select('id', { count: 'exact', head: true }).eq('status', 'unreviewed')
+export async function getUnreviewedCount(actingUserId?: string): Promise<number> {
+  const gate = await visibleBoardIdsFor(actingUserId)
+  if (!gate.isRoot && gate.ids.size === 0) return 0
+  const inClause = gate.isRoot ? '' : ` AND project_board_id IN (${[...gate.ids].map(() => '?').join(',')})`
+  const localSql = `SELECT COUNT(*) as c FROM intelligence_sources WHERE status='unreviewed'${inClause}`
+  const localArgs = gate.isRoot ? [] : [...gate.ids]
+  if (!isOnline()) return localScalar(localSql, ...localArgs)
+  let q = cloud.from('intelligence_sources').select('id', { count: 'exact', head: true }).eq('status', 'unreviewed')
+  if (!gate.isRoot) q = q.in('project_board_id', [...gate.ids])
+  const { count, error } = await q
   reportCloudResult(!error)
-  if (error) { console.warn('[intel] cloud getUnreviewedCount failed, serving mirror:', error.message); return localScalar(localSql) }
+  if (error) { console.warn('[intel] cloud getUnreviewedCount failed, serving mirror:', error.message); return localScalar(localSql, ...localArgs) }
   return count ?? 0
 }
 
 // intel portion of getPipelineStats.pending (status='unreviewed'). The other half
-// (sentToPages, from info_page_items) stays LOCAL in the ipc handler.
-export async function getPipelinePending(): Promise<number> {
-  return getUnreviewedCount()
+// (sentToPages, from info_page_items) stays LOCAL in the ipc handler. Threads the
+// actor through rather than gating twice.
+export async function getPipelinePending(actingUserId?: string): Promise<number> {
+  return getUnreviewedCount(actingUserId)
 }
 
-export async function getStatusCounts(): Promise<{ unreviewed: number; approved: number; rejected: number }> {
+export async function getStatusCounts(actingUserId?: string): Promise<{ unreviewed: number; approved: number; rejected: number }> {
+  const gate = await visibleBoardIdsFor(actingUserId)
+  if (!gate.isRoot && gate.ids.size === 0) return { unreviewed: 0, approved: 0, rejected: 0 }
+  const inClause = gate.isRoot ? '' : ` AND project_board_id IN (${[...gate.ids].map(() => '?').join(',')})`
+  const localArgs = gate.isRoot ? [] : [...gate.ids]
   const localRead = (): { unreviewed: number; approved: number; rejected: number } => {
     try {
       const rows = getDatabase().prepare(
-        "SELECT status, COUNT(*) as c FROM intelligence_sources WHERE type='article' GROUP BY status"
-      ).all() as { status: string; c: number }[]
+        `SELECT status, COUNT(*) as c FROM intelligence_sources WHERE type='article'${inClause} GROUP BY status`
+      ).all(...localArgs) as { status: string; c: number }[]
       const m: Record<string, number> = {}
       for (const r of rows) m[r.status] = r.c
       return { unreviewed: m['unreviewed'] ?? 0, approved: m['approved'] ?? 0, rejected: m['rejected'] ?? 0 }
@@ -205,8 +226,12 @@ export async function getStatusCounts(): Promise<{ unreviewed: number; approved:
   }
   if (!isOnline()) return localRead()
   // postgrest has no GROUP BY; three head counts (matches the SQLite GROUP result).
-  const q = (status: string) => cloud.from('intelligence_sources')
-    .select('id', { count: 'exact', head: true }).eq('type', 'article').eq('status', status)
+  const q = (status: string) => {
+    let b = cloud.from('intelligence_sources')
+      .select('id', { count: 'exact', head: true }).eq('type', 'article').eq('status', status)
+    if (!gate.isRoot) b = b.in('project_board_id', [...gate.ids])
+    return b
+  }
   const [u, a, r] = await Promise.all([q('unreviewed'), q('approved'), q('rejected')])
   const error = u.error || a.error || r.error
   reportCloudResult(!error)
@@ -217,25 +242,37 @@ export async function getStatusCounts(): Promise<{ unreviewed: number; approved:
 const UNSCORED_LOCAL_SQL =
   "SELECT COUNT(*) as c FROM intelligence_sources WHERE type='article' AND (gate_processed IS NULL OR gate_processed=0) AND COALESCE(added_by_name,'') != 'Kantor Framework'"
 
-export async function getUnscoredCount(): Promise<number> {
-  if (!isOnline()) return localScalar(UNSCORED_LOCAL_SQL)
-  const { count, error } = await cloud.from('intelligence_sources')
+export async function getUnscoredCount(actingUserId?: string): Promise<number> {
+  const gate = await visibleBoardIdsFor(actingUserId)
+  if (!gate.isRoot && gate.ids.size === 0) return 0
+  const inClause = gate.isRoot ? '' : ` AND project_board_id IN (${[...gate.ids].map(() => '?').join(',')})`
+  const localSql = UNSCORED_LOCAL_SQL + inClause
+  const localArgs = gate.isRoot ? [] : [...gate.ids]
+  if (!isOnline()) return localScalar(localSql, ...localArgs)
+  let q = cloud.from('intelligence_sources')
     .select('id', { count: 'exact', head: true })
     .eq('type', 'article')
     .or('gate_processed.is.null,gate_processed.eq.0')
     .neq('added_by_name', 'Kantor Framework')
+  if (!gate.isRoot) q = q.in('project_board_id', [...gate.ids])   // AND-composes with .or()/.neq()
+  const { count, error } = await q
   reportCloudResult(!error)
-  if (error) { console.warn('[intel] cloud getUnscoredCount failed, serving mirror:', error.message); return localScalar(UNSCORED_LOCAL_SQL) }
+  if (error) { console.warn('[intel] cloud getUnscoredCount failed, serving mirror:', error.message); return localScalar(localSql, ...localArgs) }
   return count ?? 0
 }
 
-export async function getImportedCount(): Promise<number> {
-  const localSql = "SELECT COUNT(*) as c FROM intelligence_sources WHERE status='imported'"
-  if (!isOnline()) return localScalar(localSql)
-  const { count, error } = await cloud.from('intelligence_sources')
-    .select('id', { count: 'exact', head: true }).eq('status', 'imported')
+export async function getImportedCount(actingUserId?: string): Promise<number> {
+  const gate = await visibleBoardIdsFor(actingUserId)
+  if (!gate.isRoot && gate.ids.size === 0) return 0
+  const inClause = gate.isRoot ? '' : ` AND project_board_id IN (${[...gate.ids].map(() => '?').join(',')})`
+  const localSql = `SELECT COUNT(*) as c FROM intelligence_sources WHERE status='imported'${inClause}`
+  const localArgs = gate.isRoot ? [] : [...gate.ids]
+  if (!isOnline()) return localScalar(localSql, ...localArgs)
+  let q = cloud.from('intelligence_sources').select('id', { count: 'exact', head: true }).eq('status', 'imported')
+  if (!gate.isRoot) q = q.in('project_board_id', [...gate.ids])
+  const { count, error } = await q
   reportCloudResult(!error)
-  if (error) { console.warn('[intel] cloud getImportedCount failed, serving mirror:', error.message); return localScalar(localSql) }
+  if (error) { console.warn('[intel] cloud getImportedCount failed, serving mirror:', error.message); return localScalar(localSql, ...localArgs) }
   return count ?? 0
 }
 

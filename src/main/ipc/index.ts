@@ -2618,9 +2618,9 @@ function registerIntelligenceHandlers(): void {
   ipcMain.handle('intelligence:getSources', (_e, params: {
     type?: string; status?: string; confidence?: string;
     category?: string; search?: string; limit?: number; offset?: number
-  } = {}) => intelCloud.getSources(params))
+  } = {}) => intelCloud.getSources(params, currentActingUserId))
 
-  ipcMain.handle('intelligence:getUnreviewedCount', () => intelCloud.getUnreviewedCount())
+  ipcMain.handle('intelligence:getUnreviewedCount', () => intelCloud.getUnreviewedCount(currentActingUserId))
 
   // Mark a news article as a duplicate. Removes it from the review queue WITHOUT any
   // learning signal (no verdict to cs_articles, no decision log) - a duplicate is
@@ -2656,18 +2656,18 @@ function registerIntelligenceHandlers(): void {
   // Pipeline counters. `pending` (intel) is cloud-first; `sentToPages` reads the
   // LOCAL info_page_items table (not migrated) and stays local.
   ipcMain.handle('intelligence:getPipelineStats', async () => {
-    const pending = await intelCloud.getPipelinePending()
+    const pending = await intelCloud.getPipelinePending(currentActingUserId)
     const sentToPages = (db().prepare("SELECT COUNT(DISTINCT origin_source_id) as c FROM info_page_items WHERE sub_type='intelligence_source' AND origin_source_id IS NOT NULL").get() as { c: number }).c
     return { pending, sentToPages }
   })
 
   // Phase 3: live queue counts for the News Articles filter bar. Cloud-first.
-  ipcMain.handle('intelligence:getStatusCounts', () => intelCloud.getStatusCounts())
+  ipcMain.handle('intelligence:getStatusCounts', () => intelCloud.getStatusCounts(currentActingUserId))
 
   // Count articles still waiting for gate scoring (gate_processed=0 or NULL).
   // Excludes 'Kantor Framework' rows — same filter as classifyUnscoredArticles —
   // so authoritative fixed references never inflate the counter. Cloud-first.
-  ipcMain.handle('intelligence:getUnscoredCount', () => intelCloud.getUnscoredCount())
+  ipcMain.handle('intelligence:getUnscoredCount', () => intelCloud.getUnscoredCount(currentActingUserId))
 
   // Re-score the backlog of unscored articles using the same gate path.
   // Runs the existing classifyUnscoredArticles() in sequential batches of 10
@@ -3005,7 +3005,7 @@ function registerIntelligenceHandlers(): void {
 
   // Count of sources still pending confirmation from the Contested Skies import.
   // Cloud-first (mirror-fallback).
-  ipcMain.handle('intelligence:getImportedCount', () => intelCloud.getImportedCount())
+  ipcMain.handle('intelligence:getImportedCount', () => intelCloud.getImportedCount(currentActingUserId))
 
   // Bulk-confirm all imported sources at a chosen confidence, approving them so
   // they flow into the matching Info Pages' Sources tabs. RMW → cloud-only:
