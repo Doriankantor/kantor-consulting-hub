@@ -1031,6 +1031,16 @@ export function initDatabase(): void {
   // GDELT/cs_articles pull). Backfill only where unset — inherently idempotent,
   // safe to re-run, and never touches non-article rows (documents/social/interviews
   // get a project from the picker/review going forward).
+  //
+  // ⚠️ LOCAL MIRROR ONLY — this UPDATE runs against local SQLite, NEVER cloud. It
+  // masked a real writer bug: syncFromContestedSkies inserted cloud rows with
+  // project_board_id=NULL, but this seed stamped the mirror on every startup so the
+  // app *looked* correct while cloud stayed NULL (0a-1b diagnosis). It also
+  // laundered the value the cfdd4b1 backfill inherited for the 242 historical rows
+  // (that backfill copied the already-seeded mirror up to cloud). The cloud writer
+  // is now fixed to stamp at INSERT (ipc syncFromContestedSkies, 0a-1b), so this
+  // seed becomes REMOVABLE once the writer is verified stamping cloud rows. Left in
+  // place for now as a belt-and-suspenders offline backstop; behavior unchanged.
   try {
     const r = db.prepare(
       "UPDATE intelligence_sources SET project_board_id='board-info-latam' WHERE type='article' AND (project_board_id IS NULL OR project_board_id='')"

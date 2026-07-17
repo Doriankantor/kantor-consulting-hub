@@ -2176,6 +2176,14 @@ function inferLanguage(title: string | null, url: string | null): 'es' | 'pt' | 
   return null
 }
 
+// The GDELT/cs_articles pipeline is single-project (LATAM) by design; cs_articles
+// carries no project column, so the writer must supply the board id from a constant.
+// This makes the previously-implicit mapping EXPLICIT — without it, pipeline rows
+// land in cloud with project_board_id=NULL and the membership gate (0a-2) hides
+// them from every non-root user (SQL IN never matches NULL). Phase 2 multi-project
+// pipelines will need this to come from board_config or a cs_articles column.
+const CONTESTED_SKIES_BOARD_ID = 'board-info-latam'
+
 // Pull unimported rows from cs_articles, map pipeline analysis fields to local
 // intelligence_sources schema, and mark each successfully inserted row as
 // imported_to_hub=true in Supabase. This is the SHARED function used by both
@@ -2248,6 +2256,7 @@ async function syncFromContestedSkies(): Promise<{ imported: number; skipped: nu
       confidence, categories_json: JSON.stringify(allCats),
       geography, region: geography, relevance_score: relevanceScore,
       gate_processed: 1, language, added_by_name: 'Contested Skies Pipeline',
+      project_board_id: CONTESTED_SKIES_BOARD_ID,   // single-project pipeline; stamp explicitly (0a-1b)
     })
   }
 
@@ -2311,12 +2320,13 @@ async function fetchAndStoreNews(): Promise<number> {
               const { randomUUID } = await import('crypto')
               db.prepare(`
                 INSERT OR IGNORE INTO intelligence_sources
-                  (id, type, title, snippet, url, source_name, published_at, confidence, categories_json, image_url)
-                VALUES (?, 'article', ?, ?, ?, ?, ?, ?, ?, ?)
+                  (id, type, title, snippet, url, source_name, published_at, confidence, categories_json, image_url, project_board_id)
+                VALUES (?, 'article', ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `).run(
                 randomUUID(), article.title, snippet, article.url,
                 article.source?.name || '', article.publishedAt,
-                confidence, JSON.stringify(categories), article.urlToImage || null
+                confidence, JSON.stringify(categories), article.urlToImage || null,
+                CONTESTED_SKIES_BOARD_ID   // 0a-1b: stamp the latent NewsAPI writer too (disabled, local-only)
               )
               stored++
             } catch { /* duplicate URL — skip */ }
