@@ -378,6 +378,10 @@ const api = {
     onChange:    (cb: (online: boolean) => void) => ipcRenderer.on('connection:changed', (_e, d) => cb(d.online)),
     removeChangeListeners: ()                     => ipcRenderer.removeAllListeners('connection:changed'),
   },
+  // 0b-0: read-only realtime health snapshot (debug). window.api.realtime.health()
+  realtime: {
+    health:      ()                              => ipcRenderer.invoke('realtime:health'),
+  },
 }
 
 if (process.contextIsolated) {

@@ -641,6 +641,17 @@ interface Window {
       onChange:              (cb: (online: boolean) => void) => void
       removeChangeListeners: () => void
     }
+    // 0b-0: read-only realtime health snapshot (debug surface, observation only)
+    realtime: {
+      health: () => Promise<{
+        connectionState: string
+        isConnected: boolean
+        trackedCount: number
+        libraryCount: number
+        lastHeartbeat: { status: string; latency?: number; at: string } | null
+        channels: Array<{ channel: string; status: string; err?: string; at: string }>
+      }>
+    }
     contacts: {
       list:              ()                                              => Promise<Contact[]>
       listTrash:         ()                                              => Promise<Contact[]>

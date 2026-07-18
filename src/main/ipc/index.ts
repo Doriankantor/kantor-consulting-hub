@@ -26,7 +26,7 @@ import * as intelCloud from '../cloud/intel'
 import { isOnline } from '../cloud/connection'
 import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag } from '../cloud/tags'
 import { seedBoardsToCloud } from '../cloud/boardsSeed'
-import { startRealtime, rescope as rescopeRealtime, teardownAll as teardownRealtime } from '../cloud/realtimeManager'
+import { startRealtime, rescope as rescopeRealtime, teardownAll as teardownRealtime, getRealtimeHealth } from '../cloud/realtimeManager'
 import {
   listAttachments, addFileAttachment, addUrlAttachment,
   openAttachment, deleteAttachment, seedAttachmentsToCloud,
@@ -969,6 +969,10 @@ function registerBoardsCloudHandlers() {
   })
   // Admin-only, one-time, idempotent seed of this machine's local board tables.
   ipcMain.handle('boards:seedToCloud', (_e, requestEmail: string) => seedBoardsToCloud(requestEmail))
+  // 0b-0: READ-ONLY realtime health snapshot (debug surface — window.api.realtime.health()
+  // from devtools). Reading it triggers NOTHING: no resubscribe, no teardown, no rescope.
+  // Exists because the HTTP-derived `online` flag cannot see socket death (findings 3/4).
+  ipcMain.handle('realtime:health', () => getRealtimeHealth())
 }
 
 // ── Boards ────────────────────────────────────────────────────────────────

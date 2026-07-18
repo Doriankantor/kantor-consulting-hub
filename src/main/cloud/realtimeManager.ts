@@ -44,10 +44,83 @@ let started = false
 // Coalesce bursts: key = `${pushChannel}|${scope}|${boardId}` → pending timer.
 const pending = new Map<string, ReturnType<typeof setTimeout>>()
 
+// ── 0b-0 INSTRUMENTATION — OBSERVATION ONLY, ZERO behavioral change ──────────
+// Realtime and HTTP are INDEPENDENT transports: every channel rides ONE shared
+// websocket (client.ts builds a single RealtimeClient), so a socket death downs
+// them ALL at once while HTTP keeps succeeding — which is precisely why
+// connection.ts's HTTP-derived `online` flag can never see it, and why findings
+// 3/4 (grants/revokes not propagating until restart) exist. These structures only
+// RECORD what the socket and channels report. Nothing here triggers a resubscribe,
+// a teardown, or a rescope — recovery is 0b-2, teardown correctness is 0b-1.
+export interface ChannelHealth { status: string; err?: string; at: string }
+const channelHealth = new Map<string, ChannelHealth>()
+let lastHeartbeat: { status: string; latency?: number; at: string } | null = null
+let heartbeatWired = false
+
+// 0b-0: the SOCKET-level health signal, registered ONCE on the shared
+// RealtimeClient — never per channel (18 channels would mean 18 registrations of
+// the same socket-wide callback). This is the verdict the HTTP-derived online flag
+// structurally cannot produce. Guarded: if the installed supabase-js has no
+// onHeartbeat we log once and continue rather than throwing at startup.
+function wireHeartbeat(): void {
+  if (heartbeatWired) return
+  heartbeatWired = true
+  const rt = cloud.realtime as unknown as {
+    onHeartbeat?: (cb: (status: string, latency?: number) => void) => void
+  }
+  if (typeof rt?.onHeartbeat !== 'function') {
+    console.warn('[realtime] onHeartbeat unavailable on this supabase-js build — socket health signal NOT wired')
+    return
+  }
+  rt.onHeartbeat((status: string, latency?: number) => {
+    lastHeartbeat = { status, latency, at: new Date().toISOString() }
+    console.log(`[realtime] heartbeat: ${status}${latency !== undefined ? ` (${latency}ms)` : ''}`)
+  })
+}
+
+// 0b-0: our tracked count vs the LIBRARY's own channel list. THE measurement that
+// settles cause-vs-symptom for the MaxListenersExceededWarning: if `library`
+// CLIMBS across sign-in cycles while `tracked` stays flat, teardownAll's
+// un-awaited removeChannel is leaking real channels (the 0b-1 justification). If
+// they stay locked together, the warning was a benign test-protocol artifact.
+// A divergence is deliberately NOT corrected here — only made VISIBLE.
+function logChannelCounts(phase: string): void {
+  let library = -1
+  try { library = cloud.realtime.getChannels().length } catch { /* best-effort */ }
+  console.log(`[realtime] channels after ${phase}: tracked=${channels.length} library=${library}`)
+}
+
+// 0b-0: READ-ONLY snapshot for the `realtime:health` debug IPC. Pure getter —
+// reading it triggers nothing.
+export function getRealtimeHealth(): {
+  connectionState: string
+  isConnected: boolean
+  trackedCount: number
+  libraryCount: number
+  lastHeartbeat: { status: string; latency?: number; at: string } | null
+  channels: Array<{ channel: string; status: string; err?: string; at: string }>
+} {
+  let connectionState = 'unknown'
+  let isConnected = false
+  let libraryCount = -1
+  try { connectionState = String(cloud.realtime.connectionState()) } catch { /* best-effort */ }
+  try { isConnected = cloud.realtime.isConnected() } catch { /* best-effort */ }
+  try { libraryCount = cloud.realtime.getChannels().length } catch { /* best-effort */ }
+  return {
+    connectionState,
+    isConnected,
+    trackedCount: channels.length,
+    libraryCount,
+    lastHeartbeat,
+    channels: [...channelHealth.entries()].map(([channel, h]) => ({ channel, ...h })),
+  }
+}
+
 // Called once at startup from the main entry so the manager can reach the window
 // without importing it (avoids a circular dependency with main/index.ts).
 export function initRealtime(windowGetter: () => BrowserWindow | null): void {
   getWindow = windowGetter
+  wireHeartbeat()   // 0b-0: once, here — not per channel
 }
 
 // Declare a source (does NOT open channels — call startRealtime once the acting
@@ -109,15 +182,28 @@ export function startRealtime(): void {
           { event: '*', schema: 'public', table } as unknown as Record<string, never>,
           (payload: unknown) => handleEvent(source, table, payload as { eventType?: string; new?: Record<string, unknown>; old?: Record<string, unknown> })
         )
-        .subscribe((status: string) => {
+        .subscribe((status: string, err?: Error) => {
+          // 0b-0: record EVERY status — SUBSCRIBED included, not just the failures —
+          // so RECOVERY is visible too, not only the death. `err` was previously
+          // dropped on the floor; a CHANNEL_ERROR carrying no detail is far less
+          // useful than one that names the cause.
+          channelHealth.set(`${source.name}:${table}`, {
+            status,
+            err: err?.message,
+            at: new Date().toISOString(),
+          })
           if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            console.warn(`[realtime] ${source.name}:${table} subscribe status: ${status}`)
+            console.warn(
+              `[realtime] ${source.name}:${table} subscribe status: ${status}` +
+              (err?.message ? ` — ${err.message}` : '')
+            )
           }
         })
       channels.push(ch)
     }
   }
   console.log(`[realtime] started ${channels.length} channel(s) across ${sources.length} source(s)`)
+  logChannelCounts('start')   // 0b-0
 }
 
 // Remove all channels and clear pending pushes.
@@ -129,6 +215,7 @@ export function teardownAll(): void {
   for (const t of pending.values()) clearTimeout(t)
   pending.clear()
   started = false
+  logChannelCounts('teardown')   // 0b-0: library count may lag — removeChannel is async (0b-1)
 }
 
 // Tear down and re-create — used when the acting user changes so the live
