@@ -1,6 +1,6 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-18 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-18 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `2d76b9a` — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.** ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: `2d76b9a`** (the non-root no-join fix) — installed app is 2.3.0 and does NOT contain it. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
@@ -309,6 +309,15 @@ corrected mechanisms matter for the fixes, so both are kept.
    REPLICA IDENTITY FULL guarantees the DELETE carries the email), else visible-board,
    else FAIL OPEN on a thin payload. Renderer note: a membership invalidate is scope
    `'list'` → `loadBoards` only; tasks/columns need refetching too or finding 4 recurs.
+   **★ DIRECT FIELD EVIDENCE (2026-07-18) — the first observation of the mechanism itself,
+   recorded verbatim so 0b starts from evidence rather than a fourth hypothesis:** a dev run
+   logged **every realtime channel going CHANNEL_ERROR (18 channels / 6 sources) WHILE HTTP
+   STAYED HEALTHY** — `[Sync] cs_articles` succeeded in the SAME run. That is precisely the
+   predicted shape: socket death with the HTTP-derived online flag never flipping, so
+   `aba6b91`'s resubscribe (which fires ONLY on the offline→online edge) never runs and the
+   grant/revoke event is never delivered. **Possibly-related lead from the same run:** 6×
+   `started 18 channel(s)` plus a `MaxListenersExceededWarning` (11 listeners, limit 10) —
+   **re-inits stacking within a single process**; a listener leak may be cause or co-symptom.
 
 4. **TRUNCATED BOARD VIEW (member board, no columns/cards) until restart.**
    *Observed:* dk@ IS a member of Think Tank (green check in Board Access) but the board
@@ -577,22 +586,66 @@ DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B p
      access-control tier (0a-1…0a-4 + the scroll-jump fix) shipped. 8 assets on GitHub
      Releases incl. both auto-update manifests; researchers self-update off the ungated 2.2.0.
      This UNBLOCKED 0b's verification (below).
-   - **0b — after the release (the membership-propagation fix, was finding 3):** now scoped
-     as a REALTIME HEALTH-DETECTION gap (detect + recover from channel death independent of the
-     HTTP online flag), NOT a schema fix — the publication + REPLICA IDENTITY FULL theories are
-     both refuted (see finding 3). The last piece of finding 1's original five. ⚠ **Its
-     verification is build → RELEASE → observe in the field** — it needs two concurrent sessions
-     on separate DBs, and dk's macOS account has no dev build; so it can only be proven once
-     shipped. That's the second reason the release comes first.
-   - **[higher stakes, its OWN slice — do NOT fold in] the `visibleBoardIds` non-root
-     no-join:** `visibleBoardIds`' non-root path (`boards.ts:103-104`) reads `board_members` by
-     email with NO JOIN to `workspace_boards`, so it never applies `deleted=0` or `archived=0`
-     — **a member of a soft-deleted or archived board KEEPS VISIBILITY.** This affects EVERY
-     gated read in the app (boards, 0a-2's intel gate, 0a-3/0a-4's page gates all rest on this
-     primitive). Root's path is also loose: `isBoardVisible` short-circuits to `true` before
-     consulting the set, so root passes for a deleted or even nonexistent board id. Needs a
-     soft-deleted board with live memberships to trigger, so not urgent — but it is a gap in
-     the primitive ALL the gates rest on, and it deserves its own slice with its own test.
+   - **0b — NEXT (the membership-propagation fix, was finding 3):** now scoped as a REALTIME
+     HEALTH-DETECTION gap (detect + recover from channel death independent of the HTTP online
+     flag), NOT a schema fix — the publication + REPLICA IDENTITY FULL theories are both
+     refuted (see finding 3). The last piece of finding 1's original five. ⚠ **Its verification
+     is build → RELEASE → observe in the field** — it needs two concurrent sessions on separate
+     DBs, and dk's macOS account has no dev build; so it can only be proven once shipped.
+     - **★ 0b NOW HAS DIRECT FIELD EVIDENCE (2026-07-18) — start from this, NOT a fourth
+       hypothesis.** A dev run logged **every realtime channel going CHANNEL_ERROR (18 channels
+       / 6 sources) WHILE HTTP STAYED HEALTHY** — `[Sync] cs_articles` succeeded in the SAME
+       run. **This is the first direct observation of the 0b mechanism**: channel death
+       independent of the HTTP online flag, which `aba6b91`'s resubscribe can never catch
+       because it fires only on the HTTP offline→online edge and that edge never flips.
+     - **Possibly-related lead (same run):** 6× `started 18 channel(s)` plus a
+       `MaxListenersExceededWarning` (11 listeners, limit 10) — **re-inits stacking within one
+       process**. A listener leak may be a cause or a co-symptom; worth checking early.
+   - **THE `visibleBoardIds` NON-ROOT NO-JOIN — ✅ DONE (`2d76b9a`, 2026-07-18).** The
+     FOUNDATION under the whole tier. *The gap:* the non-root path read `board_members` by
+     email with NO JOIN to `workspace_boards`, so it never filtered `deleted`. **`board_members`
+     rows SURVIVE a soft-delete** — `deleteBoard` updates ONLY `workspace_boards` (verified,
+     quoted in the commit) — so a since-deleted board's id stayed in the visible set FOREVER.
+     The 0a-2/0a-3/0a-4 gates trust that set DIRECTLY (`.in('project_board_id', ids)` /
+     `isBoardVisibleFor`), so a member of a since-deleted board kept SEEING and MUTATING its
+     intel and info-page content — even though the board had vanished from `listBoards`, which
+     re-intersects its own `deleted=0` query and was therefore MASKED. The intel and info_page
+     gates were not masked. *Fix shape (Option B), non-root branch only, BOTH paths:* online
+     intersects the member board_ids against a `workspace_boards deleted=0` lookup; **offline**
+     against `localBoardIds()` — the BOARDS mirror carries `deleted`, but `board_members_mirror`
+     is `(board_id, user_email)` only, **which is exactly why a PostgREST embedded join was not
+     viable** (inexpressible offline). Fixed in the PRIMITIVE so all ~34 call sites heal at once.
+     - **`deleted` only, NOT `archived`.** `localBoardIds` filters `COALESCE(deleted,0)=0` with
+       no archived clause, so archived boards stay in the set — archived Workspace boards and
+       `listArchivedBoards` keep working for non-root members. (Info-page boards are
+       delete-only today, so no archived-info-page case exists regardless — see the backlog
+       item on giving info-pages an archive option.)
+     - **★ THE ROOT ASYMMETRY IS LOAD-BEARING, NOT A BUG.** `isBoardVisible`/
+       `isBoardVisibleFor` short-circuit `isRoot → true` BEFORE consulting the set, so root
+       reaches deleted boards. That is REQUIRED for Trash / `undeleteBoard` / `restoreBoard` /
+       `permanentlyDeleteBoard`. **Do NOT "fix" it.** Root's branches were left byte-identical.
+     - **Error path does not fail open:** on a board-lookup error it falls back to
+       `memberIds ∩ localBoardIds()`, never the raw unfiltered set, so the leak cannot silently
+       reappear. Fail-closed on an unsynced boards mirror (empty intersection) — same known
+       limitation as 0a-2, commented in-code so nobody flips it to fail-open.
+     - **Tested (the SECOND, verified attempt — see the phantom-test lesson):** a PERSISTED
+       document row (confirmed in cloud, `project_board_id=blabla`) with blabla's `deleted`
+       flag confirmed 1/0 in cloud AT EACH STEP. Root soft-deletes blabla → the document leaves
+       dk's Documents tab AND blabla leaves dk's picker; root restores → both return. Round
+       trip, same row, full sign-out between — visibility flipping purely on the board's
+       `deleted` flag.
+   - **[NEW BUG — its own slice] SILENT UPLOAD FAILURE (silent-failure class, INSTANCE SEVEN).**
+     A document uploaded via the Documents tab showed a **SAVED badge and rendered in the tab**
+     but **never persisted to the DB** — confirmed: ZERO `document`-type rows existed in cloud
+     OR local until a second, verified upload. User-facing impact: a researcher uploads, sees
+     success, and the row is simply gone. **Flag only — do NOT chase now.** When investigated:
+     verify the upload's write path and whether a bare `catch` or an unawaited promise swallows
+     the failure. (Found while diagnosing the phantom test — see that lesson.)
+   - **[BACKLOG — feature, not parity] INFO-PAGES NEED AN ARCHIVE OPTION.** Info-page boards
+     are **DELETE-ONLY** today: Workspace boards archive, info-pages don't. For a PUBLISHED
+     project, delete is the wrong verb — you'd want to **shelve it while keeping the live site
+     and its history**. A genuine feature. (Also why the no-join fix's "archived stays in the
+     set" decision has no info-page case to worry about today.)
    - **[cleanup slice] delete the four orphaned handlers** (`infoPages:create`/`delete`/
      `saveConfig`/`updateMeta` — zero renderer call sites, now root-gated as a stopgap) and,
      optionally, add M cost-protection to `analyzeWithClaude`/`summarizeAnalysis` (reads that
@@ -709,7 +762,7 @@ Still do NOT re-attempt "make the summary hold verbatim specifics."
 
 ## ⚠ Lesson — SILENT FAILURE IS THE RECURRING BUG CLASS
 
-**FIVE instances now, same shape: a failure swallowed with no logging (or a fallback that
+**SEVEN instances now, same shape: a failure swallowed with no logging (or a fallback that
 hides it), wrong output accepted as real.**
 
 - **(a) B1 — `max_tokens: 1024`** truncated the structured JSON → parse failure →
@@ -744,11 +797,58 @@ hides it), wrong output accepted as real.**
   Permission-denied abort inside install.sh (or an empty curl) still prints success. The
   purest specimen yet: the success message isn't even derived from an outcome — it's a
   string literal after the pipeline.
+- **(f) INSTANCE SIX — 0a-4's deny shape** (mitigated by design, not a live bug). The
+  `info_page_*` write denials return `{ok:false,error}` rather than throwing, and MOST
+  renderer call sites are fire-and-forget — so a denied write would **no-op silently while
+  the UI showed optimistic state**. Mitigated with a main-side `console.warn` on every deny
+  (handler, actor, pageId) so the audit trail exists even when the renderer ignores the
+  result. See finding 1's third RESOLUTION.
+- **(g) INSTANCE SEVEN — the SILENT UPLOAD FAILURE (NEW, 2026-07-18, UNFIXED).** A document
+  uploaded via the Documents tab showed a **SAVED badge and rendered in the tab**, but **no
+  row was ever written** — zero `document`-type rows existed in cloud OR local until a
+  second, verified upload. The UI's success signal was derived from nothing durable. This is
+  the failure that made the phantom test possible (below): the "present → deleted → gone"
+  observation was UI state, because there was no persisted row to hide in the first place.
+  Its own slice — see NEXT UP.
 
 **RULE: never write a bare `catch {}`. Bind the error and log it. A fallback must not
 swallow the signal that something failed. A success message must be derived from the
 outcome, never hardcoded after it. A placeholder that flows into the AI as content is
-worse than a visible failure.**
+worse than a visible failure. And — instance seven — a SAVED badge must be derived from a
+CONFIRMED WRITE, never from the local optimistic state.**
+
+## ★ Lesson — THE PHANTOM TEST: VERIFY PRECONDITIONS BEFORE TRUSTING A SECURITY RESULT
+
+**The most important methodology lesson of the 2026-07-18 session.** The FIRST attempt to
+verify the non-root no-join fix (`2d76b9a`) produced a **false PASS that both Dorian and the
+design side believed.** A read-only diagnostic later established it was **over-determined by
+THREE stacked silent failures**, any one of which alone would have produced the same
+"correct-looking" result:
+
+1. **The uploaded document never persisted** — ZERO `document`-type rows in cloud OR local
+   (silent-failure instance seven, above). The Documents tab fetches
+   `getSources({type:'document'})`, so it rendered empty **for root too**, independent of any
+   gate.
+2. **The soft-delete never landed** — `blabla` was `deleted=0` in cloud (and in the local
+   mirror). The test's core precondition was simply absent; dk was a member of a **live**
+   board and *should* have seen its content.
+3. **The fix was already compiled into the running build** — `out/main` had been rebuilt
+   ~12h AFTER the source edit and the Electron main process had loaded it. So even a
+   correctly-staged test could not have reproduced the pre-fix leak. *(A trap inside the
+   trap: grepping the bundle for the fix's COMMENT returned 0 because **the build strips
+   comments** — a false negative. Only grepping the fix's runtime STRING LITERALS, which
+   survive compilation, proved it was live.)*
+
+So the observed "document present → root deletes → document gone → root restores → document
+back" was **UI/session state flipping, not the gate filtering persisted rows.**
+
+**RULE: for a SECURITY test, confirm EVERY precondition in the AUTHORITATIVE STORE before
+trusting the observed result — the persisted row, the flag value, and which build is actually
+running. A result that MATCHES YOUR EXPECTATION proves nothing if the preconditions were never
+verified.** This is the same **"looks right for the wrong reason"** class that recurred all
+session (dk's 2, root's 2, HANDOFF's 253) — but here it nearly wrote an unverified test claim
+into permanent git history. Verify build-liveness by CONTENT (string literals), not by
+timestamp and not by comments.
 
 ## ⚠ Lesson — A REFETCH MUST SWAP DATA UNDER STABLE KEYS, NEVER UNMOUNT THE LIST
 
@@ -1002,6 +1102,11 @@ the backlog.
   **narrative-summary fix** (`c0be06f`), **reconcile-from-structure** (`edaab46`), and the
   **PDF extraction fix** (`283dc38`). (Docs commit `0b1572e` + `801ec27` and the
   version-bump `937e220` sit between T5 and 3e-1.)
+- **UNRELEASED on `main` since v2.3.0: `2d76b9a`** (2026-07-18) — the `visibleBoardIds`
+  NON-ROOT NO-JOIN fix: soft-deleted boards are now filtered out of non-root visibility
+  (Option B intersection, both online and offline paths; `deleted` only, archived preserved;
+  root untouched). Closes the FOUNDATION under the 0a-2/0a-3/0a-4 gates. **The installed app
+  is 2.3.0 and does NOT contain this fix** — it is the first commit of the next release.
 - **UNRELEASED on `main` since v2.2.0: NONE — all shipped in v2.3.0 (2026-07-17).**
   `8eae348` (0a-1 — compose stamps `project_board_id`), `2e22178` (0a-1b — pipeline writer
   stamps it), `923f334` (scroll-jump fix), `a5d4b20` (0a-2 — intel read-tier gate), `8662b68`

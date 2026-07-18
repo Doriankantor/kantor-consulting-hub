@@ -1,18 +1,20 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-18
-  Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e) —
-                   NO unreleased code on main. Shipped in v2.3.0: 8eae348 (0a-1),
-                   2e22178 (0a-1b), 923f334 (scroll-jump fix), a5d4b20 (0a-2 — intel
-                   read gate), 8662b68 (docs 0a-2), 46be18e (0a-3 — info_page_* read
-                   gate), f80b17d (docs 0a-3), 26ee18c (0a-4 — info_page_* WRITE gate,
-                   M/A/R), 49b44fd (docs 0a-4).   |   HEAD a4b161e
-                   303 commits   |   ~36,800 lines of TS/TSX
+  Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
+                   UNRELEASED since v2.3.0: 2d76b9a (visibleBoardIds non-root no-join
+                   fix) — the installed app is 2.3.0 and does NOT contain it; it is the
+                   first commit of the next release.
+                   Shipped in v2.3.0: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334
+                   (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
+                   0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
+                   26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
+                   HEAD 2d76b9a   |   305 commits   |   ~36,800 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
-                   ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes.
-                   v2.3.0 ships the complete access-control tier + the infoPages:list
-                   deleted=0 bug fix. NEXT STEP: 0b (realtime health).
+                   ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
+                   AND ITS FOUNDATION (the non-root no-join) NOW CLOSED TOO (2d76b9a).
+                   NEXT STEP: 0b (realtime health) — now with direct field evidence.
   Repo: github.com/Doriankantor/kantor-consulting-hub
   PRIOR RELEASE — v2.1.0 (published 2026-07-15; mac universal DMG/zip + win NSIS x64,
   auto-update manifests live). A MINOR bump shipping the whole post-v2.0.22 batch: the
@@ -33,8 +35,17 @@
   KEY DESIGN INSIGHT: prose summarizes, structure catalogues — named specifics belong in
   capabilities[], NOT in the prose summary (proven empirically; see the changelog).
   RECURRING BUG CLASS: SILENT FAILURE — a swallowed error, wrong output accepted as real.
-  NOW FIVE INSTANCES (see the v2.2.0 + cross-device-test blocks below). Never write a
-  bare catch {}; never hardcode a success message after a pipeline.
+  NOW SEVEN INSTANCES (see the v2.2.0 + cross-device-test blocks below); #7 is NEW and
+  UNFIXED: a document upload showed a SAVED badge and rendered in the tab but NEVER
+  PERSISTED (zero document rows in either DB). Never write a bare catch {}; never hardcode
+  a success message after a pipeline; a SAVED badge must derive from a CONFIRMED WRITE.
+  ★ METHODOLOGY LESSON (2026-07-18) — THE PHANTOM TEST: the first attempt to verify the
+  no-join fix produced a FALSE PASS everyone believed, over-determined by THREE stacked
+  silent failures (the document never persisted, the soft-delete never landed, and the fix
+  was already compiled into the running build). For a SECURITY test, confirm EVERY
+  precondition in the authoritative store BEFORE trusting the result — a result that matches
+  expectation proves nothing if the preconditions were never verified. Verify build-liveness
+  by CONTENT (string literals survive; comments are stripped), never by timestamp.
   Working tree is otherwise CLEAN (docs only). NEXT MILESTONE (locked): COMPLETE THE INTEL
   PROCESS BY END OF JULY, publishing in August. NEXT UP: ⛔ THE INTEL ACCESS GATE — CLOSED
   END-TO-END (reads + writes): 0a-1 (compose stamps a project, 8eae348) + 0a-1b (pipeline
@@ -43,15 +54,93 @@
   axes M=membership / A=canApprove / R=root; the first server-side check on these writes, all
   authorization previously lived in the renderer) all DONE. Finding 1 CLOSED. v2.3.0 RELEASED
   2026-07-17 (tag v2.3.0, version-bump a4b161e; 8 assets incl. both auto-update manifests —
-  researchers self-update off 2.2.0). Order: 0b = realtime health-detection (detect + recover
-  from channel death independent of the HTTP online flag; the last of finding 1's five) → the
-  visibleBoardIds non-root no-join (its own slice — a member of a soft-deleted board keeps
-  visibility; affects EVERY gated read) → cleanup (delete the 4 orphaned handlers; optional M
+  researchers self-update off 2.2.0). THE FOUNDATION IS NOW CLOSED TOO: the visibleBoardIds
+  non-root no-join is FIXED (2d76b9a, 2026-07-18) — soft-deleted boards no longer leak into
+  non-root visibility. Order: 0b = realtime health-detection (detect + recover from channel
+  death independent of the HTTP online flag; the last of finding 1's five — NOW WITH DIRECT
+  FIELD EVIDENCE: 18 channels CHANNEL_ERROR while HTTP stayed healthy) → the silent upload
+  failure (NEW, instance #7) → cleanup (delete the 4 orphaned handlers; optional M
   on analyzeWithClaude/summarizeAnalysis) → info_page_sources migration (the LAST table) →
   To-Do write-through → To-Do data half (personal_todos → cloud, personal steps,
   board_members.can_assign, assigned_by, completion notification) → pre-route editing →
-  T6b + per-card tag scoping → feedback loop → dedup → span annotation. Mirror purge unscheduled.
+  T6b + per-card tag scoping → feedback loop → dedup → span annotation. BACKLOG: info-pages
+  need an ARCHIVE option (delete-only today; for a published project delete is the wrong verb
+  — you'd want to shelve it while keeping the live site + history). Mirror purge unscheduled.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-18 — visibleBoardIds NON-ROOT NO-JOIN FIX (2d76b9a, UNRELEASED) ──
+  • THE GAP: visibleBoardIds' non-root path read board_members by email with NO JOIN to
+    workspace_boards, so it never filtered deleted. board_members rows SURVIVE a soft-delete
+    (deleteBoard updates ONLY workspace_boards — verified), so a since-deleted board's id
+    stayed in the visible set FOREVER. The 0a-2/0a-3/0a-4 gates trust that set DIRECTLY
+    (.in('project_board_id', ids) / isBoardVisibleFor), so a member of a since-deleted board
+    kept SEEING and MUTATING its intel and info-page content — even though the board had
+    vanished from listBoards, which re-intersects its own deleted=0 query and was MASKED.
+    The intel and info_page gates were NOT masked. This was the FOUNDATION under the whole
+    access-control tier.
+  • FIX SHAPE (Option B) — non-root branch only, BOTH paths. Online intersects the member
+    board_ids against a workspace_boards deleted=0 lookup; OFFLINE against localBoardIds()
+    (the BOARDS mirror carries deleted; board_members_mirror is board_id+user_email only,
+    which is exactly why a PostgREST embedded join was NOT viable — inexpressible offline).
+    Fixed in the PRIMITIVE so all ~34 call sites heal at once.
+  • deleted ONLY, NOT archived: localBoardIds filters COALESCE(deleted,0)=0 with no archived
+    clause, so archived boards stay in the set — archived Workspace boards and
+    listArchivedBoards keep working for non-root members. (Info-page boards are delete-only
+    today, so no archived-info-page case exists regardless.)
+  • ★ THE ROOT ASYMMETRY IS LOAD-BEARING, NOT A BUG: isBoardVisible/isBoardVisibleFor
+    short-circuit isRoot->true BEFORE consulting the set, so root reaches deleted boards —
+    REQUIRED for Trash/undeleteBoard/restoreBoard/permanentlyDeleteBoard. Do NOT "fix" it.
+    Root's branches left byte-identical.
+  • Error path does NOT fail open: on a board-lookup error it falls back to
+    memberIds ∩ localBoardIds(), never the raw unfiltered set, so the leak cannot silently
+    reappear. Fail-closed on an unsynced boards mirror; commented so nobody flips it open.
+  • TESTED (the second, VERIFIED attempt): a PERSISTED document row (confirmed in cloud,
+    project_board_id=blabla) with blabla's deleted flag confirmed 1/0 in cloud AT EACH STEP.
+    Root soft-deletes -> the doc leaves dk's Documents tab AND blabla leaves dk's picker;
+    root restores -> both return. Round trip, same row, full sign-out between.
+
+  ── 2026-07-18 — THE PHANTOM TEST (methodology post-mortem) ──
+  • The FIRST attempt to verify the no-join fix produced a FALSE PASS that both Dorian and
+    the design side believed. A read-only diagnostic established it was OVER-DETERMINED by
+    THREE stacked silent failures, any one of which alone yields the same "correct" result:
+    (1) the uploaded document NEVER PERSISTED (zero document rows in cloud OR local), so the
+    Documents tab rendered empty for ROOT too, independent of any gate;
+    (2) the soft-delete NEVER LANDED (blabla was deleted=0 in cloud and in the local mirror),
+    so the test's core precondition was simply absent;
+    (3) the fix was ALREADY COMPILED into the running build (out/main rebuilt ~12h after the
+    source edit; Electron had loaded it), so even a correct staging could not have shown the
+    pre-fix leak.
+  • So "doc present -> delete -> doc gone -> restore -> doc back" was UI/session state
+    flipping, NOT the gate filtering persisted rows.
+  • TRAP INSIDE THE TRAP: grepping the built bundle for the fix's COMMENT returned 0 because
+    THE BUILD STRIPS COMMENTS — a false negative. Only grepping the fix's runtime STRING
+    LITERALS (which survive compilation) proved it was live.
+  • ★ RULE: for a SECURITY test, confirm EVERY precondition in the AUTHORITATIVE STORE before
+    trusting the observed result — the persisted row, the flag value, and WHICH BUILD IS
+    RUNNING. A result that MATCHES YOUR EXPECTATION proves nothing if the preconditions were
+    never verified. Same "looks right for the wrong reason" class that recurred all session
+    (dk's 2, root's 2, HANDOFF's 253) — here it nearly put an unverified test claim into
+    permanent git history.
+
+  ── 2026-07-18 — NEW FINDINGS (flagged, not chased) ──
+  • SILENT UPLOAD FAILURE — silent-failure class INSTANCE SEVEN (NEW, UNFIXED). A document
+    uploaded via the Documents tab showed a SAVED badge and rendered in the tab but NEVER
+    persisted to the DB (zero document rows in either store until a second, verified upload).
+    User-facing: a researcher uploads, sees success, and the row is gone. Its own slice. When
+    investigated: check the upload's write path and whether a bare catch or an unawaited
+    promise swallows the failure.
+  • 0b FIELD EVIDENCE (FIRST DIRECT OBSERVATION of the mechanism) — a dev run logged EVERY
+    realtime channel going CHANNEL_ERROR (18 channels / 6 sources) WHILE HTTP STAYED HEALTHY
+    ([Sync] cs_articles succeeded in the SAME run). That is exactly the predicted shape:
+    socket death with the HTTP-derived online flag never flipping, so aba6b91's resubscribe
+    (which fires only on the offline->online edge) never runs. Also 6x "started 18 channel(s)"
+    plus MaxListenersExceededWarning (11 listeners, limit 10) — re-inits stacking within one
+    process; a listener leak may be cause or co-symptom. 0b now starts from EVIDENCE, not a
+    fourth hypothesis.
+  • INFO-PAGES NEED AN ARCHIVE OPTION (backlog, feature not parity). Info-page boards are
+    DELETE-ONLY today: Workspace boards archive, info-pages don't. For a PUBLISHED project
+    delete is the wrong verb — you'd want to shelve it while keeping the live site and
+    history.
 
   ── 2026-07-17 — RELEASE v2.3.0 (a4b161e, tag v2.3.0) ──
   • CUT v2.3.0 — a MINOR bump shipping the COMPLETE access-control tier (0a-1 / 0a-1b /
