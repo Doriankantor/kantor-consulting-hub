@@ -52,6 +52,9 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
+  // Per-CARD status-write error (keyed by id, like NewsTab's aiErr). The DocumentCompose
+  // sub-component's own `error` state is unreachable from here, so the list needs its own.
+  const [statusError, setStatusError] = useState<Record<string, string>>({})
   const [fadingIds, setFadingIds] = useState<Set<string>>(new Set())
   // 3d: the info-page projects (for the per-item project picker + Send target).
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
@@ -142,8 +145,19 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
     setPendingStatus(p => ({ ...p, [id]: true }))
     try {
       const res = await window.api.intelligence.updateStatus(id, status, undefined, localUser?.id, localUser?.name)
-      // Update badge in-place — preserves scroll position
-      setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: status as any } : d))
+      // GATE THE BADGE ON THE WRITE RESULT. updateStatus now returns {ok:false,error} for a
+      // row that no longer exists (the phantom-row guard); flipping the badge anyway would
+      // report success for a write that never landed.
+      if (!res.ok) {
+        setStatusError(prev => ({ ...prev, [id]: res.error || 'Could not update.' }))
+      } else {
+        setStatusError(prev => { const n = { ...prev }; delete n[id]; return n })
+        // Update badge in-place — preserves scroll position
+        setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: status as any } : d))
+      }
+      // onApprove fires on FAILURE TOO — deliberately. It refreshes the stats/unscored
+      // counts, which is exactly what a stale-or-phantom card needs. The toast self-guards
+      // (addedToPages is undefined when the write failed). Do NOT move this into the else.
       if (status === 'approved') onApprove(res?.addedToPages)
       else onApprove()
     } finally {
@@ -423,6 +437,7 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
                   ➤ Send to New sources
                 </button>
               </div>
+              {statusError[doc.id] && <p className="text-xs text-red-500 dark:text-red-400 mt-2">{statusError[doc.id]}</p>}
             </div>
           )
         })}

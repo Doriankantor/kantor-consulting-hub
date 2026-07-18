@@ -103,6 +103,10 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   // The save path must never clear the form on a failed write — see handleSubmit.
   const [formError, setFormError] = useState<string | null>(null)
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
+  // Per-CARD status-write error (keyed by id, like NewsTab's aiErr). Distinct from the
+  // form-level `formError` — a status click targets ONE card, so the failure must show
+  // on that card, not in the add-form footer.
+  const [statusError, setStatusError] = useState<Record<string, string>>({})
   const [fadingIds] = useState<Set<string>>(new Set())
   // URL-paste autofill (Social-a fetcher).
   const [urlInput, setUrlInput] = useState('')
@@ -267,7 +271,18 @@ export default function SocialTab({ onApprove, project = null }: Props) {
     setPendingStatus(p => ({ ...p, [id]: true }))
     try {
       const res = await window.api.intelligence.updateStatus(id, status, undefined, localUser?.id, localUser?.name)
-      setPosts(prev => prev.map(p => p.id === id ? { ...p, status: status as any } : p))
+      // GATE THE BADGE ON THE WRITE RESULT. updateStatus now returns {ok:false,error} for a
+      // row that no longer exists (the phantom-row guard); flipping the badge anyway would
+      // report success for a write that never landed.
+      if (!res.ok) {
+        setStatusError(prev => ({ ...prev, [id]: res.error || 'Could not update.' }))
+      } else {
+        setStatusError(prev => { const n = { ...prev }; delete n[id]; return n })
+        setPosts(prev => prev.map(p => p.id === id ? { ...p, status: status as any } : p))
+      }
+      // onApprove fires on FAILURE TOO — deliberately. It refreshes the stats/unscored
+      // counts, which is exactly what a stale-or-phantom card needs. The toast self-guards
+      // (addedToPages is undefined when the write failed). Do NOT move this into the else.
       if (status === 'approved') onApprove(res?.addedToPages)
       else onApprove()
     } finally {
@@ -672,6 +687,7 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                   ➤ Send to New sources
                 </button>
               </div>
+              {statusError[post.id] && <p className="text-xs text-red-500 dark:text-red-400 mt-2">{statusError[post.id]}</p>}
             </div>
           )
         })}
