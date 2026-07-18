@@ -799,7 +799,7 @@ interface Window {
       // News human layer: researcher relevance override stored in analysis_json.human (gate-safe).
       setHumanRelevance:    (id: string, value: string | null) => Promise<{ ok: true; human: { relevance?: string; overridden_at?: string } | null } | { ok: false; error: string }>
       getUnreviewedCount:   ()                                 => Promise<number>
-      updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => Promise<{ ok: boolean; addedToPages?: string[] }>
+      updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => Promise<{ ok: boolean; addedToPages?: string[]; projectBoardId?: string | null; url?: string | null; error?: string }>
       markDuplicate:        (id: string, duplicateOf: string | null) => Promise<{ ok: boolean }>
       updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean }>
       updateGeography:      (id: string, geography: string)    => Promise<{ ok: boolean }>

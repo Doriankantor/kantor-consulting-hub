@@ -295,6 +295,14 @@ export async function updateStatus(
     .select('url,categories_json,project_board_id').eq('id', id).maybeSingle()
   reportCloudResult(!mErr)
   if (mErr) return { ok: false, error: `status read failed: ${mErr.message}` }
+  // PHANTOM-ROW GUARD. `.maybeSingle()` returns data:null with NO error when the row is
+  // gone, and a zero-row PostgREST UPDATE is likewise not an error — so without this the
+  // fn returned ok:true for a row that does not exist. The IPC handler routes on res.ok,
+  // so a phantom would be routed into info_page_sources and (via the News path) logged
+  // into the learning loop. The read above already PROVES existence: null IS the answer.
+  // Fail fast here — before the approve-branch section derivation (which would otherwise
+  // compute a section from a null categories_json) and before either UPDATE.
+  if (!meta) return { ok: false, error: 'source no longer exists' }
   const url = (meta?.url as string | null) ?? null
   if (status === 'approved') {
     const cats: string[] = JSON.parse((meta?.categories_json as string) || '[]')
