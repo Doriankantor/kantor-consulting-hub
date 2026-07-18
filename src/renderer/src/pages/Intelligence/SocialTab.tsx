@@ -99,6 +99,9 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // Form-level save error (distinct from `errors`, which is per-FIELD validation).
+  // The save path must never clear the form on a failed write — see handleSubmit.
+  const [formError, setFormError] = useState<string | null>(null)
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
   const [fadingIds] = useState<Set<string>>(new Set())
   // URL-paste autofill (Social-a fetcher).
@@ -223,10 +226,11 @@ export default function SocialTab({ onApprove, project = null }: Props) {
     if (!form.post_date) errs.post_date = 'Date is required'
     setErrors(errs)
     if (Object.keys(errs).length) return
+    setFormError(null)
 
     setSaving(true)
     try {
-      await window.api.intelligence.addSocial({
+      const res = await window.api.intelligence.addSocial({
         platform: form.platform,
         handle: form.handle.trim(),
         post_date: form.post_date,
@@ -242,11 +246,17 @@ export default function SocialTab({ onApprove, project = null }: Props) {
         // selected). Replaces the former non-atomic follow-up setProject write.
         project_board_id: project?.id,
       })
+      // GATE THE RESET ON THE WRITE RESULT. addSocial returns {ok,id,error?} and never
+      // throws, so the failure signal is always available here. Returning BEFORE the
+      // form-clear is the whole point: on a failed save the user's typed content STAYS.
+      if (!res.ok) { setFormError('Could not save the post.'); return }
       setForm({ ...EMPTY_FORM })
       setErrors({})
       setUrlInput('')
       setFetchNote(null)
       await load()
+    } catch (e) {
+      setFormError((e as Error)?.message || 'Could not save the post.')
     } finally {
       setSaving(false)
     }
@@ -506,6 +516,7 @@ export default function SocialTab({ onApprove, project = null }: Props) {
             <p className="text-[11px] text-gray-400 dark:text-white/30">
               {!project?.id ? 'Select a project above to add sources.' : "Add the post, then describe what's happening and analyze it on its card below."}
             </p>
+            {formError && <span className="text-xs text-red-500 dark:text-red-400 ml-3">{formError}</span>}
             <button
               onClick={handleSubmit}
               disabled={saving || !project?.id}
