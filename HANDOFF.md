@@ -680,7 +680,9 @@ DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B p
    To-Do completions stop reverting on the next `getTasks` (see KNOWN GAPS). Small slice.
 3. **To-Do data half** — `personal_todos` → cloud, personal steps,
    `board_members.can_assign`, `assigned_by`, completion notification.
-4. **Pre-route editing** (locked decision — see the locked-decisions section below).
+4. **Pre-route editing** (locked decision — full statement under **Known issues → Pre-route
+   editing (locked, unbuilt)**; the numbered decisions are in **Locked design decisions
+   (Intelligence + Info Pages restructure)**, both below).
 5. **T6b + per-card tag scoping — COMBINED into one slice** (same prop threading; doing
    them separately means threading twice).
 6. **Human-relevance feedback loop** into the Haiku gate (**PIPELINE repo**).
@@ -1478,6 +1480,64 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   `seed.ts`, `CommitReviewTab`, `WorkspaceContext.createTask`, an `ipc/index.ts:48`
   WebSocket type, etc.). There is **no typecheck script** — the build uses esbuild,
   which strips types without checking. None of the recent work added new errors.
+
+## Locked design decisions (Intelligence + Info Pages restructure)
+
+**These are LOCKED** — decided in prior design sessions and cited by number throughout this
+doc and the backlog. Do not relitigate them in an implementation slice; if one needs to
+change, that's a vision conversation, and this list is what gets amended.
+
+1. **Unified item model.** Every collection method (News / Social / Documents / Interviews)
+   produces the SAME kind of item: **content + AI analysis (a proposal) + optional
+   researcher layer** (rich-text notes + tag/relevance overrides). **AI proposes; researcher
+   input is always OPTIONAL.** Notes and overrides are nullable and **never
+   validation-gated** — commit never requires a note.
+2. **Human-first, AI-on-demand.** AI **never auto-runs on capture.** Human input FIRST →
+   explicit **"Analyze with AI"** → AI appears in a **SEPARATE box** (suggestions, never
+   overwrites) → optional **"Reconcile"** merges human + AI into an editable version.
+   *(This is the pattern any "AI suggests" feature must follow — see the cross-source
+   linking backlog entry, whose AI slice is explicitly built on decision #2.)*
+3. **News UI.** Card list with an **elongating footer**: empty cards stay slim, click to
+   grow into notes + overrides. The human relevance override is stored in
+   **`analysis_json.human.relevance`**, **NOT `relevance_score`** — the gate/rescore pass
+   would clobber the latter.
+4. **Social.** Primary path = **paste link + AI summarize**. If the link is unreadable, the
+   **hand-fill form opens automatically**. Hand-written entry is always available as an
+   explicit option.
+5. **Interviews.** **Per-highlight annotations** — each highlighted span gets its own
+   interpretation + tags, reusing the news-article tag vocabulary. Deferred to its own slice
+   (see "Interview span annotation" in the backlog).
+6. **Documents "your notes".** A **full rich-text editor (TipTap)**, not a textarea. An
+   explicit **"Reconcile with my notes"** triggers project-aware re-analysis.
+7. **Data-gathering framework panel.** **READ-ONLY in-app** (collapsed summary / expandable
+   full architecture). Edits only via **Claude Code by admin**. Live-bound to the actual
+   query config.
+8. **Commit/approve pipeline (Slice 3 model).** **Approve = route** (one action). Each card
+   carries a **project picker defaulting to the top dropdown's selection**. Approve packages
+   content + AI + notes into the target project's **`info_page_sources` (stage='new')**.
+   Routed items **leave the intel queue but persist**; **move-back-to-intel = DELETE the
+   pointer + flip intel `status='unreviewed'`**.
+9. **Info Pages pipeline stage order.** **New sources → Analysis & design → Publish → Latest
+   update notes → Sources.** The final *"here's exactly what will change"* is a **gate ON the
+   Publish button, not a separate stage.** Publishing pushes to the site AND **auto-writes an
+   update note.**
+10. **Info Pages Claude-analysis stage.** **Claude SUGGESTS placement; the researcher
+    CONFIRMS/overrides** via a feedback box. *(This is the stage the cross-source linking
+    backlog entry feeds — links are context for these placement decisions.)*
+11. **Permissions — two tiers, one invariant.** **Project Members** (`board_members`,
+    per-project) = the **Intel side** (review / approve / add / commit). **Project Heads**
+    (`info_page_owners`, an admin-selected subset) = the **publication side** (move to
+    analysis, publish). **Head-implies-member invariant.** **Root only** assigns heads.
+12. **Standardize on `info_page_sources`** (`new` → `review` → `committed`) as the per-page
+    source model. Older `info_page_items` / `intelligence_source` rows are **legacy**.
+13. **B0.6 form.** The in-app **"+Add/Edit Info Page"** edits **hosting fields only** (name,
+    repo, live_url, file). **Keywords / collection config are reserved for
+    admin-via-Claude-Code.**
+
+**Also locked, documented separately (not one of the numbered thirteen):** **pre-route
+editing** — compose items must be EDITABLE UNTIL ROUTED, and once routed you MOVE BACK TO
+INTEL to edit. Full statement + the unverified plumbing hypothesis are under **Known issues
+→ Pre-route editing (locked, unbuilt)**.
 
 ## Gotchas
 
