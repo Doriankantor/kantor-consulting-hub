@@ -3,14 +3,15 @@
   Generated: 2026-07-18
   Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
                    UNRELEASED since v2.3.0: 2d76b9a (visibleBoardIds non-root no-join
-                   fix) and b211638 (slice 0b-0 — realtime channel-health
-                   instrumentation) — the installed app is 2.3.0 and contains NEITHER;
-                   they are the first two commits of the next release.
+                   fix), b211638 (slice 0b-0 — realtime channel-health instrumentation)
+                   and c60c9c2 (compose cluster slice 1 — Social form-loss fix) — the
+                   installed app is 2.3.0 and contains NONE of them; they are the first
+                   three commits of the next release.
                    Shipped in v2.3.0: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD b211638   |   309 commits   |   ~36,900 lines of TS/TSX
+                   HEAD c60c9c2   |   311 commits   |   ~36,900 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -68,6 +69,26 @@
   need an ARCHIVE option (delete-only today; for a published project delete is the wrong verb
   — you'd want to shelve it while keeping the live site + history). Mirror purge unscheduled.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-18 — COMPOSE CLUSTER SLICE 1: SOCIAL FORM-LOSS FIXED (c60c9c2, UNRELEASED) ──
+  • ★ THE ONLY BUG IN THE CLUSTER THAT DESTROYED USER CONTENT IS FIXED. SocialTab.handleSubmit
+    awaited addSocial without reading the result, then cleared the form on the very next line
+    regardless of success — and was try/finally with NO catch. A failed save or a rejected
+    invoke wiped the researcher's typed post content with no feedback at all.
+  • FIX mirrors InterviewsTab.handleAdd, the one compose path that already got this right:
+    capture the return, `if (!res.ok) { setFormError(...); return }` BEFORE any reset so the
+    form SURVIVES on failure, add the missing catch, render a form-level error banner.
+  • BANNER STRING IS VERBATIM "Could not save the post." — grep for THAT. The commit message
+    paraphrased it as "cannot save this post", which appears nowhere in the code.
+  • TESTED: success path unchanged (form clears, post lands); an offline save shows the banner
+    AND preserves the typed content instead of wiping it.
+  • CORRECTION TO THE CLUSTER RECORD: the no-catch defect was first attributed to handleUpload
+    ALONE. Social's handleSubmit had it TOO — Social carried BOTH defects. Both of Social's are
+    now fixed; handleUpload's is still open.
+  • REMAINING: (a) UPLOAD SLICE — uploadDocument still returns {ok:true} on empty results and
+    handleUpload still has no catch; PAIR with the upload-click 5-min diagnosis (still
+    UNRESOLVED). (b) SAVED-badge / updateStatus phantom row — GREW: handleStatus is duplicated
+    verbatim in BOTH SocialTab and DocumentsTab, so fixing one tab leaves the other live.
 
   ── 2026-07-18 — COMPOSE-SURFACE SILENT-FAILURE CLUSTER (diagnosis only, NO code) ──
   • FOUR related compose-surface bugs found and recorded to the backlog. All four compose

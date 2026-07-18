@@ -1449,12 +1449,18 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   (`intel.ts:590`), which reports `{ok, error}` FAITHFULLY. The bugs are in CALLER
   DISCIPLINE, not the write layer** — don't go looking for a fix in `insertSource`.
   Ordered by HARM:
-  1. **★ SOCIAL DESTROYS TYPED CONTENT (worst, code-confirmed, DO FIRST).** `SocialTab`
-     (~229) does not read the save return value at all, then clears the form
-     (`setForm({ ...EMPTY_FORM })`) **regardless of success**. A failed save silently wipes
-     user-authored content. **Fix:** move the form-clear behind a `res.ok` check, mirroring
-     `InterviewsTab` (~141), which already does
-     `if (!res.ok) { setFormError(...); return }`. Interviews is the model — copy it.
+  1. **✅ DONE — SOCIAL DESTROYED TYPED CONTENT (was the worst; fixed in `c60c9c2`,
+     2026-07-18, UNRELEASED).** `SocialTab.handleSubmit` did not read the save return at
+     all, then cleared the form (`setForm({ ...EMPTY_FORM })`) **regardless of success** —
+     and was `try`/`finally` with **no catch**. A failed save silently wiped user-authored
+     content. **Fixed by mirroring `InterviewsTab.handleAdd`** (the one compose path that
+     already got this right): capture the `addSocial` return,
+     `if (!res.ok) { setFormError(...); return }` **BEFORE any reset** so the form survives
+     on failure, add the previously-missing `catch`, and render a form-level error banner.
+     **The banner string is verbatim `Could not save the post.`** — grep for THAT; the
+     commit message paraphrased it as *"cannot save this post"*, which appears nowhere in
+     the code. **Tested:** success path unchanged (form clears, post lands); an offline
+     save shows the banner **and** preserves the typed content.
   2. **UPLOAD HANDLER LIES ON EMPTY RESULTS (code-confirmed).**
      `intelligence:uploadDocument` (`ipc:2997`) returns `{ ok: true, results }`
      **unconditionally** — even when every file failed and `results` is `[]`. Per-file
@@ -1467,16 +1473,32 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   3. **NO `catch` IN `handleUpload`.** The `try` has only a `finally`, so a rejected invoke
      becomes an **unhandled promise rejection with no UI state** — another silent sink.
      (`setUploading(false)` still runs, so the button looks normal.)
+     **⚠ CORRECTION TO THE ORIGINAL WRITE-UP:** this defect was first attributed to
+     `handleUpload` ALONE. Diagnosis found **`SocialTab.handleSubmit` had it too** — so
+     Social carried **BOTH** defects (unchecked return **and** no catch). Both of Social's
+     are fixed in `c60c9c2`; **`handleUpload`'s is still open.**
   4. **SAVED BADGE / `updateStatus` ON A PHANTOM ROW (independent — SPLIT to its own tiny
-     slice).** `handleStatus` (~144) flips the badge **unconditionally** without reading
-     `res.ok`. And `updateStatus` returns `ok:true` for a row that **doesn't exist**: the
-     read uses `.maybeSingle()` (returns `null`, **no error**) and **an UPDATE matching
-     zero rows is not a PostgREST error**. So "Save" on a phantom card reports success
-     **twice over**. **Fix:** gate the badge on `res.ok`; make `updateStatus` treat a null
-     row as an error and `.select()` to confirm rows affected.
-  - **SUGGESTED FIX FRAMING:** ONE slice — *"compose writes and buttons tell the truth"* —
-    covering 1–3, **Social first** (it is the only one that destroys content). **#4 is a
-    SEPARATE small slice** (different subsystem, different failure).
+     slice).** `handleStatus` flips the badge **unconditionally** without reading `res.ok`.
+     And `updateStatus` returns `ok:true` for a row that **doesn't exist**: the read uses
+     `.maybeSingle()` (returns `null`, **no error**) and **an UPDATE matching zero rows is
+     not a PostgREST error** (`intel.ts` ~294 / ~314 — the UPDATE has no `.select()`). So
+     "Save" on a phantom card reports success **twice over**. **Fix:** gate the badge on
+     `res.ok`; make `updateStatus` treat a null row as an error and `.select()` to confirm
+     rows affected.
+     **⚠ THIS ONE GREW:** `handleStatus` is duplicated **VERBATIM in BOTH `SocialTab`
+     (~255) and `DocumentsTab` (~144)** — fixing one tab **leaves the other live.** Both,
+     or neither.
+  - **REMAINING WORK (updated 2026-07-18 after slice 1):**
+    - ✅ **#1 Social form-loss — DONE (`c60c9c2`).**
+    - ⬜ **#2 + #3 — THE UPLOAD SLICE.** `uploadDocument` (`ipc` ~2997) still returns
+      `{ok:true}` on empty results; `handleUpload` (`DocumentsTab` ~122) is still
+      `try`/`finally` with no catch. **PAIR THIS WITH THE UPLOAD-CLICK 5-MIN DIAGNOSIS**
+      (below) — same dev session, same neighborhood of code, and the click mystery is
+      **still UNRESOLVED** (enabled button + valid project + working handler, click
+      swallowed, cause unknown).
+    - ⬜ **#4 SAVED-badge / `updateStatus` phantom row.** Separate slice, **different
+      layer** (`intel.ts`, not the compose renderers) and a different test path. Now spans
+      **two tabs** — see the correction above.
   - **THE UPLOAD-CLICK INVESTIGATION — cause UNRESOLVED, two theories RULED OUT.**
     Symptom: clicked **"Upload Documents"** with a real project selected and **nothing
     happened** — the dialog never opened. Investigated live 2026-07-18. The elimination
