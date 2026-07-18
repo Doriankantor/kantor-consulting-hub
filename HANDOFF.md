@@ -1443,6 +1443,79 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
     trusting To-Do at all.**
   - **STATUS:** ready to build (existing design, **no vision conversation needed**). Start
     with the write-through bug.
+- **COMPOSE-SURFACE WRITES AND FEEDBACK (silent-failure cluster).** Four related issues in
+  the Intelligence compose surface, found 2026-07-18. **All four compose paths
+  (News/Social/Documents/Interviews) write through the SAME `insertSource`
+  (`intel.ts:590`), which reports `{ok, error}` FAITHFULLY. The bugs are in CALLER
+  DISCIPLINE, not the write layer** — don't go looking for a fix in `insertSource`.
+  Ordered by HARM:
+  1. **★ SOCIAL DESTROYS TYPED CONTENT (worst, code-confirmed, DO FIRST).** `SocialTab`
+     (~229) does not read the save return value at all, then clears the form
+     (`setForm({ ...EMPTY_FORM })`) **regardless of success**. A failed save silently wipes
+     user-authored content. **Fix:** move the form-clear behind a `res.ok` check, mirroring
+     `InterviewsTab` (~141), which already does
+     `if (!res.ok) { setFormError(...); return }`. Interviews is the model — copy it.
+  2. **UPLOAD HANDLER LIES ON EMPTY RESULTS (code-confirmed).**
+     `intelligence:uploadDocument` (`ipc:2997`) returns `{ ok: true, results }`
+     **unconditionally** — even when every file failed and `results` is `[]`. Per-file
+     failures `continue` after a **main-process** `console.warn` (invisible in DevTools).
+     The renderer (`DocumentsTab` `handleUpload` ~122) branches on `result.ok` — a
+     constant — and never inspects `results`. **Fix:** return
+     `{ ok: results.length > 0, results, errors }` and have the renderer surface `errors`.
+     **NOTE: this cannot cause the data-loss first feared**, because the file dialog gates
+     the flow (see the investigation below) — but it is still a real lie.
+  3. **NO `catch` IN `handleUpload`.** The `try` has only a `finally`, so a rejected invoke
+     becomes an **unhandled promise rejection with no UI state** — another silent sink.
+     (`setUploading(false)` still runs, so the button looks normal.)
+  4. **SAVED BADGE / `updateStatus` ON A PHANTOM ROW (independent — SPLIT to its own tiny
+     slice).** `handleStatus` (~144) flips the badge **unconditionally** without reading
+     `res.ok`. And `updateStatus` returns `ok:true` for a row that **doesn't exist**: the
+     read uses `.maybeSingle()` (returns `null`, **no error**) and **an UPDATE matching
+     zero rows is not a PostgREST error**. So "Save" on a phantom card reports success
+     **twice over**. **Fix:** gate the badge on `res.ok`; make `updateStatus` treat a null
+     row as an error and `.select()` to confirm rows affected.
+  - **SUGGESTED FIX FRAMING:** ONE slice — *"compose writes and buttons tell the truth"* —
+    covering 1–3, **Social first** (it is the only one that destroys content). **#4 is a
+    SEPARATE small slice** (different subsystem, different failure).
+  - **THE UPLOAD-CLICK INVESTIGATION — cause UNRESOLVED, two theories RULED OUT.**
+    Symptom: clicked **"Upload Documents"** with a real project selected and **nothing
+    happened** — the dialog never opened. Investigated live 2026-07-18. The elimination
+    trail is recorded so it is **not re-derived**:
+    - **PROVEN — the handler WORKS.** Calling
+      `window.api.intelligence.uploadDocument({ projectBoardId: 'board-info-latam' })`
+      directly from DevTools **opened the file dialog** and the promise fulfilled with no
+      error. So **the click→handler path is the problem, not the handler.**
+    - **PROVEN — the button was ENABLED at failure time.** `console.table` of all buttons
+      showed row 54 "Upload Documents" `disabled: false`.
+    - **PROVEN — the project was validly selected.** localStorage
+      `intel-selected-project` = `board-info-latam` (a real live board), **not `'all'`**.
+    - **RULED OUT BY EVIDENCE — DO NOT RE-PURSUE:**
+      - *"Scope was on All sources → `!project?.id` → button disabled"* — **FALSE**,
+        localStorage showed a real board.
+      - *"Button was disabled"* — **FALSE**, `disabled: false` confirmed.
+      - *"Offline gate"* — **FALSE**. There is **no online guard on Upload** (re-confirmed
+        by code read: none in `handleUpload`, none in the IPC handler, none before
+        `showOpenDialog`), **and the failure happened online.**
+    - **STILL UNKNOWN:** what swallowed the click between an **enabled button** and a
+      **working handler**.
+    - **NEXT SESSION START POINT (fast).** Put a `console.log` at the very top of
+      `handleUpload` (`DocumentsTab` ~122), click the **real button**, and see whether it
+      fires **at all**. If it does **not** fire, the `onClick` isn't wired to the click
+      being made (overlay? a second element? event not reaching it). If it **does** fire
+      but the invoke never resolves, trace from there. **Est. 5 min with fresh eyes.**
+    - **HONEST NOTE FOR THE RECORD.** This took **four diagnostic passes** in one evening,
+      and **two confident "confirmed causes" were each refuted by the next screenshot** — a
+      tired-debugging artifact, same family as the phantom-test lesson. It is **newly
+      found, non-critical, not a regression, and nothing in v2.3.0 depends on it.** It was
+      **parked deliberately to resume with a clear head, not abandoned.**
+  - **ALSO NOTED IN PASSING (not new work):**
+    - **Upload button has NO "why am I disabled" feedback** — only `disabled:opacity-50`.
+      The Rescore button (`Intelligence/index.tsx` ~154) has
+      `title={online ? '' : 'Unavailable while offline'}`; Upload should get the same
+      treatment (e.g. *"Select a project first"*). Small UX fix — **fold into the cluster
+      slice.**
+    - **`load()`'s bare `catch {}`** (`DocumentsTab` ~72) leaves a **stale list** on a
+      failed refetch with no indication. Minor, same silent class.
 
 ### Standing issues
 
