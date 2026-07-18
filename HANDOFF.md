@@ -1386,6 +1386,61 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
 - **The `'summarize'` task branch in `analyze.ts` is DEAD CODE** — grep found zero call
   sites (only the type union in `env.d.ts:774`). All four tabs use `'relevance'` and
   `'reconcile'`. Candidate for removal in a cleanup slice.
+- **CROSS-SOURCE LINKING (design-first, multi-slice — feeds the analysis stage).**
+  Let researchers link intel items to specific sources: an interview linked to the
+  article/event it corroborates, a document to the video about the same incident.
+  **The point is NOT tidiness — the links are CONTEXT FOR CLAUDE'S PUBLISHING DECISIONS**
+  at the Info Pages analysis stage (locked decision #10). When Claude proposes placement,
+  it should see that this interview supports a source already on the page, so it makes
+  better structural calls.
+  - **WHY TAGS AREN'T ENOUGH (settled).** Tags cluster by **THEME** — that stays as-is and
+    is good — but they do NOT pin **SPECIFIC INCIDENTS** together. *"Both tagged
+    drone-attack" is not "both about the same Catatumbo strike."* Linking is the
+    **incident-level** layer tags structurally cannot provide.
+  - **CREATE MECHANISM (settled).** **MANUAL is the primary path and the FIRST shippable
+    slice:** a researcher explicitly links an item to one or more sources — either
+    already-pushed sources OR sources about to be pushed in the same batch. Human judgment
+    creates the link. Manual linking does **NOT** depend on the analytical frameworks (a
+    human decides; no AI analysis needed), so it is **UNBLOCKED**.
+    **AI-SUGGESTED, HUMAN-CONFIRMED is a LATER, ADDITIVE slice** (locked decision #2
+    pattern): Claude proposes candidate links, they **never auto-apply**, the researcher
+    accepts, and the accepted link flows into the **SAME manual mechanism**. That slice
+    DOES lean on the frameworks (Claude needs a real notion of topic/event to suggest
+    well), so it is **GATED behind the frameworks work** (see Standing issues). Clean
+    split: ship manual first, add AI later **without redesign**.
+  - **OPEN DESIGN QUESTIONS — for the vision conversation, BEFORE any diagnosis:**
+    1. **THE TARGET MODEL — the core schema question.** Links must span TWO pipeline
+       stages: **intel-row → intel-row** (two items still in the queue) AND **intel-row →
+       routed source** (an `info_page_sources` pointer). Dorian's "existing source OR
+       about-to-be-pushed" spans both, so the link table has to handle intel-to-intel and
+       intel-to-routed. **Resolve this first.**
+    2. **PRE-ROUTE CONNECTION.** Links can form BEFORE routing, between queue items, so the
+       link must **TRAVEL WITH THE ITEM** through the pipeline. This collides with the
+       **pre-route editing** backlog item (locked, unbuilt — above) — **design the two
+       TOGETHER, not separately.**
+    3. **Relationship to the existing News "Duplicate" action** (`5702da5` — mark +
+       optional `duplicate_of` link, dedup-only, no learning signal): is linking a
+       generalization of it, or a separate concept? **Duplicate is same-article WITHIN a
+       type; linking is SUPPORTING across types.** Decide whether they share a table.
+  - **STATUS:** design-first, multi-slice. **Needs a vision conversation** (per the HANDOFF
+    convention for item-model changes — this touches locked decision #1, the unified item
+    model). Manual slice unblocked; AI slice gated behind the analytical frameworks.
+- **TO-DO TEAM BUILDOUT (ready to build — EXISTING design, not new scope).** This is the
+  To-Do overhaul already designed in prior sessions; Dorian confirmed it is the same plan.
+  Recorded here so it isn't lost in the backlog. **The point:** make To-Do a real
+  cross-team assignment system so work can be assigned and tracked across the six
+  researchers — Dorian's stated reason: *"materially increase the quality of work."*
+  - **Scope (as previously designed):** `personal_todos` → cloud; a personal **steps**
+    table; `board_members.can_assign` column; `assigned_by` field; **completion
+    notification** firing to the assigner.
+  - **FIRST SLICE (natural entry point — it's a LIVE bug): the To-Do write-through bug.**
+    `todo:complete`/`uncomplete`/`dismiss` write `column_id`/`completed_at` to **LOCAL
+    `workspace_tasks` only**, so a completion **REVERTS on the next successful `getTasks`**
+    (the mirror overwrites it from cloud — see the TASKS-mirror note in `boards.ts`). Fix =
+    route those writes through cloud (`updateTask`/archive). Small, and it **unblocks
+    trusting To-Do at all.**
+  - **STATUS:** ready to build (existing design, **no vision conversation needed**). Start
+    with the write-through bug.
 
 ### Standing issues
 
