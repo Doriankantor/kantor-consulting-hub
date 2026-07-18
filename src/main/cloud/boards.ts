@@ -99,18 +99,53 @@ async function visibleBoardIds(actor: Actor): Promise<Set<string>> {
     return new Set((data ?? []).map((r: { id: string }) => r.id))
   }
   if (!actor.email) return new Set()
-  if (!isOnline()) return readMembersMirror(actor.email)        // offline: skip cloud
+  // NON-ROOT VISIBILITY — WHY THE INTERSECTION EXISTS: board_members rows SURVIVE a board
+  // soft-delete (deleteBoard sets deleted=1 but never removes memberships), so a deleted
+  // board's id would otherwise stay in this set forever. The intel gate
+  // (.in('project_board_id', ids)) and the info_page_* gates (isBoardVisibleFor) trust
+  // this set DIRECTLY with no downstream board-deleted filter, so a stale id LEAKS: a
+  // member keeps seeing a soft-deleted info-page board's intel in News and can still
+  // mutate its pipeline. We therefore intersect the membership set against NON-DELETED
+  // boards. Only `deleted` is filtered — ARCHIVED intentionally stays in (root's set
+  // includes archived too; archive-aware callers strip it themselves). board_members_mirror
+  // carries NO board metadata (board_id + user_email only), so offline we intersect against
+  // the BOARDS mirror via localBoardIds() (deleted-filtered, archived-preserved) rather than
+  // a join — the join is inexpressible offline, which is why this is Option B.
+  // OVER-FILTER / FAIL-CLOSED: a user whose boards mirror has never synced gets an empty
+  // intersection and sees nothing. That is CORRECT (the same one-successful-online-read
+  // requirement as the 0a-2 gate) — do NOT "fix" it into failing open.
+  if (!isOnline()) {                                            // offline: skip cloud
+    // Both mirrors are local: member set ∩ non-deleted boards mirror.
+    const members = readMembersMirror(actor.email)
+    const nonDeleted = localBoardIds()
+    return new Set([...members].filter(id => nonDeleted.has(id)))
+  }
   const { data, error } = await cloud
     .from('board_members').select('board_id').eq('user_email', actor.email)
   if (error) {
     // OFFLINE, non-root: serve the email-keyed local mirror (synced on the last
-    // successful online read). Empty if this user has never been read online.
+    // successful online read), still intersected against the boards mirror so a
+    // soft-deleted board drops out here too. Empty if this user has never been read online.
     console.warn('[boards] cloud membership lookup failed offline, serving local members mirror:', error.message)
-    return readMembersMirror(actor.email)
+    const members = readMembersMirror(actor.email)
+    const nonDeleted = localBoardIds()
+    return new Set([...members].filter(id => nonDeleted.has(id)))
   }
-  const ids = new Set((data ?? []).map((r: { board_id: string }) => r.board_id))
-  syncMembersMirror(actor.email, [...ids])
-  return ids
+  const memberIds = new Set((data ?? []).map((r: { board_id: string }) => r.board_id))
+  syncMembersMirror(actor.email, [...memberIds])
+  // Intersect against non-deleted boards. Reuses root's exact query shape
+  // (workspace_boards deleted=0). On a board-lookup error do NOT fall through to the
+  // unfiltered member set — that would silently restore the leak — fall back to the
+  // boards-mirror intersection, matching how the rest of visibleBoardIds handles errors.
+  const { data: liveBoards, error: bErr } = await cloud
+    .from('workspace_boards').select('id').eq('deleted', 0)
+  if (bErr) {
+    console.warn('[boards] cloud non-deleted board lookup failed, intersecting against local boards mirror:', bErr.message)
+    const nonDeleted = localBoardIds()
+    return new Set([...memberIds].filter(id => nonDeleted.has(id)))
+  }
+  const liveIds = new Set((liveBoards ?? []).map((r: { id: string }) => r.id))
+  return new Set([...memberIds].filter(id => liveIds.has(id)))
 }
 
 // ── LOCAL MIRROR of cloud boards/columns/tasks (offline reads) ───────────────
