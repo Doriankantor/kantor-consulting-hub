@@ -228,8 +228,11 @@ export default function Todo() {
     navigate('/workspace')
   }
 
+  // PERSONAL to-dos are local-first (slice 1b): the main handler writes SQLite
+  // immediately and queues the cloud push, so these three must run offline. The
+  // board handlers above (handleComplete / handleUncomplete) keep their offline
+  // guard — they write workspace_tasks, which is cloud-authoritative with no queue.
   async function handleAddPersonal() {
-    if (!online) return   // read-only offline
     if (!newPersonalTitle.trim()) return
     setAddingPersonal(true)
     try {
@@ -251,7 +254,6 @@ export default function Todo() {
   }
 
   async function handlePersonalComplete(item: PersonalTodoItem) {
-    if (!online) return   // read-only offline
     if (item.completed) {
       await window.api.personalTodo.uncomplete(item.id)
     } else {
@@ -261,9 +263,16 @@ export default function Todo() {
   }
 
   async function handlePersonalDelete(id: string) {
-    if (!online) return   // read-only offline
+    // Optimistic removal before the await, then reconcile — the same shape as the
+    // card-revive path, which likewise mutates state first and lets a refetch settle
+    // the truth. loadPersonalTodos() re-reads local SQLite, so a rejected delete puts
+    // the item back instead of leaving the list lying until a manual reload.
     setPersonalTodos(prev => prev.filter(i => i.id !== id))
-    await window.api.personalTodo.delete(id)
+    try {
+      await window.api.personalTodo.delete(id)
+    } catch {
+      await loadPersonalTodos()
+    }
   }
 
   const visible = tasks.filter(t => !dismissed.has(t.id))

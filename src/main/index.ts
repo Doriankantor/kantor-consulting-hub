@@ -14,6 +14,7 @@ import { registerIntelRealtime } from './cloud/intelRealtime'
 import { initConnection, isOnline, onReconnect } from './cloud/connection'
 import { runCompletedProjectsSweep } from './cloud/completedSweep'
 import { runPersonalTodosBackfill } from './cloud/personalTodosSeed'
+import { runPersonalSyncDrain } from './cloud/personalSync'
 
 // Module-level reference so the updater can push events to the window
 let mainWindow: BrowserWindow | null = null
@@ -99,6 +100,12 @@ app.whenReady().then(() => {
     rescopeRealtime()
   })
 
+  // Slice 1b: flush personal-source writes queued while offline. Hooks the SAME
+  // existing false→true recovery event as the realtime rescope above rather than
+  // adding a second reconnect detector. The drain has its own in-flight guard, so
+  // overlapping with the launch drain below is safe.
+  onReconnect(() => { runPersonalSyncDrain('reconnect') })
+
   // ── Intelligence: start auto-refresh and trigger initial fetch ─────────
   startIntelligenceAutoRefresh()
   setTimeout(() => triggerInitialNewsFetch(), 5000)
@@ -108,6 +115,10 @@ app.whenReady().then(() => {
   // settings flag) and self-retrying: it no-ops once done, and leaves the flag unset
   // on failure so the next launch tries again.
   setTimeout(() => { runPersonalTodosBackfill() }, 7000)
+  // Slice 1b: drain anything queued before a previous quit. Sequenced AFTER the 1a
+  // backfill so a first-ever launch uploads the founding rows before replaying edits
+  // to them — the upserts make either order converge, but this keeps the log readable.
+  setTimeout(() => { runPersonalSyncDrain('launch') }, 8000)
 
   // ── Auto-updater (production only) ──────────────────────────────────────
   function saveLastChecked() {

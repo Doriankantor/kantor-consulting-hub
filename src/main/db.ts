@@ -716,6 +716,23 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_personal_todo_steps_todo_id ON personal_todo_steps(todo_id);
   `)
 
+  // Slice 1b: durable outbox for PERSONAL-source cloud writes. Durable (not in-memory)
+  // so an op queued while offline survives quitting the app — the launch drain flushes
+  // it. AUTOINTEGER id doubles as the replay order, which is what makes last-write-wins
+  // correct: a later edit can never be overwritten by an earlier queued one.
+  // PERSONAL SOURCE ONLY — board/shared writes stay cloud-authoritative and offline-locked.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS personal_sync_queue (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      op           TEXT NOT NULL,
+      table_name   TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+      attempts     INTEGER NOT NULL DEFAULT 0,
+      last_error   TEXT
+    );
+  `)
+
   // Notification preferences (per user)
   db.exec(`
     CREATE TABLE IF NOT EXISTS notification_prefs (

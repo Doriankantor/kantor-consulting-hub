@@ -26,6 +26,7 @@ import * as intelCloud from '../cloud/intel'
 import { isOnline } from '../cloud/connection'
 import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag } from '../cloud/tags'
 import { seedBoardsToCloud } from '../cloud/boardsSeed'
+import { syncPersonalWrite, ownerEmail, nowIso } from '../cloud/personalSync'
 import { startRealtime, rescope as rescopeRealtime, teardownAll as teardownRealtime, getRealtimeHealth } from '../cloud/realtimeManager'
 import {
   listAttachments, addFileAttachment, addUrlAttachment,
@@ -1592,6 +1593,12 @@ function registerTodoHandlers() {
   ipcMain.handle('todo:dismiss', (_e, userId: string, taskId: string) => {
     getDatabase().prepare('INSERT OR IGNORE INTO todo_dismissed (user_id,task_id) VALUES (?,?)')
       .run(userId, taskId)
+    // Dual-write (1b). Local stays user_id-keyed; the cloud row is owner-keyed by the
+    // resolved email. There is no un-dismiss path anywhere in the app, so 'insert' is
+    // the only op this table ever produces.
+    const email = ownerEmail(userId)
+    if (email) syncPersonalWrite('insert', 'todo_dismissed', { user_email: email, task_id: taskId, dismissed_at: nowIso() })
+    else console.warn(`[personalSync] SKIP cloud dismissal for task ${taskId} — user_id "${userId}" does not resolve to an email.`)
     return { ok: true }
   })
 
@@ -1701,24 +1708,67 @@ function registerPersonalTodoHandlers() {
     return db().prepare('SELECT * FROM personal_todos WHERE user_id=? ORDER BY due_date ASC, due_time ASC, created_at DESC').all(userId)
   })
 
+  // ── Dual-write (slice 1b) ────────────────────────────────────────────────
+  // Every mutating handler below writes LOCAL FIRST and returns {ok:true} on that
+  // basis alone, then hands the cloud write to syncPersonalWrite, which either
+  // lands it or queues it. The cloud attempt is deliberately NOT awaited: the
+  // handlers keep their existing synchronous signatures (no preload/env.d.ts
+  // change, no renderer change) and the UI never waits on a network round-trip.
+  // syncPersonalWrite never throws or rejects, so nothing can surface as an
+  // unhandled rejection.
+
+  /** Re-read a row and shape it for the cloud, resolving the stable owner email. */
+  function cloudRowFor(id: string): Record<string, unknown> | null {
+    const r = db().prepare(
+      'SELECT id, user_id, title, due_date, due_time, completed, completed_at, position, created_at, updated_at FROM personal_todos WHERE id=?'
+    ).get(id) as Record<string, unknown> | undefined
+    if (!r) return null
+    const email = ownerEmail(r.user_id as string)
+    // Unresolvable owner ⇒ no safe cloud identity. Skip rather than guess: the local
+    // row still exists and is authoritative for this device's reads.
+    if (!email) {
+      console.warn(`[personalSync] SKIP cloud write for todo ${id} — user_id "${r.user_id}" does not resolve to an email.`)
+      return null
+    }
+    return {
+      id: r.id, user_email: email, title: r.title,
+      due_date: r.due_date ?? null, due_time: r.due_time ?? null,
+      completed: r.completed ?? 0, completed_at: r.completed_at ?? null,
+      position: r.position ?? null,
+      created_at: r.created_at ?? nowIso(), updated_at: r.updated_at ?? nowIso(),
+    }
+  }
+
   ipcMain.handle('personalTodo:create', (_e, item: { id: string; user_id: string; title: string; due_date?: string; due_time?: string }) => {
-    db().prepare('INSERT INTO personal_todos (id, user_id, title, due_date, due_time) VALUES (?,?,?,?,?)')
-      .run(item.id, item.user_id, item.title, item.due_date ?? null, item.due_time ?? null)
+    const ts = nowIso()
+    db().prepare('INSERT INTO personal_todos (id, user_id, title, due_date, due_time, updated_at) VALUES (?,?,?,?,?,?)')
+      .run(item.id, item.user_id, item.title, item.due_date ?? null, item.due_time ?? null, ts)
+    const row = cloudRowFor(item.id)
+    if (row) syncPersonalWrite('insert', 'personal_todos', row)
     return { ok: true }
   })
 
   ipcMain.handle('personalTodo:complete', (_e, id: string) => {
-    db().prepare('UPDATE personal_todos SET completed=1, completed_at=? WHERE id=?').run(new Date().toISOString(), id)
+    const ts = nowIso()
+    db().prepare('UPDATE personal_todos SET completed=1, completed_at=?, updated_at=? WHERE id=?').run(ts, ts, id)
+    const row = cloudRowFor(id)
+    if (row) syncPersonalWrite('update', 'personal_todos', row)
     return { ok: true }
   })
 
   ipcMain.handle('personalTodo:uncomplete', (_e, id: string) => {
-    db().prepare('UPDATE personal_todos SET completed=0, completed_at=NULL WHERE id=?').run(id)
+    db().prepare('UPDATE personal_todos SET completed=0, completed_at=NULL, updated_at=? WHERE id=?').run(nowIso(), id)
+    const row = cloudRowFor(id)
+    if (row) syncPersonalWrite('update', 'personal_todos', row)
     return { ok: true }
   })
 
   ipcMain.handle('personalTodo:delete', (_e, id: string) => {
+    // Order is safe either way here: a delete payload needs only the id, which is a
+    // parameter — unlike the update paths it never re-reads the (now gone) local row,
+    // and it needs no owner resolution because the cloud PK is the id alone.
     db().prepare('DELETE FROM personal_todos WHERE id=?').run(id)
+    syncPersonalWrite('delete', 'personal_todos', { id })
     return { ok: true }
   })
 }
