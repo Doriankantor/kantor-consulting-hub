@@ -115,6 +115,10 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const [analyzingId, setAnalyzingId]           = useState<string | null>(null)
   const [reconcilingId, setReconcilingId]       = useState<string | null>(null)
   const [aiErr, setAiErr]                        = useState<Record<string, string>>({})
+  // Per-card STATUS-write error. Deliberately NOT aiErr: analyze/reconcile blank aiErr on
+  // entry (so a status error would be silently erased), and aiErr renders inside the
+  // compose panel, which is hidden on a collapsed card — exactly the case here.
+  const [statusError, setStatusError]            = useState<Record<string, string>>({})
   // Duplicate slice: modal state for marking an article a duplicate of another.
   const [dupModalFor, setDupModalFor] = useState<string | null>(null)   // article id being marked duplicate, or null
   const [dupSearch, setDupSearch]     = useState('')
@@ -382,48 +386,61 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
         id, status, undefined,
         localUser?.id, localUser?.name
       )
-      // Phase 5: log every Approve/Reject/Save as a decision. Never block on this.
-      if (snap) {
-        const action = status === 'approved' ? 'approve' : status === 'rejected' ? 'reject' : 'correct'
-        try {
-          await window.api.intelligence.logDecision({
-            articleId: id,
-            action,
-            aiProposed: {
-              relevance_score: snap.relevance_score ?? null,
-              relevance_type: snap.relevance_type ?? null,
-              geography: snap.geography ?? null,
-              region: snap.region ?? null,
-              gate_reasoning: snap.gate_reasoning ?? null,
-            },
-            humanFinal: {
-              status,
-              confidence: snap.confidence ?? null,
-              geography: snap.geography ?? null,
-              geography_confirmed: snap.geography_confirmed ?? 0,
-              disposition_tags: readTags(snap.disposition_tags),
-              thematic_tags: readTags(snap.thematic_tags),
-            },
-            reason: null,
-          })
-        } catch (e) { console.warn('[NewsTab] logDecision failed:', e) }
+      // GATE EVERY CONSEQUENCE OF THE WRITE ON res.ok. updateStatus now returns
+      // {ok:false,error} for a row that no longer exists (the phantom-row guard). The
+      // decision log, the badge, the optimistic counts and — worst of all — the FADE that
+      // removes the card from the queue must not fire for a write that never landed.
+      // Order inside the else is UNCHANGED from before the gate.
+      if (!res.ok) {
+        setStatusError(prev => ({ ...prev, [id]: res.error || 'Could not update.' }))
+      } else {
+        setStatusError(prev => { const n = { ...prev }; delete n[id]; return n })
+        // Phase 5: log every Approve/Reject/Save as a decision. Never block on this.
+        if (snap) {
+          const action = status === 'approved' ? 'approve' : status === 'rejected' ? 'reject' : 'correct'
+          try {
+            await window.api.intelligence.logDecision({
+              articleId: id,
+              action,
+              aiProposed: {
+                relevance_score: snap.relevance_score ?? null,
+                relevance_type: snap.relevance_type ?? null,
+                geography: snap.geography ?? null,
+                region: snap.region ?? null,
+                gate_reasoning: snap.gate_reasoning ?? null,
+              },
+              humanFinal: {
+                status,
+                confidence: snap.confidence ?? null,
+                geography: snap.geography ?? null,
+                geography_confirmed: snap.geography_confirmed ?? 0,
+                disposition_tags: readTags(snap.disposition_tags),
+                thematic_tags: readTags(snap.thematic_tags),
+              },
+              reason: null,
+            })
+          } catch (e) { console.warn('[NewsTab] logDecision failed:', e) }
+        }
+        // Update badge in-place — do NOT call load() so scroll position is preserved.
+        setSources(prev => prev.map(s => s.id === id ? { ...s, status: status as any } : s))
+        // Phase 3: optimistic count update for Approve / Reject.
+        if (status === 'approved') {
+          setStatusCounts(prev => ({ ...prev, unreviewed: Math.max(0, prev.unreviewed - 1), approved: prev.approved + 1 }))
+        } else if (status === 'rejected') {
+          setStatusCounts(prev => ({ ...prev, unreviewed: Math.max(0, prev.unreviewed - 1), rejected: prev.rejected + 1 }))
+        }
+        // Phase 3: when viewing the unreviewed queue (default), fade approved/rejected out.
+        if (statusFilter && status !== statusFilter) {
+          setFadingIds(f => new Set([...f, id]))
+          setTimeout(() => {
+            setSources(curr => curr.filter(s => s.id !== id))
+            setFadingIds(f => { const n = new Set(f); n.delete(id); return n })
+          }, 350)
+        }
       }
-      // Update badge in-place — do NOT call load() so scroll position is preserved.
-      setSources(prev => prev.map(s => s.id === id ? { ...s, status: status as any } : s))
-      // Phase 3: optimistic count update for Approve / Reject.
-      if (status === 'approved') {
-        setStatusCounts(prev => ({ ...prev, unreviewed: Math.max(0, prev.unreviewed - 1), approved: prev.approved + 1 }))
-      } else if (status === 'rejected') {
-        setStatusCounts(prev => ({ ...prev, unreviewed: Math.max(0, prev.unreviewed - 1), rejected: prev.rejected + 1 }))
-      }
-      // Phase 3: when viewing the unreviewed queue (default), fade approved/rejected out.
-      if (statusFilter && status !== statusFilter) {
-        setFadingIds(f => new Set([...f, id]))
-        setTimeout(() => {
-          setSources(curr => curr.filter(s => s.id !== id))
-          setFadingIds(f => { const n = new Set(f); n.delete(id); return n })
-        }, 350)
-      }
+      // onApprove fires on BOTH paths — deliberately. refreshStats/refreshUnscoredCount are
+      // exactly what a stale-or-phantom card needs, and the toast self-guards (addedToPages
+      // is undefined when the write failed). Do NOT move this into the else.
       if (status === 'approved') onApprove(res?.addedToPages)
       else onApprove()
     } finally {
@@ -1094,6 +1111,9 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                   </button>
                 )}
               </div>
+              {/* Per-card STATUS error — rendered HERE, next to the status buttons, NOT in
+                  the compose panel below (which is hidden on a collapsed card). */}
+              {statusError[source.id] && <p className="text-xs text-red-500 dark:text-red-400 mt-2">{statusError[source.id]}</p>}
 
               {/* News human layer — elongating footer, NOTES ONLY. Compact "✎ Add notes"
                   when empty; "● Notes" + default-open when notes exist. Tags + relevance
