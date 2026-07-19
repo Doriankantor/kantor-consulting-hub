@@ -2,18 +2,19 @@
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-18
   Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
-                   UNRELEASED since v2.3.0 — SEVEN commits: 2d76b9a (visibleBoardIds
+                   UNRELEASED since v2.3.0 — EIGHT commits: 2d76b9a (visibleBoardIds
                    non-root no-join fix), b211638 (slice 0b-0 — realtime channel-health
-                   instrumentation), and the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
+                   instrumentation), the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
                    c60c9c2 (Social form-loss), ae067da (updateStatus phantom-row guard),
                    7782116 (badge gates — Social/Interviews/Documents), bd8f07c (News
-                   badge+fade+counts+logDecision gates), edd7bd0 (upload path honesty).
+                   badge+fade+counts+logDecision gates), edd7bd0 (upload path honesty);
+                   and cc6aedf (To-Do write-through — completions survive re-sync).
                    The installed app is 2.3.0 and contains NONE of them.
                    Shipped in v2.3.0: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD edd7bd0   |   317 commits   |   ~37,000 lines of TS/TSX
+                   HEAD cc6aedf   |   319 commits   |   ~37,000 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -71,6 +72,46 @@
   need an ARCHIVE option (delete-only today; for a published project delete is the wrong verb
   — you'd want to shelve it while keeping the live site + history). Mirror purge unscheduled.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-18 — TO-DO WRITE-THROUGH FIXED + OVERHAUL QUEUED (cc6aedf, UNRELEASED) ──
+  • todo:complete/uncomplete wrote column_id/completed_at to the LOCAL workspace_tasks mirror
+    only, so completions REVERTED when syncTasksMirror re-synced from cloud (triggered by
+    opening Workspace/Kanban or a realtime tasks invalidation). To-Do's own read never
+    re-syncs, which is why it LOOKED persistent until something else pulled tasks.
+  • FIX: both handlers now await boardsCloud.updateTask(taskId, {column_id, completed_at}) —
+    cloud, FIELD-LEVEL — FIRST, then keep the local write AFTER, because updateTask does NOT
+    sync the mirror and getMyTasks reads local directly.
+  • boards.ts: completed_at added to updateTask's field allowlist AND to TASK_COLS. BOTH were
+    required — without the allowlist entry the field is silently dropped from the patch;
+    without TASK_COLS the mirror DESTROYS it on every sync (syncTasksMirror DELETEs and
+    re-INSERTs using exactly those columns). NO migration — cloud already had the columns.
+  • Scope: complete + uncomplete ONLY. UNTOUCHED: todo:dismiss (inserts into todo_dismissed —
+    a different table/handler), personalTodo:delete, getMyTasks, task_activity, and the
+    assigner-notification writes. No offline gate (matches the board task-write convention —
+    updateTask throws; the isOnline() guards in boards.ts are on READS).
+  • Tested: complete → open Workspace/Kanban → back → still completed (the exact re-sync that
+    used to wipe it); uncomplete round-trips; completion shows in Kanban.
+  • TWO FOLLOW-UPS LEFT OPEN (fold into the overhaul): (a) OFFLINE SURFACING GAP — an offline
+    cloud-backed to-do write throws but the To-Do UI shows NO error, the button just doesn't
+    respond; handled-but-not-shown, same class as the compose cluster; renderer gap, not a
+    flaw in the fix. (personal_todos items stay completable offline — correct by design.)
+    (b) THE ASSIGNER NOTIFICATION IS BROKEN AND WAS LEFT THAT WAY — task_activity + the
+    notification are LOCAL-only and wiped by the same re-sync; broken before this slice too.
+    Nothing was removed; the overhaul must make it cloud-backed.
+  • THE OVERHAUL IS SPEC'D AND QUEUED (design-first, multi-slice — DO NOT one-shot): unified
+    member-gated listTodos aggregation (personal/assigned/kc-deadline/kc-meeting/kc-intel →
+    TodoItem with a source discriminator, same pattern as unified Trash), a Step Rail over
+    task_checklists (+ a NEW steps table for personal), an urgency engine with promotion
+    strips, bidirectional calendar↔due-date, a per-board board.assign capability enforced in
+    MAIN, and an isRoot-only intel culling directive. 27-item DoD, two-machine verification.
+    SEQUENCE: 0. READ-ONLY DIAGNOSIS of "what lives where" (MANDATED before any code) →
+    1. personal_todos → cloud + steps table → 2. listTodos aggregation → 3. Step Rail +
+    urgency UI → 4. board.assign in MAIN → 5. culling + calendar + completion write-back.
+  • ⚠ THE SPEC FILES ARE NOT IN THE REPO — TODO_OVERHAUL_PROMPT_1.md, TodoStepRail_3.jsx and
+    TodoStepRail_5.html are chat uploads, verified absent from the tree (no docs/ dir either).
+    Chat attachments do not survive between sessions; save them durably or the next session
+    starts without the spec. The summary above is transcribed from Dorian's description — the
+    spec itself has not been read into any session's context yet.
 
   ── 2026-07-18 — COMPOSE SILENT-FAILURE CLUSTER CLOSED (ae067da→edd7bd0, UNRELEASED) ──
   • ALL FOUR CLUSTER ISSUES ARE FIXED across five commits. The compose surface no longer

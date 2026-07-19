@@ -1435,14 +1435,80 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   - **Scope (as previously designed):** `personal_todos` → cloud; a personal **steps**
     table; `board_members.can_assign` column; `assigned_by` field; **completion
     notification** firing to the assigner.
-  - **FIRST SLICE (natural entry point — it's a LIVE bug): the To-Do write-through bug.**
-    `todo:complete`/`uncomplete`/`dismiss` write `column_id`/`completed_at` to **LOCAL
-    `workspace_tasks` only**, so a completion **REVERTS on the next successful `getTasks`**
-    (the mirror overwrites it from cloud — see the TASKS-mirror note in `boards.ts`). Fix =
-    route those writes through cloud (`updateTask`/archive). Small, and it **unblocks
-    trusting To-Do at all.**
-  - **STATUS:** ready to build (existing design, **no vision conversation needed**). Start
-    with the write-through bug.
+  - **✅ FIRST SLICE DONE — the To-Do write-through bug (`cc6aedf`, 2026-07-18,
+    UNRELEASED).** `todo:complete` / `todo:uncomplete` wrote `column_id`/`completed_at` to
+    the **LOCAL `workspace_tasks` mirror only**, so completions **REVERTED** when
+    `syncTasksMirror` re-synced from cloud (triggered by opening **Workspace/Kanban** or a
+    **realtime tasks invalidation**). To-Do's own read never re-syncs, which is why it
+    *looked* persistent until something else pulled tasks.
+    - **FIX:** both handlers now `await boardsCloud.updateTask(taskId, {column_id,
+      completed_at})` — **cloud, field-level** — **FIRST**, then keep the local write
+      **after**, because `updateTask` does **NOT** sync the mirror and `getMyTasks` reads
+      local directly.
+    - **`boards.ts`:** `completed_at` added to **`updateTask`'s field allowlist** AND to
+      **`TASK_COLS`**. Both were required — without the allowlist entry the field is
+      silently dropped from the patch; without `TASK_COLS` the mirror **DESTROYS** it on
+      every sync (`syncTasksMirror` DELETEs + re-INSERTs using exactly those columns).
+    - **NO migration** — cloud `workspace_tasks` already had both columns.
+    - **Scope was `complete` + `uncomplete` ONLY. UNTOUCHED:** `todo:dismiss` (inserts into
+      **`todo_dismissed`** — a different table/handler), `personalTodo:delete`,
+      `todo:getMyTasks`, `task_activity`, and the assigner-notification writes.
+      **No offline gate** — matches the board task-write convention (`updateTask` throws;
+      the `isOnline()` guards in `boards.ts` are on READS, not writes).
+    - **Tested:** complete → open Workspace/Kanban → back to To-Do → **still completed**
+      (the exact re-sync that previously wiped it); uncomplete round-trips; shows in Kanban.
+  - **⚠ TWO FOLLOW-UPS THIS FIX LEAVES OPEN — fold into the overhaul:**
+    1. **OFFLINE SURFACING GAP.** A cloud-backed (`workspace_tasks`) to-do write while
+       offline fails — `updateTask` **throws** — but the To-Do UI shows **NO error**; the
+       button simply doesn't respond. **Handled-but-not-shown, the same class as the compose
+       silent-failure cluster.** A **renderer** surfacing gap, not a flaw in the fix. Folds
+       into the overhaul's **UI pass (slices 2/3)**. *(`personal_todos` items remain
+       completable offline — **correct by design**, they are local-only.)*
+    2. **THE ASSIGNER NOTIFICATION IS BROKEN AND WAS LEFT THAT WAY.** `todo:complete`'s
+       `task_activity` row + assigner notification are **LOCAL-only**, so they are **wiped
+       by the same re-sync** — silently broken today, and broken *before* this slice too.
+       **Left in place per scope; nothing was removed.** The overhaul must make it
+       **cloud-backed** (slice 5).
+  - **THE OVERHAUL IS SPEC'D AND QUEUED (design-first, multi-slice — DO NOT ONE-SHOT).**
+    A full To-Do tab overhaul spec exists: **`TODO_OVERHAUL_PROMPT_1.md`** +
+    **`TodoStepRail.jsx`** prototype. Shape:
+    - A **unified aggregation layer** — one **member-gated `listTodos`** in MAIN normalizing
+      **personal / assigned / kc-deadline / kc-meeting / kc-intel** into a `TodoItem` with a
+      **source discriminator** (same pattern as the unified **Trash** view).
+    - A **Step Rail** visualization over existing sub-item collections — `task_checklists`
+      for KC/assigned; a **NEW steps table** for personal.
+    - An **urgency engine** with **promotion strips**.
+    - **Bidirectional calendar ↔ due-date** (one record surfaced twice).
+    - A per-board **`board.assign` capability** (a `can_assign` flag on `board_members`),
+      **enforced in MAIN, not the UI**; root implicit; **self-assign needs no grant**.
+    - An **intel culling directive** (isRoot-only): pinned card + notification + deep link +
+      a `completeCullingAssignment` hook.
+    - **27-item Definition of Done; two-machine verification required.**
+  - **SEQUENCING — the spec MANDATES diagnose-first. Build in dependency order, ONE TESTED
+    SLICE EACH. Do NOT build as one blob:**
+    0. **READ-ONLY DIAGNOSIS of Part A "what lives where"** — map the real `personal_todos`
+       model, handler names, `task_checklists`, the calendar record; **confirm/correct the
+       spec's assumptions.** **MUST precede any code — the spec says so explicitly.**
+    1. **`personal_todos` → cloud (+ personal steps table)** — the **foundation**; unblocks
+       dismiss, offline, cross-device. Its own tested migration slice (follow the
+       boards/intel **two-tier + seed-guard** pattern; save the one-time SQL to **`/sql`**
+       with **publication + `REPLICA IDENTITY FULL`**).
+    2. **Aggregation layer:** `listTodos(actingUserId)` in MAIN, member-gated; the renderer
+       only **filters**.
+    3. **Step Rail + urgency/promotion UI** (port prototype behavior, theme tokens, **light
+       AND dark**).
+    4. **`board.assign` per-board permission, enforced in MAIN.**
+    5. **Intel culling directive + calendar bidirectionality + completion write-back**
+       (respects board perms).
+  - **⚠ THE SPEC FILES ARE NOT IN THE REPO.** `TODO_OVERHAUL_PROMPT_1.md`,
+    `TodoStepRail_3.jsx`, `TodoStepRail_5.html` are **Dorian's chat uploads** — verified
+    absent from the working tree 2026-07-18 (there is no `docs/` directory either).
+    **Chat attachments do not survive between sessions. Dorian should save them somewhere
+    durable (e.g. `/docs`) or the next session starts without the spec.** The summary above
+    is transcribed from Dorian's description — **the spec itself has not been read into any
+    session's context yet**, which is another reason slice 0 is diagnosis-first.
+  - **STATUS:** foundation bug **fixed**; the overhaul is **spec'd, sequenced, and ready to
+    start at SLICE 0 (read-only diagnosis)**.
 - **COMPOSE-SURFACE WRITES AND FEEDBACK (silent-failure cluster).** Four related issues in
   the Intelligence compose surface, found 2026-07-18. **All four compose paths
   (News/Social/Documents/Interviews) write through the SAME `insertSource`
