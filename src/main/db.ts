@@ -676,6 +676,46 @@ export function initDatabase(): void {
     );
   `)
 
+  // Slice 1a: additive columns for the cloud migration. LOCAL STAYS user_id-KEYED —
+  // the translation to the stable user_email happens at the cloud boundary only.
+  // SQLite cannot ADD COLUMN with a CURRENT_TIMESTAMP default, so both are added
+  // nullable and backfilled below. Guarded on PRAGMA so re-running initDatabase is safe.
+  const ptCols = db.prepare('PRAGMA table_info(personal_todos)').all() as { name: string }[]
+  if (!ptCols.some(c => c.name === 'updated_at')) {
+    db.exec('ALTER TABLE personal_todos ADD COLUMN updated_at DATETIME')
+    db.exec('UPDATE personal_todos SET updated_at = created_at WHERE updated_at IS NULL')
+  }
+  if (!ptCols.some(c => c.name === 'position')) {
+    db.exec('ALTER TABLE personal_todos ADD COLUMN position INTEGER')
+    // 0-based, ordered by created_at WITHIN each user_id — matches the per-user list
+    // the renderer already renders. ROW_NUMBER needs SQLite 3.25+ (better-sqlite3 ships
+    // far newer), and the correlated-subquery fallback would be O(n^2) on rewrite.
+    db.exec(`
+      UPDATE personal_todos SET position = (
+        SELECT rn - 1 FROM (
+          SELECT id, ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at) AS rn
+          FROM personal_todos
+        ) t WHERE t.id = personal_todos.id
+      ) WHERE position IS NULL
+    `)
+  }
+
+  // Personal to-do sub-steps (Step Rail). Mirrors the cloud table's columns, but note
+  // this one is user_email-keyed from birth — it has no legacy user_id rows to preserve.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS personal_todo_steps (
+      id          TEXT PRIMARY KEY,
+      todo_id     TEXT NOT NULL,
+      user_email  TEXT NOT NULL,
+      text        TEXT NOT NULL,
+      checked     INTEGER NOT NULL DEFAULT 0,
+      position    INTEGER,
+      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at  DATETIME
+    );
+    CREATE INDEX IF NOT EXISTS idx_personal_todo_steps_todo_id ON personal_todo_steps(todo_id);
+  `)
+
   // Notification preferences (per user)
   db.exec(`
     CREATE TABLE IF NOT EXISTS notification_prefs (

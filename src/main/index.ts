@@ -13,6 +13,7 @@ import { registerContactsRealtime } from './cloud/contactsRealtime'
 import { registerIntelRealtime } from './cloud/intelRealtime'
 import { initConnection, isOnline, onReconnect } from './cloud/connection'
 import { runCompletedProjectsSweep } from './cloud/completedSweep'
+import { runPersonalTodosBackfill } from './cloud/personalTodosSeed'
 
 // Module-level reference so the updater can push events to the window
 let mainWindow: BrowserWindow | null = null
@@ -102,6 +103,11 @@ app.whenReady().then(() => {
   startIntelligenceAutoRefresh()
   setTimeout(() => triggerInitialNewsFetch(), 5000)
   setTimeout(() => { runCompletedProjectsSweep() }, 6000)
+  // Slice 1a one-time translate-backfill of personal to-dos → cloud. Deferred like the
+  // sweep above so a slow/absent network never delays the window. Self-guarding (a
+  // settings flag) and self-retrying: it no-ops once done, and leaves the flag unset
+  // on failure so the next launch tries again.
+  setTimeout(() => { runPersonalTodosBackfill() }, 7000)
 
   // ── Auto-updater (production only) ──────────────────────────────────────
   function saveLastChecked() {
