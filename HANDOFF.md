@@ -1470,8 +1470,9 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
        **Left in place per scope; nothing was removed.** The overhaul must make it
        **cloud-backed** (slice 5).
   - **THE OVERHAUL IS SPEC'D AND QUEUED (design-first, multi-slice — DO NOT ONE-SHOT).**
-    A full To-Do tab overhaul spec exists: **`TODO_OVERHAUL_PROMPT_1.md`** +
-    **`TodoStepRail.jsx`** prototype. Shape:
+    A full To-Do tab overhaul spec lives **IN THE REPO** at **`docs/TODO_OVERHAUL_PROMPT_1.md`**,
+    with the **`docs/TodoStepRail.jsx`** prototype and its **`docs/TodoStepRail.html`**
+    standalone render. **Read them directly — do not rely on the summary below.** Shape:
     - A **unified aggregation layer** — one **member-gated `listTodos`** in MAIN normalizing
       **personal / assigned / kc-deadline / kc-meeting / kc-intel** into a `TodoItem` with a
       **source discriminator** (same pattern as the unified **Trash** view).
@@ -1500,13 +1501,26 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
     4. **`board.assign` per-board permission, enforced in MAIN.**
     5. **Intel culling directive + calendar bidirectionality + completion write-back**
        (respects board perms).
-  - **⚠ THE SPEC FILES ARE NOT IN THE REPO.** `TODO_OVERHAUL_PROMPT_1.md`,
-    `TodoStepRail_3.jsx`, `TodoStepRail_5.html` are **Dorian's chat uploads** — verified
-    absent from the working tree 2026-07-18 (there is no `docs/` directory either).
-    **Chat attachments do not survive between sessions. Dorian should save them somewhere
-    durable (e.g. `/docs`) or the next session starts without the spec.** The summary above
-    is transcribed from Dorian's description — **the spec itself has not been read into any
-    session's context yet**, which is another reason slice 0 is diagnosis-first.
+  - **SPEC FILES: SAVED AND TRACKED (`5c1e20b`, 2026-07-19).** Previously chat-only uploads
+    and absent from the tree; now committed as
+    **`docs/TODO_OVERHAUL_PROMPT_1.md`** (from `TODO_OVERHAUL_PROMPT_1.md`),
+    **`docs/TodoStepRail.jsx`** (from `TodoStepRail_3.jsx`) and
+    **`docs/TodoStepRail.html`** (from `TodoStepRail_5.html`) — byte-identical to source,
+    md5-verified after copy. Each was the newest of its family in `~/Downloads` and identical
+    to its immediate predecessor (re-downloads, not newer revisions), so nothing was left
+    behind. They sit outside both tsconfig `include` globs (`src/**`), so the prototype
+    `.jsx` is **not** in the compile graph.
+  - **⚠ PROVENANCE — the summary above is still SECOND-HAND.** It was transcribed from
+    Dorian's verbal description, **not** read from the file by the docs-writer. The files
+    being in-repo means the **next** session can read them directly; it does **not**
+    retroactively verify this session's transcription. **Slice 0 (read-only diagnosis) still
+    resolves the summary against ground truth** — treat any confident detail here (the
+    27-item DoD, table names, the slice list) as a claim to check, not a fact.
+  - **⚠ `docs/TodoStepRail.jsx:8` cites a nonexistent `STEP_RAIL_IMPLEMENTATION_PROMPT.md`** —
+    almost certainly an earlier name for `TODO_OVERHAUL_PROMPT_1.md` (the spec points back at
+    the prototype, so the pair is mutually referential with one filename wrong). **Left
+    unedited to keep the saved file faithful to what Dorian produced.** Fix the pointer during
+    slice 0 if desired.
   - **STATUS:** foundation bug **fixed**; the overhaul is **spec'd, sequenced, and ready to
     start at SLICE 0 (read-only diagnosis)**.
 - **COMPOSE-SURFACE WRITES AND FEEDBACK (silent-failure cluster).** Four related issues in

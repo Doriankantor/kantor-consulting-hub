@@ -14,7 +14,7 @@
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD cc6aedf   |   319 commits   |   ~37,000 lines of TS/TSX
+                   HEAD cc6aedf   |   321 commits   |   ~37,000 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -107,11 +107,17 @@
     SEQUENCE: 0. READ-ONLY DIAGNOSIS of "what lives where" (MANDATED before any code) →
     1. personal_todos → cloud + steps table → 2. listTodos aggregation → 3. Step Rail +
     urgency UI → 4. board.assign in MAIN → 5. culling + calendar + completion write-back.
-  • ⚠ THE SPEC FILES ARE NOT IN THE REPO — TODO_OVERHAUL_PROMPT_1.md, TodoStepRail_3.jsx and
-    TodoStepRail_5.html are chat uploads, verified absent from the tree (no docs/ dir either).
-    Chat attachments do not survive between sessions; save them durably or the next session
-    starts without the spec. The summary above is transcribed from Dorian's description — the
-    spec itself has not been read into any session's context yet.
+  • SPEC FILES SAVED AND TRACKED (5c1e20b) — docs/TODO_OVERHAUL_PROMPT_1.md,
+    docs/TodoStepRail.jsx and docs/TodoStepRail.html, byte-identical to Dorian's uploads
+    (md5-verified). Read them directly rather than relying on the summary above. They are
+    outside both tsconfig include globs, so the prototype .jsx never enters the compile graph.
+  • ⚠ PROVENANCE — the summary above is still SECOND-HAND: transcribed from Dorian's verbal
+    description, not read from the file by the docs-writer. The files being in-repo lets the
+    NEXT session read them; it does not retroactively verify this transcription. Slice 0
+    (read-only diagnosis) still resolves it against ground truth.
+  • ⚠ docs/TodoStepRail.jsx:8 cites a nonexistent STEP_RAIL_IMPLEMENTATION_PROMPT.md — almost
+    certainly an old name for TODO_OVERHAUL_PROMPT_1.md. Left unedited to keep the saved file
+    faithful; resolve during slice 0 if desired.
 
   ── 2026-07-18 — COMPOSE SILENT-FAILURE CLUSTER CLOSED (ae067da→edd7bd0, UNRELEASED) ──
   • ALL FOUR CLUSTER ISSUES ARE FIXED across five commits. The compose surface no longer
