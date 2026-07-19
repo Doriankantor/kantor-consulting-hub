@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   Task, ContentType, Priority, AreaOfAnalysis,
@@ -367,6 +367,10 @@ export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boole
   const [showMentions, setShowMentions]   = useState(false)
   const [mentionIndex, setMentionIndex]   = useState(0)
   const commentInputRef = useRef<HTMLTextAreaElement>(null)
+  // The popover is PORTALED to document.body (see below), so it needs viewport
+  // coordinates rather than offset-parent ones.
+  const mentionMenuRef = useRef<HTMLDivElement>(null)
+  const [mentionPos, setMentionPos] = useState<{ top: number; left: number } | null>(null)
 
   // ── Team roster (slice 1c-1) ───────────────────────────────────────────────
   // Cloud team_members, email-keyed, with an offline mirror behind it. This is the
@@ -413,6 +417,66 @@ export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boole
   ).filter(m =>
     (m.full_name ?? m.email).toLowerCase().includes(mentionQuery.toLowerCase())
   ).slice(0, 5)
+
+  // ── @mention popover positioning ───────────────────────────────────────────
+  // The popover used to be `absolute bottom-full` on the textarea's wrapper, which
+  // put it ABOVE a textarea that sits at the very top of the right column — so it
+  // projected past the panel edge and was clipped away by the overflow-hidden
+  // ancestors on the column row and the panel shell. Flipping the direction would
+  // only trade one clip for another, so it is portaled to document.body and
+  // positioned in viewport space instead, escaping both clippers entirely.
+  const mentionOpen = showMentions && mentionResults.length > 0
+
+  const positionMentions = useCallback(() => {
+    const anchor = commentInputRef.current
+    if (!anchor) return
+    const r = anchor.getBoundingClientRect()
+    const MENU_W = 192   // matches w-48 below — keep in sync
+    const GAP    = 4
+    const EDGE   = 8
+    // Real measurement once mounted; the estimate only covers the very first frame
+    // (each row is one py-2 text-xs button ≈ 33px, plus the container's 1px borders).
+    const h = mentionMenuRef.current?.offsetHeight ?? (mentionResults.length * 33 + 2)
+    const spaceBelow = window.innerHeight - r.bottom - GAP - EDGE
+    const spaceAbove = r.top - GAP - EDGE
+    // Prefer below; flip only when below genuinely can't fit AND above fits better.
+    const below = spaceBelow >= h || spaceBelow >= spaceAbove
+    const top  = below ? r.bottom + GAP : Math.max(EDGE, r.top - GAP - h)
+    const left = Math.min(Math.max(r.left, EDGE), window.innerWidth - MENU_W - EDGE)
+    setMentionPos({ top, left })
+  }, [mentionResults.length])
+
+  useLayoutEffect(() => {
+    if (!mentionOpen) { setMentionPos(null); return }
+    positionMentions()
+    // Capture phase: the panel's scroll containers are ancestors, and their scroll
+    // events don't bubble to window. Without capture the popover would detach.
+    window.addEventListener('scroll', positionMentions, true)
+    window.addEventListener('resize', positionMentions)
+    return () => {
+      window.removeEventListener('scroll', positionMentions, true)
+      window.removeEventListener('resize', positionMentions)
+    }
+  }, [mentionOpen, positionMentions])
+
+  // Close on outside press. Previously there was NO outside-close at all — the
+  // popover simply stayed mounted, which went unnoticed while it was invisible.
+  // Now that it renders, a stuck popover would be a visible bug, and portaling
+  // means it is no longer inside the panel's own DOM subtree either.
+  // pointerdown (not click) so it settles before the item's own mousedown handler;
+  // presses INSIDE the menu are excluded so selection still works.
+  useEffect(() => {
+    if (!mentionOpen) return
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node | null
+      if (!t) return
+      if (mentionMenuRef.current?.contains(t)) return
+      if (commentInputRef.current?.contains(t)) return
+      setShowMentions(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => document.removeEventListener('pointerdown', onPointerDown, true)
+  }, [mentionOpen])
 
   const titleRef        = useRef<HTMLInputElement>(null)
   const panelBodyRef    = useRef<HTMLDivElement>(null)
@@ -1510,9 +1574,14 @@ export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boole
                     }}
                     className="titlebar-no-drag w-full px-3 py-2 rounded-xl bg-white dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.09] text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-hub-gold/30 resize-none leading-relaxed transition-all"
                   />
-                  {/* @mention popover */}
-                  {showMentions && mentionResults.length > 0 && (
-                    <div className="absolute bottom-full left-0 mb-1 w-48 bg-white dark:bg-[#1a2233] border border-gray-200 dark:border-white/[0.1] rounded-xl shadow-lg overflow-hidden z-10">
+                  {/* @mention popover — portaled to body so the panel's overflow-hidden
+                      ancestors can't clip it; positioned in viewport space above. */}
+                  {mentionOpen && mentionPos && createPortal(
+                    <div
+                      ref={mentionMenuRef}
+                      style={{ position: 'fixed', top: mentionPos.top, left: mentionPos.left }}
+                      className="w-48 bg-white dark:bg-[#1a2233] border border-gray-200 dark:border-white/[0.1] rounded-xl shadow-lg overflow-hidden z-[80]"
+                    >
                       {mentionResults.map((m, i) => (
                         <button
                           key={m.id}
@@ -1533,7 +1602,8 @@ export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boole
                           {m.full_name ?? m.email}
                         </button>
                       ))}
-                    </div>
+                    </div>,
+                    document.body,
                   )}
                 </div>
                 {addingComment && (
