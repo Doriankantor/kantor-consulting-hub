@@ -852,6 +852,37 @@ session (dk's 2, root's 2, HANDOFF's 253) — but here it nearly wrote an unveri
 into permanent git history. Verify build-liveness by CONTENT (string literals), not by
 timestamp and not by comments.
 
+## ⚠ Lesson — A CONTRACT IS ONLY AS GOOD AS ITS NARROWEST GATE
+
+**The 1b dead-feature (shipped machinery, `4001652`; renderer fix in the same commit,
+2026-07-19).** Slice 1b was scoped **"main-process only"** and delivered exactly that: personal
+to-do writes went local-first, `syncPersonalWrite` queued the cloud push when offline, the drain
+hooked `onReconnect`. Every main-side path honored the offline contract. Typecheck clean.
+
+**And the feature was completely dead.** Three `if (!online) return` early-returns in
+`Todo.tsx` — written long before 1b, when *every* to-do write really was cloud-authoritative —
+short-circuited `handleAddPersonal` / `handlePersonalComplete` / `handlePersonalDelete`
+**before `window.api` was ever called**. The local write was never reached, the queue never
+received a row, and because the buttons were **not** disabled (no `online` in any `disabled=`
+prop) the UI accepted the click and did nothing. Silent, and indistinguishable from a broken
+queue. The natural next move — debugging `personalSync.ts` — would have been a hunt through
+correct code.
+
+**THE RULE: a per-source offline contract must be enforced at EVERY layer that can
+short-circuit it. Verifying the main path is not enough.** When a slice changes *whether an
+operation is allowed offline*, the audit is not "does my new code honor it" but **"what else
+already decides this, and does it still agree?"** — renderer guards, disabled props, context
+gates, and route locks all qualify.
+
+**The generalization: this is the same shape as the compose silent-failure cluster** — the
+write layer was faithful and the *caller* was wrong. Here the write layer was faithful and the
+*caller never called*. When a correct-looking mechanism produces nothing, suspect the gate
+upstream of it before the mechanism itself.
+
+**Corollary on scope discipline:** "renderer-only" / "main-only" scoping is good for limiting
+blast radius, but it is a statement about *where edits land*, **not** about where the behavior
+lives. A behavioral contract crosses tiers even when the diff doesn't.
+
 ## ⚠ Lesson — A REFETCH MUST SWAP DATA UNDER STABLE KEYS, NEVER UNMOUNT THE LIST
 
 **The scroll-jump regression (`aba6b91` → fixed `923f334`, 2026-07-17).** `aba6b91` added
@@ -1317,6 +1348,30 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
 
 ### On the horizon — deferred / next up (priority order)
 
+- **0. PUBLICATION / INFO PAGES REDESIGN — BEGINS WITH AN INTERACTIVE MOCKUP.** When this
+  starts, the **first artifact is a working interactive mockup**, not a spec — the same
+  design-first approach that produced To-Do's `docs/TodoStepRail.html` prototype and that
+  demonstrably paid off there (the prototype settled behavior questions before any code, and
+  slice 0 could then check the spec against it). **Order: mockup → spec → Part-A "what lives
+  where" → read-only diagnosis → slices.** Do NOT open with a spec document, and do not
+  one-shot it. **Publication remains the AUGUST milestone** per the locked plan, though it may
+  start earlier; **slice 5 of the To-Do overhaul (the intel culling directive) is its on-ramp**
+  — that directive drives the cull→approve→Push→Info Pages flow the redesign is about.
+- **TWO GAPS FOUND DURING To-Do 1b (2026-07-19) — logged, both out of scope so far:**
+  - **Dismissals are PERMANENT — there is no un-dismiss path anywhere.** Verified: zero
+    `DELETE FROM todo_dismissed`, zero undismiss handler, no UI affordance. `todo:dismiss`
+    only ever INSERTs. An accidentally-dismissed to-do **cannot be recovered from the UI** at
+    all. This is a real product gap, not a cosmetic one — a one-click irreversible hide.
+    Natural fix alongside the slice-2 aggregation, where dismissal becomes a filter.
+  - **The offline BANNER LAGS — you can be offline and not know it.** Online state is derived
+    from **failed cloud call outcomes** (`connection.ts`, 2-failure hysteresis), and while
+    offline the only network traffic is a **10s recovery probe**. **The To-Do tab makes no
+    cloud calls**, so nothing reports a failure and the banner doesn't appear until some other
+    surface (e.g. Intelligence) tries the network. **Pre-existing connection-module behavior,
+    NOT a 1b regression** — 1b made it more visible by making To-Do work offline. Fixing it
+    means **active probing while healthy**, which the module deliberately avoids ("we never
+    probe while healthy"), so the blast radius is app-wide. **Deferred, logged.**
+
 - **1. DONE (shipped in v2.1.0) — Narrative refinement.** Both halves landed: the summary
   half (`c0be06f`, own `summary` key) and the **reconcile half** (`edaab46`, reconcile
   narrates *from* the structured `capabilities[]`/`key_facts[]` via the `priorAi` opt).
@@ -1487,20 +1542,83 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
     - **27-item Definition of Done; two-machine verification required.**
   - **SEQUENCING — the spec MANDATES diagnose-first. Build in dependency order, ONE TESTED
     SLICE EACH. Do NOT build as one blob:**
-    0. **READ-ONLY DIAGNOSIS of Part A "what lives where"** — map the real `personal_todos`
-       model, handler names, `task_checklists`, the calendar record; **confirm/correct the
-       spec's assumptions.** **MUST precede any code — the spec says so explicitly.**
-    1. **`personal_todos` → cloud (+ personal steps table)** — the **foundation**; unblocks
-       dismiss, offline, cross-device. Its own tested migration slice (follow the
-       boards/intel **two-tier + seed-guard** pattern; save the one-time SQL to **`/sql`**
-       with **publication + `REPLICA IDENTITY FULL`**).
+    0. ✅ **DONE — READ-ONLY DIAGNOSIS of Part A "what lives where"** (2026-07-19). Grounded
+       the spec against real code; corrections recorded under **SPEC vs REALITY** below.
+    1. ✅ **DONE — `personal_todos` → cloud**, shipped as **1a (`a46345b`) + 1b (`4001652`)**.
+       Detail in the two entries below.
     2. **Aggregation layer:** `listTodos(actingUserId)` in MAIN, member-gated; the renderer
        only **filters**.
     3. **Step Rail + urgency/promotion UI** (port prototype behavior, theme tokens, **light
-       AND dark**).
+       AND dark**). First real exercise of `personal_todo_steps` — the table and its queue
+       path exist (1a/1b) but **nothing writes it yet**; there are no step handlers.
     4. **`board.assign` per-board permission, enforced in MAIN.**
     5. **Intel culling directive + calendar bidirectionality + completion write-back**
        (respects board perms).
+       - **⚠ PREREQUISITE — `notifications` → cloud.** The directive is *pinned card +
+         notification + deep link*, but `notifications` is **local-SQLite-only and
+         `user_id`-keyed** (`db.ts:253`, zero cloud presence). A directive assigned from the
+         laptop writes a row into the assigner's OWN local DB — **it never reaches the
+         assignee's machine.** The deep-link machinery works; the delivery does not. The spec
+         does not mention this. Migrate notifications before, or slice 5 ships broken.
+  - **✅ SLICE 1a SHIPPED — personal to-do cloud tables + translate-migration (`a46345b`,
+    2026-07-19, UNRELEASED).** Three cloud tables — **`personal_todos`,
+    `personal_todo_steps`, `todo_dismissed`** — all **owner-keyed by `user_email`**.
+    - **WHY EMAIL, not `user_id`:** `local_users.id` is minted per-device with
+      `crypto.randomUUID()` at first sign-in, so the same person has a **different id on each
+      machine**. Email is the only cross-device-stable identity, and it is already what
+      `board_members` / `member_permissions` / RLS use. The codebase had already reached this
+      conclusion (`boards.ts:22`).
+    - **Local:** added **`updated_at` + `position`** to `personal_todos` (guarded ALTERs;
+      SQLite can't add a `CURRENT_TIMESTAMP` default, so nullable-then-backfill, `position`
+      0-based by `created_at` **within each `user_id`**); created local `personal_todo_steps`.
+      **Local stays `user_id`-keyed by design** — translation happens at the cloud boundary.
+    - **One-time translate-backfill** (`cloud/personalTodosSeed.ts`): resolves local `user_id`
+      → email via the **existing `resolveIdentity`**, upserts to cloud, and **skip-and-LOGS**
+      unresolvable rows — never dropped, never reassigned to the admin, local rows never
+      modified. Guarded by a `settings` flag set **only** on full success, so a failed run
+      retries next launch.
+    - **NOT admin-gated**, unlike `seedBoardsToCloud` — personal to-dos are owner-scoped, so
+      every user's machine must upload its own rows. A cloud-emptiness guard would make the
+      second user's device a silent no-op and strand their data.
+    - **Handlers + renderer UNCHANGED** in 1a. SQL: **`sql/2026-07-19_personal_todos_cloud.sql`**
+      (run by hand in Supabase). **Verified:** backfill **2 uploaded / 0 skipped**; cloud
+      counts matched local.
+  - **⚠ IDENTITY NOTE (found during 1a) — Dorian's personal to-dos were split across TWO
+    admin identities:** `dk@kantor-consulting.com` and `doriankantor@gmail.com`. **Consolidated
+    to `dk@`** (the session identity the app resolves to). **This split is DORIAN-ONLY** —
+    each researcher has a single identity. Recorded because it is exactly what made the
+    underlying bug **root-invisible**: keying on `user_id` looks fine on the admin's
+    coincidentally-stable `'local-admin'` id while **stranding every researcher's to-dos
+    cross-device**. A root-only test would have passed.
+  - **✅ SLICE 1b SHIPPED — local-first dual-write + sync queue, PERSONAL source only
+    (`4001652`, 2026-07-19, UNRELEASED).**
+    - **Model:** writes land **LOCAL FIRST** and succeed **offline**; the cloud push is
+      **fired, not awaited**, after the local write. On offline or failure the op is queued in
+      **`personal_sync_queue`** (durable, so it survives a quit). Handlers keep their exact
+      signatures — **no new IPC channels**, no preload/`env.d.ts` change, no UI wait on the
+      network.
+    - **Drain** on the **`onReconnect` false→true edge** (`connection.ts:30` — the existing
+      event, reused; no second detector) **and once on launch**. Idempotent upserts, in-flight
+      guard, oldest-first replay; failures increment `attempts` + record `last_error` and stay
+      queued. **LWW via `updated_at`**, now stamped on **every live write** (1a had only added
+      + backfilled the column — live writes were still frozen at migration time).
+    - **PER-SOURCE CONTRACT:** board/shared sources (`workspace_tasks`, `task_checklists`, …)
+      stay **cloud-authoritative and offline-LOCKED**. Queueing a board write would let two
+      members diverge with no merge story. The `SyncTable` union is a **three-member
+      allowlist** — adding a board table can't happen by accident.
+    - **Renderer 1b-fix:** removed the offline early-return from the **THREE personal
+      handlers only** (`handleAddPersonal`, `handlePersonalComplete`, `handlePersonalDelete`);
+      the **two board guards** (`handleComplete` / `handleUncomplete`, `Todo.tsx:202/214`)
+      **stay**. `handlePersonalDelete` keeps its optimistic removal but **reconciles on
+      failure** via `loadPersonalTodos()` — matching the card-revive pattern, which likewise
+      mutates first and lets a refetch settle the truth rather than manually undoing.
+    - **NO realtime for the personal tables — deliberate deferral, not an oversight.** They
+      are publishable (1a); launch-drain + reconnect-drain cover single-owner cross-device
+      convergence. **Consequence:** two devices open *simultaneously* won't see each other's
+      edits until one relaunches or reconnects.
+    - **Verified end-to-end:** online sync; offline create/complete queued (no error, app
+      responsive); **reconnect drain cloud 2→4**; **quit-while-queued durable — launch drain
+      1 ok, cloud 4→5**.
   - **SPEC FILES: SAVED AND TRACKED (`5c1e20b`, 2026-07-19).** Previously chat-only uploads
     and absent from the tree; now committed as
     **`docs/TODO_OVERHAUL_PROMPT_1.md`** (from `TODO_OVERHAUL_PROMPT_1.md`),
@@ -1510,19 +1628,41 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
     to its immediate predecessor (re-downloads, not newer revisions), so nothing was left
     behind. They sit outside both tsconfig `include` globs (`src/**`), so the prototype
     `.jsx` is **not** in the compile graph.
-  - **⚠ PROVENANCE — the summary above is still SECOND-HAND.** It was transcribed from
-    Dorian's verbal description, **not** read from the file by the docs-writer. The files
-    being in-repo means the **next** session can read them directly; it does **not**
-    retroactively verify this session's transcription. **Slice 0 (read-only diagnosis) still
-    resolves the summary against ground truth** — treat any confident detail here (the
-    27-item DoD, table names, the slice list) as a claim to check, not a fact.
+  - **PROVENANCE — RESOLVED (slice 0, 2026-07-19).** The summary above was originally
+    transcribed second-hand from Dorian's description; **slice 0 read all three files in full
+    and grounded them against real code**, so it is no longer an unverified claim. What slice
+    0 found is below.
+  - **SPEC vs REALITY — corrections from slice 0. Do not treat the spec as settled:**
+    - **`calendar_events` is LOCAL-only with full CRUD**, not "Google sync, read-only" as Part
+      A says (`db.ts:537`; zero cloud presence). Google events are a *third* category, fetched
+      live and prefixed `g-`.
+    - **"One record surfaced twice" is already TRUE for reads** — task deadlines are ephemeral
+      renderer-side projections (`TeamCalendar.tsx:942`, id `'deadline-' + t.id`), so there is
+      no drift to fix. But the projection lives in the **renderer** (fighting Part D's
+      "aggregate in MAIN"), and **there is no write-back path at all**.
+    - **The unified-Trash precedent normalizes in the RENDERER, not main** (`Trash.tsx:9/85`),
+      with weak gating (contacts trash has none). `listTodos` in MAIN is still right, but it is
+      **net-new architecture, not a port** — budget slice 2 accordingly.
+    - **Identity is split:** `assignees_json` holds **user IDs**; all cloud auth is **email**.
+      `board.assign` and `listTodos` must bridge the two namespaces in MAIN.
+    - **There are NO semantic theme tokens** — `tailwind.config.js` has five `hub-*` brand
+      hexes and nothing else; no accent/muted/border/foreground, no dark-safe red/amber. Part
+      D's "drive all color from existing tokens" **requires creating that layer first**.
+    - **Sub-step done flag is `checked`, not `done`**; `isRoot` is a **boolean field, not a
+      function**; personal to-dos have no `starred` column (the prototype's star needs schema).
+    - **`todo_dismissed` and `notifications` were missing from Part A entirely** — both
+      local-only. The To-Do surface depended on **four** local-only tables, not one, so the
+      "last thing pinning a local-only table in place" framing was wrong (the timing argument
+      still holds; it was just four times larger). Two are now migrated (1a).
   - **⚠ `docs/TodoStepRail.jsx:8` cites a nonexistent `STEP_RAIL_IMPLEMENTATION_PROMPT.md`** —
     almost certainly an earlier name for `TODO_OVERHAUL_PROMPT_1.md` (the spec points back at
     the prototype, so the pair is mutually referential with one filename wrong). **Left
     unedited to keep the saved file faithful to what Dorian produced.** Fix the pointer during
     slice 0 if desired.
-  - **STATUS:** foundation bug **fixed**; the overhaul is **spec'd, sequenced, and ready to
-    start at SLICE 0 (read-only diagnosis)**.
+  - **STATUS:** foundation bug fixed (`cc6aedf`); **slices 0 and 1 DONE** (`a46345b` +
+    `4001652` — personal to-dos are cloud-backed, offline-capable and cross-device).
+    **NEXT IS SLICE 2 — the `listTodos` aggregation layer in MAIN.** Read the SPEC vs REALITY
+    corrections above before starting; slice 2 is net-new architecture, not a Trash port.
 - **COMPOSE-SURFACE WRITES AND FEEDBACK (silent-failure cluster).** Four related issues in
   the Intelligence compose surface, found 2026-07-18. **All four compose paths
   (News/Social/Documents/Interviews) write through the SAME `insertSource`

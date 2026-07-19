@@ -2,19 +2,22 @@
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-18
   Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
-                   UNRELEASED since v2.3.0 — EIGHT commits: 2d76b9a (visibleBoardIds
+                   UNRELEASED since v2.3.0 — TEN commits: 2d76b9a (visibleBoardIds
                    non-root no-join fix), b211638 (slice 0b-0 — realtime channel-health
                    instrumentation), the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
                    c60c9c2 (Social form-loss), ae067da (updateStatus phantom-row guard),
                    7782116 (badge gates — Social/Interviews/Documents), bd8f07c (News
                    badge+fade+counts+logDecision gates), edd7bd0 (upload path honesty);
-                   and cc6aedf (To-Do write-through — completions survive re-sync).
+                   cc6aedf (To-Do write-through — completions survive re-sync); and the
+                   To-Do overhaul foundation: a46345b (slice 1a — personal to-do cloud
+                   tables + translate-migration) and 4001652 (slice 1b — local-first
+                   dual-write + sync queue, personal source).
                    The installed app is 2.3.0 and contains NONE of them.
                    Shipped in v2.3.0: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD cc6aedf   |   321 commits   |   ~37,000 lines of TS/TSX
+                   HEAD 4001652   |   324 commits   |   ~37,500 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -72,6 +75,60 @@
   need an ARCHIVE option (delete-only today; for a published project delete is the wrong verb
   — you'd want to shelve it while keeping the live site + history). Mirror purge unscheduled.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-19 — TO-DO OVERHAUL SLICES 1a+1b (a46345b, 4001652, UNRELEASED) ──
+  • SLICE 0 (read-only diagnosis) DONE — the spec was read in full and grounded against real
+    code. Corrections recorded in HANDOFF under "SPEC vs REALITY": calendar_events is LOCAL
+    with full CRUD (not read-only Google sync); the unified-Trash precedent normalizes in the
+    RENDERER not main (so listTodos is net-new, not a port); identity is split (assignees_json
+    holds user IDs, all cloud auth is email); there are NO semantic theme tokens; the sub-step
+    flag is `checked` not `done`. todo_dismissed and notifications were missing from Part A.
+  • SLICE 1a (a46345b) — cloud tables personal_todos / personal_todo_steps / todo_dismissed,
+    all owner-keyed by user_email. WHY EMAIL: local_users.id is minted per-device with
+    crypto.randomUUID() at first sign-in, so the same person has a DIFFERENT id per machine;
+    email is the only cross-device-stable identity and is what board_members/RLS already use.
+    Local personal_todos gained updated_at + position (guarded ALTERs, nullable-then-backfill);
+    local personal_todo_steps created. Local STAYS user_id-keyed — translation happens at the
+    cloud boundary via the existing resolveIdentity. One-time backfill upserts to cloud and
+    SKIP-AND-LOGS unresolvable rows (never dropped, never reassigned to admin, local never
+    modified); flag set only on full success so a failure retries next launch. Deliberately
+    NOT admin-gated — every user's machine uploads its own rows. Handlers + renderer unchanged.
+    SQL: sql/2026-07-19_personal_todos_cloud.sql. Verified: 2 uploaded / 0 skipped.
+  • IDENTITY NOTE — Dorian's personal to-dos were split across TWO admin identities
+    (dk@kantor-consulting.com and doriankantor@gmail.com); consolidated to dk@. DORIAN-ONLY;
+    researchers each have one identity. It is what made the bug root-invisible: keying on
+    user_id looks fine on the admin's coincidentally-stable 'local-admin' id while stranding
+    every researcher's to-dos cross-device. A root-only test would have passed.
+  • SLICE 1b (4001652) — local-first dual-write + durable sync queue, PERSONAL SOURCE ONLY.
+    Writes land local-first and succeed OFFLINE; the cloud push is fired-not-awaited after,
+    and queued in personal_sync_queue when offline or on failure. Drain on the onReconnect
+    false→true edge (the existing event, reused — no second detector) and once on launch;
+    idempotent upserts, in-flight guard, oldest-first replay, attempts/last_error on failure.
+    LWW via updated_at, now stamped on EVERY live write (1a had only backfilled the column).
+    PER-SOURCE CONTRACT: board/shared sources stay cloud-authoritative and offline-LOCKED —
+    the SyncTable union is a three-member allowlist. No realtime for personal tables
+    (deliberate deferral; two devices open simultaneously won't see each other until one
+    reconnects/relaunches). No new IPC channels. Renderer fix: removed the offline
+    early-return from the THREE personal handlers only; the two board guards stay;
+    handlePersonalDelete reconciles on failure via loadPersonalTodos. Verified end-to-end:
+    online sync; offline queued; reconnect drain cloud 2→4; quit-while-queued durable
+    (launch drain 1 ok, 4→5).
+  • LESSON (own section in HANDOFF) — A CONTRACT IS ONLY AS GOOD AS ITS NARROWEST GATE. 1b's
+    main-side machinery was correct and the feature was still DEAD: three pre-existing
+    `if (!online) return` guards in Todo.tsx short-circuited the personal handlers before
+    window.api was ever called, and the buttons weren't disabled, so the UI accepted clicks
+    and did nothing. A per-source offline contract must be enforced at EVERY layer that can
+    short-circuit it; verifying the main path is not enough.
+  • TWO GAPS LOGGED — (1) dismissals are PERMANENT, no un-dismiss path exists anywhere
+    (zero DELETE FROM todo_dismissed, zero handler); an accidental dismiss is unrecoverable
+    from the UI. (2) the offline BANNER LAGS: online state derives from failed cloud calls
+    and the To-Do tab makes none, so offline isn't visible until another surface hits the
+    network. Pre-existing connection-module behavior, NOT a 1b regression; fixing it means
+    active probing (app-wide blast radius). Both deferred.
+  • NEXT: slice 2 — the listTodos aggregation layer in MAIN. Then 3 (Step Rail + urgency UI),
+    4 (board.assign enforced in MAIN), 5 (intel directive + calendar + completion write-back).
+    SLICE 5 PREREQUISITE: notifications → cloud — it is local-only and user_id-keyed today, so
+    a directive's notification never reaches the assignee's machine.
 
   ── 2026-07-18 — TO-DO WRITE-THROUGH FIXED + OVERHAUL QUEUED (cc6aedf, UNRELEASED) ──
   • todo:complete/uncomplete wrote column_id/completed_at to the LOCAL workspace_tasks mirror
