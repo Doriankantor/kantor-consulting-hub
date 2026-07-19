@@ -74,6 +74,11 @@
   T6b + per-card tag scoping → feedback loop → dedup → span annotation. BACKLOG: info-pages
   need an ARCHIVE option (delete-only today; for a published project delete is the wrong verb
   — you'd want to shelve it while keeping the live site + history). Mirror purge unscheduled.
+  PUBLICATION / INFO PAGES REDESIGN (August milestone, may start earlier) STARTS WITH AN
+  INTERACTIVE MOCKUP of the flow — New sources → Analysis & design → Publish → update notes →
+  Sources — iterated BEFORE any spec / Part-A / diagnosis / slices, same design-first approach
+  as the To-Do prototype. To-Do slice 5 (intel culling directive) is its on-ramp; shared
+  prerequisite: notifications → cloud.
   See HANDOFF.md "Start here" for the resume point.
 
   ── 2026-07-19 — TO-DO OVERHAUL SLICES 1a+1b (a46345b, 4001652, UNRELEASED) ──

@@ -1354,9 +1354,14 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   demonstrably paid off there (the prototype settled behavior questions before any code, and
   slice 0 could then check the spec against it). **Order: mockup → spec → Part-A "what lives
   where" → read-only diagnosis → slices.** Do NOT open with a spec document, and do not
-  one-shot it. **Publication remains the AUGUST milestone** per the locked plan, though it may
-  start earlier; **slice 5 of the To-Do overhaul (the intel culling directive) is its on-ramp**
-  — that directive drives the cull→approve→Push→Info Pages flow the redesign is about.
+  one-shot it. **The mockup covers the publication FLOW end to end: New sources → Analysis &
+  design → Publish → update notes → Sources.** Only once that mockup has been iterated do we
+  produce the spec, then Part-A, then the diagnosis, then the slices.
+  **Publication remains the AUGUST milestone** per the locked plan, though it may start
+  earlier; **slice 5 of the To-Do overhaul (the intel culling directive) is its on-ramp** —
+  that directive drives the cull→approve→Push→Info Pages flow the redesign is about.
+  **Shared prerequisite with slice 5: `notifications` → cloud** (local-only + `user_id`-keyed
+  today, so a directive never reaches the assignee's machine).
 - **TWO GAPS FOUND DURING To-Do 1b (2026-07-19) — logged, both out of scope so far:**
   - **Dismissals are PERMANENT — there is no un-dismiss path anywhere.** Verified: zero
     `DELETE FROM todo_dismissed`, zero undismiss handler, no UI affordance. `todo:dismiss`
