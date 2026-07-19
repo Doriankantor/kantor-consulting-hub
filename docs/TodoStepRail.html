@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>To-Do — Kantor Consulting Hub</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<style>
+  html,body{margin:0;height:100%;background:#eef0f4;font-family:-apple-system,"Segoe UI",system-ui,sans-serif;}
+  #root{padding:22px;display:flex;justify-content:center;}
+  .shell{width:100%;max-width:1240px;}
+  .app *{box-sizing:border-box;}
+  .app{--indigo:#5b5fc7;--indigo-050:#eef0fb;--ink:#1f1e2e;--muted:#6b6a78;--line:#e7e6ee;
+    color:var(--ink);height:770px;display:flex;background:#fff;border-radius:14px;overflow:hidden;
+    border:1px solid var(--line);box-shadow:0 24px 70px rgba(40,40,90,.16);}
+
+  .nav{width:60px;background:#f6f6fa;border-right:1px solid var(--line);display:flex;flex-direction:column;
+    align-items:center;padding:14px 0;gap:4px;flex:none;}
+  .nav-logo{width:34px;height:34px;border-radius:9px;margin-bottom:10px;
+    background:linear-gradient(135deg,#6165c9,#8e63c9);color:#fff;font-weight:700;display:grid;place-items:center;font-size:13px;}
+  .nav-i{width:40px;height:40px;border-radius:9px;display:grid;place-items:center;color:#7b7a88;cursor:pointer;position:relative;}
+  .nav-i:hover{background:#ececf4;}
+  .nav-i.on{background:var(--indigo-050);color:var(--indigo);}
+  .nav-dot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:#e5484d;}
+  .nav-sp{flex:1;}
+
+  .todo{flex:1;display:flex;flex-direction:column;min-width:0;position:relative;}
+  .todo-head{padding:20px 24px 0;}
+  .head-row{display:flex;align-items:center;justify-content:space-between;}
+  .head-title{font-size:24px;font-weight:700;display:flex;align-items:center;gap:10px;}
+  .count-badge{font-size:12px;font-weight:600;background:var(--indigo-050);color:var(--indigo);border-radius:20px;padding:2px 9px;}
+  .head-actions{display:flex;align-items:center;gap:10px;}
+  .seg{display:flex;background:#f1f1f6;border-radius:9px;padding:3px;}
+  .seg button{border:0;background:transparent;font-size:13px;font-weight:600;color:var(--muted);padding:6px 12px;
+    border-radius:7px;cursor:pointer;display:flex;align-items:center;gap:6px;}
+  .seg button.on{background:#fff;color:var(--indigo);box-shadow:0 1px 2px rgba(0,0,0,.08);}
+  .btn-add{border:0;background:var(--indigo);color:#fff;font-size:13px;font-weight:600;padding:8px 14px;border-radius:9px;
+    cursor:pointer;display:flex;align-items:center;gap:6px;}
+  .btn-assign{border:1px solid #d9d9f6;background:#f4f4ff;color:var(--indigo);font-size:13px;font-weight:600;padding:8px 14px;
+    border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:6px;}
+  .btn-assign:hover{background:#ecebff;}
+  .modal-bg{position:absolute;inset:0;background:rgba(31,30,46,.32);z-index:70;display:flex;align-items:flex-start;justify-content:center;padding-top:90px;}
+  .modal{width:380px;background:#fff;border-radius:14px;box-shadow:0 24px 70px rgba(20,20,50,.3);padding:20px;}
+  .modal h3{margin:0 0 4px;font-size:16px;}
+  .modal .msub{font-size:12px;color:var(--muted);margin-bottom:16px;}
+  .fld{margin-bottom:12px;}
+  .fld label{display:block;font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;}
+  .fld select,.fld input{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:13.5px;font-family:inherit;outline:0;background:#fff;}
+  .fld select:focus,.fld input:focus{border-color:var(--indigo);}
+  .modal-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
+  .modal-foot button{border:0;font-size:13px;font-weight:600;padding:8px 16px;border-radius:8px;cursor:pointer;}
+  .mf-cancel{background:#f1f1f6;color:var(--ink);} .mf-go{background:var(--indigo);color:#fff;}
+  .tabs{display:flex;gap:2px;margin-top:16px;border-bottom:1px solid var(--line);}
+  .tab{border:0;background:transparent;font-size:14px;font-weight:600;color:var(--muted);padding:10px 4px;
+    margin-right:22px;cursor:pointer;position:relative;}
+  .tab.on{color:var(--indigo);}
+  .tab.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2.5px;background:var(--indigo);border-radius:2px;}
+  .tab .tcount{font-size:11px;color:var(--muted);font-weight:600;margin-left:6px;background:#f1f1f6;border-radius:10px;padding:1px 7px;}
+  .body{flex:1;overflow-y:auto;padding:14px 24px 24px;}
+
+  .pin-h{font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;margin:12px 2px 8px;display:flex;align-items:center;gap:8px;}
+  .pin-h.red{color:#c62828;} .pin-h.amber{color:#b5650a;}
+  .grp-h{font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;margin:16px 2px 8px;}
+  .grp-h .gc{color:#a5a4b0;margin-left:4px;}
+  .anchor-h{color:var(--indigo);}
+
+  .directive{background:#f4f4ff;border:1px solid #d9d9f6;border-left:3px solid #5b5fc7;border-radius:10px;
+    padding:13px 15px;margin-bottom:8px;}
+  .directive .d-t{font-weight:700;font-size:14.5px;display:flex;align-items:center;gap:9px;}
+  .directive .d-sub{font-size:12px;color:var(--muted);margin-top:4px;margin-left:29px;}
+  .directive .d-go{margin:10px 0 0 29px;border:0;background:var(--indigo);color:#fff;font-size:12.5px;font-weight:600;
+    padding:7px 13px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+
+  .done-h{border:0;background:transparent;font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--muted);
+    text-transform:uppercase;margin:6px 2px 8px;padding:6px 4px;cursor:pointer;display:flex;align-items:center;gap:7px;border-radius:6px;}
+  .done-h:hover{background:#f4f4f8;}
+  .card.is-done{opacity:.62;background:#fbfbfd;}
+  .card.is-done .chip{display:none;}
+  .card{background:#fff;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;padding:12px 15px;cursor:pointer;transition:.12s;}
+  .card:hover{border-color:#d5d4e4;}
+  .card.sel{border-color:var(--indigo);box-shadow:0 0 0 1px var(--indigo);}
+  .card.l-pastdue{border-left:3px solid #e5484d;}
+  .card.l-today{border-left:3px solid #eaa000;}
+  .card-top{display:flex;align-items:center;gap:12px;}
+  .tick{width:20px;height:20px;border-radius:50%;border:1.7px solid #b7b6cc;flex:none;display:grid;place-items:center;cursor:pointer;transition:.12s;}
+  .tick:hover{border-color:var(--indigo);}
+  .tick.on{background:var(--indigo);border-color:var(--indigo);}
+  .card-title{flex:1;font-size:14.5px;}
+  .card-title.done{text-decoration:line-through;color:var(--muted);}
+  .pill{font-size:11px;font-weight:600;color:var(--muted);background:#f1f1f6;border-radius:6px;padding:2px 8px;}
+  .pill.kc{color:var(--indigo);background:var(--indigo-050);}
+  .pill.assigned{color:#0a7ea4;background:#e4f4fa;}
+  .meet{font-size:10.5px;font-weight:600;color:var(--indigo);background:var(--indigo-050);border-radius:5px;padding:2px 7px;}
+  .chip{font-size:10.5px;font-weight:700;border-radius:5px;padding:2px 7px;white-space:nowrap;}
+  .chip.pastdue{background:#fdecec;color:#c62828;}
+  .chip.today{background:#fef2e0;color:#b5650a;}
+  .chip.tomorrow{background:#fff4e0;color:#a5680a;}
+  .chip.d2,.chip.d3{background:#f1f1f6;color:#6b6a78;}
+  .star{color:#c3c2d0;cursor:pointer;flex:none;} .star.on{color:#f2b705;}
+
+  .rail{position:relative;margin-top:12px;padding:0 2px;}
+  .rail-track{position:relative;height:2px;background:#e6e5f1;border-radius:2px;margin:20px 12px 0;}
+  .rail-fill{position:absolute;left:0;top:0;height:100%;background:var(--indigo);border-radius:2px;}
+  .rail-fill.anim{transition:width .45s cubic-bezier(.4,0,.2,1);}
+  .rail-dots{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);display:flex;justify-content:space-between;}
+  .dot-wrap{position:relative;display:flex;flex-direction:column;align-items:center;}
+  .dot{width:15px;height:15px;border-radius:50%;background:#fff;border:2px solid #cbcadd;display:grid;place-items:center;
+    cursor:pointer;transition:.18s;z-index:2;padding:0;}
+  .dot:hover{border-color:var(--indigo);transform:scale(1.12);}
+  .dot.on{background:var(--indigo);border-color:var(--indigo);}
+  .dot .chk{opacity:0;transform:scale(.4);transition:.18s;} .dot.on .chk{opacity:1;transform:scale(1);}
+  .dot-lbl{position:absolute;top:19px;font-size:10.5px;line-height:1.25;text-align:center;width:96px;color:var(--muted);}
+  .dot-lbl.on{color:var(--indigo);font-weight:600;}
+  .dot-lbl.trunc{width:104px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .rail-count{position:absolute;right:2px;top:-2px;font-size:11px;color:var(--muted);}
+
+  .cal{padding:6px 2px;}
+  .cal-title{font-size:17px;font-weight:700;margin-bottom:12px;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+  .cal-wd{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;text-align:center;padding:4px 0;}
+  .cal-cell{min-height:88px;border:1px solid var(--line);border-radius:9px;padding:6px;background:#fff;}
+  .cal-cell.out{background:#faf9fc;}
+  .cal-day{font-size:12px;font-weight:600;color:var(--muted);}
+  .cal-cell.today .cal-day{background:var(--indigo);color:#fff;border-radius:50%;width:22px;height:22px;display:grid;place-items:center;}
+  .cal-chip{font-size:10px;margin-top:4px;padding:3px 6px;border-radius:5px;font-weight:600;cursor:pointer;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cal-chip.pastdue{background:#fdecec;color:#c62828;} .cal-chip.today{background:#fef2e0;color:#b5650a;}
+  .cal-chip.tomorrow{background:#fff4e0;color:#a5680a;} .cal-chip.d2,.cal-chip.d3,.cal-chip.later{background:var(--indigo-050);color:var(--indigo);}
+
+  .toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:#1f1e2e;color:#fff;font-size:12.5px;
+    padding:9px 15px;border-radius:9px;z-index:60;box-shadow:0 8px 24px rgba(0,0,0,.28);}
+
+  .dp{width:344px;background:#fbfbfd;border-left:1px solid var(--line);flex:none;display:flex;flex-direction:column;}
+  .dp-scroll{flex:1;overflow-y:auto;padding:16px 18px;}
+  .dp-title-row{display:flex;align-items:flex-start;gap:12px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:13px 14px;}
+  .dp-title{flex:1;font-size:15px;font-weight:600;border:0;outline:0;resize:none;background:transparent;font-family:inherit;line-height:1.35;}
+  .dp-assigned{font-size:12px;color:var(--muted);margin:10px 2px 0;}
+  .step-list{background:#fff;border:1px solid var(--line);border-radius:10px;margin-top:10px;}
+  .step-item{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #f2f1f6;}
+  .step-item:last-child{border-bottom:0;}
+  .step-txt{flex:1;font-size:13.5px;} .step-txt.done{text-decoration:line-through;color:var(--muted);}
+  .step-x{color:#bcbbc7;cursor:pointer;opacity:0;transition:.12s;} .step-item:hover .step-x{opacity:1;}
+  .step-add{display:flex;align-items:center;gap:12px;padding:11px 14px;}
+  .step-add input{border:0;outline:0;background:transparent;font-size:13.5px;width:100%;color:var(--indigo);}
+  .dp-opt{display:flex;align-items:center;gap:14px;padding:13px 14px;background:#fff;border:1px solid var(--line);border-radius:10px;
+    margin-top:10px;font-size:13.5px;color:var(--muted);cursor:pointer;} .dp-opt:hover{background:#f6f6f9;}
+  .dp-foot{border-top:1px solid var(--line);padding:11px 16px;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted);}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const {useState,useRef,useLayoutEffect,useMemo,Fragment}=React;
+const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const P={
+  check:<polyline points="20 6 9 17 4 12"/>,
+  x:<Fragment><path d="M18 6 6 18"/><path d="m6 6 12 12"/></Fragment>,
+  plus:<Fragment><path d="M5 12h14"/><path d="M12 5v14"/></Fragment>,
+  star:<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>,
+  bell:<Fragment><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></Fragment>,
+  cal:<Fragment><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M16 2v4"/></Fragment>,
+  repeat:<Fragment><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></Fragment>,
+  clip:<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>,
+  sun:<Fragment><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></Fragment>,
+  chevron:<path d="m9 18 6-6-6-6"/>,
+  arrow:<Fragment><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></Fragment>,
+  list:<Fragment><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></Fragment>,
+  inbox:<Fragment><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></Fragment>,
+  todo:<Fragment><rect x="3" y="5" width="6" height="6" rx="1"/><path d="m3 17 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></Fragment>,
+  grid:<Fragment><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></Fragment>,
+  cols:<Fragment><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/></Fragment>,
+  target:<Fragment><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></Fragment>,
+  layout:<Fragment><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></Fragment>,
+  folder:<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>,
+  users:<Fragment><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Fragment>,
+  bars:<Fragment><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></Fragment>,
+  userplus:<Fragment><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></Fragment>,
+  gear:<Fragment><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></Fragment>,
+};
+function Icon({name,size=18,color="currentColor",fill="none",strokeWidth=2,className,style,onClick,title}){
+  return(<svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={color} strokeWidth={strokeWidth}
+    strokeLinecap="round" strokeLinejoin="round" className={className} style={style} onClick={onClick}>
+    {title?<title>{title}</title>:null}{P[name]}</svg>);
+}
+
+const uid=(()=>{let n=0;return()=>"id"+(++n);})();
+const S=(text,done=false)=>({id:uid(),text,done});
+const TODAY=new Date(2026,6,11);
+function daysUntil(due){if(!due)return null;const d=new Date(due+"T00:00:00");return Math.round((d-TODAY)/86400000);}
+function urg(due){const n=daysUntil(due);
+  if(n===null)return{k:"none",label:"No date",short:null};
+  if(n<0)return{k:"pastdue",label:"Past due",short:"Past due"};
+  if(n===0)return{k:"today",label:"Due today",short:"Today"};
+  if(n===1)return{k:"tomorrow",label:"Due tomorrow",short:"Tomorrow"};
+  if(n===2)return{k:"d2",label:"2 days to go",short:"2 days"};
+  if(n===3)return{k:"d3",label:"3 days to go",short:"3 days"};
+  return{k:"later",label:"Later",short:null};}
+const RANK={pastdue:0,today:1,tomorrow:2,d2:3,d3:4,later:5,none:6};
+
+const TABS=[
+  {id:"kc",name:"KC tasks"},
+  {id:"assigned",name:"Assigned to me"},
+  {id:"my",name:"Personal"},
+  {id:"all",name:"All tasks"},
+];
+
+const seed=[
+  // personal — the anchor
+  {title:"Renew residence permit (Essen)",source:"personal",due:null,steps:[S("Book Ausländerbehörde slot"),S("Gather documents"),S("Passport photos"),S("Submit")]},
+  {title:"Book flights to Bogotá",source:"personal",due:"2026-07-20",steps:[S("Compare fares"),S("Confirm dates with Johan"),S("Book")]},
+  {title:"Grocery run",source:"personal",due:null,steps:[]},
+  {title:"Call Johan re: sublease",source:"personal",due:"2026-07-11",steps:[]},
+  {title:"Reply to Annegret (Preply invoice)",source:"personal",due:"2026-07-09",steps:[]},
+  // assigned to me
+  {title:"Fact-check Strait of Hormuz figures",source:"assigned",assignedBy:"Admin",due:"2026-07-11",steps:[S("Verify shipping data"),S("Cross-check CELAC credit line")]},
+  {title:"Update Hollow Border draft",source:"assigned",assignedBy:"Leo",due:"2026-07-13",steps:[]},
+  {title:"Review co-author edits",source:"assigned",assignedBy:"Daniel",due:"2026-07-10",steps:[]},
+  // KC — meetings
+  {title:"KC partner sync (Leo, Daniel)",source:"kc-meeting",due:"2026-07-12",time:"10:00",steps:[]},
+  {title:"Javeriana thesis defense — Daniela Acosta",source:"kc-meeting",due:"2026-07-14",time:"16:00",steps:[]},
+  // KC — intel culling directive (admin-assigned)
+  {title:"Intelligence culling — LATAM drone monitor",source:"kc-intel",assignedBy:"Admin",due:"2026-07-11",steps:[]},
+  // KC — board deliverables with deadlines
+  {title:"Q3 client briefing deliverable",source:"kc-deadline",due:"2026-07-13",steps:[S("Pull Q2 engagements",true),S("Draft narrative"),S("Add metrics"),S("Design pass"),S("Send to review")]},
+  {title:"El Espectador submission",source:"kc-deadline",due:"2026-07-14",steps:[S("Final edit"),S("Spanish translation"),S("Submit")]},
+  // already completed (seeded)
+  {title:"Send Q2 invoices",source:"personal",due:"2026-07-08",done:true,completedAt:Date.now()-3600e3,steps:[S("Preply",true),S("El Espectador",true),S("Javeriana",true)]},
+  {title:"Pottery Barn op-ed final read",source:"assigned",assignedBy:"Daniel",due:"2026-07-09",done:true,completedAt:Date.now()-9e6,steps:[]},
+  {title:"Intelligence culling — Subscription Model",source:"kc-intel",assignedBy:"Admin",due:"2026-07-09",done:true,completedAt:Date.now()-18e6,steps:[]},
+].map(t=>({id:uid(),starred:false,done:false,completedAt:null,...t}));
+
+const railOrder=steps=>[...steps.filter(s=>s.done),...steps.filter(s=>!s.done)];
+const inTab=(t,id)=>id==="all"?true:id==="kc"?(t.source.indexOf("kc")===0||t.source==="assigned"):t.source===id;
+const isKc=t=>t.source.indexOf("kc")===0;
+const sourcePill=t=>isKc(t)?<span className="pill kc">KC</span>:t.source==="assigned"?<span className="pill assigned">Assigned</span>:<span className="pill">Personal</span>;
+
+function StepRail({steps,labelMode="all",onToggle}){
+  const ordered=useMemo(()=>railOrder(steps),[steps]);
+  const doneCount=steps.filter(s=>s.done).length;const n=ordered.length;
+  const activeId=(ordered.find(s=>!s.done)||{}).id||null;
+  const showLabel=s=>labelMode==="all"||labelMode==="truncate"?true:labelMode==="active"?s.id===activeId:false;
+  const ref=useRef(null);const prev=useRef(new Map());
+  useLayoutEffect(()=>{const el=ref.current;if(!el)return;
+    if(!reduceMotion){const nodes=el.querySelectorAll("[data-dot]");
+      nodes.forEach(node=>{const id=node.getAttribute("data-dot");const now=node.getBoundingClientRect();const was=prev.current.get(id);
+        if(was){const dx=was.left-now.left;if(Math.abs(dx)>1)node.animate([{transform:`translateX(${dx}px)`},{transform:"translateX(0)"}],{duration:420,easing:"cubic-bezier(.4,0,.2,1)"});}});}
+    const next=new Map();el.querySelectorAll("[data-dot]").forEach(node=>next.set(node.getAttribute("data-dot"),node.getBoundingClientRect()));prev.current=next;});
+  if(n===0)return null;
+  const fill=doneCount===0?0:n===1?100:((doneCount-1)/(n-1))*100;
+  return(<div className="rail" onClick={e=>e.stopPropagation()}>
+    <span className="rail-count">{doneCount} of {n}</span>
+    <div className="rail-track"><div className={"rail-fill"+(reduceMotion?"":" anim")} style={{width:fill+"%"}}/>
+      <div className="rail-dots" ref={ref}>
+        {ordered.map(s=>(<div className="dot-wrap" data-dot={s.id} key={s.id}>
+          <button className={"dot"+(s.done?" on":"")} title={s.text} onClick={e=>{e.stopPropagation();onToggle(s.id);}}>
+            <Icon name="check" size={9} strokeWidth={3.5} color="#fff" className="chk"/></button>
+          {showLabel(s)&&<span title={s.text} className={"dot-lbl"+(s.done?" on":"")+(labelMode==="truncate"?" trunc":"")}>{s.text}</span>}
+        </div>))}
+      </div>
+    </div>
+    <div style={{height:labelMode==="none"?4:labelMode==="truncate"?34:30}}/>
+  </div>);
+}
+
+const NAV=[{icon:"inbox",dot:true},{icon:"todo",on:true},{icon:"grid"},{icon:"cols"},{icon:"target",dot:true},{icon:"layout"},{icon:"folder"},{icon:"users"},{icon:"cal"},{icon:"bars"}];
+
+function CalendarView({tasks,onPick}){
+  const first=new Date(2026,6,1);const startDow=(first.getDay()+6)%7;const days=new Date(2026,7,0).getDate();
+  const cells=[];for(let i=0;i<startDow;i++)cells.push(null);for(let d=1;d<=days;d++)cells.push(d);while(cells.length%7)cells.push(null);
+  const wd=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];const key=d=>`2026-07-${String(d).padStart(2,"0")}`;
+  return(<div className="cal"><div className="cal-title">July 2026</div>
+    <div className="cal-grid">{wd.map(w=><div className="cal-wd" key={w}>{w}</div>)}
+    {cells.map((d,i)=>{const tsks=d?tasks.filter(t=>t.due===key(d)&&!t.done):[];
+      return(<div key={i} className={"cal-cell"+(d?"":" out")+(d===11?" today":"")}>
+        {d?<div className="cal-day">{d}</div>:null}
+        {tsks.map(t=><div key={t.id} className={"cal-chip "+urg(t.due).k} title={t.title} onClick={()=>onPick(t.id)}>{t.title}</div>)}
+      </div>);})}
+    </div></div>);
+}
+
+function App(){
+  const [tasks,setTasks]=useState(seed);
+  const [tab,setTab]=useState("my");
+  const [view,setView]=useState("list");
+  const [selId,setSelId]=useState(seed[0].id);
+  const [stepDraft,setStepDraft]=useState("");
+  const [toast,setToast]=useState(null);
+  // prototype-only: pretend the current user holds board.assign on these boards
+  const [canAssignBoards]=useState(["Subscription Model","LATAM drone monitor"]);
+  const isCaptain=canAssignBoards.length>0;
+  const [assignOpen,setAssignOpen]=useState(false);
+  const [showDone,setShowDone]=useState(false);
+  const [af,setAf]=useState({board:"Subscription Model",who:"Leo",title:"",due:""});
+  const MEMBERS=["Leo","Daniel","Juan Diego","Felipe","María José"];
+  const showToast=m=>{setToast(m);setTimeout(()=>setToast(null),2600);};
+
+  const sel=tasks.find(t=>t.id===selId)||null;
+  const patch=(id,fn)=>setTasks(ts=>ts.map(t=>t.id===id?fn(t):t));
+  const toggleStep=(tid,sid)=>patch(tid,t=>({...t,steps:t.steps.map(s=>s.id===sid?{...s,done:!s.done}:s)}));
+  const addStep=(tid,txt)=>{if(!txt.trim())return;patch(tid,t=>({...t,steps:[...t.steps,S(txt.trim())]}));setStepDraft("");};
+  const toggleDone=id=>patch(id,x=>({...x,done:!x.done,completedAt:!x.done?Date.now():null}));
+  const delStep=(tid,sid)=>patch(tid,t=>({...t,steps:t.steps.filter(s=>s.id!==sid)}));
+  const submitAssign=()=>{if(!af.title.trim())return;
+    // in the real app this writes a board task assigned to `who`, gated by board.assign on `board`
+    showToast("Assigned to "+af.who+" · they'll get a notification"+(af.due?" · due "+af.due:""));
+    setAssignOpen(false);setAf({board:af.board,who:af.who,title:"",due:""});};
+
+  const active=tasks.filter(t=>!t.done);
+  const directives=active.filter(t=>t.source==="kc-intel");
+  const pastdue=active.filter(t=>t.source!=="kc-intel"&&urg(t.due).k==="pastdue");
+  const dueToday=active.filter(t=>t.source!=="kc-intel"&&urg(t.due).k==="today");
+
+  // tab body = in tab, not done, not promoted (pastdue/today/directive)
+  const bodyItems=active.filter(t=>inTab(t,tab)&&t.source!=="kc-intel"&&["pastdue","today"].indexOf(urg(t.due).k)<0);
+  const doneItems=tasks.filter(t=>t.done&&inTab(t,tab)).sort((a,b)=>(b.completedAt||0)-(a.completedAt||0));
+  const bands=useMemo(()=>{const map={};bodyItems.forEach(t=>{const k=urg(t.due).k;(map[k]=map[k]||[]).push(t);});
+    return Object.keys(map).sort((a,b)=>RANK[a]-RANK[b]).map(k=>({k,label:urg(bodyItems.find(t=>urg(t.due).k===k).due).label,items:map[k]}));},[bodyItems]);
+
+  const card=(t,extra)=>{const u=urg(t.due);
+    return(<div key={t.id} className={"card"+(selId===t.id?" sel":"")+(extra||"")} onClick={()=>setSelId(t.id)}>
+      <div className="card-top">
+        <div className={"tick"+(t.done?" on":"")} onClick={e=>{e.stopPropagation();toggleDone(t.id);}}>
+          {t.done?<Icon name="check" size={12} color="#fff" strokeWidth={3}/>:null}</div>
+        <div className={"card-title"+(t.done?" done":"")}>{t.title}</div>
+        {t.source==="kc-meeting"?<span className="meet">Meeting {t.time}</span>:sourcePill(t)}
+        {u.short?<span className={"chip "+u.k}>{u.short}</span>:null}
+        <Icon name="star" size={17} className={"star"+(t.starred?" on":"")} color={t.starred?"#f2b705":"#c3c2d0"} fill={t.starred?"#f2b705":"none"}
+          onClick={e=>{e.stopPropagation();patch(t.id,x=>({...x,starred:!x.starred}));}}/>
+      </div>
+      <StepRail steps={t.steps} labelMode={t.steps.length<=4?"all":"truncate"} onToggle={sid=>toggleStep(t.id,sid)}/>
+    </div>);};
+
+  return(<div className="shell"><div className="app">
+    <nav className="nav"><div className="nav-logo">KC</div>
+      {NAV.map((it,i)=><div key={i} className={"nav-i"+(it.on?" on":"")}><Icon name={it.icon} size={19}/>{it.dot?<span className="nav-dot"/>:null}</div>)}
+      <div className="nav-sp"/><div className="nav-i"><Icon name="gear" size={19}/></div></nav>
+
+    <div className="todo">
+      {toast?<div className="toast">{toast}</div>:null}
+      {assignOpen?(
+        <div className="modal-bg" onClick={()=>setAssignOpen(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <h3>Assign to others</h3>
+            <div className="msub">You can assign on boards where you hold the assign permission.</div>
+            <div className="fld"><label>Board</label>
+              <select value={af.board} onChange={e=>setAf({...af,board:e.target.value})}>
+                {canAssignBoards.map(b=><option key={b}>{b}</option>)}</select></div>
+            <div className="fld"><label>Assignee</label>
+              <select value={af.who} onChange={e=>setAf({...af,who:e.target.value})}>
+                {MEMBERS.map(m=><option key={m}>{m}</option>)}</select></div>
+            <div className="fld"><label>Task</label>
+              <input placeholder="What needs doing?" value={af.title} onChange={e=>setAf({...af,title:e.target.value})}/></div>
+            <div className="fld"><label>Due date (optional)</label>
+              <input type="date" value={af.due} onChange={e=>setAf({...af,due:e.target.value})}/></div>
+            <div className="modal-foot">
+              <button className="mf-cancel" onClick={()=>setAssignOpen(false)}>Cancel</button>
+              <button className="mf-go" onClick={submitAssign}>Assign</button>
+            </div>
+          </div>
+        </div>
+      ):null}
+      <div className="todo-head">
+        <div className="head-row">
+          <div className="head-title">To-Do <span className="count-badge">{active.length}</span></div>
+          <div className="head-actions">
+            <div className="seg">
+              <button className={view==="list"?"on":""} onClick={()=>setView("list")}><Icon name="list" size={15}/> List</button>
+              <button className={view==="calendar"?"on":""} onClick={()=>setView("calendar")}><Icon name="cal" size={15}/> Calendar</button>
+            </div>
+            {isCaptain?<button className="btn-assign" onClick={()=>setAssignOpen(true)}><Icon name="userplus" size={16} color="#5b5fc7"/> Assign to others</button>:null}
+            <button className="btn-add"><Icon name="plus" size={16} color="#fff"/> Add personal</button>
+          </div>
+        </div>
+        <div className="tabs">{TABS.map(tb=>{const c=active.filter(t=>inTab(t,tb.id)).length;
+          return(<button key={tb.id} className={"tab"+(tab===tb.id?" on":"")} onClick={()=>setTab(tb.id)}>{tb.name}<span className="tcount">{c}</span></button>);})}
+        </div>
+      </div>
+
+      <div className="body">
+        {view==="calendar"?(
+          <CalendarView tasks={active} onPick={id=>setSelId(id)}/>
+        ):(
+        <Fragment>
+          {/* PINNED: intel directives */}
+          {directives.map(t=>(
+            <div className="directive" key={t.id} onClick={()=>setSelId(t.id)}>
+              <div className="d-t"><Icon name="target" size={19} color="#5b5fc7"/>{t.title}</div>
+              <div className="d-sub">Assigned by {t.assignedBy} · due today · manual news culling required</div>
+              <button className="d-go" onClick={e=>{e.stopPropagation();showToast("→ Opening Intelligence · News tab — Refresh, then approve / decline / push");}}>
+                Go to Intelligence <Icon name="arrow" size={14} color="#fff"/></button>
+            </div>
+          ))}
+          {/* PINNED: past due */}
+          {pastdue.length>0&&<div className="pin-h red"><Icon name="bell" size={14} color="#c62828"/> Past due · {pastdue.length}</div>}
+          {pastdue.sort((a,b)=>daysUntil(a.due)-daysUntil(b.due)).map(t=>card(t," l-pastdue"))}
+          {/* PINNED: due today */}
+          {dueToday.length>0&&<div className="pin-h amber"><Icon name="bell" size={14} color="#b5650a"/> Due today · {dueToday.length}</div>}
+          {dueToday.map(t=>card(t," l-today"))}
+
+          {/* TAB BODY */}
+          {tab==="my"&&bands.length>0&&<div className="grp-h anchor-h">My list</div>}
+          {bands.map(b=>(
+            <div key={b.k}>
+              {!(tab==="my"&&b===bands[0])&&<div className="grp-h">{b.label}<span className="gc">({b.items.length})</span></div>}
+              {tab==="my"&&b===bands[0]?null:null}
+              {b.items.map(t=>card(t))}
+            </div>
+          ))}
+          {bands.length===0&&directives.length===0&&pastdue.length===0&&dueToday.length===0&&
+            <div style={{color:"#a5a4b0",fontSize:13,padding:"30px 2px"}}>Nothing here. Add a personal task to get started.</div>}
+
+          {/* COMPLETED — collapsed by default, per tab */}
+          {doneItems.length>0&&(
+            <div style={{marginTop:18}}>
+              <button className="done-h" onClick={()=>setShowDone(v=>!v)}>
+                <Icon name="chevron" size={14} style={{transform:showDone?"rotate(90deg)":"none",transition:".15s"}}/>
+                Completed <span className="gc">({doneItems.length})</span>
+              </button>
+              {showDone&&doneItems.map(t=>card(t," is-done"))}
+            </div>
+          )}
+        </Fragment>
+        )}
+      </div>
+    </div>
+
+    {sel?(
+      <aside className="dp" key={sel.id}>
+        <div className="dp-scroll">
+          <div className="dp-title-row">
+            <div className={"tick"+(sel.done?" on":"")} onClick={()=>toggleDone(sel.id)}>
+              {sel.done?<Icon name="check" size={12} color="#fff" strokeWidth={3}/>:null}</div>
+            <textarea className="dp-title" rows={2} value={sel.title} onChange={e=>patch(sel.id,x=>({...x,title:e.target.value}))}/>
+            <Icon name="star" size={18} className={"star"+(sel.starred?" on":"")} color={sel.starred?"#f2b705":"#c3c2d0"} fill={sel.starred?"#f2b705":"none"}
+              onClick={()=>patch(sel.id,x=>({...x,starred:!x.starred}))}/>
+          </div>
+          {sel.assignedBy?<div className="dp-assigned">Assigned by {sel.assignedBy}{sel.due?" · due "+urg(sel.due).label.toLowerCase():""}</div>:null}
+          {sel.steps.length>0?<StepRail steps={sel.steps} labelMode="none" onToggle={sid=>toggleStep(sel.id,sid)}/>:null}
+          <div className="step-list">
+            {railOrder(sel.steps).map(s=>(<div className="step-item" key={s.id}>
+              <div className={"tick"+(s.done?" on":"")} style={{width:18,height:18}} onClick={()=>toggleStep(sel.id,s.id)}>
+                {s.done?<Icon name="check" size={11} color="#fff" strokeWidth={3}/>:null}</div>
+              <span className={"step-txt"+(s.done?" done":"")}>{s.text}</span>
+              <Icon name="x" size={15} className="step-x" color="#bcbbc7" onClick={()=>delStep(sel.id,s.id)}/>
+            </div>))}
+            <div className="step-add"><Icon name="plus" size={16} color="#5b5fc7"/>
+              <input placeholder="Add step" value={stepDraft} onChange={e=>setStepDraft(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addStep(sel.id,stepDraft)}/></div>
+          </div>
+          <div className="dp-opt"><Icon name="bell" size={17}/> Remind me</div>
+          <div className="dp-opt"><Icon name="cal" size={17}/> {sel.due?"Due "+urg(sel.due).label.toLowerCase():"Add due date"}</div>
+          <div className="dp-opt"><Icon name="repeat" size={17}/> Repeat</div>
+          <div className="dp-opt"><Icon name="clip" size={17}/> Add file</div>
+          <div className="dp-opt" style={{minHeight:56,alignItems:"flex-start"}}>Add note</div>
+        </div>
+        <div className="dp-foot"><Icon name="chevron" size={16}/><span>Created yesterday</span></div>
+      </aside>
+    ):null}
+  </div></div>);
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
