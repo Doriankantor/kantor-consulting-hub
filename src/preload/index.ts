@@ -33,6 +33,7 @@ const api = {
   },
   team: {
     list:            (includeAdmin?: boolean)                                              => ipcRenderer.invoke('team:list', includeAdmin),
+    roster:          ()                                                                    => ipcRenderer.invoke('team:roster'),
     invite:          (p: { email: string; full_name: string; role?: string })             => ipcRenderer.invoke('team:invite', p),
     remove:          (id: string)                                                          => ipcRenderer.invoke('team:remove', id),
     edit:            (p: { id: string; full_name?: string; email?: string; role?: string }) => ipcRenderer.invoke('team:edit', p),

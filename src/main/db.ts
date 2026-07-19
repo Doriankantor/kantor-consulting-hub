@@ -716,6 +716,21 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_personal_todo_steps_todo_id ON personal_todo_steps(todo_id);
   `)
 
+  // Slice 1c-1: OFFLINE MIRROR of the cloud `team_members` roster. Keyed on the
+  // stable work email — the one identity that survives a device change (local_users.id
+  // is minted per-device and never syncs). This table is READ-ONLY roster display data:
+  // it holds no account state (no password, status, or heartbeat) and is NOT an
+  // authentication source. local_users remains the account table; see cloud/teamRoster.ts.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS team_members (
+      email        TEXT PRIMARY KEY,
+      display_name TEXT,
+      assignable   INTEGER NOT NULL DEFAULT 1,
+      created_at   DATETIME,
+      updated_at   DATETIME
+    );
+  `)
+
   // Slice 1b: durable outbox for PERSONAL-source cloud writes. Durable (not in-memory)
   // so an op queued while offline survives quitting the app — the launch drain flushes
   // it. AUTOINTEGER id doubles as the replay order, which is what makes last-write-wins

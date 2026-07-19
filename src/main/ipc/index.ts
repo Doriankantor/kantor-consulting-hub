@@ -26,6 +26,7 @@ import * as intelCloud from '../cloud/intel'
 import { isOnline } from '../cloud/connection'
 import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag } from '../cloud/tags'
 import { seedBoardsToCloud } from '../cloud/boardsSeed'
+import { getTeamRoster } from '../cloud/teamRoster'
 import { syncPersonalWrite, ownerEmail, nowIso } from '../cloud/personalSync'
 import { startRealtime, rescope as rescopeRealtime, teardownAll as teardownRealtime, getRealtimeHealth } from '../cloud/realtimeManager'
 import {
@@ -547,6 +548,13 @@ function registerTeamHandlers() {
                 ORDER BY created_at`)
       .all(...(includeAdmin ? [] : [CLOUD_ADMIN_EMAIL]))
   )
+
+  // Slice 1c-1: the ROSTER — cloud team_members with an offline mirror, keyed on
+  // the stable work email. Additive: `team:list` above is untouched and remains
+  // the account channel (auth, status, removal, heartbeat — all local_users.id).
+  // This channel exists so display surfaces (assignee picker, @mentions) can show
+  // the whole team without the id-keyed handlers inheriting an email as their key.
+  ipcMain.handle('team:roster', () => getTeamRoster())
 
   ipcMain.handle('team:invite', async (_e, params: { email: string; full_name: string; role?: string }) => {
     // Inviting people to the app is admin-only (enforced in main; never trust renderer).

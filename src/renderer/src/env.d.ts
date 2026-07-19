@@ -471,6 +471,7 @@ interface Window {
     }
     team: {
       list:            (includeAdmin?: boolean)                                              => Promise<LocalTeamMember[]>
+      roster:          ()                                                                    => Promise<Array<{ email: string; display_name: string; assignable: boolean }>>
       invite:          (p: { email: string; full_name: string; role?: string })             => Promise<{ ok?: boolean; id?: string; tempPassword?: string; emailSent?: boolean; emailError?: string; error?: string }>
       remove:          (id: string)                                                          => Promise<{ ok?: boolean }>
       edit:            (p: { id: string; full_name?: string; email?: string; role?: string }) => Promise<{ ok?: boolean; error?: string }>

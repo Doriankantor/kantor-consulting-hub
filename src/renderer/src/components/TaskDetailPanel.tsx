@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   Task, ContentType, Priority, AreaOfAnalysis,
@@ -368,7 +368,49 @@ export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boole
   const [mentionIndex, setMentionIndex]   = useState(0)
   const commentInputRef = useRef<HTMLTextAreaElement>(null)
 
-  const mentionResults = members.filter(m =>
+  // ── Team roster (slice 1c-1) ───────────────────────────────────────────────
+  // Cloud team_members, email-keyed, with an offline mirror behind it. This is the
+  // display source for the assignee picker and @mentions — the two surfaces that
+  // need the WHOLE team, not just the accounts that happen to exist on this device
+  // (local_users rows are created per-device at first sign-in, so `members` from
+  // WorkspaceContext is a subset of the real team on every machine but one).
+  //
+  // WorkspaceContext's `members` is intentionally NOT repointed: Dashboard and
+  // KanbanView resolve avatars from it by local_users.id, and assignees_json still
+  // stores those ids. Until 1c-2 migrates that storage to emails, the roster is the
+  // NAME source and `members` remains the ID source; the picker below joins them.
+  const [roster, setRoster] = useState<Array<{ email: string; display_name: string; assignable: boolean }>>([])
+  useEffect(() => {
+    let alive = true
+    window.api.team.roster()
+      .then(r => { if (alive) setRoster(r) })
+      .catch(() => { /* mirror covers it; picker falls back to `members` below */ })
+    return () => { alive = false }
+  }, [])
+
+  // Roster joined to on-device accounts. `id` is the local_users.id when this
+  // device knows the person, else null — a null id means "show them, but they
+  // can't be assigned yet" (assignees_json is still id-keyed; 1c-2 fixes it).
+  const pickerMembers = useMemo(() => {
+    if (roster.length === 0) {
+      // No roster yet (first launch offline, or cloud+mirror both empty): fall
+      // back to the previous behaviour exactly, so this can only add names.
+      return members.map(m => ({ email: m.email, name: m.full_name ?? m.email, id: m.id as string | null }))
+    }
+    const byEmail = new Map(members.map(m => [m.email.toLowerCase(), m]))
+    return roster
+      .filter(r => r.assignable)
+      .map(r => ({
+        email: r.email,
+        name: r.display_name || r.email,
+        id: byEmail.get(r.email.toLowerCase())?.id ?? null,
+      }))
+  }, [roster, members])
+
+  const mentionResults = (roster.length > 0
+    ? roster.map(r => ({ id: r.email, full_name: r.display_name, email: r.email }))
+    : members.map(m => ({ id: m.id, full_name: m.full_name, email: m.email }))
+  ).filter(m =>
     (m.full_name ?? m.email).toLowerCase().includes(mentionQuery.toLowerCase())
   ).slice(0, 5)
 
@@ -1006,19 +1048,25 @@ export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boole
                 )}
 
                 {/* Assignees */}
-                {members.length > 0 && (
+                {pickerMembers.length > 0 && (
                   <div ref={sectionRefs.members}>
                     <SectionLabel title="Assignees" />
                     <div className="flex flex-wrap gap-2">
-                      {members.map(m => {
-                        const assigned = assigneeIds.includes(m.id)
-                        const ini = initials(m.full_name ?? m.email)
+                      {pickerMembers.map(m => {
+                        // Roster members this device has no local_users row for can be
+                        // SEEN but not assigned — assignees_json is still id-keyed, and
+                        // writing an email into it here would fork the format ahead of
+                        // the 1c-2 migration. They light up once that lands.
+                        const pending  = m.id === null
+                        const assigned = m.id !== null && assigneeIds.includes(m.id)
+                        const ini = initials(m.name)
                         return (
                           <button
-                            key={m.id}
-                            onClick={() => toggleAssignee(m.id)}
-                            disabled={readOnly}
-                            className={`titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition ${readOnly ? 'cursor-default' : ''} ${
+                            key={m.email}
+                            onClick={() => { if (m.id) toggleAssignee(m.id) }}
+                            disabled={readOnly || pending}
+                            title={pending ? 'Not assignable on this device yet — pending the assignee migration' : undefined}
+                            className={`titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition ${readOnly ? 'cursor-default' : ''} ${pending ? 'opacity-50 cursor-default' : ''} ${
                               assigned
                                 ? 'bg-hub-gold/15 border-hub-gold/30 text-gray-900 dark:text-white'
                                 : 'bg-gray-50 dark:bg-white/[0.04] border-gray-200 dark:border-white/[0.07] text-gray-500 dark:text-white/70 hover:text-gray-700 dark:hover:text-white/85 hover:bg-gray-100 dark:hover:bg-white/[0.07]'
@@ -1027,7 +1075,7 @@ export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boole
                             <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 ${assigned ? 'bg-hub-gold/40 text-white' : 'bg-gray-200 dark:bg-white/10 text-gray-500 dark:text-white/65'}`}>
                               {ini}
                             </div>
-                            <span>{m.full_name ?? m.email}</span>
+                            <span>{m.name}</span>
                             {assigned && <span className="text-hub-gold text-[10px] ml-0.5">✓</span>}
                           </button>
                         )
