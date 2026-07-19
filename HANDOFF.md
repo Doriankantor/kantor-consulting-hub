@@ -1538,6 +1538,65 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
       slice.**
     - **`load()`'s bare `catch {}`** (`DocumentsTab` ~72) leaves a **stale list** on a
       failed refetch with no indication. Minor, same silent class.
+- **RECONCILE MUST REACH THE STRUCTURED ANALYSIS + HUMAN-CHANGE PROVENANCE (design-first,
+  vision slice).** Found 2026-07-18.
+  - **THE BUG.** When a researcher writes reconcile notes instructing a change (e.g. *"the
+    year is 2026, not 2024"*), the reconciled output updates the **PROSE** but **NOT the
+    itemized structured analysis** (`key_facts[]` / `capabilities[]` in `analysis_json.ai`).
+    The human instruction is **half-applied** — and the structured half is **where the named
+    specifics live.**
+  - **ROOT CAUSE (from the code history).** The **B1 structured extraction**
+    (`capabilities[]` / `key_facts[]`) is **RELEVANCE-PASS ONLY** — the reconcile branch of
+    `analyze.ts` was explicitly left unchanged (*"B1 is relevance-only"*). A later slice
+    threaded **`priorAi` INTO the reconcile prompt** so reconcile **NARRATES FROM** the
+    catalogue (`edaab46`) — but **reconcile has NO path to REWRITE the catalogue.** It
+    **reads** the structured fields; it **cannot re-emit** them. So a human correction lands
+    in prose and the itemized list keeps the wrong value. This is the locked principle
+    ***"prose summarizes / structure catalogues"*** biting **from the other side**: the
+    **authoritative half (structure) is exactly the half human edits can't currently reach.**
+  - **TWO LINKED REQUIREMENTS:**
+    1. **RECONCILE MUST RE-EMIT THE STRUCTURED FIELDS, applying human instructions.** The
+       reconcile branch must output **updated `key_facts[]` / `capabilities[]`**, not just
+       prose, and the reconciled structure must **persist to `analysis_json`** (today
+       reconcile writes only prose/notes). When the researcher says *"change the year,"*
+       `key_facts[]` updates too.
+    2. **HUMAN-DIRECTED CHANGES ARE RECORDED AND SHOWN AS PROVENANCE.** **Chosen model:
+       OPTION B — a CHANGE-LOG, not a per-field flag.** Record the change **event** (AI
+       proposed X → human corrected to Y, per researcher, timestamp) and render it as a
+       **human-attributed diff / "per human update" marking.**
+       **WHY B OVER A (decided, not open):** *the correction IS the information* —
+       *"changed from 2024 to 2026, per researcher"* carries the human judgment that
+       human-in-the-loop analysis exists to capture; a bare `source:'human'` flag **throws
+       away what it replaced.** B also gives an **audit trail** (defensible for a
+       political-risk / defense consultancy) and aligns with the existing
+       `analysis_json.ai` vs `.human` separation. **A is simpler to build and render but
+       expresses less; B was chosen deliberately** because this feature is **load-bearing to
+       the human-update thesis.**
+  - **WHY THIS MATTERS (Dorian's words).** Human updates are **"the whole point"** — a
+    researcher exercising judgment over the AI **is the core value proposition.** If a
+    corrected fact is **indistinguishable from an AI-generated one, the next reader can't
+    tell what's been vetted.**
+  - **OPEN DESIGN QUESTIONS — for the vision conversation. This is DESIGN-FIRST, NOT a quick
+    fix:**
+    1. **Where does the change-log live?** A new field in `analysis_json` (e.g.
+       `analysis_json.human_changes[]`), or a **separate table**? (`analysis_json` keeps it
+       with the row; a table gives cleaner history.)
+    2. **What does a change record hold?** `{field, path, ai_value, human_value,
+       instruction?, by, at}`? **How to key it to a specific `key_facts[]` /
+       `capabilities[]` entry — which have NO stable id today?**
+    3. **Does a change survive a later re-Analyze?** Re-running relevance would **regenerate
+       the `ai` fields** — must human changes be **re-applied / preserved**, or **flagged as
+       stale**? ***(This is the hard one.)***
+    4. **Render.** Diff style over the itemized list; *"per human update"* marking. Does it
+       show on the Info Pages **`PipelineSourceCard`** too, or **only the intel card**?
+    5. **Prompt.** How does reconcile know **which structured entries the human instruction
+       targets**, and emit **ONLY the intended change** rather than re-deriving the whole
+       catalogue — **which could drift the specifics, the exact failure *"prose summarizes /
+       structure catalogues"* was created to prevent?**
+  - **STATUS:** design-first vision slice. Touches the **`analyze.ts` reconcile branch**
+    (re-emit structure), the **data model** (change-log), **persistence**, and **render**.
+    **Connects to the analytical-frameworks work** (both are about analysis quality) —
+    **consider sequencing them together.**
 
 ### Standing issues
 
