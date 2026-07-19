@@ -1,8 +1,8 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-07-18
+  Generated: 2026-07-19
   Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
-                   UNRELEASED since v2.3.0 — TEN commits: 2d76b9a (visibleBoardIds
+                   UNRELEASED since v2.3.0 — TWELVE commits: 2d76b9a (visibleBoardIds
                    non-root no-join fix), b211638 (slice 0b-0 — realtime channel-health
                    instrumentation), the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
                    c60c9c2 (Social form-loss), ae067da (updateStatus phantom-row guard),
@@ -10,14 +10,16 @@
                    badge+fade+counts+logDecision gates), edd7bd0 (upload path honesty);
                    cc6aedf (To-Do write-through — completions survive re-sync); and the
                    To-Do overhaul foundation: a46345b (slice 1a — personal to-do cloud
-                   tables + translate-migration) and 4001652 (slice 1b — local-first
-                   dual-write + sync queue, personal source).
+                   tables + translate-migration), 4001652 (slice 1b — local-first
+                   dual-write + sync queue, personal source), 4b9c0b3 (slice 1c-1 —
+                   cloud team roster + team:roster channel) and fa5c9cd (@mention
+                   dropdown clipping fix).
                    The installed app is 2.3.0 and contains NONE of them.
                    Shipped in v2.3.0: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD 4001652   |   324 commits   |   ~37,500 lines of TS/TSX
+                   HEAD fa5c9cd   |   327 commits   |   ~37,700 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -81,6 +83,54 @@
   prerequisite: notifications → cloud.
   See HANDOFF.md "Start here" for the resume point.
 
+  ── 2026-07-19 — CLOUD TEAM ROSTER + @MENTION FIX (4b9c0b3, fa5c9cd, UNRELEASED) ──
+  • SLICE 1c-1 (4b9c0b3) — cloud team_members (email PK on the @kantor-consulting.com WORK
+    email, display_name, assignable) + a local mirror + a NEW team:roster channel: cloud read
+    -> UPSERT-only mirror -> serve the mirror on error -> skip cloud when offline -> never
+    throw (the cloud/tags.ts two-tier shape). The assignee picker (filtered on assignable) and
+    @mention autocomplete now read the roster, JOINED to local accounts by email: matched rows
+    behave as before, unmatched render greyed/disabled pending 1c-2.
+  • THE PATTERN — "ADD, DON'T REPOINT". The brief proposed repointing team:list to serve the
+    roster with email AS the id. The study step found that silently destructive: NINE account
+    handlers resolve against local_users.id (team:remove, markActive, heartbeat, markApiKeySet,
+    savePreferences, edit, setInitialPassword, boardMembers.add, infoPages.addOwner/remove),
+    and UPDATE ... WHERE id=<email> matches zero rows and reports NO error. It would also have
+    started a second id/email split in TeamCalendar's attendees_json. So the roster was ADDED
+    alongside: team:list and all nine handlers UNCHANGED; assignees_json and attendees_json
+    untouched. The silent-failure lesson applied prospectively — caught at design, not after.
+  • Seed: 8 people keyed on work email, run by hand in Supabase. mj.baez excluded per Dorian;
+    the gmail root account NOT seeded (root is infra, never an assignee). Verified: all 8 show
+    in the picker online AND offline (mirror), greyed as expected pre-migration.
+  • @MENTION DROPDOWN FIX (fa5c9cd) — CLOSED, not an open gap (it was logged as a known gap in
+    the 1c-1 commit message). The menu used bottom-full (hardcoded upward) on a textarea at the
+    TOP of the comment column, so it was clipped by the overflow-hidden ancestors and never
+    visible. Now createPortal to document.body + position:fixed from getBoundingClientRect:
+    prefers-below, flips above only when below can't fit, clamped horizontally; capture-phase
+    scroll/resize reposition (the panel's scroll containers don't bubble to window), cleaned up
+    on unmount. Also fixed a latent bug it exposed: the menu had NO outside-click close at all
+    — added pointerdown-capture close. Pre-existing since 6b0f37b, unrelated to 1c-1's data
+    (mentionResults is .slice(0,5)-capped before and after, so the list size never changed).
+  • IDENTITY MODEL CORRECTED: dk@kantor-consulting.com is a TEAM MEMBER, NOT root — it will
+    hold all permissions THROUGH the permission system, not by being root. ROOT is
+    doriankantor@gmail.com / local-admin (CLOUD_ADMIN_EMAIL), the infra admin, stripped from
+    assignee lists. local_users = ACCOUNTS (auth, lifecycle, per-device ids); team_members =
+    the ROSTER (cloud, email-keyed, who-can-be-assigned) — 1c-1 untangled them. Assignment was
+    NEVER working cross-device: assignees_json holds device-local ids that only resolve on the
+    minting machine, and cloud board_members is sparse (only dk@ and mj_baez@).
+  • NEXT — SLICE 1c-2: assignees_json device-id -> email migration + repoint the ~15 matcher
+    sites onto ONE email helper, including old->new email translation (daniel_lozano@ ->
+    daniel.lozano@, leonardocs@ -> leonardo.carreno@, jdcubillos@ -> jd.cubillos@). Reversible
+    local backup; cloud is commit-once. Lights up the greyed picker rows. Slice 2 (listTodos)
+    is BLOCKED behind it.
+  • QUEUED — TEAM CONSOLE (root-only, design-first): consolidates roster + work-board
+    membership/can-assign + intel-project members/heads. Two board kinds: WORK BOARDS (members
+    + per-board can-assign) and INTEL PROJECTS/info pages (members + heads, with a
+    head-implies-member invariant that must be enforced in MAIN, not just the UI). An
+    interactive mockup exists (2 iterations) but NEEDS revision for dk-not-root before it
+    becomes a spec; built AFTER 1c finishes. Mention/picker showing the whole firm rather than
+    board members is DEFERRED to this work (filtering depends on membership being populated);
+    decided model: cap 5 pre-typing, recency-ranked, type-to-filter past the cap, board-scoped.
+
   ── 2026-07-19 — TO-DO OVERHAUL SLICES 1a+1b (a46345b, 4001652, UNRELEASED) ──
   • SLICE 0 (read-only diagnosis) DONE — the spec was read in full and grounded against real
     code. Corrections recorded in HANDOFF under "SPEC vs REALITY": calendar_events is LOCAL
@@ -99,8 +149,10 @@
     modified); flag set only on full success so a failure retries next launch. Deliberately
     NOT admin-gated — every user's machine uploads its own rows. Handlers + renderer unchanged.
     SQL: sql/2026-07-19_personal_todos_cloud.sql. Verified: 2 uploaded / 0 skipped.
-  • IDENTITY NOTE — Dorian's personal to-dos were split across TWO admin identities
-    (dk@kantor-consulting.com and doriankantor@gmail.com); consolidated to dk@. DORIAN-ONLY;
+  • IDENTITY NOTE — Dorian's personal to-dos were split across his TWO identities
+    (dk@kantor-consulting.com and doriankantor@gmail.com); consolidated to dk@. ("TWO admin
+    identities" as originally written is SUPERSEDED — only the gmail account is root; dk@ is a
+    TEAM MEMBER. See the 2026-07-19 IDENTITY MODEL entry above.) DORIAN-ONLY;
     researchers each have one identity. It is what made the bug root-invisible: keying on
     user_id looks fine on the admin's coincidentally-stable 'local-admin' id while stranding
     every researcher's to-dos cross-device. A root-only test would have passed.
@@ -581,8 +633,10 @@
 
   ── 2026-07-16 EVENING — v2.2.0 CROSS-DEVICE TEST + SAME-DAY DIAGNOSTIC (findings only,
      NOTHING FIXED; full detail + refuted-vs-verified mechanisms in HANDOFF.md's ⛔ block) ──
-  dk@kantor-consulting.com (full-admin, NON-root, second macOS account, own local
-  DB/mirror) surfaced an ACCESS-CONTROL GAP: intel reads have NO membership gate —
+  dk@kantor-consulting.com (a TEAM MEMBER, not root — the "full-admin" label used here
+  originally is SUPERSEDED, see the 2026-07-19 IDENTITY MODEL entry above; ROOT is
+  doriankantor@gmail.com / local-admin) in a second macOS account, own local
+  DB/mirror, surfaced an ACCESS-CONTROL GAP: intel reads have NO membership gate —
   getSources, all five count reads, the four Info-Pages pipeline reads, and infoPages:list
   are authenticated-only, not membership-scoped. dk@ with ZERO board_members rows saw all
   242 articles; the project picker is neither permission NOR filter (it is deliberately
