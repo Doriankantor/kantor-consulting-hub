@@ -2,16 +2,18 @@
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-18
   Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
-                   UNRELEASED since v2.3.0: 2d76b9a (visibleBoardIds non-root no-join
-                   fix), b211638 (slice 0b-0 — realtime channel-health instrumentation)
-                   and c60c9c2 (compose cluster slice 1 — Social form-loss fix) — the
-                   installed app is 2.3.0 and contains NONE of them; they are the first
-                   three commits of the next release.
+                   UNRELEASED since v2.3.0 — SEVEN commits: 2d76b9a (visibleBoardIds
+                   non-root no-join fix), b211638 (slice 0b-0 — realtime channel-health
+                   instrumentation), and the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
+                   c60c9c2 (Social form-loss), ae067da (updateStatus phantom-row guard),
+                   7782116 (badge gates — Social/Interviews/Documents), bd8f07c (News
+                   badge+fade+counts+logDecision gates), edd7bd0 (upload path honesty).
+                   The installed app is 2.3.0 and contains NONE of them.
                    Shipped in v2.3.0: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD c60c9c2   |   311 commits   |   ~36,900 lines of TS/TSX
+                   HEAD edd7bd0   |   317 commits   |   ~37,000 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -69,6 +71,44 @@
   need an ARCHIVE option (delete-only today; for a published project delete is the wrong verb
   — you'd want to shelve it while keeping the live site + history). Mirror purge unscheduled.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-18 — COMPOSE SILENT-FAILURE CLUSTER CLOSED (ae067da→edd7bd0, UNRELEASED) ──
+  • ALL FOUR CLUSTER ISSUES ARE FIXED across five commits. The compose surface no longer
+    reports success for writes that did not land.
+  • ae067da — updateStatus fails on a phantom row instead of returning {ok:true}. Guard right
+    after the .maybeSingle() read (null IS proof the row is gone), before the approve-branch
+    section derivation and before either UPDATE. env.d.ts's return type widened (had omitted
+    error). Because the IPC handler routes on res.ok, this alone closed phantom routing into
+    info_page_sources and learning-loop pollution.
+  • 7782116 — badge flip gated on res.ok in Social/Interviews/Documents (three structurally
+    identical handleStatus copies), each with a new per-card statusError map.
+  • bd8f07c — News handleStatus: FOUR unconditional effects gated — logDecision, the badge,
+    the optimistic statusCounts adjust, and THE FADE that removes the card from the queue.
+    logDecision runs BEFORE res is inspected, so the gate wraps all four in the ok-branch
+    rather than just the flip. onApprove still fires on failure (it refreshes stats/unscored
+    counts — what a stale card needs; the toast self-guards on undefined addedToPages). New
+    per-card statusError, deliberately NOT aiErr (analyze/reconcile blank it, and it renders
+    in the compose panel, hidden on a collapsed card).
+    NOTE: intelligence_decisions is currently INERT — nothing reads it; the Haiku gate
+    consumer runs in GitHub Actions and cannot read local SQLite. So the logDecision gate is
+    CORRECTNESS HYGIENE; the FADE was the active-harm effect.
+  • edd7bd0 — upload path honesty. Handler returns {ok: results.length>0, results, errors}
+    instead of unconditional {ok:true}; each per-file failure pushes {file, error}. Canceled
+    path unchanged (cancel is not a failure). handleUpload got the missing catch, reads
+    errors, and renders a red banner. Offline guard + disabled-reason tooltip added.
+  • CORRECTION: the handleStatus copy count was first recorded as TWO tabs. It is FOUR.
+  • UPLOAD-CLICK MYSTERY — RESOLVED AS INTERMITTENT/UNREPRODUCIBLE. The console.log probe was
+    RUN: handleUpload FIRED with correct state ({online:true, projectId:'board-info-latam',
+    uploading:false}) and the dialog OPENED. The failure did not reproduce. The click reaches
+    the handler; there is no reproducible fixed cause. edd7bd0 does not prevent it — it makes
+    any recurrence VISIBLE. DO NOT re-open without a fresh reproduction.
+  • FAILURE BANNER PROVEN LIVE (correcting an earlier "untested" note): an upload started in
+    the connection-hysteresis window (internet down, online flag not yet flipped) surfaced
+    "Upload failed — <file>: insert failed: TypeError: fetch failed". Silent before edd7bd0.
+    KNOWN EDGE (polish, not a bug): that window shows the RAW network error rather than a
+    friendly "you appear to be offline" — string normalization is a later polish item.
+  • NEXT: the To-Do write-through bug (todo:complete/uncomplete write completion to LOCAL
+    workspace_tasks only, so getTasks reverts it from cloud) — diagnosis in progress.
 
   ── 2026-07-18 — COMPOSE CLUSTER SLICE 1: SOCIAL FORM-LOSS FIXED (c60c9c2, UNRELEASED) ──
   • ★ THE ONLY BUG IN THE CLUSTER THAT DESTROYED USER CONTENT IS FIXED. SocialTab.handleSubmit

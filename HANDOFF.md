@@ -1461,48 +1461,73 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
      commit message paraphrased it as *"cannot save this post"*, which appears nowhere in
      the code. **Tested:** success path unchanged (form clears, post lands); an offline
      save shows the banner **and** preserves the typed content.
-  2. **UPLOAD HANDLER LIES ON EMPTY RESULTS (code-confirmed).**
-     `intelligence:uploadDocument` (`ipc:2997`) returns `{ ok: true, results }`
-     **unconditionally** — even when every file failed and `results` is `[]`. Per-file
-     failures `continue` after a **main-process** `console.warn` (invisible in DevTools).
-     The renderer (`DocumentsTab` `handleUpload` ~122) branches on `result.ok` — a
-     constant — and never inspects `results`. **Fix:** return
-     `{ ok: results.length > 0, results, errors }` and have the renderer surface `errors`.
-     **NOTE: this cannot cause the data-loss first feared**, because the file dialog gates
-     the flow (see the investigation below) — but it is still a real lie.
-  3. **NO `catch` IN `handleUpload`.** The `try` has only a `finally`, so a rejected invoke
-     becomes an **unhandled promise rejection with no UI state** — another silent sink.
-     (`setUploading(false)` still runs, so the button looks normal.)
+  2. **✅ DONE — UPLOAD HANDLER LIED ON EMPTY RESULTS (fixed in `edd7bd0`).**
+     `intelligence:uploadDocument` returned `{ ok: true, results }` **unconditionally** —
+     even when every file failed and `results` was `[]`. Per-file failures `continue`d after
+     a **main-process** `console.warn` (invisible in DevTools), and the renderer branched on
+     `result.ok`, a constant. **Now returns `{ ok: results.length > 0, results, errors }`**,
+     each per-file failure pushing `{file, error}`. The **canceled** path is unchanged —
+     cancel is not a failure. The catch derives the file label from `basename(filePath)`
+     because `fileName` is scoped inside the `try` and is undefined on an early throw.
+  3. **✅ DONE — NO `catch` IN `handleUpload` (fixed in `edd7bd0`).** The `try` had only a
+     `finally`, so a rejected invoke became an **unhandled promise rejection with no UI
+     state** while `setUploading(false)` still ran and the button looked normal — *that is
+     what "nothing happened" looked like.* Now has a `catch`, reads `errors`, and renders a
+     red banner in the upload bar. Cancel stays a **silent no-op**.
+     Also in `edd7bd0`: **the offline gap** — Upload now gates on `!online` (Save/Send
+     already did) with a `title` giving the disabled reason. A real missing guard, **not**
+     the cause of the intermittent click failure.
      **⚠ CORRECTION TO THE ORIGINAL WRITE-UP:** this defect was first attributed to
-     `handleUpload` ALONE. Diagnosis found **`SocialTab.handleSubmit` had it too** — so
-     Social carried **BOTH** defects (unchecked return **and** no catch). Both of Social's
-     are fixed in `c60c9c2`; **`handleUpload`'s is still open.**
-  4. **SAVED BADGE / `updateStatus` ON A PHANTOM ROW (independent — SPLIT to its own tiny
-     slice).** `handleStatus` flips the badge **unconditionally** without reading `res.ok`.
-     And `updateStatus` returns `ok:true` for a row that **doesn't exist**: the read uses
-     `.maybeSingle()` (returns `null`, **no error**) and **an UPDATE matching zero rows is
-     not a PostgREST error** (`intel.ts` ~294 / ~314 — the UPDATE has no `.select()`). So
-     "Save" on a phantom card reports success **twice over**. **Fix:** gate the badge on
-     `res.ok`; make `updateStatus` treat a null row as an error and `.select()` to confirm
-     rows affected.
-     **⚠ THIS ONE GREW:** `handleStatus` is duplicated **VERBATIM in BOTH `SocialTab`
-     (~255) and `DocumentsTab` (~144)** — fixing one tab **leaves the other live.** Both,
-     or neither.
-  - **REMAINING WORK (updated 2026-07-18 after slice 1):**
-    - ✅ **#1 Social form-loss — DONE (`c60c9c2`).**
-    - ⬜ **#2 + #3 — THE UPLOAD SLICE.** `uploadDocument` (`ipc` ~2997) still returns
-      `{ok:true}` on empty results; `handleUpload` (`DocumentsTab` ~122) is still
-      `try`/`finally` with no catch. **PAIR THIS WITH THE UPLOAD-CLICK 5-MIN DIAGNOSIS**
-      (below) — same dev session, same neighborhood of code, and the click mystery is
-      **still UNRESOLVED** (enabled button + valid project + working handler, click
-      swallowed, cause unknown).
-    - ⬜ **#4 SAVED-badge / `updateStatus` phantom row.** Separate slice, **different
-      layer** (`intel.ts`, not the compose renderers) and a different test path. Now spans
-      **two tabs** — see the correction above.
-  - **THE UPLOAD-CLICK INVESTIGATION — cause UNRESOLVED, two theories RULED OUT.**
-    Symptom: clicked **"Upload Documents"** with a real project selected and **nothing
-    happened** — the dialog never opened. Investigated live 2026-07-18. The elimination
-    trail is recorded so it is **not re-derived**:
+     `handleUpload` ALONE. Diagnosis found **`SocialTab.handleSubmit` had it too** — Social
+     carried **BOTH** defects (unchecked return **and** no catch), both fixed in `c60c9c2`.
+  4. **✅ DONE — SAVED BADGE / `updateStatus` ON A PHANTOM ROW (fixed across `ae067da` +
+     `7782116` + `bd8f07c`).** `updateStatus` returned `ok:true` for a row that **doesn't
+     exist**: the read uses `.maybeSingle()` (returns `null`, **no error**) and **an UPDATE
+     matching zero rows is not a PostgREST error**. So "Save" on a phantom card reported
+     success **twice over** — and because the IPC handler routes on `res.ok`, a phantom
+     **could** route into `info_page_sources` and pollute the learning loop.
+     - **`ae067da` (main side):** guard right after the read —
+       `if (!meta) return {ok:false, error:'source no longer exists'}` — **before** the
+       approve-branch section derivation and **before either UPDATE**. The real-row path is
+       unchanged. `env.d.ts`'s return type was widened (it had omitted `error`).
+     - **`7782116` (three tabs):** badge flip gated on `res.ok` in **Social / Interviews /
+       Documents** — three structurally identical copies. New per-card `statusError` map in
+       each; `onApprove` still fires on failure.
+     - **`bd8f07c` (News, the fourth and most exposed):** News ran **FOUR** unconditional
+       effects — `logDecision`, the badge, an optimistic `statusCounts` adjust, and **the
+       FADE that removes the card from the queue.** Because **`logDecision` runs BEFORE
+       `res` is inspected**, the gate wraps **all four** in the `res.ok` branch rather than
+       just the flip. `onApprove` stays **outside** the branch (it refreshes
+       stats/unscored counts — exactly what a stale card needs; the toast self-guards on
+       `undefined addedToPages`). A **new per-card `statusError`**, deliberately NOT `aiErr`
+       (analyze/reconcile blank `aiErr` on entry, and it renders in the compose panel, which
+       is hidden on a collapsed card).
+       **`intelligence_decisions` is currently INERT** — nothing reads it; the Haiku gate
+       consumer runs in **GitHub Actions and cannot read local SQLite** — so the
+       `logDecision` gate is **correctness hygiene, not an active-harm fix. The FADE was the
+       active-harm effect.**
+     **⚠ THE COPY COUNT WAS WRONG:** first recorded as **two** tabs (Social + Documents).
+     It is **FOUR** — Interviews and News have `handleStatus` too. All four are now gated.
+  - **✅ CLUSTER CLOSED 2026-07-18 — all four issues, five commits (all UNRELEASED):**
+    - ✅ **#1 Social form-loss — `c60c9c2`.**
+    - ✅ **#4 main side — `ae067da`** (`updateStatus` phantom-row guard).
+    - ✅ **#4 renderer, three tabs — `7782116`** (Social / Interviews / Documents).
+    - ✅ **#4 News — `bd8f07c`** (badge + fade + counts + `logDecision`).
+    - ✅ **#2 + #3 upload path — `edd7bd0`** (honest return, catch, banner, offline guard).
+  - **THE UPLOAD-CLICK INVESTIGATION — RESOLVED AS INTERMITTENT / UNREPRODUCIBLE.**
+    **⚠ DO NOT RE-OPEN THIS WITHOUT A FRESH REPRODUCTION.**
+    - **THE OUTCOME (the probe was RUN).** A temporary `console.log` was added at the top of
+      `handleUpload`, the **real button** was clicked, and **`handleUpload` FIRED with
+      correct state** — `{online: true, projectId: 'board-info-latam', uploading: false}` —
+      **and the dialog OPENED.** The failure **did not reproduce.** The probe was then
+      removed (it is **not** in the tree).
+    - **CONCLUSION.** The click **reaches the handler**; there is **no reproducible fixed
+      cause**; the original *"nothing happened"* was **intermittent / one-off**.
+      **`edd7bd0` does NOT prevent it — it makes any recurrence VISIBLE (red banner)
+      instead of silent.** If it recurs, **the banner is the diagnostic signal we never
+      had.**
+    - The elimination trail below is kept **only** so the ruled-out theories are not
+      re-derived:
     - **PROVEN — the handler WORKS.** Calling
       `window.api.intelligence.uploadDocument({ projectBoardId: 'board-info-latam' })`
       directly from DevTools **opened the file dialog** and the promise fulfilled with no
@@ -1518,26 +1543,25 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
       - *"Offline gate"* — **FALSE**. There is **no online guard on Upload** (re-confirmed
         by code read: none in `handleUpload`, none in the IPC handler, none before
         `showOpenDialog`), **and the failure happened online.**
-    - **STILL UNKNOWN:** what swallowed the click between an **enabled button** and a
-      **working handler**.
-    - **NEXT SESSION START POINT (fast).** Put a `console.log` at the very top of
-      `handleUpload` (`DocumentsTab` ~122), click the **real button**, and see whether it
-      fires **at all**. If it does **not** fire, the `onClick` isn't wired to the click
-      being made (overlay? a second element? event not reaching it). If it **does** fire
-      but the invoke never resolves, trace from there. **Est. 5 min with fresh eyes.**
     - **HONEST NOTE FOR THE RECORD.** This took **four diagnostic passes** in one evening,
       and **two confident "confirmed causes" were each refuted by the next screenshot** — a
-      tired-debugging artifact, same family as the phantom-test lesson. It is **newly
-      found, non-critical, not a regression, and nothing in v2.3.0 depends on it.** It was
-      **parked deliberately to resume with a clear head, not abandoned.**
-  - **ALSO NOTED IN PASSING (not new work):**
-    - **Upload button has NO "why am I disabled" feedback** — only `disabled:opacity-50`.
-      The Rescore button (`Intelligence/index.tsx` ~154) has
-      `title={online ? '' : 'Unavailable while offline'}`; Upload should get the same
-      treatment (e.g. *"Select a project first"*). Small UX fix — **fold into the cluster
-      slice.**
-    - **`load()`'s bare `catch {}`** (`DocumentsTab` ~72) leaves a **stale list** on a
-      failed refetch with no indication. Minor, same silent class.
+      tired-debugging artifact, same family as the phantom-test lesson. The resolution was
+      **not** a found cause; it was **accepting that there wasn't a reproducible one** and
+      making the failure visible instead.
+  - **✅ THE FAILURE BANNER IS PROVEN LIVE (not "untested" — that earlier note was wrong).**
+    During offline testing, an upload started **in the connection-hysteresis window**
+    (internet down, the `online` flag not yet flipped — 2-failure hysteresis) surfaced a red
+    banner: **`Upload failed — <file>: insert failed: TypeError: fetch failed`**. Before
+    `edd7bd0` that was **silent**. **That is the failure path proven end-to-end.**
+    - **KNOWN EDGE (polish, NOT a bug).** An upload in that hysteresis window shows the
+      **RAW network error** (`insert failed: TypeError: fetch failed`) rather than a
+      friendly *"you appear to be offline"*. It is **correct and visible** — **string
+      normalization is a later polish item.**
+  - **ALSO NOTED IN PASSING:**
+    - ✅ **Upload's "why am I disabled" feedback — DONE in `edd7bd0`** (`title` gives
+      *"Select a project first"* / *"Unavailable while offline"*, mirroring Rescore).
+    - ⬜ **`load()`'s bare `catch {}`** (`DocumentsTab` ~72) leaves a **stale list** on a
+      failed refetch with no indication. **Still open.** Minor, same silent class.
 - **RECONCILE MUST REACH THE STRUCTURED ANALYSIS + HUMAN-CHANGE PROVENANCE (design-first,
   vision slice).** Found 2026-07-18.
   - **THE BUG.** When a researcher writes reconcile notes instructing a change (e.g. *"the
