@@ -158,7 +158,11 @@ async function visibleBoardIds(actor: Actor): Promise<Set<string>> {
 // own (info-page boards, archived tasks) are preserved by SCOPING each delete.
 const BOARD_COLS = ['id','name','position','archived','archived_at','archived_by','created_at','updated_at','deleted','board_type','board_config'] as const
 const COLUMN_COLS = ['id','name','position','color','board_id'] as const
-const TASK_COLS = ['id','board_id','column_id','title','content_type','client','client_id','client_org','area_of_analysis','assignees_json','due_date','start_date','priority','description','notes','sources_json','position','recurrence_json','archived','published_at','deletion_scheduled_at','pre_deletion_archived','created_at','updated_at'] as const
+// `completed_at` is in this list for the To-Do write-through path. syncTasksMirror
+// DELETEs then re-INSERTs using exactly these columns, so a column omitted here is
+// DESTROYED on every mirror sync (not merely overwritten) — which is half of why To-Do
+// completions used to vanish. The other half was the missing cloud write.
+const TASK_COLS = ['id','board_id','column_id','title','content_type','client','client_id','client_org','area_of_analysis','assignees_json','due_date','start_date','priority','description','notes','sources_json','position','recurrence_json','archived','published_at','deletion_scheduled_at','pre_deletion_archived','completed_at','created_at','updated_at'] as const
 
 function rowFor(cols: readonly string[], src: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
@@ -803,8 +807,12 @@ export async function createTask(t: {
 
 export async function updateTask(taskId: string, partial: Record<string, unknown>): Promise<{ ok: boolean }> {
   const patch: Record<string, unknown> = { updated_at: now() }
+  // `completed_at` is here for the To-Do write-through path (todo:complete/uncomplete).
+  // It already exists on cloud workspace_tasks — no migration. Without it in this list the
+  // field would be silently dropped from the patch while column_id still moved.
   const fields = ['column_id','title','content_type','client','client_id','client_org','area_of_analysis',
-    'due_date','start_date','priority','description','notes','sources_json','position','recurrence_json']
+    'due_date','start_date','priority','description','notes','sources_json','position','recurrence_json',
+    'completed_at']
   for (const f of fields) { if (f in partial) patch[f] = partial[f] }
   if ('assignee_ids' in partial) patch.assignees_json = JSON.stringify(partial.assignee_ids)
 

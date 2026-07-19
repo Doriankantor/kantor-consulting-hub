@@ -1543,7 +1543,7 @@ function registerTodoHandlers() {
   })
 
   // Complete a task: move to last column, set completed_at, notify admin
-  ipcMain.handle('todo:complete', (_e, taskId: string, userId: string, userName: string) => {
+  ipcMain.handle('todo:complete', async (_e, taskId: string, userId: string, userName: string) => {
     const db = getDatabase()
     const task = db.prepare('SELECT * FROM workspace_tasks WHERE id=?').get(taskId) as any
     if (!task) return { ok: false }
@@ -1556,6 +1556,19 @@ function registerTodoHandlers() {
     ).get() as { id: string } | undefined
     const targetCol = lastCol?.id ?? 'col-published'
 
+    // WRITE-THROUGH FIX — CLOUD FIRST, and it is AUTHORITATIVE. This used to be a local-only
+    // UPDATE, so syncTasksMirror (which DELETEs + re-INSERTs from cloud on any successful
+    // getTasks) reverted the completion. Field-level patch of ONLY the two fields this
+    // action changes — never a full-row write from the local mirror, which could clobber a
+    // field another device changed. updateTask throws on failure, matching the board
+    // task-write convention (writes are cloud-only and online-required; the isOnline()
+    // guards in boards.ts are on READS, not writes), so a failed write propagates instead of
+    // silently leaving a local-only completion.
+    await boardsCloud.updateTask(taskId, { column_id: targetCol, completed_at: completedAt })
+
+    // Local mirror written with the SAME values just persisted to cloud, so the To-Do view
+    // (todo:getMyTasks reads local and never re-syncs) reflects it immediately. Identical
+    // values means no divergence — the next syncTasksMirror overwrites with what cloud has.
     db.prepare('UPDATE workspace_tasks SET column_id=?, completed_at=?, updated_at=? WHERE id=?')
       .run(targetCol, completedAt, completedAt, taskId)
 
@@ -1589,9 +1602,14 @@ function registerTodoHandlers() {
   })
 
   // Undo completion: restore to previous column (scoping)
-  ipcMain.handle('todo:uncomplete', (_e, taskId: string) => {
+  ipcMain.handle('todo:uncomplete', async (_e, taskId: string) => {
+    const updatedAt = new Date().toISOString()
+    // Cloud-first, field-level — same rationale as todo:complete above. Clearing
+    // completed_at requires `completed_at` in updateTask's field allowlist; null is a
+    // meaningful value here, not an omission.
+    await boardsCloud.updateTask(taskId, { column_id: 'col-scoping', completed_at: null })
     getDatabase().prepare('UPDATE workspace_tasks SET column_id=?, completed_at=NULL, updated_at=? WHERE id=?')
-      .run('col-scoping', new Date().toISOString(), taskId)
+      .run('col-scoping', updatedAt, taskId)
     return { ok: true }
   })
 }
