@@ -2933,6 +2933,10 @@ function registerIntelligenceHandlers(): void {
     if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true }
 
     const results: Array<{ id: string; file_name: string }> = []
+    // Per-file failures used to be console.warn'd in the MAIN process only — invisible in
+    // DevTools — while the handler still reported ok:true. Collect them so the renderer can
+    // surface what actually failed.
+    const errors: Array<{ file: string; error: string }> = []
     for (const filePath of result.filePaths) {
       try {
         const { readFileSync } = require('fs')
@@ -2988,13 +2992,24 @@ function registerIntelligenceHandlers(): void {
           added_by_name: params.addedByName || null,
           project_board_id: params.projectBoardId,   // every row in this upload gets the same project
         })
-        if (!added.ok) { console.warn('[Intelligence] Upload persist failed for', fileName, added.error); continue }
+        if (!added.ok) {
+          console.warn('[Intelligence] Upload persist failed for', fileName, added.error)
+          errors.push({ file: fileName, error: added.error || 'persist failed' })
+          continue
+        }
         results.push({ id: docId, file_name: fileName })
       } catch (e: any) {
         console.warn('[Intelligence] Upload error for', filePath, e)
+        // `fileName` is scoped inside the try and may not exist yet (e.g. a readFileSync
+        // throw), so derive the label from filePath here.
+        const { basename: bname2 } = require('path')
+        errors.push({ file: bname2(filePath), error: e?.message || 'upload failed' })
       }
     }
-    return { ok: true, results }
+    // ok now reflects whether ANYTHING actually persisted. All files failed → ok:false with
+    // errors populated; some succeeded → ok:true, with any partial failures still listed.
+    // (The canceled path above returns its own shape and is untouched — cancel is not an error.)
+    return { ok: results.length > 0, results, errors }
   })
 
   // ── Part 8: Sync from Supabase cs_articles (replaced HTML scrape 2026-06-02) ──

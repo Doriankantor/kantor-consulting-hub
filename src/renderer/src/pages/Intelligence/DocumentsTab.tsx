@@ -51,6 +51,9 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
   const [documents, setDocuments] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  // Upload-bar error. The DocumentCompose-internal `error` state is per-card and unreachable
+  // from here, so the bar needs its own surface for a failed/partial upload.
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
   // Per-CARD status-write error (keyed by id, like NewsTab's aiErr). The DocumentCompose
   // sub-component's own `error` state is unreachable from here, so the list needs its own.
@@ -123,6 +126,7 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
   }, [online, load])
 
   async function handleUpload() {
+    setUploadError(null)
     setUploading(true)
     try {
       const result = await window.api.intelligence.uploadDocument({
@@ -132,9 +136,26 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
         // disabled when none is selected). Replaces the former non-atomic setProject loop.
         projectBoardId: project?.id,
       })
-      if (result.ok && !result.canceled) {
-        await load()
+      // Canceling the file dialog is a NO-OP, not a failure — stay silent.
+      if (result.canceled) return
+      // `ok` now means "at least one row actually persisted". It used to be hard-coded true,
+      // so a total failure looked identical to a success and the user saw nothing at all.
+      const failed = result.errors ?? []
+      if (!result.ok) {
+        setUploadError(
+          failed.length
+            ? `Upload failed — ${failed.map(f => `${f.file}: ${f.error}`).join('; ')}`
+            : 'Upload failed.'
+        )
+        return
       }
+      // Partial success: some rows landed, some didn't. Refresh AND report.
+      if (failed.length) setUploadError(`${failed.length} file(s) failed — ${failed.map(f => f.file).join(', ')}`)
+      await load()
+    } catch (e) {
+      // Previously absent: a rejected invoke vanished as an unhandled rejection while the
+      // button quietly reset, which is what "nothing happened" looked like.
+      setUploadError((e as Error)?.message || 'Upload failed.')
     } finally {
       setUploading(false)
     }
@@ -272,7 +293,8 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
       <div className="shrink-0 px-6 py-3 border-b border-gray-100 dark:border-white/[0.06] flex items-center gap-3">
         <button
           onClick={handleUpload}
-          disabled={uploading || !project?.id}
+          disabled={uploading || !project?.id || !online}
+          title={!project?.id ? 'Select a project first' : !online ? 'Unavailable while offline' : ''}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium transition disabled:opacity-50"
         >
           {uploading ? (
@@ -289,11 +311,15 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
             </>
           )}
         </button>
-        <span className="text-xs text-gray-400 dark:text-white/30">
-          {!project?.id
-            ? 'Select a project above to add sources.'
-            : 'Accepts PDF, DOCX, TXT — text is extracted on upload; AI analysis runs only when you ask'}
-        </span>
+        {uploadError ? (
+          <span className="text-xs text-red-500 dark:text-red-400">{uploadError}</span>
+        ) : (
+          <span className="text-xs text-gray-400 dark:text-white/30">
+            {!project?.id
+              ? 'Select a project above to add sources.'
+              : 'Accepts PDF, DOCX, TXT — text is extracted on upload; AI analysis runs only when you ask'}
+          </span>
+        )}
         <span className="ml-auto text-xs text-gray-400 dark:text-white/30">{visible.length} documents</span>
       </div>
 
