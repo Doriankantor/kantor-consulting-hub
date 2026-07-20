@@ -1,8 +1,8 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-07-19
+  Generated: 2026-07-20
   Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
-                   UNRELEASED since v2.3.0 — TWELVE commits: 2d76b9a (visibleBoardIds
+                   UNRELEASED since v2.3.0 — FIFTEEN commits: 2d76b9a (visibleBoardIds
                    non-root no-join fix), b211638 (slice 0b-0 — realtime channel-health
                    instrumentation), the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
                    c60c9c2 (Social form-loss), ae067da (updateStatus phantom-row guard),
@@ -12,14 +12,17 @@
                    To-Do overhaul foundation: a46345b (slice 1a — personal to-do cloud
                    tables + translate-migration), 4001652 (slice 1b — local-first
                    dual-write + sync queue, personal source), 4b9c0b3 (slice 1c-1 —
-                   cloud team roster + team:roster channel) and fa5c9cd (@mention
-                   dropdown clipping fix).
+                   cloud team roster + team:roster channel), fa5c9cd (@mention
+                   dropdown clipping fix), and the 1c-2 ARC that made cross-device
+                   assignment work for the first time: d16b071 (1c-2a — reversible
+                   half), 74150c7 (1c-2b-① — cloud rewrite, commit-once) and
+                   863e5be (1c-2b-② — all reads/writes repointed id->email).
                    The installed app is 2.3.0 and contains NONE of them.
                    Shipped in v2.3.0: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD fa5c9cd   |   327 commits   |   ~37,700 lines of TS/TSX
+                   HEAD 863e5be   |   331 commits   |   ~38,300 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -82,6 +85,79 @@
   as the To-Do prototype. To-Do slice 5 (intel culling directive) is its on-ramp; shared
   prerequisite: notifications → cloud.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-20 — THE 1c-2 ARC: CROSS-DEVICE ASSIGNMENT WORKS (d16b071, 74150c7, 863e5be) ──
+  • THE POINT: assignees_json held device-local local_users.id UUIDs, minted per-machine and
+    never synced, so an assignment made on one laptop resolved on NO other machine. Cross-team
+    assignment — the feature motivating the whole To-Do overhaul — had never actually worked.
+    It now stores stable WORK EMAILS and every read, write and notification matches on email.
+    Split into three commits deliberately so the IRREVERSIBLE step sat alone between two
+    verified ones. Scale was small (4 tasks, 4 ids, zero orphans); the risk was never volume,
+    it was correctness of the identity mapping.
+  • 1c-2a (d16b071) — the REVERSIBLE half. Backup + local rewrite + rehearsed rollback, no
+    cloud. Backups are SEPARATE LOCAL TABLES (assignees_backup, local_users_email_backup),
+    never columns — TASK_COLS drives syncTasksMirror's DELETE+reINSERT and would destroy a
+    backup column. Rewrote local_users.email (3 rows) and local assignees_json (4 tasks) in ONE
+    transaction; INSERT OR IGNORE backups so a re-run can't overwrite a true original. Rollback
+    is a real IPC channel, not a documented SQL block — a restore procedure that has only ever
+    been run as hand-typed SQL is an untested restore procedure. Proven by an OFFLINE round
+    trip on real data: migrate -> verify -> rollback -> verify -> re-run.
+  • 1c-2b-① (74150c7) — the CLOUD rewrite, COMMIT-ONCE. The cloud backup table
+    (sql/2026-07-20_assignees_cloud_backup.sql, run by hand) is a HARD PRECONDITION: the
+    routine refuses to run and names the missing task ids rather than proceeding. It lives in
+    cloud, not on one machine, so rollback doesn't depend on which laptop is available. LAST
+    REVERSIBLE POINT — once a second device syncs emails down, restoring cloud alone no longer
+    restores the system.
+  • 1c-2b-② (863e5be) — the FINALE. 11 matchers + 4 notification sites + every writer
+    repointed, shipped as ONE atomic slice: a repointed matcher against an unrepointed writer
+    makes new assignments instantly invisible. Shared helpers — main/assignees.ts
+    (assignedToSql via json_each whole-element match, isAssignedTo, parseAssignees) and
+    renderer/src/utils/assignees.ts (isAssignedTo, sameIdentity). Completions JOIN moved from
+    local_users ON lu.id to team_members ON LOWER(tm.email). Roster lifted into
+    WorkspaceContext so picker/Kanban/profile share ONE fetch (Analytics renders outside that
+    provider and fetches its own). assignee_ids renamed assignee_emails across ~20 sites — a
+    field named _ids holding emails is how the next identity bug gets written. VERIFIED IN-APP:
+    Weber, who has no local_users row on this machine, is assignable — the case that was
+    impossible before the migration.
+  • FINDING — local_users.email was STALE for 3 of the 4 assignees (daniel_lozano@,
+    jdcubillos@, leonardocs@ vs the roster's daniel.lozano@, jd.cubillos@, leonardo.carreno@).
+    resolveIdentity returns local_users.email, so migrating assignees_json WITHOUT it would
+    have passed on Dorian's machine and broken for every researcher — dk@'s address never
+    changed. Exactly the 1a shape: root-invisible because the admin's identity is stable.
+  • FINDING — THE MIRROR-INVERSION MECHANIC. Local workspace_tasks is a MIRROR, not a source:
+    getTasks -> syncTasksMirror (boards.ts:682) DELETEs and re-INSERTs every active-board row
+    from cloud. A local-only rewrite is therefore TRANSIENT (any online read clobbers it back),
+    which is why 1c-2a was verified OFFLINE. After the cloud rewrite the mechanic INVERTS and
+    the mirror starts reinforcing the migration — that inversion was the acceptance test for
+    1c-2b-①, not an afterthought.
+  • FINDING — THE TASK_COLS CONSTRAINT. Any backup COLUMN on workspace_tasks is destroyed by
+    syncTasksMirror's DELETE+reINSERT over exactly TASK_COLS (boards.ts:165). Backups of a
+    mirrored table must be separate tables. This reversed the initial plan mid-slice.
+  • FINDING — TWO SILENT FAILURES CAUGHT BY GREP, NOT BY tsc. (a) The assignee_emails rename
+    broke the cloud migration's own updateTask(id, {assignee_ids}) call — the key no longer
+    matched updateTask's 'assignee_emails' in partial check, so it would have stamped
+    updated_at, written NO assignees, and REPORTED SUCCESS. (b) A blanket userId->userEmail
+    rename clobbered an unrelated cal-toggles-${userId} localStorage key in TeamCalendar. BOTH
+    TYPECHECKED CLEAN. After a rename this size, sweep with grep for the OLD name and for the
+    behaviour — not just for compiler errors.
+  • FINDING — NO UNANCHORED %email% LIKE SURVIVES. The old assignees_json LIKE '%<id>%' was
+    survivable with UUIDs and is a live false-positive generator with emails (one address that
+    prefixes another would silently match the wrong person). Every SQL matcher is now
+    EXISTS (SELECT 1 FROM json_each(col) WHERE LOWER(json_each.value) = LOWER(?)).
+  • IDENTITY MODEL — FINAL RULING. ROOT = doriankantor@gmail.com / local-admin and ONLY that:
+    infrastructure admin, god-mode, BYPASSES the permission system rather than holding
+    permissions in it, NOT a teammate, does NOT appear in the Team console. dk@ is a
+    FULLY-PERMISSIONED TEAM MEMBER — every membership/head/assign right, but through the NORMAL
+    permission system as grantable/revocable rows. dk is what a member looks like with
+    everything ticked, not a second admin. OPEN, NOT YET DECIDED: does managing the team
+    require the gmail-root identity, or can a fully-permissioned member reach the (currently
+    root-only) Team console? Decide before the console is built — it changes the console's gate.
+  • CARRIED FORWARD: attendees_json is STILL id-keyed (TeamCalendar, 2 events) — out of scope,
+    different shape ([{id}] objects) with a Google Calendar round-trip; its own later slice; the
+    two formats coexist safely. notifications.user_id is now MIXED-FORMAT (emails on the
+    assignee paths, ids on older rows) — re-confirms notifications->cloud as a slice-5 prereq.
+  • NEXT — SLICE 2 (listTodos aggregation in MAIN), now UNBLOCKED. Net-new architecture, NOT a
+    port of the unified-Trash normalizer (that one normalizes in the renderer with weak gating).
 
   ── 2026-07-19 — CLOUD TEAM ROSTER + @MENTION FIX (4b9c0b3, fa5c9cd, UNRELEASED) ──
   • SLICE 1c-1 (4b9c0b3) — cloud team_members (email PK on the @kantor-consulting.com WORK

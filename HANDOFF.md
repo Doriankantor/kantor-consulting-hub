@@ -1,17 +1,24 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-19 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `fa5c9cd`, `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: TWELVE code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix). The installed app is 2.3.0 and contains NONE of them.** ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: TWELVE code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-20 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `863e5be`, `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: FIFTEEN code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale). The installed app is 2.3.0 and contains NONE of them.** ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: FIFTEEN code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
-**LATEST (2026-07-19) — HEAD `fa5c9cd`, pushed, tree clean.** The To-Do overhaul's identity
-foundation is in: **slice 1c-1 (`4b9c0b3`)** put the team roster in the cloud
-(`team_members`, email-keyed) behind a new `team:roster` channel, and **`fa5c9cd`** fixed the
-@mention dropdown that 1c-1's verification exposed. **NEXT IS SLICE 1c-2** — migrating
-`assignees_json` from device-local ids to emails, which is what makes cross-device assignment
-work for the first time. **Read the IDENTITY MODEL block under Known issues before touching
-anything identity-shaped** — `dk@` is a team member, not root, and several older entries in
-this file still say otherwise. Twelve code commits are unreleased; the installed app is 2.3.0.
+**LATEST (2026-07-20) — HEAD `863e5be`, pushed, tree clean. SLICE 1c IS DONE.** The whole
+identity foundation of the To-Do overhaul is in, across four commits: the cloud roster
+(`4b9c0b3`), the reversible local migration (`d16b071`), the commit-once cloud rewrite
+(`74150c7`) and the full read/write repoint (`863e5be`). **Cross-device assignment works for
+the first time** — `assignees_json` holds work emails, not device ids, and the assignee picker
+is fully clickable on every machine. Detail + the five findings: the **1c-2 ARC** entry under
+the To-Do overhaul.
+
+**NEXT IS SLICE 2 — the `listTodos` aggregation layer in MAIN.** It was blocked behind 1c-2
+and is now UNBLOCKED. Before starting, read the **SPEC vs REALITY** corrections: slice 2 is
+**net-new architecture, NOT a port of the unified-Trash normalizer** (that one normalizes in
+the renderer with weak gating). **Also read the IDENTITY MODEL block under Known issues before
+touching anything identity-shaped** — `dk@` is a fully-permissioned team member, not root, and
+several older entries in this file still say otherwise. Fifteen code commits are unreleased;
+the installed app is 2.3.0 and contains none of them.
 
 (Historical — **v2.3.0 RELEASED** (published 2026-07-17; version-bump commit `a4b161e`,
 tag `v2.3.0` pushed BEFORE the release build — no tag race). HEAD = `a4b161e`,
@@ -1498,18 +1505,27 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   - **STATUS:** design-first, multi-slice. **Needs a vision conversation** (per the HANDOFF
     convention for item-model changes — this touches locked decision #1, the unified item
     model). Manual slice unblocked; AI slice gated behind the analytical frameworks.
-- **★ IDENTITY MODEL — READ THIS BEFORE ANY IDENTITY-SHAPED WORK (corrected 2026-07-19).**
-  Several older entries in this file are superseded by the following. When they conflict,
-  **this block wins.**
-  - **`dk@kantor-consulting.com` is a TEAM MEMBER, NOT root.** It is Dorian's working/test
-    identity. It will eventually hold all permissions — but **THROUGH the normal permission
-    system**, not by being root. ⚠ **Earlier entries describing dk@ as "full-admin" are
+- **★ IDENTITY MODEL — READ THIS BEFORE ANY IDENTITY-SHAPED WORK (corrected 2026-07-19,
+  FINAL RULING 2026-07-20).** Several older entries in this file are superseded by the
+  following. When they conflict, **this block wins.**
+  - **ROOT = `doriankantor@gmail.com` / `local-admin` (`CLOUD_ADMIN_EMAIL`) — and ONLY that.**
+    The **infrastructure admin**: god-mode, **BYPASSES the permission system entirely** rather
+    than holding permissions within it. **NOT a teammate.** Stripped from assignee lists, never
+    a task assignee, not seeded into the roster, and **does NOT appear in the Team console**.
+  - **`dk@kantor-consulting.com` is a FULLY-PERMISSIONED TEAM MEMBER — not a second admin.**
+    It holds every membership, head role and assign right, but **through the NORMAL permission
+    system** — grantable and revocable rows, exactly like anyone else's. **dk is what a member
+    looks like with everything ticked**, which is precisely what makes it a useful test
+    identity: a capability that works for dk@ works because a permission row says so, not
+    because dk@ is privileged. ⚠ **Earlier entries describing dk@ as "full-admin" are
     SUPERSEDED** (see the cross-device findings block, which still uses the old framing).
-    This matters for testing: a capability that works for dk@ *because* dk@ is privileged
-    proves nothing about the researchers.
-  - **ROOT = `doriankantor@gmail.com` / `local-admin` (`CLOUD_ADMIN_EMAIL`)** — the infra
-    admin. Stripped from assignee lists, **never a task assignee**, not seeded into the
-    roster.
+  - **❓ OPEN — NOT YET DECIDED: who can reach the Team console?** Does managing the team
+    require the gmail-root identity, or can a fully-permissioned member get there? The console
+    is currently specced ROOT-ONLY, but if dk@ is a member rather than an admin, then either
+    Dorian must switch to the gmail identity to administer the team, or "manage team" becomes
+    a grantable permission like any other. **Decide this before the console is built** — it
+    changes the console's gate, and retrofitting an auth model onto a built surface is how the
+    0a-4 renderer-only-permission bug happened.
   - **`local_users` = ACCOUNTS. `team_members` = the ROSTER.** Two different things that were
     conflated until 1c-1 untangled them. Accounts are per-device and carry auth + lifecycle
     (password, status, heartbeat, invite codes) with **device-local ids**. The roster is
@@ -1608,14 +1624,16 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
        the spec against real code; corrections recorded under **SPEC vs REALITY** below.
     1. ✅ **DONE — `personal_todos` → cloud**, shipped as **1a (`a46345b`) + 1b (`4001652`)**.
        Detail in the two entries below.
-    1c. **CLOUD TEAM IDENTITY — inserted mid-sequence, not in the original spec.** Slice 2's
-       diagnosis found that `assignees_json` holds device-local ids, so cross-team assignment
-       (the feature motivating the whole overhaul) could never have worked cross-device.
-       **1c-1 ✅ DONE (`4b9c0b3`)** — the roster. **1c-2 NEXT** — the `assignees_json`
-       migration. Slice 2 is BLOCKED on 1c-2: `listTodos` cannot aggregate "assigned to me"
-       across devices while the stored ids only resolve on one machine.
-    2. **Aggregation layer:** `listTodos(actingUserId)` in MAIN, member-gated; the renderer
-       only **filters**.
+    1c. ✅ **DONE — CLOUD TEAM IDENTITY. Inserted mid-sequence, not in the original spec.**
+       Slice 2's diagnosis found that `assignees_json` held device-local ids, so cross-team
+       assignment — the feature motivating the whole overhaul — could never have worked
+       cross-device. Shipped as **1c-1 (`4b9c0b3`)** the roster, **1c-2a (`d16b071`)** the
+       reversible half, **1c-2b-① (`74150c7`)** the commit-once cloud rewrite, and
+       **1c-2b-② (`863e5be`)** the full read/write repoint. Detail in the **1c-2 ARC** entry.
+    2. ▶ **NEXT — Aggregation layer:** `listTodos(actingUserId)` in MAIN, member-gated; the
+       renderer only **filters**. **UNBLOCKED as of `863e5be`** — it could not aggregate
+       "assigned to me" while the stored ids resolved on one machine only. Now that assignees
+       are emails, `resolveIdentity` gives the same key on every device.
     3. **Step Rail + urgency/promotion UI** (port prototype behavior, theme tokens, **light
        AND dark**). First real exercise of `personal_todo_steps` — the table and its queue
        path exist (1a/1b) but **nothing writes it yet**; there are no step handlers.
@@ -1772,24 +1790,80 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
     the prototype, so the pair is mutually referential with one filename wrong). **Left
     unedited to keep the saved file faithful to what Dorian produced.** Fix the pointer during
     slice 0 if desired.
-  - **STATUS:** foundation bug fixed (`cc6aedf`); **slices 0 and 1 DONE** (`a46345b` +
-    `4001652` — personal to-dos are cloud-backed, offline-capable and cross-device);
-    **slice 1c-1 DONE** (`4b9c0b3` — the team roster is in the cloud and email-keyed).
-    **NEXT IS SLICE 1c-2 — the `assignees_json` device-id → email migration.** Slice 2
-    (`listTodos`) is BLOCKED behind it. Read the SPEC vs REALITY corrections above before
-    starting; slice 2 is net-new architecture, not a Trash port.
-  - **▶ SLICE 1c-2 — NEXT. `assignees_json` device-id → email + matcher repoint.**
-    - Migrate stored `assignees_json` values from `local_users.id` to work email, and repoint
-      the **~15 matcher sites onto ONE email helper**. The four incompatible matching idioms
-      catalogued in slice 0 (unanchored `LIKE`, `json_each()`, `JSON.parse`+match, and
-      `.includes()`) are exactly why this must not be done site-by-site.
-    - **Includes an OLD→NEW email translation** — existing assignees use superseded formats:
-      `daniel_lozano@` → `daniel.lozano@`, `leonardocs@` → `leonardo.carreno@`,
-      `jdcubillos@` → `jd.cubillos@`.
-    - **Reversible local backup; cloud is commit-once.** Follow `db.ts:633`'s precedent (the
-      existing `assignees_json` rewrite that parses → filters → writes back, skipping malformed
-      rows) rather than inventing a new shape.
-    - **This is what lights up the greyed picker rows from 1c-1.**
+  - **STATUS:** foundation bug fixed (`cc6aedf`); **slices 0, 1 and 1c ALL DONE.** Personal
+    to-dos are cloud-backed, offline-capable and cross-device (`a46345b` + `4001652`); the team
+    roster is cloud and email-keyed (`4b9c0b3`); and assignment itself is email-keyed end to end
+    (`d16b071` + `74150c7` + `863e5be`). **NEXT IS SLICE 2 — the `listTodos` aggregation layer
+    in MAIN, now UNBLOCKED.** Read the SPEC vs REALITY corrections above before starting; slice 2
+    is net-new architecture, not a Trash port.
+  - **✅ THE 1c-2 ARC — SHIPPED. `assignees_json` device-id → work email, end to end
+    (2026-07-20, UNRELEASED).** Split into three commits deliberately, so the irreversible step
+    sat alone between two verified ones. **CROSS-DEVICE ASSIGNMENT NOW WORKS FOR THE FIRST
+    TIME.** Scale was small — 4 tasks, 4 distinct ids, zero orphans — so the risk was never
+    volume, it was correctness of the identity mapping.
+    - **1c-2a — the REVERSIBLE half (`d16b071`).** Backup + local rewrite + a rehearsed
+      rollback, no cloud. Backups are **separate local TABLES** (`assignees_backup`,
+      `local_users_email_backup`), never columns — see the TASK_COLS finding below. Rewrote
+      `local_users.email` (3 rows) and local `assignees_json` (4 tasks) in ONE transaction, with
+      `INSERT OR IGNORE` backups so a re-run can't overwrite a true original. Rollback is a real
+      IPC channel, not a documented SQL block — **a restore procedure that has only ever been
+      run as hand-typed SQL is an untested restore procedure.** Proven by an OFFLINE round-trip
+      on real data: migrate → verify → rollback → verify → re-run.
+    - **1c-2b-① — the CLOUD rewrite, COMMIT-ONCE (`74150c7`).** Cloud backup table
+      (`sql/2026-07-20_assignees_cloud_backup.sql`, run by hand) is a **hard precondition** —
+      the routine refuses to run and names the missing task ids rather than proceeding. It lives
+      in cloud, not on one machine, so rollback doesn't depend on which laptop is available.
+      **Last reversible point:** once a second device syncs emails down, restoring cloud alone no
+      longer restores the system.
+    - **1c-2b-② — the FINALE (`863e5be`).** 11 matchers + 4 notification sites + every writer
+      repointed, shipped as ONE atomic slice because a repointed matcher against an unrepointed
+      writer makes new assignments instantly invisible. Shared helpers: **`main/assignees.ts`**
+      (`assignedToSql` via `json_each` whole-element match, `isAssignedTo`, `parseAssignees`) and
+      **`renderer/src/utils/assignees.ts`** (`isAssignedTo`, `sameIdentity`). The completions
+      JOIN moved from `local_users ON lu.id` to `team_members ON LOWER(tm.email)`. The roster was
+      lifted into `WorkspaceContext` so the picker, Kanban cards and profile panel share ONE
+      fetch (Analytics renders outside that provider and fetches its own). **`assignee_ids` →
+      `assignee_emails` across ~20 sites** — a field named `_ids` holding emails is how the next
+      identity bug gets written. **Verified in-app: Weber, who has no `local_users` row on this
+      machine, is assignable — the case that was impossible before the migration.**
+  - **★ THE FIVE HARD-WON FINDINGS FROM 1c-2 — expensive to rediscover, cheap to reread:**
+    - **`local_users.email` was STALE for 3 of the 4 assignees** (`daniel_lozano@`,
+      `jdcubillos@`, `leonardocs@` vs the roster's `daniel.lozano@`, `jd.cubillos@`,
+      `leonardo.carreno@`). `resolveIdentity` returns `local_users.email`, so migrating
+      `assignees_json` WITHOUT also migrating that column would have **passed on Dorian's
+      machine and broken for every researcher** — dk@'s address never changed. Exactly the
+      1a shape: root-invisible because the admin's identity is coincidentally stable.
+    - **THE MIRROR-INVERSION MECHANIC.** Local `workspace_tasks` is a MIRROR, not a source:
+      `getTasks` → `syncTasksMirror` (`boards.ts:682`) DELETEs and re-INSERTs every active-board
+      row from cloud. So a **local-only rewrite is TRANSIENT** — any online read clobbers it back
+      — which is why 1c-2a was verified OFFLINE. **After the cloud rewrite the mechanic inverts**
+      and the mirror starts *reinforcing* the migration. That inversion was the acceptance test
+      for 1c-2b-①, not an afterthought.
+    - **THE `TASK_COLS` CONSTRAINT.** Any backup COLUMN on `workspace_tasks` is destroyed by
+      `syncTasksMirror`'s DELETE + re-INSERT over exactly `TASK_COLS` (`boards.ts:165`). Backups
+      of a mirrored table must be **separate tables**. This reversed the initial column-based
+      plan mid-slice.
+    - **TWO SILENT FAILURES CAUGHT BY GREP, NOT BY `tsc`.** (a) The `assignee_emails` rename
+      broke the cloud migration's own `updateTask(id, { assignee_ids })` call — the key no longer
+      matched `updateTask`'s `'assignee_emails' in partial` check, so it would have stamped
+      `updated_at`, written NO assignees, and **reported success**. (b) A blanket
+      `userId` → `userEmail` rename clobbered an unrelated `cal-toggles-${userId}` localStorage
+      key in `TeamCalendar`. **Both typechecked clean.** After any rename this size, sweep with
+      grep for the OLD name and for the behaviour, not just for compiler errors.
+    - **NO UNANCHORED `%email%` LIKE SURVIVES.** The old `assignees_json LIKE '%<id>%'` was
+      survivable with UUIDs and is a live false-positive generator with emails — one address
+      that is a prefix of another would silently match the wrong person. Every SQL matcher is now
+      `EXISTS (SELECT 1 FROM json_each(col) WHERE LOWER(json_each.value) = LOWER(?))`, whole
+      element only, case-insensitive on both sides.
+  - **⚠ CARRIED FORWARD from 1c-2, unchanged:**
+    - **`attendees_json` is STILL id-keyed** (`TeamCalendar`, 2 events). Deliberately out of
+      scope — different shape (`[{id}]` objects, not bare strings) and it has a Google Calendar
+      round-trip. Its own later slice. The two formats coexist safely; nothing reads one as the
+      other.
+    - **`notifications.user_id` is now MIXED-FORMAT** — emails on the assignee-driven paths,
+      device ids on older rows and the `local-admin` fallback. Acceptable here, and it
+      **re-confirms `notifications` → cloud as a slice-5 prerequisite**: a directive notification
+      still never leaves the assigner's machine.
 - **COMPOSE-SURFACE WRITES AND FEEDBACK (silent-failure cluster).** Four related issues in
   the Intelligence compose surface, found 2026-07-18. **All four compose paths
   (News/Social/Documents/Interviews) write through the SAME `insertSource`
