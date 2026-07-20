@@ -27,7 +27,7 @@ import { isOnline } from '../cloud/connection'
 import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag } from '../cloud/tags'
 import { seedBoardsToCloud } from '../cloud/boardsSeed'
 import { getTeamRoster } from '../cloud/teamRoster'
-import { migrateAssigneesToEmail, rollbackAssigneesToIds } from '../cloud/assigneesEmailMigration'
+import { migrateAssigneesToEmail, rollbackAssigneesToIds, migrateCloudAssigneesToEmail, rollbackCloudAssignees } from '../cloud/assigneesEmailMigration'
 import { syncPersonalWrite, ownerEmail, nowIso } from '../cloud/personalSync'
 import { startRealtime, rescope as rescopeRealtime, teardownAll as teardownRealtime, getRealtimeHealth } from '../cloud/realtimeManager'
 import {
@@ -563,6 +563,10 @@ function registerTeamHandlers() {
   // hand-typed SQL is an untested restore procedure.
   ipcMain.handle('assigneesMigration:run',      () => migrateAssigneesToEmail())
   ipcMain.handle('assigneesMigration:rollback', () => rollbackAssigneesToIds())
+  // Slice 1c-2b-①: the cloud half. `cloudRollback` is the LAST REVERSIBLE POINT —
+  // valid only while no second device has synced the rewritten emails down.
+  ipcMain.handle('assigneesMigration:cloudRun',      () => migrateCloudAssigneesToEmail())
+  ipcMain.handle('assigneesMigration:cloudRollback', () => rollbackCloudAssignees())
 
   ipcMain.handle('team:invite', async (_e, params: { email: string; full_name: string; role?: string }) => {
     // Inviting people to the app is admin-only (enforced in main; never trust renderer).

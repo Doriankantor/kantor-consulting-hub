@@ -1,4 +1,6 @@
 import { isOnline } from './connection'
+import { cloud } from './client'
+import { updateTask } from './boards'
 import { getDatabase } from '../db'
 
 // ── Slice 1c-2a: assignees_json device-id → work-email, REVERSIBLE HALF ───────
@@ -219,4 +221,202 @@ export function runAssigneesEmailMigration(): void {
   } catch (e) {
     console.error('[assigneesMigration] unexpected error at launch:', (e as Error)?.message)
   }
+}
+
+// ── Slice 1c-2b-①: the CLOUD rewrite — THE COMMIT-ONCE STEP ──────────────────
+// Everything above this line is reversible from one machine. This is not. Cloud
+// is shared: once it holds emails and a second device syncs them down, that
+// device's mirror holds emails too, and restoring cloud alone no longer restores
+// the system. The cloud backup table (sql/2026-07-20_assignees_cloud_backup.sql)
+// is the last reversible point, and this routine REFUSES TO RUN WITHOUT IT.
+//
+// After this lands, the transient-local caveat from 1c-2a INVERTS and disappears:
+// syncTasksMirror starts pulling emails DOWN from cloud, so it reinforces the
+// migration instead of clobbering it. That inversion is the acceptance test.
+//
+// Still NOT touched here: every matcher, every notification target site,
+// toggleAssignee, and the `assignee_ids` field name. Those are 1c-2b-②. The
+// assignee picker stays greyed until then — expected, not a regression.
+
+const CLOUD_FLAG = 'assignees_cloud_email_migration_1c2b_v1'
+
+function getCloudFlag(): boolean {
+  try {
+    const row = getDatabase().prepare('SELECT value FROM settings WHERE key=?').get(CLOUD_FLAG) as { value?: string } | undefined
+    return row?.value === 'done'
+  } catch { return false }
+}
+
+function setCloudFlag(): void {
+  try {
+    getDatabase().prepare(
+      "INSERT INTO settings (key,value,updated_at) VALUES (?,'done',CURRENT_TIMESTAMP) " +
+      'ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP'
+    ).run(CLOUD_FLAG)
+  } catch (e) {
+    console.warn('[assigneesCloudMigration] could not persist flag:', (e as Error)?.message)
+  }
+}
+
+function clearCloudFlag(): void {
+  try {
+    getDatabase().prepare('DELETE FROM settings WHERE key=?').run(CLOUD_FLAG)
+  } catch (e) {
+    console.warn('[assigneesCloudMigration] could not clear flag:', (e as Error)?.message)
+  }
+}
+
+type CloudTaskRow = { id: string; assignees_json: string | null }
+
+const hasAssignees = (v: string | null | undefined): v is string =>
+  !!v && v !== '' && v !== '[]' && v !== 'null'
+
+export async function migrateCloudAssigneesToEmail(): Promise<MigrationResult> {
+  if (getCloudFlag()) return { ok: true, reason: 'already migrated' }
+  if (!isOnline()) return { ok: false, reason: 'offline — cloud rewrite needs cloud; will retry next launch' }
+
+  try {
+    // ── 1. Read the live cloud rows ────────────────────────────────────────
+    const { data, error } = await cloud.from('workspace_tasks').select('id, assignees_json')
+    if (error) return { ok: false, reason: `cloud read failed: ${error.message}` }
+    const targets = ((data ?? []) as CloudTaskRow[]).filter(r => hasAssignees(r.assignees_json))
+    if (targets.length === 0) {
+      console.log('[assigneesCloudMigration] nothing to rewrite (no cloud rows carry assignees)')
+      setCloudFlag()
+      return { ok: true, tasksRewritten: 0, skipped: 0 }
+    }
+
+    // ── 2. VERIFY THE BACKUP EXISTS AND COVERS EVERY TARGET ────────────────
+    // Hard precondition, not a warning. A commit-once step must never run on the
+    // assumption that a backup was taken — an unverified backup is not a backup.
+    const { data: backupData, error: backupErr } = await cloud
+      .from('assignees_backup_cloud')
+      .select('task_id')
+    if (backupErr) {
+      return {
+        ok: false,
+        reason:
+          `REFUSING TO RUN — cloud backup table unreadable (${backupErr.message}). ` +
+          'Apply sql/2026-07-20_assignees_cloud_backup.sql in Supabase first.',
+      }
+    }
+    const backedUp = new Set(((backupData ?? []) as { task_id: string }[]).map(r => r.task_id))
+    const unbacked = targets.filter(t => !backedUp.has(t.id)).map(t => t.id)
+    if (unbacked.length > 0) {
+      return {
+        ok: false,
+        reason:
+          `REFUSING TO RUN — ${unbacked.length} task(s) have no cloud backup row: ${unbacked.join(', ')}. ` +
+          'Re-run sql/2026-07-20_assignees_cloud_backup.sql in Supabase, then relaunch.',
+      }
+    }
+
+    // ── 3. Rewrite, one task at a time ─────────────────────────────────────
+    let tasksRewritten = 0
+    let skipped = 0
+    let failed = 0
+
+    for (const row of targets) {
+      let ids: unknown
+      try {
+        ids = JSON.parse(row.assignees_json as string)
+      } catch {
+        console.warn(`[assigneesCloudMigration] SKIP malformed assignees_json on cloud task ${row.id}`)
+        skipped++
+        continue
+      }
+      if (!Array.isArray(ids) || ids.length === 0) continue
+      // Already migrated — a re-run is a no-op, never a double translation.
+      if (ids.every(v => typeof v === 'string' && v.includes('@'))) continue
+
+      const mapped: string[] = []
+      for (const id of ids as string[]) {
+        if (typeof id === 'string' && id.includes('@')) { mapped.push(id); continue }
+        const hit = ID_MAP[id]
+        if (!hit) {
+          // Skip and LOG — never drop, never guess. The id stays in place so the
+          // row remains the record of it and the backup still matches reality.
+          console.warn(`[assigneesCloudMigration] SKIP unmapped assignee id ${id} on cloud task ${row.id} — left unchanged`)
+          skipped++
+          mapped.push(id)
+          continue
+        }
+        mapped.push(hit.newEmail)
+      }
+
+      try {
+        // The EXISTING cloud write path. Passing only assignee_ids means none of
+        // updateTask's column_id branches fire — no published_at stamp, no
+        // recurrence auto-copy, no prefetch. It stamps updated_at, which is what
+        // we want: realtime propagates the rewrite to any open renderer.
+        await updateTask(row.id, { assignee_ids: mapped })
+        tasksRewritten++
+      } catch (e) {
+        console.error(`[assigneesCloudMigration] cloud write FAILED for task ${row.id}:`, (e as Error)?.message)
+        failed++
+      }
+    }
+
+    if (failed > 0) {
+      // Flag deliberately NOT set. Partial progress is safe to re-run: rewritten
+      // rows are all-email and get skipped, the rest are retried.
+      console.error(`[assigneesCloudMigration] INCOMPLETE — ${tasksRewritten} rewritten, ${failed} failed, ${skipped} skipped. Flag left unset; will retry next launch.`)
+      return { ok: false, tasksRewritten, skipped, reason: `${failed} cloud write(s) failed` }
+    }
+
+    setCloudFlag()
+    console.log(`[assigneesCloudMigration] done — ${tasksRewritten} rewritten, ${skipped} skipped. Cloud is now email-keyed; syncTasksMirror will pull emails DOWN from here on.`)
+    return { ok: true, tasksRewritten, skipped }
+  } catch (e) {
+    const msg = (e as Error)?.message || 'cloud migration failed'
+    console.error('[assigneesCloudMigration] FAILED (flag left unset, will retry next launch):', msg)
+    return { ok: false, reason: msg }
+  }
+}
+
+// Restore cloud assignees_json from the cloud backup, and clear the flag so the
+// migration can run again. ⚠ VALID ONLY while no second device has synced the
+// rewritten emails down — after that this restores cloud, but the other device's
+// mirror already holds emails and will serve them again.
+export async function rollbackCloudAssignees(): Promise<MigrationResult> {
+  try {
+    if (!isOnline()) return { ok: false, reason: 'offline — cloud rollback needs cloud' }
+    const { data, error } = await cloud
+      .from('assignees_backup_cloud')
+      .select('task_id, assignees_json_old')
+    if (error) return { ok: false, reason: `cloud backup read failed: ${error.message}` }
+    const rows = (data ?? []) as { task_id: string; assignees_json_old: string }[]
+    if (rows.length === 0) return { ok: false, reason: 'cloud backup table is empty — nothing to restore' }
+
+    let restored = 0
+    let failed = 0
+    for (const r of rows) {
+      const { error: uErr } = await cloud
+        .from('workspace_tasks')
+        .update({ assignees_json: r.assignees_json_old, updated_at: new Date().toISOString() })
+        .eq('id', r.task_id)
+      if (uErr) {
+        console.error(`[assigneesCloudMigration] ROLLBACK failed for task ${r.task_id}:`, uErr.message)
+        failed++
+      } else restored++
+    }
+    if (failed > 0) return { ok: false, tasksRewritten: restored, reason: `${failed} restore(s) failed` }
+
+    clearCloudFlag()
+    console.log(`[assigneesCloudMigration] ROLLBACK done — ${restored} cloud task(s) restored, flag cleared`)
+    return { ok: true, tasksRewritten: restored }
+  } catch (e) {
+    const msg = (e as Error)?.message || 'cloud rollback failed'
+    console.error('[assigneesCloudMigration] ROLLBACK FAILED:', msg)
+    return { ok: false, reason: msg }
+  }
+}
+
+// Launch entry point. Never throws out of app startup; logs its own refusal.
+export function runCloudAssigneesMigration(): void {
+  migrateCloudAssigneesToEmail()
+    .then(res => {
+      if (!res.ok && res.reason) console.warn('[assigneesCloudMigration]', res.reason)
+    })
+    .catch(e => console.error('[assigneesCloudMigration] unexpected error at launch:', (e as Error)?.message))
 }

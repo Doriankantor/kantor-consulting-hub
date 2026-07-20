@@ -15,7 +15,7 @@ import { initConnection, isOnline, onReconnect } from './cloud/connection'
 import { runCompletedProjectsSweep } from './cloud/completedSweep'
 import { runPersonalTodosBackfill } from './cloud/personalTodosSeed'
 import { runPersonalSyncDrain } from './cloud/personalSync'
-import { runAssigneesEmailMigration } from './cloud/assigneesEmailMigration'
+import { runAssigneesEmailMigration, runCloudAssigneesMigration } from './cloud/assigneesEmailMigration'
 
 // Module-level reference so the updater can push events to the window
 let mainWindow: BrowserWindow | null = null
@@ -126,6 +126,11 @@ app.whenReady().then(() => {
   // the window. ⚠ Its local task rewrite is TRANSIENT until 1c-2b rewrites cloud —
   // syncTasksMirror clobbers it on any online read; the migration warns when online.
   setTimeout(() => { runAssigneesEmailMigration() }, 9000)
+  // Slice 1c-2b-①: the CLOUD rewrite — THE COMMIT-ONCE STEP. Sequenced AFTER the
+  // local pass so the two agree if both run on the same launch. REFUSES to run
+  // unless the cloud backup table covers every task it would rewrite, so a missing
+  // backup fails loudly instead of quietly making the rewrite irreversible.
+  setTimeout(() => { runCloudAssigneesMigration() }, 10000)
 
   // ── Auto-updater (production only) ──────────────────────────────────────
   function saveLastChecked() {

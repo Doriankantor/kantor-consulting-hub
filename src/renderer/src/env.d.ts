@@ -486,7 +486,9 @@ interface Window {
     // Slice 1c-2a: dev/admin control surface for the assignees id→email migration.
     assigneesMigration: {
       run:      () => Promise<{ ok: boolean; tasksRewritten?: number; emailsRewritten?: number; skipped?: number; reason?: string }>
-      rollback: () => Promise<{ ok: boolean; tasksRewritten?: number; emailsRewritten?: number; skipped?: number; reason?: string }>
+      rollback:      () => Promise<{ ok: boolean; tasksRewritten?: number; emailsRewritten?: number; skipped?: number; reason?: string }>
+      cloudRun:      () => Promise<{ ok: boolean; tasksRewritten?: number; emailsRewritten?: number; skipped?: number; reason?: string }>
+      cloudRollback: () => Promise<{ ok: boolean; tasksRewritten?: number; emailsRewritten?: number; skipped?: number; reason?: string }>
     }
     drive: {
       connect:        () => Promise<{ ok: boolean; error?: string }>

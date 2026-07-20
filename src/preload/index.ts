@@ -48,7 +48,9 @@ const api = {
   // Slice 1c-2a: dev/admin control surface for the assignees id→email migration.
   assigneesMigration: {
     run:      () => ipcRenderer.invoke('assigneesMigration:run'),
-    rollback: () => ipcRenderer.invoke('assigneesMigration:rollback'),
+    rollback:      () => ipcRenderer.invoke('assigneesMigration:rollback'),
+    cloudRun:      () => ipcRenderer.invoke('assigneesMigration:cloudRun'),
+    cloudRollback: () => ipcRenderer.invoke('assigneesMigration:cloudRollback'),
   },
   drive: {
     connect:        ()              => ipcRenderer.invoke('drive:connect'),
