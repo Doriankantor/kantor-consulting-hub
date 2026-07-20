@@ -95,8 +95,23 @@ interface AppNotification {
 // The normalized To-Do aggregate (slice 2). Mirrors TodoItem in src/main/todos.ts.
 // The `source` union GROWS — 'assigned' (slice 2.5, off-card), 'kc-meeting' and
 // 'kc-intel' (slice 5) land as new values without reshaping the rest.
-interface TodoItem {
+/** One Step Rail dot. PERSONAL items only. */
+interface TodoStep {
   id: string
+  text: string
+  checked: boolean
+  position: number
+}
+
+interface TodoItem {
+  /** DISPLAY id (`personal-<uuid>` / `task-<id>`). NOT a write key — use `raw_id`. */
+  id: string
+  /**
+   * The unprefixed row id, for writes. Step handlers key on this; passing the
+   * prefixed `id` would create steps pointing at a nonexistent to-do, and no FK
+   * exists to reject it.
+   */
+  raw_id: string
   source: 'personal' | 'kc-deadline'
   title: string
   due_date: string | null
@@ -109,8 +124,14 @@ interface TodoItem {
   linked_task_id: string | null
   column_id: string | null
   area_of_analysis: string | null
-  /** ⚠ NOT trustworthy until slice 3b fixes the checklist mirror. Unused today. */
+  /**
+   * PERSONAL: real as of 3b (`steps.length > 0`).
+   * KC-DEADLINE: ⚠ still NOT trustworthy — reads the unmirrored local checklist
+   * table. Unused for board cards; the checklist rail is slice 4.
+   */
   has_steps: boolean
+  /** PERSONAL ONLY — `undefined` for kc-deadline (card checklists are slice 4). */
+  steps?: TodoStep[]
 }
 
 interface ChatMessage {
@@ -738,6 +759,12 @@ interface Window {
       complete:   (id: string) => Promise<{ ok:boolean }>
       uncomplete: (id: string) => Promise<{ ok:boolean }>
       delete:     (id: string) => Promise<{ ok:boolean }>
+    }
+    /** Slice 3b. `todoId` is the BARE personal_todos.id — pass TodoItem.raw_id. */
+    personalTodoStep: {
+      create: (todoId: string, text: string) => Promise<{ ok:boolean; id?:string; error?:string }>
+      toggle: (stepId: string)               => Promise<{ ok:boolean; error?:string }>
+      delete: (stepId: string)               => Promise<{ ok:boolean }>
     }
     notificationPrefs: {
       get:  (userId: string) => Promise<{ first_reminder_min: number; second_reminder_min: number; apply_calendar: number; apply_tasks: number; apply_personal: number; email_prefs_json: string }>

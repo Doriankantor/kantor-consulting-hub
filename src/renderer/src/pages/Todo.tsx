@@ -4,6 +4,7 @@ import { useWorkspace } from '../contexts/WorkspaceContext'
 import { useConnection } from '../contexts/ConnectionContext'
 import { useNavigate } from 'react-router-dom'
 import { urgency, URGENCY_RANK, isPromoted, dueLabel, type UrgencyKey } from '../utils/urgency'
+import StepRail, { railOrder } from '../components/StepRail'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The To-Do tab (slice 3a). Structure ported from docs/TodoStepRail.html.
@@ -13,9 +14,10 @@ import { urgency, URGENCY_RANK, isPromoted, dueLabel, type UrgencyKey } from '..
 // and Google meetings stay a SEPARATE, ONLINE-ONLY renderer concern — they are not
 // in the main-process aggregate because they cannot be assembled locally.
 //
-// NO STEP RAIL HERE. `has_steps` is deliberately NOT consumed: it reads a local
-// checklist table that no longer receives writes, so it is not trustworthy until
-// slice 3b adds the mirror. The rail is 3b.
+// STEP RAIL (3b) — PERSONAL ITEMS ONLY. Personal steps arrive INLINE on the
+// TodoItem (`steps`), so the rail needs no fetch of its own. Board cards still get
+// NO rail: their steps are card checklists, which read an unmirrored local table
+// and whose toggle is a card edit gated by slice 4's EDIT tier.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Display sources = the backend's TodoItem sources + meetings, which are view-layer. */
@@ -66,6 +68,194 @@ const inTab = (t: DisplayItem, id: TabId): boolean =>
   : id === 'kc' ? (t.source.startsWith('kc') || t.source === 'assigned')
   : t.source === id
 
+/**
+ * ★ ADD-STEP INPUT — MODULE-LEVEL, WITH ITS OWN DRAFT STATE. Both halves matter.
+ *
+ * THE BUG THIS FIXES: `Row` is defined INSIDE `Todo()`, so every render of Todo
+ * creates a NEW function identity for it. React compares component types by
+ * identity, sees a different type, and UNMOUNTS + REMOUNTS the whole subtree
+ * rather than updating it — destroying the DOM node that had focus. With the draft
+ * held in Todo's state, each keystroke re-rendered Todo → new Row → remount →
+ * focus lost after exactly one character.
+ *
+ * THE FIX: keep the draft HERE. Typing now mutates only this component's state, so
+ * Todo never re-renders while you type, Row is never recreated, and the input node
+ * survives. `onAdd` fires on Enter only — the one moment a refetch is wanted anyway.
+ *
+ * Defined at module level so its own identity is stable too; without that it would
+ * be recreated alongside Row and remount regardless of where the draft lived.
+ */
+function AddStepInput({ onAdd }: { onAdd: (text: string) => void }) {
+  const [draft, setDraft] = useState('')
+  return (
+    <input
+      value={draft}
+      onChange={e => setDraft(e.target.value)}
+      onKeyDown={e => {
+        if (e.key !== 'Enter') return
+        const t = draft.trim()
+        if (!t) return
+        setDraft('')
+        onAdd(t)
+      }}
+      placeholder="Add step"
+      className="w-full bg-transparent text-xs px-1 py-1 border-b border-transparent focus:border-indigo-400 outline-none text-gray-700 dark:text-white/80 placeholder:text-gray-400 dark:placeholder:text-white/30"
+    />
+  )
+}
+
+/**
+ * ★ THE PERSONAL CARD — MODULE-LEVEL, AND THAT IS THE WHOLE POINT.
+ *
+ * `Row` is defined INSIDE `Todo()`, so it gets a new function identity on every
+ * Todo render and React REMOUNTS its entire subtree rather than reconciling it.
+ * That destroyed the Step Rail's DOM nodes on every toggle, which is why FLIP had
+ * no "before" node to measure and the fill bar had no from-width to transition.
+ *
+ * React.memo CANNOT fix that: memo skips re-rendering a component that stays
+ * MOUNTED — it cannot survive a parent unmount, and its comparator is never even
+ * reached when the parent element's type changed. Stabilizing props via
+ * useCallback/useMemo has the same limitation.
+ *
+ * Hoisting THIS component out is what fixes it: its type is now stable, so React
+ * reconciles it (and StepRail below it) instead of tearing it down. Note the
+ * distinction that matters — CHANGING PROP IDENTITY causes a re-render, which is
+ * fine and in fact required for FLIP; CHANGING COMPONENT TYPE causes a remount,
+ * which is fatal. The handlers below may be recreated freely.
+ *
+ * `Row` itself stays inside Todo (logged tech debt) — only the branch that owns
+ * DOM state needed to move.
+ */
+function PersonalCard({
+  item, isOpen, dueColor, extraClass = '',
+  onComplete, onDelete, onToggleExpand, onStepToggle, onStepAdd, onStepDelete,
+}: {
+  item: DisplayItem
+  isOpen: boolean
+  dueColor: string
+  extraClass?: string
+  onComplete: () => void
+  onDelete: () => void
+  onToggleExpand: () => void
+  onStepToggle: (stepId: string) => void
+  onStepAdd: (text: string) => void
+  onStepDelete: (stepId: string) => void
+}) {
+  const steps = item.steps ?? []
+  return (
+      <div className={`group border border-dashed border-gray-200 dark:border-white/15 bg-gray-50/30 dark:bg-white/[0.015] rounded-xl mx-3 my-1 px-3 py-2.5 ${extraClass}`}>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => onComplete()}
+          className={`shrink-0 w-[18px] h-[18px] rounded-full border-2 transition flex items-center justify-center ${
+            item.completed ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-white/30 hover:border-indigo-400'
+          }`}
+        >
+          {item.completed && (
+            <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+              <path d="M2 5l2.5 2.5L8 2.5" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className={`text-sm ${item.completed ? 'line-through text-gray-400 dark:text-white/40' : 'text-gray-900 dark:text-white'}`}>
+              {item.title}
+            </p>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-gray-100 dark:bg-white/[0.08] text-gray-400 dark:text-white/40 border border-gray-200 dark:border-white/[0.08]">
+              Personal
+            </span>
+          </div>
+          {(item.due_date || item.due_time) && (
+            <p className={`text-[10px] mt-0.5 ${dueColor}`}>{dueLabel(item.due_date, item.due_time)}</p>
+          )}
+        </div>
+        {/* ★ AFFORDANCES — visible at rest, not hover-only. They were opacity-0
+            until hover on a gray-300 / white-25 icon, which is invisible twice
+            over: undiscoverable before hover, low-contrast after. Now they sit at
+            60% and come to full on hover, on a larger 7×7 target with a heavier
+            stroke. Same interaction, actually findable. */}
+        <button
+          onClick={() => onToggleExpand()}
+          className={`w-7 h-7 flex items-center justify-center rounded-lg transition shrink-0 opacity-60 group-hover:opacity-100 hover:bg-indigo-50 dark:hover:bg-indigo-500/15 ${
+            isOpen
+              ? 'text-indigo-500 dark:text-indigo-400 opacity-100'
+              : 'text-gray-500 dark:text-white/50 hover:text-indigo-500 dark:hover:text-indigo-400'
+          }`}
+          title={isOpen ? 'Hide steps' : 'Steps'}
+        >
+          <svg width="13" height="13" viewBox="0 0 12 12" fill="none"
+               className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}>
+            <path d="M2 4.5L6 8.5L10 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+        <button
+          onClick={() => onDelete()}
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 dark:text-white/50 opacity-60 group-hover:opacity-100 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/15 transition shrink-0"
+          title="Delete"
+        >
+          <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
+            <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* ★ THE RAIL IS ALWAYS VISIBLE ONCE A STEP EXISTS — no expand required.
+          StepRail itself returns null at zero steps, so a step-less to-do renders
+          exactly as it did before 3b: no bar, no track, nothing. */}
+      <StepRail
+        steps={steps}
+        labelMode={steps.length <= 4 ? 'all' : 'truncate'}
+        onToggle={sid => onStepToggle(sid)}
+      />
+
+      {/* EXPANDED — the EDITING affordances only (add + per-step delete). The rail
+          above stays put; expanding never moves or duplicates it. */}
+      {isOpen && (
+        <div className="mt-2 pt-2 border-t border-dashed border-gray-300 dark:border-white/[0.12] space-y-1">
+          {railOrder(steps).map(s => (
+            <div key={s.id} className="flex items-start gap-2 group/step py-0.5">
+              <button
+                onClick={() => onStepToggle(s.id)}
+                className={`shrink-0 mt-[3px] w-[16px] h-[16px] rounded-full border-2 flex items-center justify-center transition-all duration-150 hover:scale-110 ${
+                  s.checked ? 'bg-indigo-500 border-indigo-500' : 'bg-gray-100 dark:bg-white/[0.08] border-gray-300 dark:border-white/30 hover:border-indigo-400'
+                }`}
+              >
+                {s.checked && (
+                  <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                    <path d="M2 5l2.5 2.5L8 2.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </button>
+              <span className={`flex-1 min-w-0 text-xs leading-snug break-words ${s.checked ? 'text-indigo-500 dark:text-indigo-300' : 'text-gray-600 dark:text-white/70'}`}>
+                {s.text}
+              </span>
+              <button
+                onClick={() => onStepDelete(s.id)}
+                className="opacity-0 group-hover/step:opacity-100 w-6 h-6 flex items-center justify-center rounded-md text-gray-500 dark:text-white/50 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/15 transition shrink-0"
+                title="Delete step"
+              >
+                <svg width="11" height="11" viewBox="0 0 10 10" fill="none">
+                  <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+          ))}
+          <AddStepInput onAdd={text => onStepAdd(text)} />
+        </div>
+      )}
+      </div>
+  )
+}
+
+/** Due-date colour. Module-level so both render paths share one definition. */
+function dueColorFor(item: DisplayItem): string {
+  const k = urgency(item.due_date).k
+  return k === 'pastdue' ? 'text-red-500 dark:text-red-400'
+    : k === 'today' ? 'text-amber-500 dark:text-amber-400'
+    : 'text-gray-400 dark:text-white/40'
+}
+
 const BAND_LABELS: Record<UrgencyKey, string> = {
   pastdue: 'Past due', today: 'Due today', tomorrow: 'Due tomorrow',
   d2: '2 days to go', d3: '3 days to go', later: 'Later', none: 'No date',
@@ -84,6 +274,18 @@ export default function Todo() {
   const [loading, setLoading] = useState(true)
   const [doneExpanded, setDoneExpanded] = useState(false)
   const [completing, setCompleting] = useState<Set<string>>(new Set())
+
+  // Which personal cards are expanded (step editing). Ephemeral by design — this
+  // is an editing affordance, not a preference worth persisting across sessions.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const toggleExpanded = (id: string): void => setExpanded(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+  // NOTE: add-step drafts deliberately do NOT live here. See AddStepInput — holding
+  // them in this component re-rendered Todo on every keystroke, which recreated the
+  // inline `Row` and remounted the input, losing focus after one character.
 
   const [tab, setTab] = useState<TabId>(() => {
     try {
@@ -168,6 +370,9 @@ export default function Todo() {
             if (!ev.allDay && ev.end && new Date(ev.end).getTime() < now) continue
             out.push({
               id: 'gcal-' + ev.id,
+              // Meetings have no local row to write to; raw_id carries the bare
+              // Google event id purely for shape parity with the aggregate.
+              raw_id: ev.id,
               source: 'kc-meeting',
               title: ev.summary,
               due_date: ev.start.slice(0, 10),
@@ -263,6 +468,56 @@ export default function Todo() {
     if (item.completed) await window.api.personalTodo.uncomplete(id)
     else await window.api.personalTodo.complete(id)
     queueLoad()
+  }
+
+  // ── Steps (3b) ─────────────────────────────────────────────────────────────
+  // NO `if (!online)` GUARD ANYWHERE BELOW — deliberately. Personal is the
+  // offline-capable source (local-first + sync queue, 1b), and the 1b lesson was
+  // that a renderer-side online guard blocks the one write path that works
+  // offline. Board actions elsewhere on this page ARE guarded; these must not be.
+
+  async function handleStepToggle(item: DisplayItem, stepId: string) {
+    // Optimistic: the rail's FLIP animation reads from the CURRENT render, so
+    // waiting for the round-trip would make the dots jump instead of slide.
+    setItems(prev => prev.map(i => i.id !== item.id ? i : {
+      ...i,
+      steps: (i.steps ?? []).map(s => s.id === stepId ? { ...s, checked: !s.checked } : s),
+    }))
+    // ★ NO queueLoad() HERE — deliberately. The refetch used to land mid-animation
+    // and re-settle the rail, producing a visible second hitch. The optimistic
+    // update above already holds the correct state, and the write is durable
+    // regardless: the handler writes LOCAL first and hands the cloud op to the
+    // sync queue, which replays it on reconnect. Refetching bought nothing but a
+    // flicker. A genuinely failed toggle is corrected by the next natural
+    // refetch (focus, realtime push, tab switch) rather than by fighting the
+    // animation on every successful one.
+    const res = await window.api.personalTodoStep.toggle(stepId)
+    if (!res?.ok) {
+      // Revert only on an explicit refusal (e.g. the row vanished). Silent
+      // divergence between what the rail shows and what is stored is worse than
+      // a visible snap-back.
+      setItems(prev => prev.map(i => i.id !== item.id ? i : {
+        ...i,
+        steps: (i.steps ?? []).map(s => s.id === stepId ? { ...s, checked: !s.checked } : s),
+      }))
+    }
+  }
+
+  async function handleStepAdd(item: DisplayItem, text: string) {
+    const body = text.trim()
+    if (!body) return
+    // raw_id, NOT item.id — the display id carries a `personal-` prefix and would
+    // create a step attached to no to-do, with no FK to reject it.
+    await window.api.personalTodoStep.create(item.raw_id, body)
+    queueLoad()
+  }
+
+  async function handleStepDelete(stepId: string, item: DisplayItem) {
+    setItems(prev => prev.map(i => i.id !== item.id ? i : {
+      ...i, steps: (i.steps ?? []).filter(s => s.id !== stepId),
+    }))
+    try { await window.api.personalTodoStep.delete(stepId) }
+    finally { queueLoad() }
   }
 
   async function handlePersonalDelete(item: DisplayItem) {
@@ -361,16 +616,50 @@ export default function Todo() {
   }, [all])
 
   // ── Item rendering ─────────────────────────────────────────────────────────
+  /**
+   * ★ THE DISPATCHER. Personal items go STRAIGHT to PersonalCard; everything else
+   * goes through Row.
+   *
+   * This is a FACTORY, not a component — it is never used as a JSX type, so its
+   * unstable identity is harmless. React reconciles on the element type it RETURNS
+   * (`PersonalCard`, module-level and stable), which is the whole point:
+   *
+   *   Todo re-render → Row gets a new identity → React unmounts the Row fiber and
+   *   EVERYTHING under it. Nothing below that boundary can be saved — not by
+   *   React.memo, not by a stable child type, not by useCallback'd props. Two
+   *   earlier attempts failed on exactly that.
+   *
+   * Routing personal cards ABOVE the boundary is what makes their DOM persist, so
+   * StepRail keeps its nodes and FLIP has a "before" to measure. Board and meeting
+   * cards still remount every render — harmless, they hold no focus or animation
+   * state. ⚠ Do NOT reintroduce a component defined inside Todo for personal cards.
+   */
+  function renderItem(item: DisplayItem, extraClass = ''): JSX.Element {
+    if (item.source === 'personal') {
+      return (
+        <PersonalCard
+          key={item.id}
+          item={item}
+          isOpen={expanded.has(item.id)}
+          dueColor={dueColorFor(item)}
+          extraClass={extraClass}
+          onComplete={() => handlePersonalToggle(item)}
+          onDelete={() => handlePersonalDelete(item)}
+          onToggleExpand={() => toggleExpanded(item.id)}
+          onStepToggle={sid => handleStepToggle(item, sid)}
+          onStepAdd={text => handleStepAdd(item, text)}
+          onStepDelete={sid => handleStepDelete(sid, item)}
+        />
+      )
+    }
+    return <Row key={item.id} item={item} extraClass={extraClass} />
+  }
+
   function Row({ item, extraClass = '' }: { item: DisplayItem; extraClass?: string }) {
     const area = areas.find(a => a.id === item.area_of_analysis)
-    const isPersonal = item.source === 'personal'
     const isMeeting  = item.source === 'kc-meeting'
     const isBusy     = completing.has(item.id)
-    const u          = urgency(item.due_date)
-    const dueColor =
-      u.k === 'pastdue' ? 'text-red-500 dark:text-red-400'
-      : u.k === 'today' ? 'text-amber-500 dark:text-amber-400'
-      : 'text-gray-400 dark:text-white/40'
+    const dueColor   = dueColorFor(item)
 
     if (isMeeting) {
       return (
@@ -404,46 +693,10 @@ export default function Todo() {
       )
     }
 
-    if (isPersonal) {
-      return (
-        <div className={`group flex items-center gap-3 border border-dashed border-gray-200 dark:border-white/15 bg-gray-50/30 dark:bg-white/[0.015] rounded-xl mx-3 my-1 px-3 py-2.5 ${extraClass}`}>
-          <button
-            onClick={() => handlePersonalToggle(item)}
-            className={`shrink-0 w-[18px] h-[18px] rounded-full border-2 transition flex items-center justify-center ${
-              item.completed ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-white/30 hover:border-indigo-400'
-            }`}
-          >
-            {item.completed && (
-              <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
-                <path d="M2 5l2.5 2.5L8 2.5" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            )}
-          </button>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className={`text-sm ${item.completed ? 'line-through text-gray-400 dark:text-white/40' : 'text-gray-900 dark:text-white'}`}>
-                {item.title}
-              </p>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-gray-100 dark:bg-white/[0.08] text-gray-400 dark:text-white/40 border border-gray-200 dark:border-white/[0.08]">
-                Personal
-              </span>
-            </div>
-            {(item.due_date || item.due_time) && (
-              <p className={`text-[10px] mt-0.5 ${dueColor}`}>{dueLabel(item.due_date, item.due_time)}</p>
-            )}
-          </div>
-          <button
-            onClick={() => handlePersonalDelete(item)}
-            className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-lg text-gray-300 dark:text-white/25 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition shrink-0"
-            title="Delete"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          </button>
-        </div>
-      )
-    }
+    // ⚠ NO PERSONAL BRANCH HERE — deliberately removed. Personal items are routed
+    // to PersonalCard by renderItem, ABOVE this component, because anything Row
+    // renders is destroyed whenever Row's identity changes. Re-adding a personal
+    // branch here would silently reinstate the animation bug.
 
     // Board card (kc-deadline) — and, later, off-card 'assigned'.
     return (
@@ -588,7 +841,7 @@ export default function Todo() {
                 <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
                   Directives
                 </div>
-                {directives.map(t => <Row key={t.id} item={t} extraClass="bg-violet-50/40 dark:bg-violet-500/5" />)}
+                {directives.map(t => renderItem(t, 'bg-violet-50/40 dark:bg-violet-500/5'))}
               </div>
             )}
 
@@ -601,12 +854,9 @@ export default function Todo() {
                   </span>
                   <span className="text-xs text-gray-300 dark:text-white/25">({promoted.length})</span>
                 </div>
-                {promoted.map(t => (
-                  <Row key={t.id} item={t}
-                    extraClass={urgency(t.due_date).k === 'pastdue'
-                      ? 'bg-red-50/40 dark:bg-red-500/5'
-                      : 'bg-amber-50/40 dark:bg-amber-500/5'} />
-                ))}
+                {promoted.map(t => renderItem(t, urgency(t.due_date).k === 'pastdue'
+                  ? 'bg-red-50/40 dark:bg-red-500/5'
+                  : 'bg-amber-50/40 dark:bg-amber-500/5'))}
               </div>
             )}
 
@@ -617,7 +867,7 @@ export default function Todo() {
                   <span className="text-xs font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider">{b.label}</span>
                   <span className="text-xs text-gray-300 dark:text-white/25">({b.items.length})</span>
                 </div>
-                {b.items.map(t => <Row key={t.id} item={t} />)}
+                {b.items.map(t => renderItem(t))}
               </div>
             ))}
 
@@ -636,7 +886,7 @@ export default function Todo() {
                 </button>
                 {doneExpanded && (
                   <>
-                    {doneItems.map(t => <Row key={t.id} item={t} />)}
+                    {doneItems.map(t => renderItem(t))}
                     <div className="px-4 py-3">
                       <button onClick={handleClearCompleted}
                         className="text-xs text-gray-400 dark:text-white/40 hover:text-red-400 dark:hover:text-red-400 transition">

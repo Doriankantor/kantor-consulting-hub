@@ -273,6 +273,14 @@ const api = {
     uncomplete: (id: string) => ipcRenderer.invoke('personalTodo:uncomplete', id),
     delete:     (id: string) => ipcRenderer.invoke('personalTodo:delete', id),
   },
+
+  // Personal to-do STEPS (slice 3b). `todoId` is the BARE personal_todos.id —
+  // send TodoItem.raw_id, never the `personal-` prefixed display id.
+  personalTodoStep: {
+    create: (todoId: string, text: string) => ipcRenderer.invoke('personalTodoStep:create', todoId, text),
+    toggle: (stepId: string)               => ipcRenderer.invoke('personalTodoStep:toggle', stepId),
+    delete: (stepId: string)               => ipcRenderer.invoke('personalTodoStep:delete', stepId),
+  },
   notificationPrefs: {
     get:  (userId: string) => ipcRenderer.invoke('notificationPrefs:get', userId),
     save: (userId: string, prefs: Record<string,unknown>) => ipcRenderer.invoke('notificationPrefs:save', userId, prefs),

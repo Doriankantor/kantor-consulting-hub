@@ -24,9 +24,31 @@ import { assignedToSql } from './assignees'
 
 export type TodoSource = 'personal' | 'kc-deadline'
 
-export interface TodoItem {
-  /** Source-prefixed so ids never collide across sources: `personal-<uuid>` / `task-<id>`. */
+/** One Step Rail dot. PERSONAL items only — see the `steps` field below. */
+export interface TodoStep {
   id: string
+  text: string
+  /** 0/1 in SQLite; normalized to a real boolean here so the rail never coerces. */
+  checked: boolean
+  position: number
+}
+
+export interface TodoItem {
+  /**
+   * Source-prefixed so ids never collide across sources: `personal-<uuid>` / `task-<id>`.
+   *
+   * ⚠ THIS IS A DISPLAY ID, NOT A WRITE KEY. `personal_todos.id` is the BARE uuid.
+   * Every write handler takes the bare id — see `raw_id` below, which exists so the
+   * renderer never has to re-derive it by string-slicing.
+   */
+  id: string
+  /**
+   * The UNPREFIXED row id, for writes. Personal only (kc-deadline already exposes
+   * `linked_task_id`). Added in 3b: step handlers key on `todo_id`, and passing the
+   * prefixed id would insert steps pointing at a to-do that does not exist —
+   * a SILENT orphan, since no FK exists locally OR in cloud to reject it.
+   */
+  raw_id: string
   source: TodoSource
   title: string
   due_date: string | null
@@ -52,8 +74,17 @@ export interface TodoItem {
    * pre-migration snapshot, so this reports both false negatives (item added since)
    * and false positives (checklist deleted in cloud). NOTHING CONSUMES IT YET —
    * the Step Rail is slice 3b, which must fix the mirror first.
+   *
+   * ⚠ SCOPE NOTE (3b): the PERSONAL half of this is now real — `readPersonal`
+   * derives it from `steps.length`. Only the kc-deadline half remains untrustworthy.
    */
   has_steps: boolean
+  /**
+   * The Step Rail's data. PERSONAL ITEMS ONLY — `undefined` for kc-deadline, whose
+   * steps are card checklists (slice 4, gated by the EDIT tier) and are deliberately
+   * NOT surfaced here.
+   */
+  steps?: TodoStep[]
 }
 
 // ── Source a — personal ──────────────────────────────────────────────────────
@@ -61,15 +92,53 @@ export interface TodoItem {
 // table id-keyed and translates to email only at the cloud boundary, so this must
 // NOT be email-keyed — doing so would match zero rows.
 function readPersonal(userId: string): TodoItem[] {
-  const rows = getDatabase().prepare(`
+  const db = getDatabase()
+  const rows = db.prepare(`
     SELECT id, title, due_date, due_time, completed, completed_at, position, created_at
     FROM personal_todos
     WHERE user_id = ?
     ORDER BY created_at DESC
   `).all(userId) as Record<string, unknown>[]
 
-  return rows.map(r => ({
+  // ── Steps, in ONE query for the whole list (3b) ────────────────────────────
+  // Not per-item: personal scale is tiny, but an N+1 here would be N prepared
+  // statements per To-Do refetch, and refetches fire on every realtime push.
+  // Keyed by the BARE todo id, which is what `personal_todo_steps.todo_id` holds.
+  const stepsByTodo = new Map<string, TodoStep[]>()
+  if (rows.length) {
+    try {
+      const ph = rows.map(() => '?').join(',')
+      const stepRows = db.prepare(`
+        SELECT id, todo_id, text, checked, position
+        FROM personal_todo_steps
+        WHERE todo_id IN (${ph})
+        ORDER BY position ASC, created_at ASC
+      `).all(...rows.map(r => String(r.id))) as Record<string, unknown>[]
+      for (const s of stepRows) {
+        const key = String(s.todo_id)
+        const list = stepsByTodo.get(key) ?? []
+        list.push({
+          id: String(s.id),
+          text: String(s.text ?? ''),
+          checked: !!s.checked,
+          // NULLable with no default (unlike personal_todos.position, which 1a
+          // backfilled). Coerce so the renderer never sorts on undefined.
+          position: s.position === null || s.position === undefined ? 0 : Number(s.position),
+        })
+        stepsByTodo.set(key, list)
+      }
+    } catch (e) {
+      // Steps are an ENHANCEMENT — a failure here must not cost the user their
+      // to-do list. Degrade to no rails, same spirit as the per-source isolation.
+      console.warn('[todos] personal steps read failed — serving items without rails:', (e as Error)?.message)
+    }
+  }
+
+  return rows.map(r => {
+    const steps = stepsByTodo.get(String(r.id)) ?? []
+    return {
     id: `personal-${r.id}`,
+    raw_id: String(r.id),
     source: 'personal' as const,
     title: String(r.title ?? ''),
     due_date: (r.due_date as string) ?? null,
@@ -82,12 +151,10 @@ function readPersonal(userId: string): TodoItem[] {
     linked_task_id: null,
     column_id: null,
     area_of_analysis: null,
-    // TODO(slice 3): read `personal_todo_steps` once the Step Rail writes it.
-    // Hardcoded false is CORRECT today, not a stub: the table exists (1a) but has
-    // ZERO rows and NO handlers — nothing can write a step yet, so a query would
-    // cost a join per item to always return false.
-    has_steps: false,
-  }))
+    // REAL as of 3b — was hardcoded false while nothing could write a step.
+    has_steps: steps.length > 0,
+    steps,
+  }})
 }
 
 // ── Source b — kc-deadline ───────────────────────────────────────────────────
@@ -131,6 +198,9 @@ async function readKcDeadline(actingUser: string): Promise<TodoItem[]> {
     .filter(r => isRoot || ids.has(String(r.board_id)))
     .map(r => ({
       id: `task-${r.id}`,
+      // Board cards write through `linked_task_id`; `raw_id` is carried for shape
+      // parity so the renderer never has to branch on source to find a write key.
+      raw_id: String(r.id),
       source: 'kc-deadline' as const,
       title: String(r.title ?? ''),
       due_date: (r.due_date as string) ?? null,

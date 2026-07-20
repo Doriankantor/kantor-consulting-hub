@@ -1808,8 +1808,111 @@ function registerPersonalTodoHandlers() {
     // and it needs no owner resolution because the cloud PK is the id alone.
     db().prepare('DELETE FROM personal_todos WHERE id=?').run(id)
     syncPersonalWrite('delete', 'personal_todos', { id })
+    // Steps are FK-less by design (cloud SQL:20 — so the queue may upload a step
+    // before its parent). That means NOTHING cascades: without this, deleting a
+    // to-do would strand its steps locally AND in cloud forever.
+    const orphans = db().prepare('SELECT id FROM personal_todo_steps WHERE todo_id=?')
+      .all(id) as { id: string }[]
+    if (orphans.length) {
+      db().prepare('DELETE FROM personal_todo_steps WHERE todo_id=?').run(id)
+      for (const o of orphans) syncPersonalWrite('delete', 'personal_todo_steps', { id: o.id })
+    }
     return { ok: true }
   })
+
+  // ── Personal to-do STEPS (slice 3b) ──────────────────────────────────────
+  // Same local-first contract as the to-do handlers above: the local write lands
+  // FIRST and alone decides {ok:true}; the cloud write is handed to
+  // syncPersonalWrite un-awaited and queues on failure or offline. NO isOnline()
+  // guard — personal is the offline-capable source, and the 1b lesson was that
+  // guarding a personal write blocks the one thing that does work offline.
+  //
+  // ⚠ EVERY todoId PARAMETER HERE IS THE BARE `personal_todos.id`. `todos:list`
+  // emits a DISPLAY id (`personal-<uuid>`); passing that through would write steps
+  // whose todo_id matches no row. There is no FK locally or in cloud, so nothing
+  // would error — the steps would simply never be read again. The renderer sends
+  // `raw_id`; this strip is the second line of defence, not the first.
+  const bareTodoId = (id: string): string => id.replace(/^personal-/, '')
+
+  /**
+   * Resolve the owner email for a step, via its PARENT to-do.
+   *
+   * `personal_todo_steps.user_email` is NOT NULL (db.ts:709) — unlike
+   * `personal_todos`, which is user_id-keyed locally and only translates at the
+   * cloud boundary. So an unresolvable owner cannot be handled the way
+   * `cloudRowFor` handles it (skip the cloud write, keep the local row); the LOCAL
+   * insert itself would violate the constraint. Resolve up front and refuse
+   * loudly rather than throwing a constraint error from inside SQLite.
+   */
+  function stepOwnerEmail(todoId: string): string {
+    const r = db().prepare('SELECT user_id FROM personal_todos WHERE id=?').get(todoId) as
+      { user_id?: string } | undefined
+    if (!r) return ''
+    return ownerEmail(r.user_id)
+  }
+
+  /** Re-read a step and shape it for cloud. Mirrors cloudRowFor's contract. */
+  function stepCloudRow(stepId: string): Record<string, unknown> | null {
+    const r = db().prepare(
+      'SELECT id, todo_id, user_email, text, checked, position, created_at, updated_at FROM personal_todo_steps WHERE id=?'
+    ).get(stepId) as Record<string, unknown> | undefined
+    if (!r) return null
+    return {
+      id: r.id, todo_id: r.todo_id, user_email: r.user_email, text: r.text,
+      checked: r.checked ?? 0, position: r.position ?? 0,
+      created_at: r.created_at ?? nowIso(), updated_at: r.updated_at ?? nowIso(),
+    }
+  }
+
+  ipcMain.handle('personalTodoStep:create', (_e, todoId: string, text: string) => {
+    const parent = bareTodoId(todoId)
+    const body = (text ?? '').trim()
+    if (!body) return { ok: false, error: 'empty step' }
+
+    const email = stepOwnerEmail(parent)
+    if (!email) {
+      console.warn(`[personalSync] REFUSED step create for todo ${parent} — no resolvable owner email.`)
+      return { ok: false, error: 'unresolvable owner' }
+    }
+
+    const id = uuid()
+    const ts = nowIso()
+    // Append at the end. COALESCE covers the nullable-position column: a NULL max
+    // (no steps yet) must start at 0, not NaN.
+    const maxPos = (db().prepare(
+      'SELECT COALESCE(MAX(position), -1) AS m FROM personal_todo_steps WHERE todo_id=?'
+    ).get(parent) as { m: number }).m
+    db().prepare(
+      'INSERT INTO personal_todo_steps (id, todo_id, user_email, text, checked, position, created_at, updated_at) VALUES (?,?,?,?,0,?,?,?)'
+    ).run(id, parent, email, body, maxPos + 1, ts, ts)
+
+    const row = stepCloudRow(id)
+    if (row) syncPersonalWrite('insert', 'personal_todo_steps', row)
+    return { ok: true, id }
+  })
+
+  ipcMain.handle('personalTodoStep:toggle', (_e, stepId: string) => {
+    // Flip in SQL rather than read-modify-write: two rapid clicks can otherwise
+    // both read the same value and write the same result, eating one toggle.
+    const res = db().prepare(
+      'UPDATE personal_todo_steps SET checked = CASE WHEN checked=1 THEN 0 ELSE 1 END, updated_at=? WHERE id=?'
+    ).run(nowIso(), stepId)
+    if (!res.changes) return { ok: false, error: 'no such step' }
+    const row = stepCloudRow(stepId)   // re-read AFTER the update, before it can move
+    if (row) syncPersonalWrite('update', 'personal_todo_steps', row)
+    return { ok: true }
+  })
+
+  ipcMain.handle('personalTodoStep:delete', (_e, stepId: string) => {
+    // Delete needs only the id for the cloud op (PK is the id alone), so unlike
+    // toggle it is safe to enqueue after the local row is gone.
+    db().prepare('DELETE FROM personal_todo_steps WHERE id=?').run(stepId)
+    syncPersonalWrite('delete', 'personal_todo_steps', { id: stepId })
+    return { ok: true }
+  })
+  // REORDER: deliberately not built. Steps append and the rail sorts done-first for
+  // DISPLAY only, so nothing needs a stored reorder yet. Adding it later is a
+  // position rewrite plus one queued update per moved row — no schema change.
 }
 
 // ── Notification Prefs + Scheduler ─────────────────────────────────────────
