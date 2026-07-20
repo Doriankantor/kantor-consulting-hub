@@ -1,10 +1,28 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-20 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `863e5be`, `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: FIFTEEN code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale). The installed app is 2.3.0 and contains NONE of them.** ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: FIFTEEN code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-20 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `d43445d`, `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: SEVENTEEN code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale), `065f6ce` (slice 2 — the `listTodos` aggregation layer) and `d43445d` (slice 3a — the visible To-Do tab). The installed app is 2.3.0 and contains NONE of them.** ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: FIFTEEN code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
-**LATEST (2026-07-20) — HEAD `863e5be`, pushed, tree clean. SLICE 1c IS DONE.** The whole
+**LATEST (2026-07-20) — HEAD `d43445d`, tree clean. THE To-Do TAB IS VISIBLE AND LIVE.** Slices
+2 (`065f6ce`) and 3a (`d43445d`) both shipped this session: the aggregation layer in MAIN, then
+the renderer migrated onto it. **The To-Do tab now renders from `todos:list`** — five tabs, CET
+urgency, a pinned past-due/today strip, and refresh-on-change. Detail: the **SLICE 2** and
+**SLICE 3a** entries under the To-Do overhaul.
+
+**NEXT IS SLICE 3b — fix the checklist cloud→local mirror, THEN build the Step Rail.** Slice 3
+was SPLIT because the rail cannot be trusted until the mirror exists: `task_checklist_items` is
+a frozen pre-migration snapshot (all 7 local rows dated 2026-05-25/28, no sync path, every
+write goes to cloud). **This also closes the `has_steps` defect shipped in slice 2** — that
+field is returned but deliberately unconsumed today precisely because it reads the dead table.
+**Seventeen code commits are unreleased**; the installed app is 2.3.0 and contains none of them.
+
+**★ NEW DESIGN DECISIONS (2026-07-20)** — the **"+ Add" dropdown** (Personal / Assign to other,
+no board option), the **top-bar action cluster** (fixed, NOT draggable), and **three additions
+to slice 2.5** (assigner visibility, assignment chat, off-card-only scope). All three are in the
+**on-the-horizon** block under the To-Do overhaul.
+
+(Historical — **HEAD `863e5be`, SLICE 1c IS DONE.**) The whole
 identity foundation of the To-Do overhaul is in, across four commits: the cloud roster
 (`4b9c0b3`), the reversible local migration (`d16b071`), the commit-once cloud rewrite
 (`74150c7`) and the full read/write repoint (`863e5be`). **Cross-device assignment works for
@@ -12,20 +30,21 @@ the first time** — `assignees_json` holds work emails, not device ids, and the
 is fully clickable on every machine. Detail + the five findings: the **1c-2 ARC** entry under
 the To-Do overhaul.
 
-**NEXT IS SLICE 2 — the `listTodos` aggregation layer in MAIN.** It was blocked behind 1c-2
-and is now UNBLOCKED. Before starting, read the **SPEC vs REALITY** corrections: slice 2 is
+(Historical — **NEXT WAS SLICE 2 — the `listTodos` aggregation layer in MAIN.** SHIPPED as
+`065f6ce`. It was blocked behind 1c-2 and was UNBLOCKED by it. The **SPEC vs REALITY**
+corrections still apply to everything downstream: slice 2 is
 **net-new architecture, NOT a port of the unified-Trash normalizer** (that one normalizes in
 the renderer with weak gating). **Also read the IDENTITY MODEL block under Known issues before
 touching anything identity-shaped** — `dk@` is a fully-permissioned team member, not root, and
-several older entries in this file still say otherwise. Fifteen code commits are unreleased;
-the installed app is 2.3.0 and contains none of them.
+several older entries in this file still say otherwise.)
 
-**★ SLICE 2 SCOPE IS DECIDED (2026-07-20) — it builds only the TWO sources that EXIST:
-personal + kc-deadline.** The slice-2 diagnosis found that "assigned to me" as spec'd needs an
-**off-card assignment entity that is not in the schema at all**, so it was split out as the new
-**SLICE 2.5** — which is the SAME mechanism slice 5's intel directive needs, and must be built
-ONCE. Full scope, the four tabs, and the deferred design items are in the **sequencing** block
-under the To-Do overhaul.
+(Historical — **★ SLICE 2 SCOPE WAS DECIDED (2026-07-20) — it built only the TWO sources that
+EXIST: personal + kc-deadline.** The slice-2 diagnosis found that "assigned to me" as spec'd
+needs an **off-card assignment entity that is not in the schema at all**, so it was split out as
+the new **SLICE 2.5** — which is the SAME mechanism slice 5's intel directive needs, and must be
+built ONCE. Full scope and the deferred design items are in the **sequencing** block under the
+To-Do overhaul. **Note the tab count grew from four to five in 3a** — "Assigned by me" was added
+as its own tab.)
 
 (Historical — **v2.3.0 RELEASED** (published 2026-07-17; version-bump commit `a4b161e`,
 tag `v2.3.0` pushed BEFORE the release build — no tag race). HEAD = `a4b161e`,
@@ -1437,6 +1456,21 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   - **BOARD-COMPLETION PERMISSION GATE — deferred, NOT in slice 2.** `todo:complete` has **no
     `can()` / `resolveActor` check today** — anyone can complete any task by id. Pairs with the
     `board.assign` / permission work (slice 4).
+  - **★ "+ ADD" BUTTON ON THE To-Do TAB — a dropdown with TWO options (decided 2026-07-20).**
+    **Personal** and **Assign to other**. **NO board-task option** — board tasks are created
+    **on the board**, and offering a third path here would fork card creation across two
+    surfaces.
+    - **It maps 1:1 onto the tabs:** Personal feeds the **Personal** tab; Assign-to-other feeds
+      **"Assigned by me"**. That symmetry is the argument for the design — every option a user
+      can pick has a visible destination.
+    - **Personal is LIVE NOW** (1a/1b shipped its write path). **"Assign to other" creates an
+      off-card assignment and therefore LIGHTS UP WHEN SLICE 2.5 LANDS** — until then it has no
+      entity to write to.
+  - **★ TOP-BAR ACTION CLUSTER — consolidate chat + "+" next to the notification button
+    (decided 2026-07-20).** Top-right, to save space. **FIXED PLACEMENT — NOT draggable.** A
+    movable-button system was considered and **rejected as disproportionate UI-chrome work**:
+    the cost is a drag/persist/collision layer, the benefit is preference. **If a specific
+    placement annoys, reposition that button — do not build a drag system.**
 
 - **1. DONE (shipped in v2.1.0) — Narrative refinement.** Both halves landed: the summary
   half (`c0be06f`, own `summary` key) and the **reconcile half** (`edaab46`, reconcile
@@ -1673,8 +1707,8 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
        cross-device. Shipped as **1c-1 (`4b9c0b3`)** the roster, **1c-2a (`d16b071`)** the
        reversible half, **1c-2b-① (`74150c7`)** the commit-once cloud rewrite, and
        **1c-2b-② (`863e5be`)** the full read/write repoint. Detail in the **1c-2 ARC** entry.
-    2. ▶ **NEXT — Aggregation layer:** `listTodos(actingUserId)` in MAIN, member-gated; the
-       renderer only **filters**. **UNBLOCKED as of `863e5be`** — it could not aggregate
+    2. ✅ **DONE — Aggregation layer (`065f6ce`):** `listTodos(actingUserId)` in MAIN,
+       member-gated; the renderer only **filters**. **UNBLOCKED as of `863e5be`** — it could not aggregate
        "assigned to me" while the stored ids resolved on one machine only. Now that assignees
        are emails, `resolveIdentity` gives the same key on every device.
        - **★ SCOPE DECIDED (2026-07-20) — slice 2 builds the TWO sources that EXIST:**
@@ -1692,11 +1726,14 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
          until the renderer is migrated (the "ADD, don't repoint" pattern that paid off in
          1c-1). **All-local reads**, with a **per-source `.catch`** so one failing source can't
          empty the whole page.
-       - **TABS: KC / Assigned to me / Personal / All.** **KC is a SUPERSET** — it includes
+       - **TABS: KC / Assigned to me / Personal / All** *(SUPERSEDED by 3a — there are now
+         FIVE; "Assigned by me" was added)*. **KC is a SUPERSET** — it includes
          assigned + meetings + intel + deadlines (per the `inTab` logic in
-         `TodoStepRail_6.html`). **"Assigned to me" and the intel directive render EMPTY until
-         their backing entity exists** (slice 2.5 and slice 5 respectively). An empty tab here
-         is correct behavior, not a bug.
+         **`docs/TodoStepRail.html`** — ⚠ earlier entries cite `TodoStepRail_6.html`, which is
+         **NOT in the repo**; the repo file is byte-identical to the `_6` download, so the
+         pointer was wrong but the content was always right). **"Assigned to me" and the intel
+         directive render EMPTY until their backing entity exists** (slice 2.5 and slice 5
+         respectively). An empty tab here is correct behavior, not a bug.
     2.5. **NEW — THE OFF-CARD ASSIGNMENT ENTITY. Net-new; BUILD ONCE, serves TWO tabs.**
        - **"Assigned to me" is an OFF-CARD assignment:** a board head or info-page head (or
          root) assigns a team member something with **NO Kanban card behind it**. **This does
@@ -1711,9 +1748,41 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
        - **⚠ PREREQUISITE OVERLAP — `notifications` → cloud.** 2.5's notification is subject to
          the **same prerequisite already recorded for slice 5**: notifications are local-only
          and `user_id`-keyed, so cross-device delivery does not work until they move to cloud.
-    3. **Step Rail + urgency/promotion UI** (port prototype behavior, theme tokens, **light
-       AND dark**). First real exercise of `personal_todo_steps` — the table and its queue
-       path exist (1a/1b) but **nothing writes it yet**; there are no step handlers.
+       - **★ SCOPE GREW (2026-07-20) — 2.5 IS NO LONGER JUST "a record + a notification".**
+         Three additions, decided after seeing 3a's two empty tabs in the app:
+         - **ASSIGNER VISIBILITY — the assigner sees the assignee's progress, VIEW-ONLY.**
+           This is what makes **"Assigned by me" worth having**: a tab that showed only a
+           status string would not justify itself. Read-only is the point — the assigner
+           watches the work, they do not edit it.
+         - **ASSIGNMENT CHAT — a comment/notes thread on the assignment**, like the card
+           thread: the assigner leaves notes, the assignee responds.
+           **⚠ DO NOT BUILD THIS ON THE CARD COMMENT SYSTEM.** `task_activity` /
+           `activity:add` is **cloud-only AND split-brain — silent-failure INSTANCE EIGHT**
+           (`activity:get` reads cloud, the completion event writes local; `addActivity`
+           throws offline with no guard and no local write). Build the assignment chat
+           **cloud-aware and offline-correct from the start**, and treat slice 4's activity-log
+           repair as the model — inheriting that foundation would propagate the defect.
+         - **"Assigned by me" is OFF-CARD ONLY.** On-card assignment status lives **on the
+           board**, not in To-Do. **Both** assigned tabs depend **solely** on 2.5 — nothing
+           else can populate them.
+    3. **SPLIT (2026-07-20) into 3a and 3b.** The rail depends on a mirror that does not
+       exist, so the visible tab was shipped without it rather than shipping it untrustworthy.
+    3a. ✅ **DONE — the visible To-Do tab (`d43445d`).** Urgency + tabs + promotion +
+       migration onto `todos:list`. **NO Step Rail.** Detail in the **SLICE 3a** entry below.
+    3b. ▶ **NEXT — fix the checklist cloud→local mirror, THEN build the Step Rail.**
+       **THE MIRROR IS THE PREREQUISITE, NOT A SIDE-QUEST.** Local `task_checklist_items` is a
+       frozen pre-migration snapshot — **7 rows, all dated 2026-05-25/28, no `CHECKLIST_COLS`,
+       no sync path**, while every checklist WRITE handler goes to cloud. **This also closes
+       the `has_steps` defect shipped in slice 2**, which reads that dead table and therefore
+       reports both false negatives (a step added since) and false positives (a checklist
+       deleted in cloud). `has_steps` is returned but **deliberately unconsumed** in 3a for
+       exactly this reason — wiring the rail to it first would have built a visible feature on
+       a known-wrong signal.
+       - **BOARD-TASK STEPS GET THE RAIL. PERSONAL STEPS STAY EMPTY / READ-ONLY** —
+         `personal_todo_steps` has **0 rows and NO write path**; the table and its queue path
+         exist (1a/1b) but there are **no step handlers**, so personal steps wait for a later
+         slice.
+       - Port prototype behavior, theme tokens, **light AND dark**.
     4. **`board.assign` per-board permission, enforced in MAIN.**
        - **CARD ACTIVITY ON ASSIGNMENT — VERIFIED ABSENT (2026-07-20), so BUILD IT HERE.**
          When a member with `board.assign` assigns another member to a board CARD, the card's
@@ -1747,6 +1816,71 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
          laptop writes a row into the assigner's OWN local DB — **it never reaches the
          assignee's machine.** The deep-link machinery works; the delivery does not. The spec
          does not mention this. Migrate notifications before, or slice 5 ships broken.
+  - **✅ SLICE 2 SHIPPED — the `listTodos` aggregation layer (`065f6ce`, 2026-07-20,
+    UNRELEASED).** Two sources assembled in MAIN — **personal** (local `personal_todos`,
+    `user_id`-keyed, because 1a deliberately kept the local table id-keyed and translates only
+    at the cloud boundary) and **kc-deadline** (assigned `workspace_tasks` WITH a `due_date`).
+    **Additive** — `todo:getMyTasks` was left intact for 3a to migrate off.
+    - **DOUBLE-GATED, both axes verified in-app on a relaunched synced session:** unassign →
+      the item disappears; reassign → it comes back; remove from the board → **all** its
+      deadlines drop while personal stays. Nothing needs to actively clear an item because the
+      list **recomputes from current state on every call** — it was never stored.
+    - **`workspace_tasks` HAS NO `deleted` COLUMN.** The spec asked for `archived=0 AND
+      deleted=0` on the task row; soft-delete lives on `workspace_boards`. Resolved by
+      mirroring `readTasksMirror`'s **INNER** join, which also excludes a task whose `board_id`
+      dangles rather than surfacing it ungated (`todo:getMyTasks`'s LEFT join keeps it).
+    - **PER-SOURCE ISOLATION** — each source independently try/caught, so one failure can't
+      empty the page (the `Promise.all`-poisoning lesson).
+    - **⚠ DEFECT SHIPPED KNOWINGLY — `has_steps` reads a dead table.** See slice 3b. Nothing
+      consumes it, and 3a kept it that way.
+  - **✅ SLICE 3a SHIPPED — the visible To-Do tab (`d43445d`, 2026-07-20, UNRELEASED).**
+    `Todo.tsx` migrated onto `todos:list`: **ONE call plus client-side tab filtering**,
+    replacing the old `getMyTasks` + `personalTodo.list` pair. Google meetings stay a
+    **separate live per-calendar fetch** (online-only — the one source that cannot be assembled
+    locally); dismissed items filtered.
+    - **FIVE TABS — KC (superset) / Assigned to me / Assigned by me / Personal / All**,
+      selected tab persisted per user. **KC deliberately EXCLUDES `assigned-by-me`:** KC
+      answers *"what is on my plate"*, and delegated work is on someone else's — folding it in
+      would inflate the list with items you are not doing. ⚠ Note how narrowly this holds: the
+      superset is `source.startsWith('kc') || source === 'assigned'`, so only the **explicit
+      equality** lets `assigned` in. Rename the source to `kc-assigned-by-me`, or loosen that
+      arm to `startsWith('assigned')`, and **KC silently re-absorbs it**.
+    - **CET URGENCY ENGINE (`utils/urgency.ts`)** — `Intl.DateTimeFormat('en-CA',
+      {timeZone:'Europe/Berlin'})`. **A deadline must mean the same instant for the whole
+      team**; off the local clock, "due today" would flip at a different moment for every user
+      and a machine with a wrong timezone would mis-sort the whole list. **DST-safe by
+      deferring to ICU — NO hand-rolled +1/+2**, which would be wrong for weeks a year. `en-CA`
+      formats as `YYYY-MM-DD`, directly comparable to the date-only `due_date`. Day-diffs parse
+      **both sides as UTC midnight** so the subtraction is a pure day count. The device clock is
+      still the `now` input — a badly-wrong clock still misleads; a merely-different **timezone**
+      no longer does.
+    - **PROMOTION STRIP** — `pastdue` + `today` lift into a pinned strip on **every** tab and
+      are **not** duplicated in the bands below; the rest band `tomorrow → d2 → d3 → later →
+      none`. Per-tab **Completed** section, re-tick restores.
+    - **`col-published` COUNTS AS DONE — implemented in MAIN (`todos.ts`), not the renderer.** A
+      published card shipped, so no deadline applies. This **preserves** the old renderer rule
+      it replaced; deriving `completed` from `completed_at` alone would have **silently
+      resurrected every published card as an active deadline**.
+    - **`TodoItem` gained `column_id`** (drives that rule) **and `area_of_analysis`** (drives
+      the area colour dot). Parity kept: colour dot, `board_name`/due chips, dashed personal
+      cards, offline guards — board actions now **visibly disabled** rather than silently inert.
+    - **★ REFRESH-ON-CHANGE — `todoDataVersion`, NOT a second subscription. THIS AVOIDED A
+      LANDMINE.** The preload teardown is
+      `ipcRenderer.removeAllListeners('workspace:remoteChange')`, which is **CHANNEL-GLOBAL**:
+      a competing `onRemoteChange` in `Todo.tsx` would have been **silently unsubscribed**
+      whenever `WorkspaceContext` re-ran cleanup, and the tab would have stopped updating
+      **with no error** — textbook silent-failure class. Instead `WorkspaceContext` gained a
+      **`todoDataVersion` counter**, consumed by `Todo.tsx` via `useEffect`. **The app still has
+      exactly ONE `workspace:remoteChange` subscription.**
+      - **Bumped UNCONDITIONALLY on every push, whatever its scope — deliberately unlike
+        `boardContentVersion`,** which is scoped to the open board. To-Do aggregates across
+        **all visible boards**, so a change on a board that isn't open (a card assigned to you
+        elsewhere, a `board_members` revoke arriving as scope `'list'`) still changes what it
+        must show.
+      - Also refetches on **window focus** and after local mutations, serialized through a
+        promise chain.
+    - **NO Step Rail** (3b) and **calendar view deferred**. **Both assigned tabs render
+      purposeful empty states with 0 counts** — off-card only, empty until 2.5.
   - **✅ SLICE 1a SHIPPED — personal to-do cloud tables + translate-migration (`a46345b`,
     2026-07-19, UNRELEASED).** Three cloud tables — **`personal_todos`,
     `personal_todo_steps`, `todo_dismissed`** — all **owner-keyed by `user_email`**.

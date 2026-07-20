@@ -2,7 +2,7 @@
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-20
   Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
-                   UNRELEASED since v2.3.0 — FIFTEEN commits: 2d76b9a (visibleBoardIds
+                   UNRELEASED since v2.3.0 — SEVENTEEN commits: 2d76b9a (visibleBoardIds
                    non-root no-join fix), b211638 (slice 0b-0 — realtime channel-health
                    instrumentation), the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
                    c60c9c2 (Social form-loss), ae067da (updateStatus phantom-row guard),
@@ -16,13 +16,16 @@
                    dropdown clipping fix), and the 1c-2 ARC that made cross-device
                    assignment work for the first time: d16b071 (1c-2a — reversible
                    half), 74150c7 (1c-2b-① — cloud rewrite, commit-once) and
-                   863e5be (1c-2b-② — all reads/writes repointed id->email).
+                   863e5be (1c-2b-② — all reads/writes repointed id->email); and the
+                   To-Do tab itself becoming visible: 065f6ce (slice 2 — the
+                   listTodos aggregation layer) and d43445d (slice 3a — the visible
+                   To-Do tab: five tabs, CET urgency, promotion strip).
                    The installed app is 2.3.0 and contains NONE of them.
                    Shipped in v2.3.0: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD 863e5be   |   331 commits   |   ~38,300 lines of TS/TSX
+                   HEAD d43445d   |   336 commits   |   ~38,600 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -85,6 +88,52 @@
   as the To-Do prototype. To-Do slice 5 (intel culling directive) is its on-ramp; shared
   prerequisite: notifications → cloud.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-20 — THE To-Do TAB GOES LIVE: SLICES 2 + 3a (065f6ce, d43445d, UNRELEASED) ──
+  • SLICE 2 (065f6ce) — listTodos aggregation layer in MAIN. Two sources: personal (local
+    personal_todos, user_id-keyed) + kc-deadline (assigned workspace_tasks WITH a due_date).
+    Additive: todo:getMyTasks left intact for 3a to migrate off. DOUBLE-GATED on both axes —
+    visibleBoardIdsFor (board) AND assignee-email match (card); unassign or lose the board
+    and the item vanishes, because the list RECOMPUTES from current state on every call and
+    was never stored. workspace_tasks has NO deleted column (soft-delete is on
+    workspace_boards), resolved by mirroring readTasksMirror's INNER join. Per-source
+    try/catch so one failure can't empty the page.
+  • SLICE 3a (d43445d) — the VISIBLE To-Do tab. Todo.tsx migrated onto todos:list: ONE call
+    plus client-side tab filtering, replacing getMyTasks + personalTodo.list. Google meetings
+    stay a separate live fetch (online-only); dismissed filtered.
+  • FIVE TABS: KC (superset) / Assigned to me / Assigned by me / Personal / All, selection
+    persisted per user. KC deliberately EXCLUDES assigned-by-me — KC is "what's on my plate",
+    and delegated work is on someone else's.
+  • CET URGENCY ENGINE (utils/urgency.ts) — Intl 'en-CA' + Europe/Berlin. A deadline must mean
+    the same instant for the whole team; off the local clock "due today" would flip at a
+    different moment for every user. DST-safe via ICU, NO hand-rolled offset. pastdue/today
+    promote to a pinned strip on every tab (not duplicated below); rest band tomorrow→later.
+    Per-tab Completed section, re-tick restores.
+  • col-published counts as DONE — in MAIN (todos.ts), not the renderer. Deriving completed
+    from completed_at alone would have silently resurrected every published card as an active
+    deadline. TodoItem gained column_id (that rule) + area_of_analysis (the area colour dot).
+  • REFRESH-ON-CHANGE via a todoDataVersion counter on WorkspaceContext — NOT a competing
+    workspace:remoteChange subscription. The preload teardown is removeAllListeners on that
+    channel, i.e. CHANNEL-GLOBAL, so a second listener would have been silently unsubscribed
+    and the tab would have stopped updating with no error. Bumped UNCONDITIONALLY on every
+    push regardless of scope (unlike boardContentVersion, which is scoped to the open board)
+    because To-Do aggregates across ALL visible boards. Exactly one subscription remains.
+  • NO Step Rail; calendar view deferred. Both assigned tabs render clean empty states with 0
+    counts — off-card only, populated by slice 2.5.
+  • SLICE 3 SPLIT: 3a DONE; 3b NEXT = fix the checklist cloud→local mirror (task_checklist_items
+    is a frozen May 25–28 snapshot with no sync — this also closes the has_steps defect shipped
+    in slice 2, which is why 3a leaves has_steps deliberately unconsumed) THEN the Step Rail.
+    Board-task steps get the rail; personal steps stay empty/read-only (personal_todo_steps has
+    0 rows and no write path until a later slice).
+  • NEW DESIGN DECISIONS: "+ Add" dropdown on To-Do with TWO options (Personal / Assign to
+    other — NO board-task option; board tasks are created on the board), mapping 1:1 onto the
+    tabs; Personal is live now, Assign-to-other lights up with 2.5. Top-bar action cluster —
+    chat + "+" consolidated next to the notification button, FIXED placement, NOT draggable (a
+    movable-button system was considered and rejected as disproportionate chrome work).
+  • SLICE 2.5 GREW beyond a bare record + notification: assigner sees the assignee's progress
+    VIEW-ONLY (what makes "Assigned by me" worth having); an assignment comment/notes thread —
+    built cloud-aware and offline-correct, NOT on the card comment system, which is cloud-only
+    and split-brain (silent-failure instance 8); both assigned tabs are OFF-CARD ONLY.
 
   ── 2026-07-20 — SLICE-2 SCOPING (docs only, no code) ──
   • SLICE 2 SCOPE DECIDED: listTodos builds only the TWO sources that EXIST — personal
