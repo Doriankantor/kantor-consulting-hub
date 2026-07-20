@@ -1,237 +1,278 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { useConnection } from '../contexts/ConnectionContext'
 import { useNavigate } from 'react-router-dom'
+import { urgency, URGENCY_RANK, isPromoted, dueLabel, type UrgencyKey } from '../utils/urgency'
 
-// Types
-interface TodoTask {
-  id: string
-  title: string
-  board_id: string
-  board_name: string | null
-  column_id: string
-  due_date: string | null
-  priority: string
-  area_of_analysis: string | null
-  completed_at: string | null
-  assignee_emails: string[]
-  content_type: string
+// ─────────────────────────────────────────────────────────────────────────────
+// The To-Do tab (slice 3a). Structure ported from docs/TodoStepRail.html.
+//
+// DATA: ONE window.api.todos.list(userId) call replaces the old getMyTasks +
+// personalTodo.list pair. Dismissals stay a separate read (not part of TodoItem),
+// and Google meetings stay a SEPARATE, ONLINE-ONLY renderer concern — they are not
+// in the main-process aggregate because they cannot be assembled locally.
+//
+// NO STEP RAIL HERE. `has_steps` is deliberately NOT consumed: it reads a local
+// checklist table that no longer receives writes, so it is not trustworthy until
+// slice 3b adds the mirror. The rail is 3b.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Display sources = the backend's TodoItem sources + meetings, which are view-layer. */
+type DisplaySource =
+  | TodoItem['source']
+  | 'kc-meeting'
+  | 'kc-intel'
+  | 'assigned'
+  /**
+   * The REVERSE of 'assigned' — off-card work where the acting user is the
+   * ASSIGNER, not the assignee. Same slice-2.5 entity, queried from the other
+   * end. No backend emits it yet, so its tab is empty by construction.
+   */
+  | 'assigned-by-me'
+
+/**
+ * A TodoItem widened for display. Meetings are projected into this shape so tabs,
+ * promotion and bands treat every row identically — and so that when kc-meeting
+ * becomes a real backend source, the UI needs no restructuring.
+ */
+interface DisplayItem extends Omit<TodoItem, 'source'> {
+  source: DisplaySource
+  /** Meetings only — carried through for the chip and Join button. */
+  meta?: { timeLabel: string; calendarName: string; calendarColor: string; meetingLink?: string }
 }
 
-interface PersonalTodoItem {
-  id: string
-  type: 'personal'
-  title: string
-  due_date: string | null
-  due_time: string | null
-  completed: number
-  completed_at: string | null
-}
+const TABS = [
+  { id: 'kc',              name: 'KC tasks' },
+  { id: 'assigned',        name: 'Assigned to me' },
+  { id: 'assigned-by-me',  name: 'Assigned by me' },
+  { id: 'personal',        name: 'Personal' },
+  { id: 'all',             name: 'All tasks' },
+] as const
+type TabId = typeof TABS[number]['id']
 
-interface CalendarItem {
-  id: string
-  type: 'calendar-event'
-  title: string
-  start: string
-  end: string
-  allDay: boolean
-  calendarName: string
-  calendarColor: string
-  meetingLink?: string
-}
+/**
+ * KC is a SUPERSET — firm work plus what's assigned TO me (prototype inTab).
+ *
+ * ★ 'assigned-by-me' is deliberately NOT in the superset. KC answers "what is on
+ * my plate"; work I delegated is on someone ELSE's plate and would inflate my own
+ * list with items I am not doing. Note this is NOT handled by the `startsWith('kc')`
+ * arm either — neither 'assigned' nor 'assigned-by-me' starts with 'kc', so only
+ * the explicit `=== 'assigned'` lets one through. The other falls to the final arm
+ * and appears solely under its own tab.
+ */
+const inTab = (t: DisplayItem, id: TabId): boolean =>
+  id === 'all' ? true
+  : id === 'kc' ? (t.source.startsWith('kc') || t.source === 'assigned')
+  : t.source === id
 
-type Group = 'today' | 'week' | 'upcoming' | 'nodate' | 'done'
+const BAND_LABELS: Record<UrgencyKey, string> = {
+  pastdue: 'Past due', today: 'Due today', tomorrow: 'Due tomorrow',
+  d2: '2 days to go', d3: '3 days to go', later: 'Later', none: 'No date',
+}
 
 export default function Todo() {
   const { localUser, isRoot } = useAuth()
-  const { areas, openTask, setActiveBoardId } = useWorkspace()
+  const { areas, openTask, setActiveBoardId, todoDataVersion } = useWorkspace()
   const { online } = useConnection()
   const navigate = useNavigate()
   const userId = localUser?.id ?? 'local-admin'
   const userName = localUser?.name ?? 'Admin'
 
-  const [tasks, setTasks] = useState<TodoTask[]>([])
+  const [items, setItems] = useState<DisplayItem[]>([])
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [doneExpanded, setDoneExpanded] = useState(false)
   const [completing, setCompleting] = useState<Set<string>>(new Set())
 
-  // Personal todos
-  const [personalTodos, setPersonalTodos] = useState<PersonalTodoItem[]>([])
+  const [tab, setTab] = useState<TabId>(() => {
+    try {
+      const saved = localStorage.getItem(`todo-tab-${userId}`)
+      if (saved && TABS.some(t => t.id === saved)) return saved as TabId
+    } catch { /* private mode / quota — fall through to the default */ }
+    return 'personal'   // prototype default
+  })
+  useEffect(() => {
+    try { localStorage.setItem(`todo-tab-${userId}`, tab) } catch { /* non-fatal */ }
+  }, [tab, userId])
+
+  // Add-personal form
   const [showAddPersonal, setShowAddPersonal] = useState(false)
   const [newPersonalTitle, setNewPersonalTitle] = useState('')
   const [newPersonalDate, setNewPersonalDate] = useState('')
   const [newPersonalTime, setNewPersonalTime] = useState('')
   const [addingPersonal, setAddingPersonal] = useState(false)
 
-  // Calendar events
-  const [calendarItems, setCalendarItems] = useState<CalendarItem[]>([])
+  // Meetings (Google, online-only, view-layer)
+  const [meetings, setMeetings] = useState<DisplayItem[]>([])
   const [showCalEvents, setShowCalEvents] = useState<boolean>(() => {
     try { return localStorage.getItem(`todo-show-cal-${userId}`) !== 'false' } catch { return true }
   })
   const [googleConnected, setGoogleConnected] = useState(false)
   const [googleNeedsReauth, setGoogleNeedsReauth] = useState(false)
 
+  // ── Loads ──────────────────────────────────────────────────────────────────
+  // Refetches are SERIALIZED through this chain so overlapping pushes can never
+  // interleave and land an older result last (same pattern as WorkspaceContext's
+  // remoteChainRef).
+  const loadChainRef = useRef<Promise<void>>(Promise.resolve())
+
   const load = useCallback(async () => {
     try {
-      const [taskList, dismissedIds] = await Promise.all([
-        window.api.todo.getMyTasks(userId),
+      const [list, dismissedIds] = await Promise.all([
+        window.api.todos.list(userId),
         window.api.todo.getDismissed(userId),
       ])
-      setTasks(taskList as TodoTask[])
+      setItems(list as DisplayItem[])
       setDismissed(new Set(dismissedIds))
     } catch {
-      setTasks([])
+      // Leave whatever is on screen rather than blanking the tab; the aggregate
+      // already degrades per-source in main, so a total failure here is a bug
+      // worth seeing as staleness, not as an empty list.
     } finally {
       setLoading(false)
     }
   }, [userId])
 
-  const loadPersonalTodos = useCallback(async () => {
-    try {
-      const items = await window.api.personalTodo.list(userId)
-      setPersonalTodos(items.map(i => ({ ...i, type: 'personal' as const })))
-    } catch {}
-  }, [userId])
+  const queueLoad = useCallback(() => {
+    loadChainRef.current = loadChainRef.current.then(() => load()).catch(() => {})
+  }, [load])
 
-  const loadCalendarItems = useCallback(async () => {
+  const loadMeetings = useCallback(async () => {
     try {
       const status = await window.api.userGoogle.getStatus(userId)
       setGoogleConnected(status.connected)
       if (!status.connected) return
       const calsResult = await window.api.userGoogle.getCalendars(userId)
       if ('needsReauth' in calsResult && calsResult.needsReauth) {
-        setGoogleNeedsReauth(true)
-        setGoogleConnected(false)
-        return
+        setGoogleNeedsReauth(true); setGoogleConnected(false); return
       }
-      const cals = calsResult as { id:string; summary:string; backgroundColor:string; foregroundColor:string; primary:boolean; accessRole:string }[]
-      // Read enabled toggles from localStorage (same format as TeamCalendar)
+      const cals = calsResult as { id: string; summary: string; backgroundColor: string }[]
       let enabledSet: Set<string>
       try {
         const saved = localStorage.getItem(`cal-toggles-${userId}`)
-        enabledSet = saved ? new Set(JSON.parse(saved)) : new Set(cals.map((c: any) => c.id))
-      } catch {
-        enabledSet = new Set(cals.map((c: any) => c.id))
-      }
+        enabledSet = saved ? new Set(JSON.parse(saved)) : new Set(cals.map(c => c.id))
+      } catch { enabledSet = new Set(cals.map(c => c.id)) }
 
       const today = new Date()
       const startDate = today.toISOString().slice(0, 10)
       const endDate = new Date(today.getTime() + 14 * 86400000).toISOString().slice(0, 10)
-
       const now = Date.now()
-      const items: CalendarItem[] = []
+      const out: DisplayItem[] = []
       for (const cal of cals) {
         if (!enabledSet.has(cal.id)) continue
         try {
           const evs = await window.api.userGoogle.getCalendarEvents(userId, cal.id, startDate, endDate, cal.backgroundColor)
           for (const ev of evs) {
-            // Skip timed meetings that have already ended (all-day events always show)
-            if (!ev.allDay && ev.end) {
-              const endMs = new Date(ev.end).getTime()
-              if (endMs < now) continue
-            }
-            items.push({
+            // Skip timed meetings that already ended (all-day events always show).
+            if (!ev.allDay && ev.end && new Date(ev.end).getTime() < now) continue
+            out.push({
               id: 'gcal-' + ev.id,
-              type: 'calendar-event',
+              source: 'kc-meeting',
               title: ev.summary,
-              start: ev.start,
-              end: ev.end,
-              allDay: ev.allDay,
-              calendarName: cal.summary,
-              calendarColor: cal.backgroundColor,
-              meetingLink: ev.meetingLink,
+              due_date: ev.start.slice(0, 10),
+              due_time: ev.allDay ? null : ev.start.slice(11, 16),
+              completed: false,
+              completed_at: null,
+              position: null,
+              board_id: null,
+              board_name: null,
+              linked_task_id: null,
+              column_id: null,
+              area_of_analysis: null,
+              has_steps: false,
+              meta: {
+                timeLabel: ev.allDay ? 'All day' : `${ev.start.slice(11, 16)} – ${ev.end.slice(11, 16)}`,
+                calendarName: cal.summary,
+                calendarColor: cal.backgroundColor,
+                meetingLink: ev.meetingLink,
+              },
             })
           }
-        } catch {}
+        } catch { /* one calendar failing must not drop the others */ }
       }
-      setCalendarItems(items)
-    } catch {}
+      setMeetings(out)
+    } catch { /* Google unreachable — meetings simply absent, per the offline contract */ }
   }, [userId])
 
-  useEffect(() => { load() }, [load])
-  useEffect(() => { loadPersonalTodos() }, [loadPersonalTodos])
-  useEffect(() => { loadCalendarItems() }, [loadCalendarItems])
+  useEffect(() => { queueLoad() }, [queueLoad])
+  useEffect(() => { loadMeetings() }, [loadMeetings])
 
-  // Persist showCalEvents
+  // ── REFRESH ON CHANGE ──────────────────────────────────────────────────────
+  // ★ NO SECOND realtime SUBSCRIPTION HERE — deliberately.
+  //
+  // The preload teardown is ipcRenderer.removeAllListeners('workspace:remoteChange'),
+  // which is CHANNEL-GLOBAL: a second window.api.workspace.onRemoteChange in this
+  // component would be silently unsubscribed whenever WorkspaceContext's effect
+  // re-ran its cleanup, and the tab would quietly stop updating with no error.
+  //
+  // Instead we consume `todoDataVersion` off WorkspaceContext, which bumps on every
+  // realtime push from the app's single subscription. This is the same mechanism
+  // TaskDetailPanel already uses via boardContentVersion.
   useEffect(() => {
-    try { localStorage.setItem(`todo-show-cal-${userId}`, showCalEvents ? 'true' : 'false') } catch {}
+    if (todoDataVersion === 0) return   // skip the initial value; mount already loaded
+    queueLoad()
+  }, [todoDataVersion, queueLoad])
+
+  // Refetch when the window regains focus — covers changes made elsewhere while
+  // the app was backgrounded, and anything realtime missed.
+  useEffect(() => {
+    const onFocus = () => queueLoad()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [queueLoad])
+
+  useEffect(() => {
+    try { localStorage.setItem(`todo-show-cal-${userId}`, showCalEvents ? 'true' : 'false') } catch { /* non-fatal */ }
   }, [showCalEvents, userId])
 
-  function getGroup(task: TodoTask): Group {
-    if (task.completed_at || task.column_id === 'col-published') return 'done'
-    if (!task.due_date) return 'nodate'
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const due = new Date(task.due_date)
-    due.setHours(0, 0, 0, 0)
-    const diff = Math.floor((due.getTime() - today.getTime()) / 86400000)
-    if (diff < 0 || diff === 0) return 'today'
-    if (diff <= 7) return 'week'
-    return 'upcoming'
-  }
+  // ── Identity helpers ───────────────────────────────────────────────────────
+  // Personal ids are source-prefixed by the backend (`personal-<uuid>`); the raw
+  // id is what the personalTodo:* handlers expect.
+  const rawPersonalId = (id: string) => id.replace(/^personal-/, '')
 
-  function getPersonalGroup(item: PersonalTodoItem): Group {
-    if (item.completed) return 'done'
-    if (!item.due_date) return 'nodate'
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const due = new Date(item.due_date)
-    due.setHours(0, 0, 0, 0)
-    const diff = Math.floor((due.getTime() - today.getTime()) / 86400000)
-    if (diff < 0 || diff === 0) return 'today'
-    if (diff <= 7) return 'week'
-    return 'upcoming'
-  }
-
-  function getCalendarGroup(item: CalendarItem): Group | null {
-    const startDate = item.start.slice(0, 10)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const start = new Date(startDate)
-    start.setHours(0, 0, 0, 0)
-    const diff = Math.floor((start.getTime() - today.getTime()) / 86400000)
-    if (diff < 0) return null // past event
-    if (diff === 0) return 'today'
-    if (diff <= 7) return 'week'
-    return null // beyond next week, skip
-  }
-
-  async function handleComplete(task: TodoTask) {
-    if (!online) return   // read-only offline
-    if (completing.has(task.id)) return
-    setCompleting(prev => new Set([...prev, task.id]))
+  // ── Actions ────────────────────────────────────────────────────────────────
+  async function handleComplete(item: DisplayItem) {
+    if (!online) return   // board writes are cloud-authoritative — read-only offline
+    const taskId = item.linked_task_id
+    if (!taskId || completing.has(item.id)) return
+    setCompleting(prev => new Set([...prev, item.id]))
     try {
-      await window.api.todo.complete(task.id, userId, userName)
-      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed_at: new Date().toISOString(), column_id: 'col-published' } : t))
+      await window.api.todo.complete(taskId, userId, userName)
+      setItems(prev => prev.map(i => i.id === item.id
+        ? { ...i, completed: true, completed_at: new Date().toISOString() } : i))
+      queueLoad()
     } finally {
-      setCompleting(prev => { const n = new Set(prev); n.delete(task.id); return n })
+      setCompleting(prev => { const n = new Set(prev); n.delete(item.id); return n })
     }
   }
 
-  async function handleUncomplete(task: TodoTask) {
-    if (!online) return   // read-only offline
-    await window.api.todo.uncomplete(task.id)
-    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed_at: null, column_id: 'col-drafting' } : t))
+  async function handleUncomplete(item: DisplayItem) {
+    if (!online) return
+    const taskId = item.linked_task_id
+    if (!taskId) return
+    await window.api.todo.uncomplete(taskId)
+    setItems(prev => prev.map(i => i.id === item.id
+      ? { ...i, completed: false, completed_at: null } : i))
+    queueLoad()
   }
 
-  async function handleClearCompleted() {
-    const doneTasks = visible.filter(t => getGroup(t) === 'done')
-    await Promise.all(doneTasks.map(t => window.api.todo.dismiss(userId, t.id)))
-    setDismissed(prev => new Set([...prev, ...doneTasks.map(t => t.id)]))
+  async function handlePersonalToggle(item: DisplayItem) {
+    const id = rawPersonalId(item.id)
+    // Local-first (slice 1b): these run offline by design.
+    if (item.completed) await window.api.personalTodo.uncomplete(id)
+    else await window.api.personalTodo.complete(id)
+    queueLoad()
   }
 
-  function handleTaskClick(task: TodoTask) {
-    setActiveBoardId(task.board_id)
-    openTask(task.id)
-    navigate('/workspace')
+  async function handlePersonalDelete(item: DisplayItem) {
+    // Optimistic removal, then reconcile via refetch — a rejected delete puts the
+    // item back rather than leaving the list lying.
+    setItems(prev => prev.filter(i => i.id !== item.id))
+    try { await window.api.personalTodo.delete(rawPersonalId(item.id)) }
+    finally { queueLoad() }
   }
 
-  // PERSONAL to-dos are local-first (slice 1b): the main handler writes SQLite
-  // immediately and queues the cloud push, so these three must run offline. The
-  // board handlers above (handleComplete / handleUncomplete) keep their offline
-  // guard — they write workspace_tasks, which is cloud-authoritative with no queue.
   async function handleAddPersonal() {
     if (!newPersonalTitle.trim()) return
     setAddingPersonal(true)
@@ -243,293 +284,210 @@ export default function Todo() {
         due_date: newPersonalDate || undefined,
         due_time: newPersonalTime || undefined,
       })
-      setNewPersonalTitle('')
-      setNewPersonalDate('')
-      setNewPersonalTime('')
+      setNewPersonalTitle(''); setNewPersonalDate(''); setNewPersonalTime('')
       setShowAddPersonal(false)
-      await loadPersonalTodos()
+      queueLoad()
     } finally {
       setAddingPersonal(false)
     }
   }
 
-  async function handlePersonalComplete(item: PersonalTodoItem) {
-    if (item.completed) {
-      await window.api.personalTodo.uncomplete(item.id)
-    } else {
-      await window.api.personalTodo.complete(item.id)
-    }
-    await loadPersonalTodos()
+  async function handleClearCompleted() {
+    const done = tabItems.filter(t => t.completed && t.linked_task_id)
+    await Promise.all(done.map(t => window.api.todo.dismiss(userId, t.linked_task_id!)))
+    setDismissed(prev => new Set([...prev, ...done.map(t => t.linked_task_id!)]))
   }
 
-  async function handlePersonalDelete(id: string) {
-    // Optimistic removal before the await, then reconcile — the same shape as the
-    // card-revive path, which likewise mutates state first and lets a refetch settle
-    // the truth. loadPersonalTodos() re-reads local SQLite, so a rejected delete puts
-    // the item back instead of leaving the list lying until a manual reload.
-    setPersonalTodos(prev => prev.filter(i => i.id !== id))
-    try {
-      await window.api.personalTodo.delete(id)
-    } catch {
-      await loadPersonalTodos()
+  function handleItemClick(item: DisplayItem) {
+    if (item.source === 'kc-deadline' && item.board_id && item.linked_task_id) {
+      setActiveBoardId(item.board_id)
+      openTask(item.linked_task_id)
+      navigate('/workspace')
     }
   }
 
-  const visible = tasks.filter(t => !dismissed.has(t.id))
+  // ── Derivation ─────────────────────────────────────────────────────────────
+  // Personal to-dos render only for the logged-in user (never root viewing others).
+  const showPersonal = !isRoot || localUser?.id === userId
 
-  const groups: Record<Group, TodoTask[]> = {
-    today:    visible.filter(t => getGroup(t) === 'today'),
-    week:     visible.filter(t => getGroup(t) === 'week'),
-    upcoming: visible.filter(t => getGroup(t) === 'upcoming'),
-    nodate:   visible.filter(t => getGroup(t) === 'nodate'),
-    done:     visible.filter(t => getGroup(t) === 'done'),
-  }
+  const all = useMemo<DisplayItem[]>(() => {
+    const base = items.filter(i => {
+      if (i.source === 'personal' && !showPersonal) return false
+      // Dismissals are keyed on the raw task id.
+      if (i.linked_task_id && dismissed.has(i.linked_task_id)) return false
+      return true
+    })
+    return showCalEvents ? [...base, ...meetings] : base
+  }, [items, meetings, dismissed, showCalEvents, showPersonal])
 
-  const personalGroups: Record<Group, PersonalTodoItem[]> = {
-    today:    personalTodos.filter(i => getPersonalGroup(i) === 'today'),
-    week:     personalTodos.filter(i => getPersonalGroup(i) === 'week'),
-    upcoming: personalTodos.filter(i => getPersonalGroup(i) === 'upcoming'),
-    nodate:   personalTodos.filter(i => getPersonalGroup(i) === 'nodate'),
-    done:     personalTodos.filter(i => getPersonalGroup(i) === 'done'),
-  }
+  const tabItems = useMemo(() => all.filter(t => inTab(t, tab)), [all, tab])
+  const active   = useMemo(() => tabItems.filter(t => !t.completed), [tabItems])
 
-  const calGroups: Record<'today' | 'week', CalendarItem[]> = {
-    today: showCalEvents ? calendarItems.filter(i => getCalendarGroup(i) === 'today') : [],
-    week:  showCalEvents ? calendarItems.filter(i => getCalendarGroup(i) === 'week') : [],
-  }
+  // kc-intel directives pin above everything (slice 5 — empty until then).
+  const directives = useMemo(() => active.filter(t => t.source === 'kc-intel'), [active])
 
-  const GROUP_LABELS: Record<Group, string> = {
-    today:    'Today',
-    week:     'This Week',
-    upcoming: 'Upcoming',
-    nodate:   'No Date',
-    done:     'Done',
-  }
+  // PROMOTION: pastdue + today lift OUT of the bands into a pinned strip. They are
+  // not duplicated below — `body` excludes them.
+  const promoted = useMemo(() =>
+    active
+      .filter(t => t.source !== 'kc-intel' && isPromoted(urgency(t.due_date).k))
+      .sort((a, b) => URGENCY_RANK[urgency(a.due_date).k] - URGENCY_RANK[urgency(b.due_date).k]),
+    [active])
 
-  function dueDateLabel(dateStr: string): { text: string; color: string } {
-    const today = new Date(); today.setHours(0, 0, 0, 0)
-    const due = new Date(dateStr); due.setHours(0, 0, 0, 0)
-    const diff = Math.floor((due.getTime() - today.getTime()) / 86400000)
-    if (diff < 0) return { text: `${Math.abs(diff)}d overdue`, color: 'text-red-500 dark:text-red-400' }
-    if (diff === 0) return { text: 'Today', color: 'text-amber-500 dark:text-amber-400' }
-    if (diff === 1) return { text: 'Tomorrow', color: 'text-gray-500 dark:text-white/50' }
-    return { text: due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), color: 'text-gray-400 dark:text-white/40' }
-  }
+  const bands = useMemo(() => {
+    const body = active.filter(t => t.source !== 'kc-intel' && !isPromoted(urgency(t.due_date).k))
+    const map = new Map<UrgencyKey, DisplayItem[]>()
+    for (const t of body) {
+      const k = urgency(t.due_date).k
+      if (!map.has(k)) map.set(k, [])
+      map.get(k)!.push(t)
+    }
+    // Bands are built by reducing over items PRESENT, so absent sources simply
+    // produce no band — empty sources need no special-casing.
+    return [...map.entries()]
+      .sort((a, b) => URGENCY_RANK[a[0]] - URGENCY_RANK[b[0]])
+      .map(([k, list]) => ({ k, label: BAND_LABELS[k], items: list }))
+  }, [active])
 
-  function TaskItem({ task, isDone }: { task: TodoTask; isDone?: boolean }) {
-    const area = areas.find(a => a.id === task.area_of_analysis)
-    const isCompleting = completing.has(task.id)
-    const isChecked = isDone || !!task.completed_at
+  const doneItems = useMemo(() =>
+    tabItems.filter(t => t.completed)
+      .sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? '')),
+    [tabItems])
 
-    return (
-      <div
-        className={`group flex items-center gap-3 px-4 py-3 border-b border-black/[0.04] dark:border-white/[0.04] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition cursor-pointer ${isDone ? 'opacity-60' : ''}`}
-        onClick={() => handleTaskClick(task)}
-      >
-        {/* Checkbox */}
-        <button
-          onClick={e => { e.stopPropagation(); if (!isChecked) handleComplete(task); else handleUncomplete(task) }}
-          className={`shrink-0 rounded border transition flex items-center justify-center ${
-            isChecked
-              ? 'bg-green-500 border-green-500'
-              : 'border-gray-300 dark:border-white/30 hover:border-indigo-400'
-          }`}
-          style={{ width: 18, height: 18 }}
-          disabled={isCompleting}
-        >
-          {(isChecked || isCompleting) && (
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path d="M2 5l2.5 2.5L8 2.5" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+  const tabCounts = useMemo(() => {
+    const out = {} as Record<TabId, number>
+    for (const t of TABS) out[t.id] = all.filter(i => !i.completed && inTab(i, t.id)).length
+    return out
+  }, [all])
+
+  // ── Item rendering ─────────────────────────────────────────────────────────
+  function Row({ item, extraClass = '' }: { item: DisplayItem; extraClass?: string }) {
+    const area = areas.find(a => a.id === item.area_of_analysis)
+    const isPersonal = item.source === 'personal'
+    const isMeeting  = item.source === 'kc-meeting'
+    const isBusy     = completing.has(item.id)
+    const u          = urgency(item.due_date)
+    const dueColor =
+      u.k === 'pastdue' ? 'text-red-500 dark:text-red-400'
+      : u.k === 'today' ? 'text-amber-500 dark:text-amber-400'
+      : 'text-gray-400 dark:text-white/40'
+
+    if (isMeeting) {
+      return (
+        <div className="flex items-center gap-3 bg-blue-50/50 dark:bg-blue-500/5 border border-blue-100 dark:border-blue-500/15 rounded-xl mx-3 my-1 px-3 py-2.5">
+          <div className="shrink-0 w-[18px] h-[18px] flex items-center justify-center">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <rect x="1" y="2" width="12" height="11" rx="2" stroke="#6366f1" strokeWidth="1.2"/>
+              <path d="M1 5h12" stroke="#6366f1" strokeWidth="1.2"/>
+              <path d="M4 1v2M10 1v2" stroke="#6366f1" strokeWidth="1.2" strokeLinecap="round"/>
             </svg>
-          )}
-        </button>
-
-        {/* Area color dot */}
-        {area && (
-          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: area.color }} />
-        )}
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <p className={`text-sm ${isDone ? 'line-through text-gray-400 dark:text-white/40' : 'text-gray-900 dark:text-white'}`}>
-            {task.title}
-          </p>
-          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            {task.board_name && (
-              <span className="text-[10px] text-gray-400 dark:text-white/40">{task.board_name}</span>
-            )}
-            {isDone && task.completed_at && (
-              <span className="text-[10px] text-gray-400 dark:text-white/35">
-                Completed {new Date(task.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-              </span>
-            )}
           </div>
-        </div>
-
-        {/* Due date */}
-        {task.due_date && !isDone && (() => {
-          const { text, color } = dueDateLabel(task.due_date)
-          return <span className={`text-[11px] font-medium shrink-0 ${color}`}>{text}</span>
-        })()}
-      </div>
-    )
-  }
-
-  function PersonalTodoItemComponent({ item }: { item: PersonalTodoItem }) {
-    const isCompleted = !!item.completed
-    return (
-      <div className="group flex items-center gap-3 border border-dashed border-gray-200 dark:border-white/15 bg-gray-50/30 dark:bg-white/[0.015] rounded-xl mx-3 my-1 px-3 py-2.5">
-        {/* Completion circle */}
-        <button
-          onClick={() => handlePersonalComplete(item)}
-          className={`shrink-0 w-[18px] h-[18px] rounded-full border-2 transition flex items-center justify-center ${
-            isCompleted ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-white/30 hover:border-indigo-400'
-          }`}
-        >
-          {isCompleted && (
-            <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
-              <path d="M2 5l2.5 2.5L8 2.5" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          )}
-        </button>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className={`text-sm ${isCompleted ? 'line-through text-gray-400 dark:text-white/40' : 'text-gray-900 dark:text-white'}`}>
-              {item.title}
-            </p>
-            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-gray-100 dark:bg-white/[0.08] text-gray-400 dark:text-white/40 border border-gray-200 dark:border-white/[0.08]">
-              Personal
-            </span>
-          </div>
-          {(item.due_date || item.due_time) && (
-            <p className="text-[10px] text-gray-400 dark:text-white/40 mt-0.5">
-              {item.due_date && new Date(item.due_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-              {item.due_time && ` at ${item.due_time}`}
-            </p>
-          )}
-        </div>
-
-        {/* Delete button */}
-        <button
-          onClick={() => handlePersonalDelete(item.id)}
-          className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-lg text-gray-300 dark:text-white/25 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition shrink-0"
-          title="Delete"
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </button>
-      </div>
-    )
-  }
-
-  function CalendarEventItem({ item }: { item: CalendarItem }) {
-    const timeStr = item.allDay
-      ? 'All day'
-      : `${item.start.slice(11, 16)} – ${item.end.slice(11, 16)}`
-
-    return (
-      <div className="flex items-center gap-3 bg-blue-50/50 dark:bg-blue-500/5 border border-blue-100 dark:border-blue-500/15 rounded-xl mx-3 my-1 px-3 py-2.5">
-        {/* Calendar icon */}
-        <div className="shrink-0 w-[18px] h-[18px] flex items-center justify-center">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <rect x="1" y="2" width="12" height="11" rx="2" stroke="#6366f1" strokeWidth="1.2"/>
-            <path d="M1 5h12" stroke="#6366f1" strokeWidth="1.2"/>
-            <path d="M4 1v2M10 1v2" stroke="#6366f1" strokeWidth="1.2" strokeLinecap="round"/>
-          </svg>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm text-gray-900 dark:text-white truncate">{item.title}</p>
-          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            <span className="text-[10px] text-gray-500 dark:text-white/50">{timeStr}</span>
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.calendarColor }} />
-              <span className="text-[10px] text-gray-400 dark:text-white/40 truncate">{item.calendarName}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-gray-900 dark:text-white truncate">{item.title}</p>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <span className="text-[10px] text-gray-500 dark:text-white/50">{item.meta?.timeLabel}</span>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.meta?.calendarColor }} />
+                <span className="text-[10px] text-gray-400 dark:text-white/40 truncate">{item.meta?.calendarName}</span>
+              </div>
             </div>
           </div>
-        </div>
-
-        {/* Join button */}
-        {item.meetingLink && (
-          <button
-            onClick={() => window.open(item.meetingLink, '_blank')}
-            className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-medium hover:bg-indigo-500/20 transition"
-          >
-            Join
-          </button>
-        )}
-      </div>
-    )
-  }
-
-  function Section({ group, tasks: sectionTasks, personalItems, calItems }: {
-    group: Group
-    tasks: TodoTask[]
-    personalItems: PersonalTodoItem[]
-    calItems?: CalendarItem[]
-  }) {
-    const allEmpty = sectionTasks.length === 0 && personalItems.length === 0 && (calItems?.length ?? 0) === 0
-    if (allEmpty) return null
-    const isDone = group === 'done'
-
-    if (isDone) {
-      const doneTasks = sectionTasks
-      const donePersonal = personalItems
-      if (doneTasks.length === 0 && donePersonal.length === 0) return null
-      return (
-        <div>
-          <button
-            onClick={() => setDoneExpanded(v => !v)}
-            className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={`transition-transform ${doneExpanded ? 'rotate-90' : ''}`}>
-              <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="text-xs font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wider">Done</span>
-            <span className="text-xs text-gray-400 dark:text-white/35">({doneTasks.length + donePersonal.length})</span>
-          </button>
-          {doneExpanded && (
-            <>
-              {doneTasks.map(t => <TaskItem key={t.id} task={t} isDone />)}
-              {donePersonal.map(i => <PersonalTodoItemComponent key={i.id} item={i} />)}
-              <div className="px-4 py-3">
-                <button
-                  onClick={handleClearCompleted}
-                  className="text-xs text-gray-400 dark:text-white/40 hover:text-red-400 dark:hover:text-red-400 transition"
-                >
-                  Clear completed
-                </button>
-              </div>
-            </>
+          {item.meta?.meetingLink && (
+            <button
+              onClick={() => window.open(item.meta!.meetingLink, '_blank')}
+              className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-medium hover:bg-indigo-500/20 transition"
+            >
+              Join
+            </button>
           )}
         </div>
       )
     }
 
-    return (
-      <div>
-        <div className="px-4 py-2 flex items-center gap-2">
-          <span className="text-xs font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider">{GROUP_LABELS[group]}</span>
-          <span className="text-xs text-gray-300 dark:text-white/25">({sectionTasks.length + personalItems.length + (calItems?.length ?? 0)})</span>
+    if (isPersonal) {
+      return (
+        <div className={`group flex items-center gap-3 border border-dashed border-gray-200 dark:border-white/15 bg-gray-50/30 dark:bg-white/[0.015] rounded-xl mx-3 my-1 px-3 py-2.5 ${extraClass}`}>
+          <button
+            onClick={() => handlePersonalToggle(item)}
+            className={`shrink-0 w-[18px] h-[18px] rounded-full border-2 transition flex items-center justify-center ${
+              item.completed ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-white/30 hover:border-indigo-400'
+            }`}
+          >
+            {item.completed && (
+              <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                <path d="M2 5l2.5 2.5L8 2.5" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className={`text-sm ${item.completed ? 'line-through text-gray-400 dark:text-white/40' : 'text-gray-900 dark:text-white'}`}>
+                {item.title}
+              </p>
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-gray-100 dark:bg-white/[0.08] text-gray-400 dark:text-white/40 border border-gray-200 dark:border-white/[0.08]">
+                Personal
+              </span>
+            </div>
+            {(item.due_date || item.due_time) && (
+              <p className={`text-[10px] mt-0.5 ${dueColor}`}>{dueLabel(item.due_date, item.due_time)}</p>
+            )}
+          </div>
+          <button
+            onClick={() => handlePersonalDelete(item)}
+            className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-lg text-gray-300 dark:text-white/25 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition shrink-0"
+            title="Delete"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
         </div>
-        {calItems?.map(i => <CalendarEventItem key={i.id} item={i} />)}
-        {personalItems.map(i => <PersonalTodoItemComponent key={i.id} item={i} />)}
-        {sectionTasks.map(t => <TaskItem key={t.id} task={t} />)}
+      )
+    }
+
+    // Board card (kc-deadline) — and, later, off-card 'assigned'.
+    return (
+      <div
+        className={`group flex items-center gap-3 px-4 py-3 border-b border-black/[0.04] dark:border-white/[0.04] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition cursor-pointer ${item.completed ? 'opacity-60' : ''} ${extraClass}`}
+        onClick={() => handleItemClick(item)}
+      >
+        <button
+          onClick={e => { e.stopPropagation(); if (!item.completed) handleComplete(item); else handleUncomplete(item) }}
+          className={`shrink-0 rounded border transition flex items-center justify-center ${
+            item.completed ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-white/30 hover:border-indigo-400'
+          } ${!online ? 'opacity-40 cursor-not-allowed' : ''}`}
+          style={{ width: 18, height: 18 }}
+          disabled={isBusy || !online}
+          title={!online ? 'Board tasks are read-only offline' : undefined}
+        >
+          {(item.completed || isBusy) && (
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M2 5l2.5 2.5L8 2.5" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          )}
+        </button>
+        {area && <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: area.color }} />}
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm ${item.completed ? 'line-through text-gray-400 dark:text-white/40' : 'text-gray-900 dark:text-white'}`}>
+            {item.title}
+          </p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {item.board_name && <span className="text-[10px] text-gray-400 dark:text-white/40">{item.board_name}</span>}
+            {item.completed && item.completed_at && (
+              <span className="text-[10px] text-gray-400 dark:text-white/35">
+                Completed {new Date(item.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+              </span>
+            )}
+          </div>
+        </div>
+        {item.due_date && !item.completed && (
+          <span className={`text-[11px] font-medium shrink-0 ${dueColor}`}>{dueLabel(item.due_date)}</span>
+        )}
       </div>
     )
   }
 
-  const totalPending = groups.today.length + groups.week.length + groups.upcoming.length + groups.nodate.length
-    + personalGroups.today.filter(i => !i.completed).length + personalGroups.week.filter(i => !i.completed).length
-    + personalGroups.upcoming.filter(i => !i.completed).length + personalGroups.nodate.filter(i => !i.completed).length
-    + calGroups.today.length + calGroups.week.length
-
-  // Personal todos only render for the logged-in user (never admin viewing others)
-  const showPersonal = !isRoot || localUser?.id === userId
+  const totalPending = tabCounts.all
 
   return (
     <div className="h-full flex flex-col bg-slate-50 dark:bg-hub-navy overflow-hidden">
@@ -544,7 +502,6 @@ export default function Todo() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {/* Calendar events toggle */}
           <button
             onClick={() => setShowCalEvents(v => !v)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition border ${
@@ -561,7 +518,6 @@ export default function Todo() {
             </svg>
             Calendar
           </button>
-          {/* Add personal to-do */}
           <button
             onClick={() => setShowAddPersonal(v => !v)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 dark:bg-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.12] text-gray-700 dark:text-white/75 transition border border-gray-200 dark:border-white/[0.1]"
@@ -570,6 +526,26 @@ export default function Todo() {
             Add personal
           </button>
         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex items-center gap-1 px-6 pt-3 bg-white dark:bg-black/20 border-b border-black/[0.06] dark:border-white/[0.06] shrink-0">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 transition ${
+              tab === t.id
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-400 dark:text-white/40 hover:text-gray-600 dark:hover:text-white/70'
+            }`}
+          >
+            {t.name}
+            {tabCounts[t.id] > 0 && (
+              <span className="ml-1.5 text-[10px] text-gray-400 dark:text-white/35">{tabCounts[t.id]}</span>
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Inline add personal form */}
@@ -584,29 +560,16 @@ export default function Todo() {
               autoFocus
               className="flex-1 min-w-[200px] px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/35 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
             />
-            <input
-              type="date"
-              value={newPersonalDate}
-              onChange={e => setNewPersonalDate(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-            />
-            <input
-              type="time"
-              value={newPersonalTime}
-              onChange={e => setNewPersonalTime(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-            />
-            <button
-              onClick={handleAddPersonal}
-              disabled={!newPersonalTitle.trim() || addingPersonal}
-              className="px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white text-sm font-medium transition"
-            >
+            <input type="date" value={newPersonalDate} onChange={e => setNewPersonalDate(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
+            <input type="time" value={newPersonalTime} onChange={e => setNewPersonalTime(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
+            <button onClick={handleAddPersonal} disabled={!newPersonalTitle.trim() || addingPersonal}
+              className="px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white text-sm font-medium transition">
               {addingPersonal ? 'Adding…' : 'Add'}
             </button>
-            <button
-              onClick={() => { setShowAddPersonal(false); setNewPersonalTitle(''); setNewPersonalDate(''); setNewPersonalTime('') }}
-              className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.08] text-gray-500 dark:text-white/65 text-sm transition"
-            >
+            <button onClick={() => { setShowAddPersonal(false); setNewPersonalTitle(''); setNewPersonalDate(''); setNewPersonalTime('') }}
+              className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.08] text-gray-500 dark:text-white/65 text-sm transition">
               Cancel
             </button>
           </div>
@@ -619,39 +582,108 @@ export default function Todo() {
           <div className="flex items-center justify-center h-32 text-gray-400 dark:text-white/50 text-sm">Loading…</div>
         ) : (
           <div className="bg-white dark:bg-black/10">
-            <Section
-              group="today"
-              tasks={groups.today}
-              personalItems={showPersonal ? personalGroups.today : []}
-              calItems={calGroups.today}
-            />
-            <Section
-              group="week"
-              tasks={groups.week}
-              personalItems={showPersonal ? personalGroups.week : []}
-              calItems={calGroups.week}
-            />
-            <Section
-              group="upcoming"
-              tasks={groups.upcoming}
-              personalItems={showPersonal ? personalGroups.upcoming : []}
-            />
-            <Section
-              group="nodate"
-              tasks={groups.nodate}
-              personalItems={showPersonal ? personalGroups.nodate : []}
-            />
-            <Section
-              group="done"
-              tasks={groups.done}
-              personalItems={showPersonal ? personalGroups.done : []}
-            />
-            {totalPending === 0 && groups.done.length === 0 && personalGroups.done.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-48 gap-3">
-                <div className="text-3xl">✓</div>
-                <p className="text-sm font-medium text-gray-500 dark:text-white/65">Nothing to do!</p>
-                <p className="text-xs text-gray-400 dark:text-white/50">Tasks assigned to you will appear here.</p>
-                {(!googleConnected || googleNeedsReauth) && (
+            {/* PINNED: intel directives (slice 5 — none exist yet) */}
+            {directives.length > 0 && (
+              <div>
+                <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                  Directives
+                </div>
+                {directives.map(t => <Row key={t.id} item={t} extraClass="bg-violet-50/40 dark:bg-violet-500/5" />)}
+              </div>
+            )}
+
+            {/* PINNED: promotion strip — past due + due today, all sources */}
+            {promoted.length > 0 && (
+              <div>
+                <div className="px-4 py-2 flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-red-500 dark:text-red-400">
+                    Needs attention
+                  </span>
+                  <span className="text-xs text-gray-300 dark:text-white/25">({promoted.length})</span>
+                </div>
+                {promoted.map(t => (
+                  <Row key={t.id} item={t}
+                    extraClass={urgency(t.due_date).k === 'pastdue'
+                      ? 'bg-red-50/40 dark:bg-red-500/5'
+                      : 'bg-amber-50/40 dark:bg-amber-500/5'} />
+                ))}
+              </div>
+            )}
+
+            {/* BANDS */}
+            {bands.map(b => (
+              <div key={b.k}>
+                <div className="px-4 py-2 flex items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-400 dark:text-white/40 uppercase tracking-wider">{b.label}</span>
+                  <span className="text-xs text-gray-300 dark:text-white/25">({b.items.length})</span>
+                </div>
+                {b.items.map(t => <Row key={t.id} item={t} />)}
+              </div>
+            ))}
+
+            {/* COMPLETED — collapsed by default */}
+            {doneItems.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setDoneExpanded(v => !v)}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={`transition-transform ${doneExpanded ? 'rotate-90' : ''}`}>
+                    <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  <span className="text-xs font-semibold text-gray-500 dark:text-white/50 uppercase tracking-wider">Completed</span>
+                  <span className="text-xs text-gray-400 dark:text-white/35">({doneItems.length})</span>
+                </button>
+                {doneExpanded && (
+                  <>
+                    {doneItems.map(t => <Row key={t.id} item={t} />)}
+                    <div className="px-4 py-3">
+                      <button onClick={handleClearCompleted}
+                        className="text-xs text-gray-400 dark:text-white/40 hover:text-red-400 dark:hover:text-red-400 transition">
+                        Clear completed
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* EMPTY STATES — per tab, so the not-yet-built sources read as
+                intentional rather than broken. */}
+            {directives.length === 0 && promoted.length === 0 && bands.length === 0 && doneItems.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-48 gap-3 px-6 text-center">
+                {tab === 'assigned' ? (
+                  <>
+                    <div className="text-3xl">📋</div>
+                    <p className="text-sm font-medium text-gray-500 dark:text-white/65">Nothing assigned to you yet</p>
+                    <p className="text-xs text-gray-400 dark:text-white/50">
+                      Off-card assignments from a board or info-page head will appear here.
+                    </p>
+                  </>
+                ) : tab === 'assigned-by-me' ? (
+                  <>
+                    <div className="text-3xl">📤</div>
+                    <p className="text-sm font-medium text-gray-500 dark:text-white/65">
+                      You haven’t assigned anything off-card yet
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-white/50">
+                      Tasks you delegate will appear here so you can track them.
+                    </p>
+                  </>
+                ) : tab === 'personal' ? (
+                  <>
+                    <div className="text-3xl">✓</div>
+                    <p className="text-sm font-medium text-gray-500 dark:text-white/65">No personal to-dos</p>
+                    <p className="text-xs text-gray-400 dark:text-white/50">Use “Add personal” to jot something down.</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-3xl">✓</div>
+                    <p className="text-sm font-medium text-gray-500 dark:text-white/65">Nothing to do!</p>
+                    <p className="text-xs text-gray-400 dark:text-white/50">Tasks assigned to you will appear here.</p>
+                  </>
+                )}
+                {(tab === 'kc' || tab === 'all') && (!googleConnected || googleNeedsReauth) && (
                   <p className="text-xs text-indigo-500 dark:text-indigo-400 mt-2 cursor-pointer hover:underline" onClick={() => navigate('/settings')}>
                     {googleNeedsReauth ? 'Re-connect Google in Settings to sync calendar events' : 'Connect Google in Settings to see calendar events'}
                   </p>

@@ -107,6 +107,9 @@ interface TodoItem {
   board_id: string | null
   board_name: string | null
   linked_task_id: string | null
+  column_id: string | null
+  area_of_analysis: string | null
+  /** ⚠ NOT trustworthy until slice 3b fixes the checklist mirror. Unused today. */
   has_steps: boolean
 }
 

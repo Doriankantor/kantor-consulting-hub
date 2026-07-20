@@ -40,9 +40,18 @@ export interface TodoItem {
   board_name: string | null
   /** Deep-link target: the task id for kc-deadline, null for personal. */
   linked_task_id: string | null
+  /** Board sources only — drives the completion rule and the To-Do area colour dot. */
+  column_id: string | null
+  area_of_analysis: string | null
   /**
-   * A REFERENCE, never embedded. The rail fetches steps on expand (slice 3), so
-   * this list stays cheap regardless of how many steps exist.
+   * A REFERENCE, never embedded — the rail fetches steps on expand.
+   *
+   * ⚠ NOT TRUSTWORTHY YET. This reads LOCAL `task_checklist_items`, but every
+   * checklist WRITE handler goes to cloud and there is NO cloud→local mirror for
+   * checklists (verified: no CHECKLIST_COLS, no sync). The local table is a frozen
+   * pre-migration snapshot, so this reports both false negatives (item added since)
+   * and false positives (checklist deleted in cloud). NOTHING CONSUMES IT YET —
+   * the Step Rail is slice 3b, which must fix the mirror first.
    */
   has_steps: boolean
 }
@@ -71,6 +80,8 @@ function readPersonal(userId: string): TodoItem[] {
     board_id: null,
     board_name: null,
     linked_task_id: null,
+    column_id: null,
+    area_of_analysis: null,
     // TODO(slice 3): read `personal_todo_steps` once the Step Rail writes it.
     // Hardcoded false is CORRECT today, not a stub: the table exists (1a) but has
     // ZERO rows and NO handlers — nothing can write a step yet, so a query would
@@ -103,7 +114,8 @@ async function readKcDeadline(actingUser: string): Promise<TodoItem[]> {
   if (!isRoot && ids.size === 0) return []
 
   const rows = getDatabase().prepare(`
-    SELECT t.id, t.title, t.due_date, t.completed_at, t.board_id, b.name AS board_name,
+    SELECT t.id, t.title, t.due_date, t.completed_at, t.board_id, t.column_id,
+           t.area_of_analysis, b.name AS board_name,
            EXISTS (SELECT 1 FROM task_checklist_items ci WHERE ci.task_id = t.id) AS has_steps
     FROM workspace_tasks t
     JOIN workspace_boards b ON b.id = t.board_id
@@ -123,12 +135,19 @@ async function readKcDeadline(actingUser: string): Promise<TodoItem[]> {
       title: String(r.title ?? ''),
       due_date: (r.due_date as string) ?? null,
       due_time: null,
-      completed: !!r.completed_at,
+      // PUBLISHED IS DONE. A card in `col-published` shipped — no deadline applies
+      // to it any more, so it must not sit in the list as an active item. This also
+      // preserves existing behavior: Todo.tsx:163 already treated col-published as
+      // done, and deriving `completed` from completed_at alone would have silently
+      // resurrected every published card as an active deadline.
+      completed: !!r.completed_at || r.column_id === 'col-published',
       completed_at: (r.completed_at as string) ?? null,
       position: null,
       board_id: (r.board_id as string) ?? null,
       board_name: (r.board_name as string) ?? null,
       linked_task_id: String(r.id),
+      column_id: (r.column_id as string) ?? null,
+      area_of_analysis: (r.area_of_analysis as string) ?? null,
       has_steps: !!r.has_steps,
     }))
 }

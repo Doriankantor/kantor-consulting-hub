@@ -109,6 +109,11 @@ interface WorkspaceContextType {
   // card (TaskDetailPanel) can re-fetch its live contents (comments/activity/
   // checklists) without its own remoteChange listener.
   boardContentVersion: number
+
+  // Bumps on EVERY realtime push (any scope), so the To-Do tab can re-run
+  // todos:list without its own remoteChange listener. See the note on the state
+  // declaration for why a second listener is not an option.
+  todoDataVersion: number
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined)
@@ -144,6 +149,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // Bumps on each board-scope realtime change for the open board (see the
   // workspace:remoteChange handler). The open card depends on it to re-fetch.
   const [boardContentVersion, setBoardContentVersion] = useState(0)
+  // Bumps on EVERY realtime push regardless of scope. The To-Do tab depends on it
+  // to re-run todos:list. Same reason boardContentVersion exists: there is exactly
+  // ONE workspace:remoteChange subscription in the app, because the preload teardown
+  // is removeAllListeners() and is therefore channel-global — a second subscriber
+  // would be silently unsubscribed by this provider's cleanup.
+  const [todoDataVersion, setTodoDataVersion] = useState(0)
   // Ref to skip the columns-reload effect on first mount (initial load handles it)
   const columnsFirstRender = useRef(true)
 
@@ -406,6 +417,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setSelectedTask(prev => prev && taskList.some(t => t.id === prev.id) ? prev : null)
     }
     async function handle(d: { boardId: string | null; scope: 'list' | 'board' }) {
+      // Signal the To-Do tab on EVERY push, whatever its scope, before the
+      // scope-specific work below. To-Do aggregates across ALL visible boards, not
+      // just the open one, so a change on a board that isn't open still changes what
+      // it must show — a card assigned to you elsewhere, or a board_members revoke
+      // (scope 'list') that should clear its deadlines. Bumping unconditionally is
+      // correct here and deliberately unlike boardContentVersion, which is scoped to
+      // the open board. todos:list is a cheap all-local read.
+      setTodoDataVersion(v => v + 1)
       try {
         if (d.scope === 'list') {
           await loadBoards()
@@ -793,6 +812,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       reorderBoards,
       refreshBoards,
       boardContentVersion,
+      todoDataVersion,
     }}>
       {children}
     </WorkspaceContext.Provider>
