@@ -781,6 +781,8 @@ interface Window {
       create: (todoId: string, text: string) => Promise<{ ok:boolean; id?:string; error?:string }>
       toggle: (stepId: string)               => Promise<{ ok:boolean; error?:string }>
       delete: (stepId: string)               => Promise<{ ok:boolean }>
+      /** Slice A-3. Dense-rewrites position to the given order (0..n-1). */
+      reorder: (todoId: string, orderedStepIds: string[]) => Promise<{ ok:boolean }>
     }
     notificationPrefs: {
       get:  (userId: string) => Promise<{ first_reminder_min: number; second_reminder_min: number; apply_calendar: number; apply_tasks: number; apply_personal: number; email_prefs_json: string }>

@@ -1965,9 +1965,36 @@ function registerPersonalTodoHandlers() {
     syncPersonalWrite('delete', 'personal_todo_steps', { id: stepId })
     return { ok: true }
   })
-  // REORDER: deliberately not built. Steps append and the rail sorts done-first for
-  // DISPLAY only, so nothing needs a stored reorder yet. Adding it later is a
-  // position rewrite plus one queued update per moved row — no schema change.
+
+  // REORDER (slice A-3). DENSE-REWRITE-ALL: position becomes the array index 0..n-1,
+  // which also self-heals the sparse/gappy positions 3b left behind (append-only
+  // MAX(position)+1 never reclaims a deleted slot). Same ordered-id-array shape as
+  // boards.reorder / workspace:reorderColumns (ipc:1030/1043).
+  ipcMain.handle('personalTodoStep:reorder', (_e, todoId: string, orderedStepIds: string[]) => {
+    const parent = bareTodoId(todoId)
+    const ids = Array.isArray(orderedStepIds) ? orderedStepIds : []
+    if (!ids.length) return { ok: true }
+    const ts = nowIso()
+
+    // ONE transaction. The `AND todo_id=?` guard means a stray or foreign id can only
+    // no-op (0 changes), never reposition another to-do's step — there is no FK to
+    // catch that otherwise.
+    const stmt = db().prepare(
+      'UPDATE personal_todo_steps SET position=?, updated_at=? WHERE id=? AND todo_id=?'
+    )
+    db().transaction((list: string[]) => {
+      list.forEach((id, i) => stmt.run(i, ts, id, parent))
+    })(ids)
+
+    // One cloud update per row, un-awaited (the 1b pattern) — stepCloudRow re-reads
+    // the now-dense position. NO isOnline() guard: personal is the offline-capable
+    // source and the queue drains on reconnect.
+    for (const id of ids) {
+      const row = stepCloudRow(id)
+      if (row) syncPersonalWrite('update', 'personal_todo_steps', row)
+    }
+    return { ok: true }
+  })
 }
 
 // ── Notification Prefs + Scheduler ─────────────────────────────────────────

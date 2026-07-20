@@ -1,4 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import {
+  DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors,
+  closestCenter, type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy,
+  useSortable, arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { useConnection } from '../contexts/ConnectionContext'
@@ -442,6 +451,71 @@ function TimePopover({ value, disabled, onPick }: { value: string | null; disabl
 }
 
 /**
+ * ONE DRAGGABLE STEP ROW (A-3). Module-level so its identity is stable — dnd-kit
+ * needs the same persistent DOM nodes FLIP did. `useSortable` supplies the transform
+ * and the drag `listeners`, which are spread ONLY on the grip handle: the toggle dot
+ * and delete button keep their own onClick and can never be stolen by the drag.
+ */
+function SortableStepRow({
+  step, onToggle, onDelete,
+}: {
+  step: TodoStep
+  onToggle: (stepId: string) => void
+  onDelete: (stepId: string) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step.id })
+  const style = { transform: CSS.Transform.toString(transform), transition }
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-start gap-1.5 group/step py-0.5 ${isDragging ? 'opacity-60 z-10 relative' : ''}`}
+    >
+      {/* GRIP — the ONLY drag activator. Reveals on hover like the delete button. */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="shrink-0 mt-[2px] w-4 h-[18px] flex items-center justify-center rounded text-gray-300 dark:text-white/25 opacity-0 group-hover/step:opacity-100 hover:text-gray-500 dark:hover:text-white/50 cursor-grab active:cursor-grabbing transition"
+        title="Drag to reorder"
+        aria-label="Drag to reorder step"
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+          <circle cx="3" cy="2" r="1"/><circle cx="7" cy="2" r="1"/>
+          <circle cx="3" cy="5" r="1"/><circle cx="7" cy="5" r="1"/>
+          <circle cx="3" cy="8" r="1"/><circle cx="7" cy="8" r="1"/>
+        </svg>
+      </button>
+      <button
+        onClick={() => onToggle(step.id)}
+        className={`shrink-0 mt-[3px] w-[16px] h-[16px] rounded-full border-2 flex items-center justify-center transition-all duration-150 hover:scale-110 ${
+          step.checked ? 'bg-indigo-500 border-indigo-500' : 'bg-gray-100 dark:bg-white/[0.08] border-gray-300 dark:border-white/30 hover:border-indigo-400'
+        }`}
+      >
+        {step.checked && (
+          <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+            <path d="M2 5l2.5 2.5L8 2.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+      </button>
+      <span className={`flex-1 min-w-0 text-xs leading-snug break-words ${
+        step.checked ? 'text-indigo-500 dark:text-indigo-300' : 'text-gray-600 dark:text-white/70'
+      }`}>
+        {step.text}
+      </span>
+      <button
+        onClick={() => onDelete(step.id)}
+        className="opacity-0 group-hover/step:opacity-100 w-6 h-6 flex items-center justify-center rounded-md text-gray-500 dark:text-white/50 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/15 transition shrink-0"
+        title="Delete step"
+      >
+        <svg width="11" height="11" viewBox="0 0 10 10" fill="none">
+          <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        </svg>
+      </button>
+    </div>
+  )
+}
+
+/**
  * ★ THE DETAIL PANEL (A-2) — MODULE-LEVEL, AND RENDERED AS A SIBLING OF THE LIST.
  *
  * Both halves are load-bearing, for the reason 3b taught the hard way:
@@ -466,7 +540,7 @@ function TimePopover({ value, disabled, onPick }: { value: string | null; disabl
  */
 function TodoDetailPanel({
   item, open, reducedMotion, onClose, onComplete, onStar, onColor, onDue,
-  onStepToggle, onStepAdd, onStepDelete, onExited,
+  onStepToggle, onStepAdd, onStepDelete, onStepReorder, onExited,
 }: {
   item: DisplayItem
   /** Drives the slide. False = parked off-screen right (opening frame, or exiting). */
@@ -482,6 +556,8 @@ function TodoDetailPanel({
   onStepToggle: (stepId: string) => void
   onStepAdd: (text: string) => void
   onStepDelete: (stepId: string) => void
+  /** A-3. New order of step ids after a drag; parent dense-rewrites position. */
+  onStepReorder: (orderedStepIds: string[]) => void
 }) {
   // POSITION order, not railOrder. The card's rail collects done-to-the-left for
   // legibility at a glance; this list is the editable one, so it must show the
@@ -489,6 +565,23 @@ function TodoDetailPanel({
   const steps = item.steps ?? []
   const done = steps.filter(s => s.checked).length
   const color = resolveTodoColor(item.color)
+
+  // A-3 DRAG — the SAME dnd-kit setup the Kanban uses (KanbanView.tsx:689). The 5px
+  // activation distance means a click on the toggle dot or delete never starts a
+  // drag; the grip owns the drag listeners, so those buttons keep their own onClick.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+  const handleDragEnd = (e: DragEndEvent): void => {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const ids = steps.map(s => s.id)
+    const from = ids.indexOf(String(active.id))
+    const to = ids.indexOf(String(over.id))
+    if (from < 0 || to < 0) return
+    onStepReorder(arrayMove(ids, from, to))   // commit ON DROP only (no refetch on move)
+  }
 
   return (
     // ★ ABSOLUTELY POSITIONED, not a flex child. A flex sibling would snap the
@@ -646,36 +739,13 @@ function TodoDetailPanel({
             )}
           </div>
           <div className="space-y-0.5">
-            {steps.map(s => (
-              <div key={s.id} className="flex items-start gap-2 group/step py-0.5">
-                <button
-                  onClick={() => onStepToggle(s.id)}
-                  className={`shrink-0 mt-[3px] w-[16px] h-[16px] rounded-full border-2 flex items-center justify-center transition-all duration-150 hover:scale-110 ${
-                    s.checked ? 'bg-indigo-500 border-indigo-500' : 'bg-gray-100 dark:bg-white/[0.08] border-gray-300 dark:border-white/30 hover:border-indigo-400'
-                  }`}
-                >
-                  {s.checked && (
-                    <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
-                      <path d="M2 5l2.5 2.5L8 2.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  )}
-                </button>
-                <span className={`flex-1 min-w-0 text-xs leading-snug break-words ${
-                  s.checked ? 'text-indigo-500 dark:text-indigo-300' : 'text-gray-600 dark:text-white/70'
-                }`}>
-                  {s.text}
-                </span>
-                <button
-                  onClick={() => onStepDelete(s.id)}
-                  className="opacity-0 group-hover/step:opacity-100 w-6 h-6 flex items-center justify-center rounded-md text-gray-500 dark:text-white/50 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/15 transition shrink-0"
-                  title="Delete step"
-                >
-                  <svg width="11" height="11" viewBox="0 0 10 10" fill="none">
-                    <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                  </svg>
-                </button>
-              </div>
-            ))}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={steps.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                {steps.map(s => (
+                  <SortableStepRow key={s.id} step={s} onToggle={onStepToggle} onDelete={onStepDelete} />
+                ))}
+              </SortableContext>
+            </DndContext>
             {/* The SAME module-level input 3b introduced, for the same reason: it
                 holds its own draft, so typing never re-renders Todo. */}
             <div className="pt-1">
@@ -1019,6 +1089,24 @@ export default function Todo() {
     }))
     try { await window.api.personalTodoStep.delete(stepId) }
     finally { queueLoad() }
+  }
+
+  async function handleStepReorder(item: DisplayItem, orderedStepIds: string[]) {
+    // Optimistic: reorder the local steps array to the dropped order so the panel
+    // list AND the card rail settle immediately. The backend dense-rewrites
+    // position; the next refetch returns the same order, so nothing snaps.
+    setItems(prev => prev.map(i => {
+      if (i.id !== item.id) return i
+      const byId = new Map((i.steps ?? []).map(s => [s.id, s]))
+      const next = orderedStepIds.map(id => byId.get(id)).filter(Boolean) as TodoStep[]
+      // Guard: if the id set drifted, keep the existing array rather than dropping steps.
+      return next.length === (i.steps ?? []).length ? { ...i, steps: next } : i
+    }))
+    // raw_id, not item.id — the display id carries the `personal-` prefix (3b landmine).
+    // No queueLoad() on the happy path (the 3b double-hitch lesson: a refetch
+    // mid-interaction re-settles the list for no gain). A refused reorder is
+    // corrected by the next natural refetch.
+    await window.api.personalTodoStep.reorder(item.raw_id, orderedStepIds)
   }
 
   async function handlePersonalDelete(item: DisplayItem) {
@@ -1586,6 +1674,7 @@ export default function Todo() {
           onStepToggle={sid => handleStepToggle(panelItem, sid)}
           onStepAdd={text => handleStepAdd(panelItem, text)}
           onStepDelete={sid => handleStepDelete(sid, panelItem)}
+          onStepReorder={ids => handleStepReorder(panelItem, ids)}
         />
       )}
       </div>

@@ -284,6 +284,7 @@ const api = {
     create: (todoId: string, text: string) => ipcRenderer.invoke('personalTodoStep:create', todoId, text),
     toggle: (stepId: string)               => ipcRenderer.invoke('personalTodoStep:toggle', stepId),
     delete: (stepId: string)               => ipcRenderer.invoke('personalTodoStep:delete', stepId),
+    reorder: (todoId: string, orderedStepIds: string[]) => ipcRenderer.invoke('personalTodoStep:reorder', todoId, orderedStepIds),
   },
   notificationPrefs: {
     get:  (userId: string) => ipcRenderer.invoke('notificationPrefs:get', userId),
