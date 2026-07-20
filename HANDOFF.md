@@ -10,16 +10,29 @@ the renderer migrated onto it. **The To-Do tab now renders from `todos:list`** �
 urgency, a pinned past-due/today strip, and refresh-on-change. Detail: the **SLICE 2** and
 **SLICE 3a** entries under the To-Do overhaul.
 
-**NEXT IS SLICE 3b — fix the checklist cloud→local mirror, THEN build the Step Rail.** Slice 3
-was SPLIT because the rail cannot be trusted until the mirror exists: `task_checklist_items` is
-a frozen pre-migration snapshot (all 7 local rows dated 2026-05-25/28, no sync path, every
-write goes to cloud). **This also closes the `has_steps` defect shipped in slice 2** — that
-field is returned but deliberately unconsumed today precisely because it reads the dead table.
-**Seventeen code commits are unreleased**; the installed app is 2.3.0 and contains none of them.
+**NEXT IS SLICE 3b — RESCOPED (2026-07-20) to the PERSONAL Step Rail ONLY:** the reusable rail
+component plus the `personal_todo_steps` write path. **The card-checklist mirror is NO LONGER in
+3b** — the checklist rail's toggle is a card edit, so it now waits for slice 4's EDIT tier.
+`has_steps` stays unconsumed and stays wrong for board cards until then; personal items report
+`false` unconditionally, which is correct. **Seventeen code commits are unreleased**; the
+installed app is 2.3.0 and contains none of them.
 
-**★ NEW DESIGN DECISIONS (2026-07-20)** — the **"+ Add" dropdown** (Personal / Assign to other,
-no board option), the **top-bar action cluster** (fixed, NOT draggable), and **three additions
-to slice 2.5** (assigner visibility, assignment chat, off-card-only scope). All three are in the
+**★ THE COLLABORATION / PERMISSION MODEL WAS DECIDED (2026-07-20) — read it before slice 4 or
+2.5.** Four things: the **UNIFIED HEAD ROLE** (one elevated role per board, replacing the
+separate `can_assign` flag — under Known issues); **CARD PERMISSION TIERS** (SEE all / ASSIGN
+heads-only / EDIT assignees+heads — slice 4, and EDIT is net-new gating across *every* card
+mutation); **SELF- AND MULTI-ASSIGNMENT** (an assignment targets one or many, and may include
+the assigner); and **THREE DISTINCT COLLABORATION CONCEPTS** — assigned (2.5), the new
+**invited-collaboration (SLICE 2.6)**, and personal — which must not be conflated. All in the
+sequencing block under the To-Do overhaul.
+
+**⚠ CHECKLISTS ARE CLOUD-BACKED AND WORK CROSS-DEVICE — the "local-only, never synced" framing
+is WRONG** (verified 2026-07-20). What's missing is the local MIRROR, and two silent failures
+live there (**instances nine and ten**). See the CHECKLIST STATE entry.
+
+**★ EARLIER DESIGN DECISIONS (2026-07-20)** — the **"+ Add" dropdown** (Personal / Assign to
+other, no board option), the **top-bar action cluster** (fixed, NOT draggable), and **three
+additions to slice 2.5** (assigner visibility, assignment chat, off-card-only scope). All in the
 **on-the-horizon** block under the To-Do overhaul.
 
 (Historical — **HEAD `863e5be`, SLICE 1c IS DONE.**) The whole
@@ -867,6 +880,27 @@ hides it), wrong output accepted as real.**
   class: not a swallowed error but a **durable write into a store nobody queries** — no error
   exists to swallow, which is why nothing caught it. Fix before slice 4 adds a third event
   type. **Related:** `addActivity` has no `isOnline()` guard and throws offline.
+- **(i) INSTANCE NINE — the EMPTY STATE THAT ASSERTS ABSENCE IT CANNOT KNOW (NEW, 2026-07-20,
+  UNFIXED).** Found during the 3b diagnosis. `getChecklists` (`boards.ts:1172`) opens with
+  `if (!isOnline()) return []   // offline: no mirror for checklists`. Because checklists have
+  **no local mirror** (unlike tasks/boards/columns/members/tags/roster, which all have a
+  `syncXMirror`+`readXMirror` pair), the offline path returns empty — and the card renders
+  **"No checklists yet."** (`TaskDetailPanel.tsx:1350`), while the Kanban checklist badge
+  disappears (`WorkspaceContext.tsx:282` catches to `{total:0,done:0}`). **The read reports
+  emptiness it has no way to establish.** Another new variant: not a swallowed error and not an
+  unread write, but a **successful-looking read that answers "none" when the honest answer is
+  "unknown".** The comment shows it was a conscious deferral — it has nonetheless been shipping
+  a wrong answer. **A missing mirror is not a missing optimization; it is a correctness bug the
+  moment any caller renders its result as fact.**
+- **(j) INSTANCE TEN — THE CHECKBOX THAT SILENTLY REFUSES (NEW, 2026-07-20, UNFIXED).**
+  `TaskDetailPanel.tsx` has **NO offline guard anywhere** — grepping `online` in that file
+  returns **nothing**, in an app that has had a `ConnectionContext` and an edit lockout since
+  `23de14d`. `handleToggleItem` (`:744`) awaits the cloud write **before** the optimistic state
+  update and has **no `catch`**: offline the promise rejects, the `setChecklists` never runs,
+  and the checkbox simply doesn't move — **no error, no toast, no log**. Same shape as the
+  To-Do write-through bug `cc6aedf` and the `addActivity` defect queued for slice 4. **RULE
+  RESTATED: an `await` on a network write placed BEFORE the optimistic update turns every
+  failure into a no-op that looks like a misclick.**
 
 **RULE: never write a bare `catch {}`. Bind the error and log it. A fallback must not
 swallow the signal that something failed. A success message must be derived from the
@@ -1613,18 +1647,34 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
     `board_members` is sparse (**only `dk@` and `mj_baez@` present**), so it is not a
     substitute roster. **The roster is now the authoritative team identity**; 1c-2 makes the
     assignment data agree with it.
+- **★ UNIFIED "HEAD" ROLE — ONE elevated role per board (decided 2026-07-20). This REPLACES
+  the separate `can_assign` flag.** `board.assign` and "board head" collapse into a single
+  role called **head**; everyone else is a plain **MEMBER**. There are exactly TWO roles.
+  - **A head carries ALL elevated powers, board-appropriate:** assign members to cards,
+    assign off-card tasks, and — **on INTEL PROJECTS only** — run publication. On **WORK
+    BOARDS** "head" simply means *the person who can assign*; there is no publication concept
+    there. Same role, different surface area per board kind.
+  - **The `head`-implies-member invariant STANDS**, and still must be enforced in MAIN.
+  - **WHY:** it simplifies **slice 4** and the **Team console** at once — the console becomes
+    ONE member↔head toggle per board instead of three orthogonal flags (member + can_assign +
+    head) whose eight combinations were mostly meaningless or contradictory.
+  - ⚠ **Entries below that describe `can_assign` as its own flag are SUPERSEDED** — the
+    capability survives, the separate flag does not.
 - **BOARD MODEL — TWO KINDS (drives the Team console).** The distinction is not cosmetic;
   the two carry different membership semantics and the console must model both:
-  - **WORK BOARDS** (Think Tank, Drone Database, Subscription Model) — **members +
-    per-board can-assign**.
+  - **WORK BOARDS** (Think Tank, Drone Database, Subscription Model) — **members + heads**
+    (head = can assign). *(Was "members + per-board can-assign" — superseded by the unified
+    head role above.)*
   - **INTEL PROJECTS / info pages** (Contested Skies, Immigration Undone, Hollow Border, The
-    Stated Order) — **members + heads**, with a **head-implies-member invariant**.
+    Stated Order) — **members + heads** (head = can assign **and** run publication), with a
+    **head-implies-member invariant**.
     ⚠ **Enforce the invariant in MAIN, not just the UI** — the 0a-4 headline lesson was that
     a UI-only permission is a suggestion, not a gate. A head who is silently not a member
     would fail every membership-scoped read gate while the console showed them as attached.
 - **TEAM CONSOLE (design-first; specced and built AFTER 1c finishes).** The queued
   *"consolidate access management under the Team page"* item. **ROOT-ONLY.** Consolidates the
-  roster + work-board membership/can-assign + intel-project members/heads into one surface.
+  roster + work-board membership + intel-project membership into one surface — **now ONE
+  member↔head toggle per board** under the unified head role, not member + can-assign + head.
   - **An interactive mockup EXISTS (2 iterations, design-first).** ⚠ **It NEEDS revision for
     dk-not-root before it becomes a spec** — it was drawn under the old assumption. Revise
     the mockup → write the spec (a `TODO_OVERHAUL_PROMPT`-equivalent) → then build.
@@ -1765,25 +1815,104 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
          - **"Assigned by me" is OFF-CARD ONLY.** On-card assignment status lives **on the
            board**, not in To-Do. **Both** assigned tabs depend **solely** on 2.5 — nothing
            else can populate them.
-    3. **SPLIT (2026-07-20) into 3a and 3b.** The rail depends on a mirror that does not
-       exist, so the visible tab was shipped without it rather than shipping it untrustworthy.
+    2.6. **NEW — INVITED COLLABORATION. A THIRD concept, NOT a variant of assignment.**
+       Someone has a **PERSONAL** to-do and **INVITES** other member(s) onto it. It **stays
+       personal** — it does not become an assignment and does not appear in "Assigned to me".
+       - **The invitee gets a notification, ACCEPTS, and then they complete it TOGETHER**
+         (shared ownership).
+       - **★ THE THREE DIFFERENCES THAT MAKE IT ITS OWN SLICE — do NOT collapse it into 2.5:**
+         it is **OFFERED, not imposed**; it **requires ACCEPTANCE** (so there is a pending
+         state that assignment has no concept of); and it is **peer-to-peer** — **no head
+         authority is involved, nobody is ordered**. Modelling it as an assignment with a flag
+         would put an acceptance state machine inside an entity that has none, and would let
+         peer invitations inherit head-only gating.
+       - **Shares the `notifications` → cloud prerequisite** with 2.5 and 5.
+    ★ **THE THREE To-Do COLLABORATION CONCEPTS — KEEP THEM SEPARATE (decided 2026-07-20).**
+       Recorded because they are easy to conflate and expensive to un-conflate later:
+       - **a. ASSIGNED (off-card)** — a **HEAD** assigns to one or multiple members (**incl.
+         themselves**). Top-down, **imposed**, lands in "Assigned to me". **Slice 2.5**, now
+         multi-assignee.
+       - **b. INVITED-COLLABORATION** — peer-to-peer, **offered**, requires acceptance, stays
+         **personal**. **Slice 2.6** (above).
+       - **c. PERSONAL** — just yours. **Exists today** (1a/1b).
+    3. **SPLIT (2026-07-20) into 3a and 3b.** The rail depends on step data that does not yet
+       exist in a trustworthy form, so the visible tab shipped without it.
+    ★ **STEP RAIL — ONE component, THREE data sources, arriving at DIFFERENT TIMES.** The rail
+       (progress bar + ordered dots, `docs/TodoStepRail.html`) is **ONE reusable presentational
+       component** — diagnosis confirmed it is pure over `{steps, labelMode, onToggle}` with no
+       fetching. What differs is only where the steps come from, so **build the component once
+       against the personal source and feed it the other two as they land**:
+       - **PERSONAL steps → BUILDABLE NOW. This is SLICE 3b.** `personal_todo_steps` exists
+         (1a) with **0 rows and NO handlers** — it needs a write path, and nothing blocks it.
+       - **ASSIGNED / off-card steps → SLICE 2.5**, with the entity.
+       - **CARD CHECKLISTS → AFTER SLICE 4**, because the rail's toggle is a card edit and must
+         respect the **EDIT tier** (assignees + heads only). See the checklist-state entry
+         below for what is and isn't true about that data today.
     3a. ✅ **DONE — the visible To-Do tab (`d43445d`).** Urgency + tabs + promotion +
        migration onto `todos:list`. **NO Step Rail.** Detail in the **SLICE 3a** entry below.
-    3b. ▶ **NEXT — fix the checklist cloud→local mirror, THEN build the Step Rail.**
-       **THE MIRROR IS THE PREREQUISITE, NOT A SIDE-QUEST.** Local `task_checklist_items` is a
-       frozen pre-migration snapshot — **7 rows, all dated 2026-05-25/28, no `CHECKLIST_COLS`,
-       no sync path**, while every checklist WRITE handler goes to cloud. **This also closes
-       the `has_steps` defect shipped in slice 2**, which reads that dead table and therefore
-       reports both false negatives (a step added since) and false positives (a checklist
-       deleted in cloud). `has_steps` is returned but **deliberately unconsumed** in 3a for
-       exactly this reason — wiring the rail to it first would have built a visible feature on
-       a known-wrong signal.
-       - **BOARD-TASK STEPS GET THE RAIL. PERSONAL STEPS STAY EMPTY / READ-ONLY** —
-         `personal_todo_steps` has **0 rows and NO write path**; the table and its queue path
-         exist (1a/1b) but there are **no step handlers**, so personal steps wait for a later
-         slice.
-       - Port prototype behavior, theme tokens, **light AND dark**.
-    4. **`board.assign` per-board permission, enforced in MAIN.**
+    3b. ▶ **NEXT — the PERSONAL Step Rail ONLY (RESCOPED 2026-07-20).** Two things: the
+       **reusable rail component** (port prototype behavior, theme tokens, **light AND dark**)
+       and the **`personal_todo_steps` write path** (handlers + channel — the table exists from
+       1a with 0 rows and no handlers). **Nothing else.**
+       - **⚠ RESCOPED — the card-checklist mirror is NO LONGER part of 3b.** It was originally
+         3b's prerequisite; the card-checklist rail now waits for **slice 4**, because its
+         toggle is a card edit and must respect the **EDIT tier**. Building the mirror now
+         would deliver a rail nobody is yet permitted to use correctly.
+       - **`has_steps` STAYS UNCONSUMED and stays wrong for board cards** until the checklist
+         work happens. Personal items report `has_steps: false` unconditionally
+         (`todos.ts:89`), which is **correct, not a stub** — nothing can write a personal step
+         until 3b builds the path. Diagnosis confirmed **nothing breaks**: the rail returns
+         `null` at zero steps, so an item with no steps simply renders no rail.
+    - **★ CHECKLIST STATE — WHAT IS ACTUALLY TRUE (verified 2026-07-20, and it is the OPPOSITE
+      of "local-only, never synced").** Recorded precisely because the inverted version would
+      send a future session on a pointless cloud migration:
+      - **CHECKLISTS ARE CLOUD-BACKED AND DO WORK CROSS-DEVICE TODAY.** Every one of the seven
+        handlers (`checklists:get/create/delete`, `checklistItems:add/toggle/delete/update`,
+        `ipc/index.ts:883-889`) routes to `boardsCloud.*` → Supabase. There are **ZERO local
+        INSERTs** into either table outside the one-time `boardsSeed` upload. **There is
+        nothing to cloud-migrate — that work is already done.**
+      - **What is missing is the LOCAL MIRROR** (the opposite direction). `workspace_tasks`,
+        boards, columns, members, `known_tags` and the roster all have a `syncXMirror` +
+        `readXMirror` pair; **checklists have neither**. The 7 local rows dated 2026-05-25/28
+        are a **dead pre-migration snapshot** that nothing reads except slice 2's `has_steps`.
+      - **⚠ TWO SILENT FAILURES LIVE HERE — INSTANCES NINE AND TEN.**
+        - **NINE — an empty state that ASSERTS ABSENCE IT CANNOT KNOW.** `getChecklists`
+          (`boards.ts:1172`) opens `if (!isOnline()) return []`, so **offline the card renders
+          "No checklists yet."** and the Kanban checklist badge vanishes. Not stale — *wrong*.
+        - **TEN — `TaskDetailPanel` has NO offline guard anywhere** (grep for `online` in that
+          file returns nothing). `handleToggleItem` (`:744`) awaits the cloud write **before**
+          the optimistic update, with no `catch`: offline the promise rejects, the state update
+          never runs, **the checkbox silently refuses to move and nothing is shown**. Same
+          shape as the To-Do write-through bug `cc6aedf` and the `addActivity` defect queued
+          for slice 4.
+      - **REALTIME IS ALREADY WIRED** — `task_checklists` and `task_checklist_items` are both
+        registered (`boardsRealtime.ts:14,61`), already resolve `task_id → board_id`, already
+        gate on `isBoardVisible`, and already push `workspace:remoteChange`. **Combined with
+        3a's unconditional `todoDataVersion` bump, a checklist change on any visible board
+        already reaches the To-Do tab.** The signal path is complete; only the local data is
+        stale. **No realtime work is needed** whenever the checklist rail is built.
+    4. **The HEAD role + CARD PERMISSION TIERS, enforced in MAIN.** *(Was "`board.assign`
+       per-board permission" — the capability is now carried by the unified **head** role, not
+       a standalone `can_assign` flag. See the UNIFIED HEAD ROLE entry under Known issues.)*
+       - **★ CARD PERMISSION TIERS — board-level, THREE tiers (decided 2026-07-20):**
+         - **SEE** — **all board members see all cards.** No per-card visibility.
+         - **ASSIGN** — **only HEADS** assign members to cards.
+         - **EDIT** — **only members ASSIGNED to a card (or heads) can edit that card.**
+       - **⚠ EDIT IS NET-NEW GATING ACROSS EVERY CARD MUTATION, not just checklists.** Title,
+         description, due date, labels, attachments, comments, checklists, column moves — all
+         of it. Scope slice 4 with that in mind; it is materially larger than "add a flag".
+         The 0a-4 lesson applies directly: **a UI-only gate is a suggestion, not a gate** —
+         enforce in MAIN.
+       - **★ SELF-ASSIGNMENT IS A CORE REQUIREMENT (slices 2.5 + 4).** Whoever holds assign
+         authority **may include THEMSELVES** among the assignees. Assignment is **not**
+         only top-down-to-others; a head assigning themselves is the normal case, not an edge
+         case. (This supersedes the older spec note that "self-assign needs no grant" — under
+         the head role there is no separate grant to need.)
+       - **★ MULTI-ASSIGNEE (slice 2.5 + card assignment).** An assignment — **off-card OR
+         on-card** — may target **ONE OR MULTIPLE** members, **including the assigner**.
+         **Not single-assignee.** `assignees_json` is already a list, so cards carry this
+         today; the slice-2.5 off-card entity must be modelled the same way from the start
+         rather than as a single `assignee_email` that has to be widened later.
        - **CARD ACTIVITY ON ASSIGNMENT — VERIFIED ABSENT (2026-07-20), so BUILD IT HERE.**
          When a member with `board.assign` assigns another member to a board CARD, the card's
          activity log should record **"X assigned Y to this card."** `task_activity` exists

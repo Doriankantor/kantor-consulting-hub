@@ -89,6 +89,48 @@
   prerequisite: notifications → cloud.
   See HANDOFF.md "Start here" for the resume point.
 
+  ── 2026-07-20 — COLLABORATION + PERMISSION MODEL DECIDED; 3b RESCOPED (docs only) ──
+  • UNIFIED "HEAD" ROLE — can-assign and board-head collapse into ONE elevated role per board,
+    "head"; everyone else is a plain MEMBER. Two roles, not three flags. A head assigns members
+    to cards, assigns off-card tasks, and (on INTEL PROJECTS only) runs publication; on WORK
+    BOARDS head simply means the person who can assign. head-implies-member invariant stands,
+    enforced in MAIN. Simplifies slice 4 AND the Team console (one member<->head toggle per
+    board instead of member + can_assign + head).
+  • CARD PERMISSION TIERS (board-level, slice 4): SEE = all members see all cards; ASSIGN =
+    heads only; EDIT = only members ASSIGNED to a card, or heads. EDIT is NET-NEW gating across
+    EVERY card mutation — title, description, dates, labels, attachments, comments, checklists,
+    column moves — not just checklists. Scope slice 4 accordingly; enforce in MAIN (0a-4 lesson:
+    a UI-only permission is a suggestion, not a gate).
+  • SELF-ASSIGNMENT is a core requirement (2.5 + 4): whoever holds assign authority may include
+    THEMSELVES among assignees. MULTI-ASSIGNEE: an assignment, off-card OR on-card, may target
+    one or many members including the assigner. Cards already carry this (assignees_json is a
+    list); the 2.5 off-card entity must be modelled the same way from the start.
+  • THREE DISTINCT To-Do COLLABORATION CONCEPTS, kept separate: (a) ASSIGNED off-card — a head
+    assigns to one/multiple members incl. self; top-down, imposed; slice 2.5. (b) NEW SLICE 2.6
+    INVITED-COLLABORATION — you have a PERSONAL to-do and INVITE others onto it; stays personal,
+    offered not imposed, requires ACCEPTANCE, peer-to-peer with no head authority; then shared
+    ownership. (c) PERSONAL — exists. Do not conflate: folding 2.6 into 2.5 would put an
+    acceptance state machine inside an entity that has none.
+  • STEP RAIL = ONE reusable presentational component, THREE data sources arriving at different
+    times: PERSONAL steps buildable NOW (slice 3b), ASSIGNED/off-card steps with slice 2.5, CARD
+    CHECKLISTS after slice 4 (the rail's toggle is a card edit, so it must respect the EDIT tier).
+  • SLICE 3b RESCOPED to the PERSONAL Step Rail only — rail component + personal_todo_steps write
+    path (table exists from 1a, 0 rows, no handlers). The card-checklist mirror is NO LONGER in
+    3b. has_steps stays unconsumed and stays wrong for board cards until the checklist work
+    happens; personal items report false unconditionally, which is correct.
+  • ⚠ CHECKLIST STATE CORRECTED — checklists are CLOUD-BACKED and DO work cross-device today.
+    All seven handlers route to boardsCloud.* -> Supabase; there are ZERO local INSERTs outside
+    the one-time boardsSeed upload. There is nothing to cloud-migrate. What is missing is the
+    LOCAL MIRROR (the opposite direction): unlike tasks/boards/columns/members/tags/roster,
+    checklists have no syncXMirror/readXMirror pair. The 7 local rows dated May 25-28 are a dead
+    pre-migration snapshot. Realtime is ALREADY registered for both checklist tables, so no
+    realtime work is needed whenever the checklist rail is built.
+  • SILENT-FAILURE INSTANCES NINE AND TEN logged (both UNFIXED, found in the 3b diagnosis).
+    NINE: getChecklists returns [] when offline, so the card renders "No checklists yet." — a
+    read that asserts absence it cannot know. TEN: TaskDetailPanel has NO offline guard anywhere;
+    handleToggleItem awaits the cloud write before the optimistic update with no catch, so
+    offline the checkbox silently refuses to move with no error shown.
+
   ── 2026-07-20 — THE To-Do TAB GOES LIVE: SLICES 2 + 3a (065f6ce, d43445d, UNRELEASED) ──
   • SLICE 2 (065f6ce) — listTodos aggregation layer in MAIN. Two sources: personal (local
     personal_todos, user_id-keyed) + kc-deadline (assigned workspace_tasks WITH a due_date).
