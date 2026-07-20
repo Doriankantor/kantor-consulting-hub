@@ -1,8 +1,8 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-07-20
+  Generated: 2026-07-21
   Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
-                   UNRELEASED since v2.3.0 — EIGHTEEN commits: 2d76b9a (visibleBoardIds
+                   UNRELEASED since v2.3.0 — TWENTY commits: 2d76b9a (visibleBoardIds
                    non-root no-join fix), b211638 (slice 0b-0 — realtime channel-health
                    instrumentation), the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
                    c60c9c2 (Social form-loss), ae067da (updateStatus phantom-row guard),
@@ -20,13 +20,19 @@
                    To-Do tab itself becoming visible: 065f6ce (slice 2 — the
                    listTodos aggregation layer) and d43445d (slice 3a — the visible
                    To-Do tab: five tabs, CET urgency, promotion strip) and 4c240bd
-                   (slice 3b — the personal Step Rail).
+                   (slice 3b — the personal Step Rail); and the DETAIL PANEL group:
+                   7d5a38a (slice A-1 — color/starred columns + the three 1b setters
+                   + todoColors palette) and f1fb6df (slice A-2 — the personal detail
+                   panel UI: color picker/stripe, star + pinned Starred group, date/
+                   time popovers + urgency due pill, revive, panel-only step editor,
+                   slide, app-gradient fix). NOTE: A-2's commit subject says "editable
+                   title" but title is READ-ONLY (no setTitle handler exists).
                    The installed app is 2.3.0 and contains NONE of them.
                    Shipped in v2.3.0: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD 4c240bd   |   338 commits   |   ~38,600 lines of TS/TSX
+                   HEAD 478030b   |   344 commits   |   ~40,200 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -89,6 +95,43 @@
   as the To-Do prototype. To-Do slice 5 (intel culling directive) is its on-ramp; shared
   prerequisite: notifications → cloud.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-20 — DETAIL PANEL: SLICES A-1 + A-2 (7d5a38a, f1fb6df, UNRELEASED) ──
+  • A-1 (data): color TEXT (a palette KEY, nullable) + starred INTEGER NOT NULL DEFAULT 0 on
+    personal_todos — BOTH net-new, neither ever existed. Local guarded ALTER; cloud via a
+    hand-run SQL file (sql/2026-07-20_personal_todos_color_star.sql — Dorian runs the DDL).
+    due_date/due_time already existed, so no schema for due.
+  • A-1 cloudRowFor DATA-LOSS TRAP closed: syncPersonalWrite upserts the WHOLE row, so a column
+    missing from cloudRowFor is sent absent and BLANKED in cloud on the next write. color +
+    starred added to its SELECT and return. Three setters on the 1b pattern
+    (setColor/setStar/setDue), offline-capable, no isOnline guard; setDue drops the time when
+    the date is null. todoColors.ts = 7 theme-aware palette keys (not hex); unknown key degrades
+    to "no colour". readPersonal returns both; the kc-deadline mapper deliberately does not
+    (board cards have no per-user star and derive colour from their board/column).
+  • A-2 (UI): a right-side sliding detail panel, opens on clicking a PERSONAL card; KC/assigned
+    still deep-link to Workspace. MODULE-LEVEL and rendered OUTSIDE the Row unmount boundary
+    (the remount trap — the panel has date/time/add-step inputs that would lose focus otherwise;
+    module-level ALONE is not enough, WHERE it renders is what saves it).
+  • Colour: 7-swatch picker + a "no colour" option (NOT a custom/free picker), stores a palette
+    key, drives the card's 5px left stripe. Star: personal-only, a pinned "Starred" group atop
+    Personal + All, EXCLUDED from promotion AND bands (appears once). Due: newly-built date +
+    hour/minute popovers (nothing reusable existed), timezone-safe (strings built from Y/M/D
+    parts), plus an urgency-coloured due PILL keyed to the same urgency() buckets as promotion.
+  • Revive reopens completed items in the panel (reuses uncomplete — no new handler). The card
+    chevron + inline step editor were REMOVED — the panel is the SOLE step editor; the card
+    keeps only the read-only 3b rail. Close control is a right chevron (not an X). Slide in/out
+    via translateX with a retained panelItem (so it animates OUT) + an animated spacer so the
+    list is pushed not snapped; prefers-reduced-motion honoured.
+  • DARK-MODE GRADIENT FIX: the To-Do page had painted opaque flat navy over the app's body
+    gradient (read as flat black). Root is now TRANSPARENT like Dashboard, so the body
+    linear-gradient shows; cards lifted to dark:bg-white/[0.04]; all dashed borders -> solid.
+  • ⚠ TITLE IS READ-ONLY — the f1fb6df commit SUBJECT says "editable title" but it is not:
+    there is no personalTodo:setTitle handler and the panel renders the title as a <p>. Left
+    read-only per the A-2 brief ("do not invent scope"). Recorded so nobody hunts for a handler
+    that never existed. Editable title, if wanted, is a net-new A-2 follow-up.
+  • NEXT: A-3 closes Group A — drag-to-reorder steps (personalTodoStep:reorder, DENSE 0..n-1
+    rewrite; 3b left positions sparse). Then B (notes), C (recurring + files). Direction: FINISH
+    To-Do (A-3 -> B -> C) before the team/collaboration/publication work.
 
   ── 2026-07-20 — SLICE 3b: THE PERSONAL STEP RAIL (4c240bd, UNRELEASED) ──
   • personal_todo_steps handlers (create/toggle/delete) on the 1b local-first + sync-queue

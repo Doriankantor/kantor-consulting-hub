@@ -1,6 +1,6 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-20 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `4c240bd`, `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: EIGHTEEN code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale), `065f6ce` (slice 2 — the `listTodos` aggregation layer), `d43445d` (slice 3a — the visible To-Do tab) and `4c240bd` (slice 3b — the personal Step Rail). The installed app is 2.3.0 and contains NONE of them.** ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: FIFTEEN code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-21 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `478030b` (docs; code HEAD `f1fb6df`), `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: TWENTY code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale), `065f6ce` (slice 2 — the `listTodos` aggregation layer), `d43445d` (slice 3a — the visible To-Do tab), `4c240bd` (slice 3b — the personal Step Rail), `7d5a38a` (slice A-1 — detail-panel color/starred columns + setters) and `f1fb6df` (slice A-2 — the personal detail panel UI). The installed app is 2.3.0 and contains NONE of them.** ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: TWENTY code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
@@ -1785,6 +1785,11 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   - **Permission gate (valid, keep):** card date editing must respect the **slice-4 card-edit
     tiers** (only card-assignees or heads can edit a card), which is why this lands **with or
     after slice 4**, never before.
+  - **★ START-DATE RULE (Dorian, 2026-07-20):** a card's `start_date` **DEFAULTS to its creation
+    date** (`created_at`), and **only BOARD HEADS may override it** via the picker. So the picker
+    on start date is head-gated even beyond the general card-edit tier; due date follows the normal
+    card-edit tier. (`start_date` already exists and syncs — see the corrected note above — so this
+    is a UI + gating rule, not a schema change.)
 - **TO-DO TEAM BUILDOUT (ready to build — EXISTING design, not new scope).** This is the
   To-Do overhaul already designed in prior sessions; Dorian confirmed it is the same plan.
   Recorded here so it isn't lost in the backlog. **The point:** make To-Do a real
@@ -1987,6 +1992,32 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
         3a's unconditional `todoDataVersion` bump, a checklist change on any visible board
         already reaches the To-Do tab.** The signal path is complete; only the local data is
         stale. **No realtime work is needed** whenever the checklist rail is built.
+    3-DETAIL. **THE DETAIL PANEL — grouped A / B / C (design `docs/TodoDetailPanel_mockup.html`).**
+       A right-side sliding panel on personal to-dos, split so each group is one tested slice.
+       **PERSONAL to-dos only** throughout — board cards deep-link to Workspace as before.
+       - A-1. ✅ **DONE — data foundation (`7d5a38a`, 2026-07-20, UNRELEASED).** `color` + `starred`
+         columns on `personal_todos` (local guarded ALTER + a hand-run cloud SQL file), the three
+         1b setters (`setColor`/`setStar`/`setDue`), the `todoColors.ts` palette (keys, not hex),
+         and the `cloudRowFor` data-loss trap closed. Detail in the **SLICE A-1** entry below.
+       - A-2. ✅ **DONE — the panel UI (`f1fb6df`, 2026-07-20, UNRELEASED).** Module-level panel
+         outside the Row boundary; colour picker + card stripe, star + pinned Starred group,
+         date/time popovers + urgency due pill, revive, the 3b step list; chevron removed (panel
+         is the sole step editor). Detail in the **SLICE A-2** entry below.
+       - A-3. **NEXT — closes Group A: DRAG-TO-REORDER steps in the panel.** The one genuinely-new
+         backend piece left in Group A: `personalTodoStep:reorder(todoId, orderedIds)` that rewrites
+         `position` **densely 0..n-1** — ⚠ **3b left positions SPARSE/GAPPY** (`COALESCE(MAX,-1)+1`
+         never reuses a deleted slot; live data already has a lone step at `position 3`), so reorder
+         must NOT assume contiguity or infer position from array index. One `syncPersonalWrite`
+         per row; the queue is table-agnostic and handles N updates. The panel step list already
+         renders **stored** order (not `railOrder`) precisely so drag reorders what the user sees.
+       - B. **NOTES — a `notes` text field + editor row in the panel.** Own slice.
+       - C. **RECURRING + FILES — both heavy, each its own slice.** Recurring = None/Daily/Weekly/
+         Monthly + next-occurrence generation on completion (real recurrence logic, not a flag).
+         Files = attachment storage for personal to-dos (none exists today).
+       - **★ DIRECTION (Dorian, 2026-07-20): FINISH TO-DO COMPLETELY — A-3 → B → C — BEFORE
+         pivoting to the team/collaboration/publication work.** This deliberately pushes 2.5, 2.6,
+         4, 5, the Team console and the publication redesign LATER in the queue. Recorded so a
+         future session does not "helpfully" jump to slice 4 next.
     4. **The HEAD role + CARD PERMISSION TIERS, enforced in MAIN.** *(Was "`board.assign`
        per-board permission" — the capability is now carried by the unified **head** role, not
        a standalone `can_assign` flag. See the UNIFIED HEAD ROLE entry under Known issues.)*
@@ -2058,6 +2089,91 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
       empty the page (the `Promise.all`-poisoning lesson).
     - **⚠ DEFECT SHIPPED KNOWINGLY — `has_steps` reads a dead table.** See slice 3b. Nothing
       consumes it, and 3a kept it that way.
+  - **✅ SLICE A-2 SHIPPED — the personal to-do DETAIL PANEL (`f1fb6df`, 2026-07-20, UNRELEASED).**
+    A right-side sliding panel that opens on clicking a **personal** card; KC/assigned cards still
+    deep-link to Workspace (personal-only). Reads A-1's `color`/`starred`; writes via A-1's setters
+    and the 3b step handlers — **all offline-capable**, no new backend for the panel itself.
+    - **★ MODULE-LEVEL, RENDERED OUTSIDE THE ROW BOUNDARY — the remount-trap discipline.** The
+      panel holds a date input, a time input and an add-step input; if its type changed each Todo
+      render they would lose focus mid-keystroke (the 3b bug). It is defined at module level AND
+      rendered directly from `Todo`'s JSX as a **sibling of the list** — module-level ALONE is not
+      enough (that was 3b's failed second attempt); WHERE it renders is what saves it. It is
+      absolutely positioned so it paints as an overlay, which changes where it paints, NOT where it
+      sits in the tree.
+    - **COLOUR** — a 7-swatch picker + a **"no colour"** option (a slashed circle, NOT an 8th
+      swatch — grey IS a choice, the slate swatch). Stores a **palette KEY** via `todoColors.ts`;
+      drives the card's 5px left stripe. No hardcoded hex. **There is NO custom/free colour
+      picker** — 7 keys plus none, by design.
+    - **STAR** — personal-only; a pinned **"Starred" group** at the top of Personal + All,
+      **EXCLUDED from the promotion strip AND the urgency bands** (`isPinnedStar` filters both), so
+      a starred past-due item appears ONCE. KC/assigned/meeting cards have no star affordance and
+      structurally no `starred` field.
+    - **DUE** — date + **hour/minute** popovers (`DatePopover`/`TimePopover`), **NEWLY BUILT**
+      (nothing reusable existed — TaskDetailPanel uses bare native inputs; the month grids in
+      TeamCalendar/CalendarView are full-page, not extractable). Timezone-safe: every stored string
+      is built from Y/M/D parts, never `toISOString()`. The card shows an **urgency-coloured due
+      PILL** keyed to the SAME `urgency()` buckets as promotion, so the pill can never disagree
+      with the group its card sits in. Clearing the date clears the time (A-1 rule, mirrored in the
+      renderer so the panel never shows a time the backend just dropped).
+    - **⚠ TITLE IS READ-ONLY — and the commit message is WRONG about this.** The `f1fb6df` message
+      says *"editable title"*; it is not. There is **no `personalTodo:setTitle` handler** (verified:
+      absent from `ipc/index.ts` and preload), and the panel renders the title as a `<p>`
+      (`Todo.tsx` — *"READ-ONLY. There is no personalTodo title-update handler"*). Left read-only
+      deliberately per the A-2 brief (*"do NOT invent scope"*). Recorded here so a future session
+      does not hunt for a handler that never existed, or trust the commit subject over the code.
+      **If editable title is wanted, it is a NET-NEW A-2 follow-up** (a `setTitle` handler on the
+      1b pattern — `cloudRowFor` already carries `title`, so only the handler + preload + panel
+      input are missing).
+    - **REVIVE** — completed personal items reopen in the panel with a Revive banner; unchecking
+      reuses the existing `uncomplete` handler (reviving IS uncompleting — no new handler). The
+      panel stays open; the item re-sorts out of Completed underneath it.
+    - **CHEVRON + INLINE STEP EDITOR REMOVED from the card.** The panel is now the SOLE step
+      editor; the card keeps ONLY the **read-only 3b horizontal rail**. Two editors for one list
+      would also have put an `<input>` back below the Row boundary — the focus bug again. Close
+      control is a **right-pointing chevron**, not an X (X reads as delete/dismiss).
+    - **SLIDE IN/OUT** — `translateX` via a class flip, with a **retained `panelItem`** so the
+      panel can animate OUT after `selectedId` clears (a conditional mount cannot — React removes
+      the node first); `onTransitionEnd` (guarded on `transform` + `currentTarget`) drops the
+      retained item. An **animated spacer** widens `0→378px` in step so the list is pushed rather
+      than snapping (the panel is out of flow). Double-rAF commit-then-flip so the browser has a
+      start frame. **`prefers-reduced-motion` honoured** via the shared `useReducedMotion` (now
+      exported from `StepRail.tsx` — one listener, not two).
+    - **★ DARK-MODE GRADIENT FIX.** The To-Do page had been painting an **opaque flat navy**
+      (`dark:bg-hub-navy`) over the app's body gradient, reading as flat black. The app paints
+      `linear-gradient(135deg, --g-from, --g-via, --g-to)` on `body` (`styles/index.css:44`, the
+      theme-selectable navy→indigo→blue); **pages show it by being TRANSPARENT** (Dashboard's root
+      is `p-6 h-full overflow-y-auto`, no bg). To-Do's root is now transparent too, matching every
+      other page. Cards lifted to the standard `dark:bg-white/[0.04]` elevated surface; **all
+      dashed borders replaced with solid**.
+    - **SELECTED ITEM IS DERIVED, NOT STORED** — `selectedItem = all.find(id === selectedId)`, so
+      an edit anywhere re-renders the panel with no fetch and no second copy to drift, and a
+      deleted item self-heals (find → undefined → panel unmounts).
+    - **OUT OF SCOPE, held:** drag-reorder (A-3), notes (B), recurring + files (C).
+  - **✅ SLICE A-1 SHIPPED — detail-panel DATA FOUNDATION (`7d5a38a`, 2026-07-20, UNRELEASED).**
+    Two NEW columns on `personal_todos` — `color TEXT` (a palette KEY, nullable) and
+    `starred INTEGER NOT NULL DEFAULT 0`. **Both are net-new; neither ever existed** (`git log
+    -S"starred" -- db.ts` returns nothing — the brief's "1a dropped starred" was wrong). `due_date`/
+    `due_time` already existed, so A-1 added no schema for due.
+    - **LOCAL = guarded ALTER** (the 1a `PRAGMA table_info` pattern); `NOT NULL DEFAULT 0` is legal
+      in SQLite `ADD COLUMN`, so no backfill pass. **CLOUD = a hand-run SQL file**
+      (`sql/2026-07-20_personal_todos_color_star.sql`) — per the standing rule, Claude writes the
+      file and Dorian runs the DDL in Supabase. No RLS/realtime/replica-identity work (all three
+      already apply to the table from 1a).
+    - **⚠ `cloudRowFor` DATA-LOSS TRAP CLOSED.** `syncPersonalWrite` upserts the WHOLE row, so a
+      column missing from `cloudRowFor`'s SELECT/return is sent absent and **BLANKED in cloud on
+      the next unrelated write**. `color` + `starred` were added to both — without it, marking a
+      to-do complete would wipe its colour and star in cloud. Column set now matches cloud exactly.
+    - **THREE SETTERS on the 1b pattern** — `personalTodo:setColor/setStar/setDue`, local-first,
+      un-awaited cloud, **no `isOnline` guard**, id run through `bareTodoId`. `setStar` coerces
+      bool→0/1 at the boundary (better-sqlite3 rejects a raw JS bool); **`setDue` drops the time
+      whenever the date is null** (a timeless-dateless "14:30" is unrankable by the CET banding).
+    - **`todoColors.ts`** — `TODO_COLORS` (7, mockup order) as **theme-aware Tailwind class
+      literals**, not hex; `resolveTodoColor` returns null for an unknown key (free-form TEXT
+      column, so a future wider palette syncing down to an older build degrades to "no colour"
+      rather than crashing). `readPersonal` returns `color` + `starred` (coerced to bool); **the
+      kc-deadline mapper deliberately does NOT** — a board card has no per-user row for a star and
+      its colour derives from its board/column, so the fields are structurally inapplicable, not
+      merely unimplemented.
   - **✅ SLICE 3b SHIPPED — the personal Step Rail (`4c240bd`, 2026-07-20, UNRELEASED).**
     Three handlers on the **1b local-first + sync-queue pattern** —
     `personalTodoStep:create/toggle/delete`. Local write lands FIRST and alone decides
