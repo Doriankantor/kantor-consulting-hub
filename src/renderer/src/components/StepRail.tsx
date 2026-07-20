@@ -29,8 +29,12 @@ export const railOrder = (steps: RailStep[]): RailStep[] =>
  * Live reduced-motion. The prototype evaluates this ONCE at module load, which is
  * fine for a page you reload; this renderer runs for days, so a mid-session
  * accessibility change would otherwise never take effect.
+ *
+ * EXPORTED (A-2 polish) so the detail panel's slide honours the same preference
+ * from the same listener. Duplicating it would mean two matchMedia subscriptions
+ * that could disagree mid-session.
  */
-function useReducedMotion(): boolean {
+export function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(
     () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
   )

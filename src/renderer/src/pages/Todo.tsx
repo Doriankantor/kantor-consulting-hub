@@ -4,7 +4,10 @@ import { useWorkspace } from '../contexts/WorkspaceContext'
 import { useConnection } from '../contexts/ConnectionContext'
 import { useNavigate } from 'react-router-dom'
 import { urgency, URGENCY_RANK, isPromoted, dueLabel, type UrgencyKey } from '../utils/urgency'
-import StepRail, { railOrder } from '../components/StepRail'
+// railOrder is no longer imported: the card's rail applies it internally, and the
+// panel's list must show STORED order (A-3 drags against it), not display order.
+import StepRail, { useReducedMotion } from '../components/StepRail'
+import { TODO_COLORS, resolveTodoColor } from '../utils/todoColors'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The To-Do tab (slice 3a). Structure ported from docs/TodoStepRail.html.
@@ -87,20 +90,38 @@ const inTab = (t: DisplayItem, id: TabId): boolean =>
  */
 function AddStepInput({ onAdd }: { onAdd: (text: string) => void }) {
   const [draft, setDraft] = useState('')
+  // ONE submit path for both Enter and the + button, so they can never diverge.
+  const submit = (): void => {
+    const t = draft.trim()
+    if (!t) return
+    setDraft('')
+    onAdd(t)
+  }
   return (
-    <input
-      value={draft}
-      onChange={e => setDraft(e.target.value)}
-      onKeyDown={e => {
-        if (e.key !== 'Enter') return
-        const t = draft.trim()
-        if (!t) return
-        setDraft('')
-        onAdd(t)
-      }}
-      placeholder="Add step"
-      className="w-full bg-transparent text-xs px-1 py-1 border-b border-transparent focus:border-indigo-400 outline-none text-gray-700 dark:text-white/80 placeholder:text-gray-400 dark:placeholder:text-white/30"
-    />
+    // Bordered input + a + button, per docs/TodoDetailPanel_mockup.html. The A-2
+    // rewrite had stripped this to a borderless underline with no button. Draft
+    // still lives HERE (module-level component, local state) — the 3b focus fix —
+    // so typing never re-renders Todo and the input keeps focus.
+    <div className="flex items-center gap-1.5">
+      <input
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); submit() } }}
+        placeholder="Add a step..."
+        className="flex-1 min-w-0 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.12] bg-gray-50 dark:bg-white/[0.05] text-gray-700 dark:text-white/85 placeholder:text-gray-400 dark:placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-indigo-500/40 focus:border-indigo-400 dark:focus:border-indigo-400/60 transition"
+      />
+      <button
+        type="button"
+        onClick={submit}
+        disabled={!draft.trim()}
+        title="Add step"
+        className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 disabled:hover:bg-indigo-500 text-white transition"
+      >
+        <svg width="11" height="11" viewBox="0 0 10 10" fill="none">
+          <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/>
+        </svg>
+      </button>
+    </div>
   )
 }
 
@@ -127,26 +148,47 @@ function AddStepInput({ onAdd }: { onAdd: (text: string) => void }) {
  * DOM state needed to move.
  */
 function PersonalCard({
-  item, isOpen, dueColor, extraClass = '',
-  onComplete, onDelete, onToggleExpand, onStepToggle, onStepAdd, onStepDelete,
+  item, isSelected, duePill, extraClass = '',
+  onComplete, onDelete, onSelect, onStar, onStepToggle,
 }: {
   item: DisplayItem
-  isOpen: boolean
-  dueColor: string
+  isSelected: boolean
+  /** Pill classes from duePillFor — the urgency-keyed chip, not a text colour. */
+  duePill: string
   extraClass?: string
   onComplete: () => void
   onDelete: () => void
-  onToggleExpand: () => void
+  onSelect: () => void
+  onStar: () => void
   onStepToggle: (stepId: string) => void
-  onStepAdd: (text: string) => void
-  onStepDelete: (stepId: string) => void
 }) {
   const steps = item.steps ?? []
+  // A-2. Null for "no colour" AND for an unrecognised key — see todoColors.ts for
+  // why an unknown key degrades instead of throwing. No colour ⇒ no stripe at all,
+  // not a neutral grey one: a grey bar reads as a colour someone chose.
+  const color = resolveTodoColor(item.color)
   return (
-      <div className={`group border border-dashed border-gray-200 dark:border-white/15 bg-gray-50/30 dark:bg-white/[0.015] rounded-xl mx-3 my-1 px-3 py-2.5 ${extraClass}`}>
-      <div className="flex items-center gap-3">
+      // `relative` anchors the stripe; `overflow-hidden` clips it to the rounded
+      // corner (without it the 5px bar squares off the card's left edge).
+      <div
+        onClick={onSelect}
+        className={`group relative overflow-hidden border rounded-xl mx-3 my-1 px-3 py-2.5 cursor-pointer transition ${
+          isSelected
+            ? 'border-indigo-400 dark:border-indigo-400/60 bg-indigo-50/60 dark:bg-indigo-500/[0.1]'
+            // SOLID border + the app's standard elevated-card surface
+            // (dark:bg-white/[0.04], as Dashboard cards), NOT the near-invisible
+            // white/[0.015] over black that read as flat black in A-2.
+            : 'border-gray-200 dark:border-white/[0.1] bg-white dark:bg-white/[0.04] hover:border-gray-300 dark:hover:border-white/[0.16]'
+        } ${extraClass}`}
+      >
+      {color && <div className={`absolute left-0 top-0 bottom-0 w-[5px] ${color.barClass}`} />}
+      {/* pl-2 clears the stripe so the tick never sits on top of it. */}
+      <div className={`flex items-center gap-3 ${color ? 'pl-2' : ''}`}>
+        {/* stopPropagation on EVERY control below — the card itself is now
+            clickable (it opens the panel), so without this, ticking or deleting
+            would also select the item. */}
         <button
-          onClick={() => onComplete()}
+          onClick={e => { e.stopPropagation(); onComplete() }}
           className={`shrink-0 w-[18px] h-[18px] rounded-full border-2 transition flex items-center justify-center ${
             item.completed ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-white/30 hover:border-indigo-400'
           }`}
@@ -167,7 +209,9 @@ function PersonalCard({
             </span>
           </div>
           {(item.due_date || item.due_time) && (
-            <p className={`text-[10px] mt-0.5 ${dueColor}`}>{dueLabel(item.due_date, item.due_time)}</p>
+            <span className={`inline-block mt-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold leading-[1.4] ${duePill}`}>
+              {dueLabel(item.due_date, item.due_time)}
+            </span>
           )}
         </div>
         {/* ★ AFFORDANCES — visible at rest, not hover-only. They were opacity-0
@@ -175,22 +219,27 @@ function PersonalCard({
             over: undiscoverable before hover, low-contrast after. Now they sit at
             60% and come to full on hover, on a larger 7×7 target with a heavier
             stroke. Same interaction, actually findable. */}
+        {/* ★ STAR replaces the 3b expand chevron. The panel is now the sole step
+            editor, so an expand affordance would open a second, competing one.
+            A STARRED star stays at full opacity even at rest — it is state, not an
+            affordance, and must be legible without hovering. */}
         <button
-          onClick={() => onToggleExpand()}
-          className={`w-7 h-7 flex items-center justify-center rounded-lg transition shrink-0 opacity-60 group-hover:opacity-100 hover:bg-indigo-50 dark:hover:bg-indigo-500/15 ${
-            isOpen
-              ? 'text-indigo-500 dark:text-indigo-400 opacity-100'
-              : 'text-gray-500 dark:text-white/50 hover:text-indigo-500 dark:hover:text-indigo-400'
+          onClick={e => { e.stopPropagation(); onStar() }}
+          className={`w-7 h-7 flex items-center justify-center rounded-lg transition shrink-0 hover:bg-amber-50 dark:hover:bg-amber-500/15 ${
+            item.starred
+              ? 'text-amber-400 opacity-100'
+              : 'text-gray-500 dark:text-white/50 opacity-60 group-hover:opacity-100 hover:text-amber-400'
           }`}
-          title={isOpen ? 'Hide steps' : 'Steps'}
+          title={item.starred ? 'Unstar' : 'Star'}
         >
-          <svg width="13" height="13" viewBox="0 0 12 12" fill="none"
-               className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}>
-            <path d="M2 4.5L6 8.5L10 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg width="14" height="14" viewBox="0 0 14 14"
+               fill={item.starred ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5">
+            <path d="M7 1.5l1.7 3.44 3.8.55-2.75 2.68.65 3.78L7 10.16l-3.4 1.79.65-3.78L1.5 5.49l3.8-.55L7 1.5z"
+                  strokeLinejoin="round"/>
           </svg>
         </button>
         <button
-          onClick={() => onDelete()}
+          onClick={e => { e.stopPropagation(); onDelete() }}
           className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 dark:text-white/50 opacity-60 group-hover:opacity-100 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/15 transition shrink-0"
           title="Delete"
         >
@@ -209,51 +258,469 @@ function PersonalCard({
         onToggle={sid => onStepToggle(sid)}
       />
 
-      {/* EXPANDED — the EDITING affordances only (add + per-step delete). The rail
-          above stays put; expanding never moves or duplicates it. */}
-      {isOpen && (
-        <div className="mt-2 pt-2 border-t border-dashed border-gray-300 dark:border-white/[0.12] space-y-1">
-          {railOrder(steps).map(s => (
-            <div key={s.id} className="flex items-start gap-2 group/step py-0.5">
-              <button
-                onClick={() => onStepToggle(s.id)}
-                className={`shrink-0 mt-[3px] w-[16px] h-[16px] rounded-full border-2 flex items-center justify-center transition-all duration-150 hover:scale-110 ${
-                  s.checked ? 'bg-indigo-500 border-indigo-500' : 'bg-gray-100 dark:bg-white/[0.08] border-gray-300 dark:border-white/30 hover:border-indigo-400'
-                }`}
-              >
-                {s.checked && (
-                  <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
-                    <path d="M2 5l2.5 2.5L8 2.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
-              </button>
-              <span className={`flex-1 min-w-0 text-xs leading-snug break-words ${s.checked ? 'text-indigo-500 dark:text-indigo-300' : 'text-gray-600 dark:text-white/70'}`}>
-                {s.text}
-              </span>
-              <button
-                onClick={() => onStepDelete(s.id)}
-                className="opacity-0 group-hover/step:opacity-100 w-6 h-6 flex items-center justify-center rounded-md text-gray-500 dark:text-white/50 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/15 transition shrink-0"
-                title="Delete step"
-              >
-                <svg width="11" height="11" viewBox="0 0 10 10" fill="none">
-                  <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                </svg>
-              </button>
-            </div>
-          ))}
-          <AddStepInput onAdd={text => onStepAdd(text)} />
-        </div>
-      )}
+      {/* ⚠ NO INLINE STEP EDITOR HERE ANY MORE (A-2). Add/delete moved to the
+          panel, which is the sole editor. Re-adding one here would mean two edit
+          surfaces for one list — and would put an <input> back BELOW the Row
+          boundary, which is exactly what caused the 3b focus bug. */}
       </div>
   )
 }
 
-/** Due-date colour. Module-level so both render paths share one definition. */
+// ─────────────────────────────────────────────────────────────────────────────
+// DATE + TIME POPOVERS (A-2 polish r2)
+//
+// NO reusable picker existed to reuse — verified: TaskDetailPanel uses bare native
+// <input type="date">, and the month grids in TeamCalendar / Workspace/CalendarView
+// are full-page views, not extractable popovers. These are new, self-contained, and
+// module-level (stable identity, so the panel's remount discipline holds).
+//
+// All date strings are built from Y/M/D PARTS, never via Date.toISOString(), so a
+// timezone offset can never shift the picked day by one — the same date-only
+// discipline utils/urgency.ts uses. new Date(y, m, d) here is LOCAL and used only
+// for weekday math and display, never to derive the stored string.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December']
+const pad2 = (n: number): string => String(n).padStart(2, '0')
+const toISODate = (y: number, m: number, d: number): string => `${y}-${pad2(m + 1)}-${pad2(d)}`
+const todayISO = (): string => { const n = new Date(); return toISODate(n.getFullYear(), n.getMonth(), n.getDate()) }
+function prettyDate(iso: string): string {
+  const y = +iso.slice(0, 4), m = +iso.slice(5, 7), d = +iso.slice(8, 10)
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+/** Close a popover on outside-click or Escape. Shared by both pickers. */
+function usePopoverDismiss(open: boolean, close: () => void): React.RefObject<HTMLDivElement> {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent): void => {
+      if (ref.current && !ref.current.contains(e.target as Node)) close()
+    }
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') close() }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [open, close])
+  return ref
+}
+
+const PILL_CLASS =
+  'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.12] ' +
+  'bg-gray-50 dark:bg-white/[0.05] text-gray-700 dark:text-white/80 text-xs hover:border-indigo-300 ' +
+  'dark:hover:border-indigo-400/50 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200'
+
+function DatePopover({ value, onPick }: { value: string | null; onPick: (iso: string | null) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = usePopoverDismiss(open, useCallback(() => setOpen(false), []))
+  const seed = (): { y: number; m: number } => {
+    const src = value ?? todayISO()
+    return { y: +src.slice(0, 4), m: +src.slice(5, 7) - 1 }
+  }
+  const [view, setView] = useState(seed)
+
+  function toggle(): void {
+    setOpen(o => { if (!o) setView(seed()); return !o })   // always reopen on the selected month
+  }
+  const stepMonth = (delta: number): void =>
+    setView(v => { const m = v.m + delta; return { y: v.y + Math.floor(m / 12), m: ((m % 12) + 12) % 12 } })
+
+  const firstDow = new Date(view.y, view.m, 1).getDay()
+  const nDays = new Date(view.y, view.m + 1, 0).getDate()
+  const cells: (number | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: nDays }, (_, i) => i + 1)]
+  const today = todayISO()
+
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={toggle} className={PILL_CLASS}>
+        <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+          <rect x="0.5" y="1.5" width="11" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.1"/>
+          <path d="M0.5 4.5h11" stroke="currentColor" strokeWidth="1.1"/>
+          <path d="M3.5 0v2M8.5 0v2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+        </svg>
+        {value ? prettyDate(value) : 'Set date'}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1.5 z-30 w-[248px] rounded-xl border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-hub-navy-light shadow-xl p-2.5">
+          <div className="flex items-center justify-between mb-2">
+            <button type="button" onClick={() => stepMonth(-1)}
+              className="w-6 h-6 flex items-center justify-center rounded-md text-gray-500 dark:text-white/50 hover:bg-black/[0.05] dark:hover:bg-white/[0.08]">
+              <svg width="7" height="7" viewBox="0 0 8 8" fill="none"><path d="M5 1L2 4l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+            <span className="text-xs font-semibold text-gray-700 dark:text-white/80">{MONTH_NAMES[view.m]} {view.y}</span>
+            <button type="button" onClick={() => stepMonth(1)}
+              className="w-6 h-6 flex items-center justify-center rounded-md text-gray-500 dark:text-white/50 hover:bg-black/[0.05] dark:hover:bg-white/[0.08]">
+              <svg width="7" height="7" viewBox="0 0 8 8" fill="none"><path d="M3 1l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+          </div>
+          <div className="grid grid-cols-7 gap-0.5 mb-1">
+            {WEEKDAYS.map((w, i) => (
+              <div key={i} className="h-5 flex items-center justify-center text-[9px] font-semibold text-gray-400 dark:text-white/35">{w}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-0.5">
+            {cells.map((d, i) => {
+              if (d === null) return <div key={i} className="h-7" />
+              const iso = toISODate(view.y, view.m, d)
+              const isSel = iso === value
+              const isToday = iso === today
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => { onPick(iso); setOpen(false) }}
+                  className={`h-7 rounded-md text-xs transition ${
+                    isSel
+                      ? 'bg-indigo-500 text-white font-semibold'
+                      : isToday
+                        ? 'text-indigo-600 dark:text-indigo-300 font-semibold ring-1 ring-inset ring-indigo-300 dark:ring-indigo-400/40 hover:bg-indigo-50 dark:hover:bg-indigo-500/15'
+                        : 'text-gray-700 dark:text-white/75 hover:bg-indigo-50 dark:hover:bg-indigo-500/15'
+                  }`}
+                >
+                  {d}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TimePopover({ value, disabled, onPick }: { value: string | null; disabled: boolean; onPick: (t: string | null) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = usePopoverDismiss(open, useCallback(() => setOpen(false), []))
+  const hh = value ? value.slice(0, 2) : '09'
+  const mm = value ? value.slice(3, 5) : '00'
+  const set = (h: string, m: string): void => onPick(`${h}:${m}`)
+
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" disabled={disabled} onClick={() => setOpen(o => !o)} className={PILL_CLASS}>
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+          <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.1"/>
+          <path d="M7 4v3l2 1.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        {value ? value : 'Add time'}
+      </button>
+      {open && !disabled && (
+        <div className="absolute left-0 top-full mt-1.5 z-30 rounded-xl border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-hub-navy-light shadow-xl p-2.5">
+          <div className="flex items-center gap-1.5">
+            <select
+              value={hh}
+              onChange={e => set(e.target.value, mm)}
+              className="px-2 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.12] bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
+            >
+              {Array.from({ length: 24 }, (_, h) => pad2(h)).map(h => <option key={h} value={h}>{h}</option>)}
+            </select>
+            <span className="text-gray-400 dark:text-white/40 text-xs font-semibold">:</span>
+            <select
+              value={mm}
+              onChange={e => set(hh, e.target.value)}
+              className="px-2 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.12] bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
+            >
+              {Array.from({ length: 12 }, (_, i) => pad2(i * 5)).map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+            {value && (
+              <button
+                type="button"
+                onClick={() => { onPick(null); setOpen(false) }}
+                className="ml-1 w-6 h-6 flex items-center justify-center rounded-md text-gray-400 dark:text-white/40 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/15 transition"
+                title="Clear time"
+              >
+                <svg width="11" height="11" viewBox="0 0 10 10" fill="none"><path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * ★ THE DETAIL PANEL (A-2) — MODULE-LEVEL, AND RENDERED AS A SIBLING OF THE LIST.
+ *
+ * Both halves are load-bearing, for the reason 3b taught the hard way:
+ *
+ *   MODULE-LEVEL, so its function identity is stable and React reconciles it
+ *   instead of remounting it. This panel holds a date input, a time input and an
+ *   add-step input — every one of which would lose focus mid-keystroke if its type
+ *   changed on each Todo render (the 3b focus bug, exactly).
+ *
+ *   OUTSIDE THE ROW BOUNDARY, i.e. rendered directly from Todo's JSX. `Row` is
+ *   still defined inside Todo (logged tech debt), so its whole subtree is torn down
+ *   on every render. A module-level component rendered from INSIDE Row would remount
+ *   anyway — that was the failed second attempt in 3b. Being module-level is not
+ *   enough on its own; WHERE it is rendered is what saves it.
+ *
+ * It owns NO data. Every field comes from the live `item` off todos:list, so an edit
+ * anywhere re-renders it with no fetch of its own and no local copy to drift.
+ *
+ * NO `online` PROP — deliberately. Every control here is a personal write, which is
+ * offline-capable by design (1b). The board-card offline disabling in `Row` must not
+ * leak into this panel.
+ */
+function TodoDetailPanel({
+  item, open, reducedMotion, onClose, onComplete, onStar, onColor, onDue,
+  onStepToggle, onStepAdd, onStepDelete, onExited,
+}: {
+  item: DisplayItem
+  /** Drives the slide. False = parked off-screen right (opening frame, or exiting). */
+  open: boolean
+  reducedMotion: boolean
+  /** Fires when the CLOSING slide finishes, so the parent can drop the retained item. */
+  onExited: () => void
+  onClose: () => void
+  onComplete: () => void
+  onStar: () => void
+  onColor: (key: string | null) => void
+  onDue: (date: string | null, time: string | null) => void
+  onStepToggle: (stepId: string) => void
+  onStepAdd: (text: string) => void
+  onStepDelete: (stepId: string) => void
+}) {
+  // POSITION order, not railOrder. The card's rail collects done-to-the-left for
+  // legibility at a glance; this list is the editable one, so it must show the
+  // stored order — otherwise A-3's drag would reorder a list the user isn't seeing.
+  const steps = item.steps ?? []
+  const done = steps.filter(s => s.checked).length
+  const color = resolveTodoColor(item.color)
+
+  return (
+    // ★ ABSOLUTELY POSITIONED, not a flex child. A flex sibling would snap the
+    // list to its new width the instant it mounted, so the panel would slide in
+    // beside a list that had ALREADY jumped. Taking it out of flow means the list
+    // is instead pushed by the animated spacer in Todo, in step with this slide.
+    //
+    // translateX only — no width/left animation. Transform is composited, so it
+    // does not relayout the list on every frame.
+    <aside
+      onTransitionEnd={e => {
+        // Guard on the property AND the target: this element's own transform, not
+        // a hover transition bubbling up from a swatch or button inside.
+        if (e.propertyName !== 'transform' || e.target !== e.currentTarget) return
+        if (!open) onExited()
+      }}
+      className={`absolute right-0 top-0 bottom-0 w-[378px] z-10 border-l border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-gradient-to-b dark:from-hub-navy-light dark:to-hub-navy flex flex-col overflow-hidden shadow-[-8px_0_24px_-12px_rgba(0,0,0,0.18)] dark:shadow-[-8px_0_24px_-10px_rgba(0,0,0,0.5)] ${
+        reducedMotion ? '' : 'transition-transform duration-[260ms] ease-[cubic-bezier(.4,0,.2,1)]'
+      } ${open ? 'translate-x-0' : 'translate-x-full'}`}
+    >
+      {/* HEAD */}
+      <div className="relative px-4 py-3 border-b border-black/[0.06] dark:border-white/[0.06] shrink-0">
+        {color && <div className={`absolute left-0 top-0 bottom-0 w-[5px] ${color.barClass}`} />}
+        <div className="flex items-start gap-3 pl-1.5">
+          <button
+            onClick={onComplete}
+            className={`shrink-0 mt-0.5 w-[18px] h-[18px] rounded-full border-2 transition flex items-center justify-center ${
+              item.completed ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-white/30 hover:border-indigo-400'
+            }`}
+            title={item.completed ? 'Mark not done' : 'Mark done'}
+          >
+            {item.completed && (
+              <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                <path d="M2 5l2.5 2.5L8 2.5" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </button>
+          {/* READ-ONLY. There is no personalTodo title-update handler (verified —
+              the channel does not exist), and inventing one is out of this slice. */}
+          <p className={`flex-1 min-w-0 text-sm leading-snug break-words ${
+            item.completed ? 'line-through text-gray-400 dark:text-white/40' : 'text-gray-900 dark:text-white'
+          }`}>
+            {item.title}
+          </p>
+          <button
+            onClick={onStar}
+            className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition hover:bg-amber-50 dark:hover:bg-amber-500/15 ${
+              item.starred ? 'text-amber-400' : 'text-gray-400 dark:text-white/40 hover:text-amber-400'
+            }`}
+            title={item.starred ? 'Unstar' : 'Star'}
+          >
+            <svg width="15" height="15" viewBox="0 0 14 14"
+                 fill={item.starred ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5">
+              <path d="M7 1.5l1.7 3.44 3.8.55-2.75 2.68.65 3.78L7 10.16l-3.4 1.79.65-3.78L1.5 5.49l3.8-.55L7 1.5z" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          {/* CLOSE = a chevron pointing at the right edge, i.e. "collapse away in
+              the direction you came from". An X reads as "delete/dismiss", which on
+              a to-do panel is an alarming thing to guess wrong about. */}
+          <button
+            onClick={onClose}
+            className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition"
+            title="Close panel"
+          >
+            <svg width="15" height="15" viewBox="0 0 12 12" fill="none">
+              <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+        {/* REVIVE — completed items only. Placed FIRST because it is the one thing
+            you came here to do on a done item; the picker and date below stay usable
+            (a completed to-do can still be recoloured without being revived). */}
+        {item.completed && (
+          <div className="rounded-lg border border-green-200 dark:border-green-500/25 bg-green-50/60 dark:bg-green-500/[0.07] px-3 py-2.5 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-green-700 dark:text-green-300">Completed</p>
+              {item.completed_at && (
+                <p className="text-[10px] text-green-600/70 dark:text-green-400/60 mt-0.5">
+                  {new Date(item.completed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                </p>
+              )}
+            </div>
+            {/* Same handler as the tick — reviving IS uncompleting. The panel stays
+                open afterwards; the item re-sorts out of Completed underneath it. */}
+            <button
+              onClick={onComplete}
+              className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium bg-white dark:bg-white/10 border border-green-300 dark:border-green-500/30 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-white/15 transition"
+            >
+              Revive
+            </button>
+          </div>
+        )}
+
+        {/* COLOUR */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/40 mb-2">Colour</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            {TODO_COLORS.map(c => (
+              <button
+                key={c.key}
+                onClick={() => onColor(c.key)}
+                title={c.label}
+                className={`w-6 h-6 rounded-full transition hover:scale-110 ${c.barClass} ${
+                  item.color === c.key ? `ring-2 ring-offset-2 ring-offset-white dark:ring-offset-[#0a0d16] ${c.ringClass}` : ''
+                }`}
+              />
+            ))}
+            {/* NO COLOUR — a slashed circle, not an eighth swatch, so it never reads
+                as "grey" (which IS a choice, and is the slate swatch). */}
+            <button
+              onClick={() => onColor(null)}
+              title="No colour"
+              className={`w-6 h-6 rounded-full border border-gray-300 dark:border-white/25 flex items-center justify-center transition hover:scale-110 ${
+                !item.color ? 'ring-2 ring-offset-2 ring-offset-white dark:ring-offset-[#0a0d16] ring-gray-400 dark:ring-white/40' : ''
+              }`}
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M1.5 8.5L8.5 1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"
+                      className="text-gray-400 dark:text-white/40" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* DUE — popover pickers, not bare native inputs. */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/40 mb-2">Due</p>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Picking a date carries the current time through. */}
+            <DatePopover value={item.due_date ?? null} onPick={d => onDue(d, item.due_time ?? null)} />
+            {/* Disabled without a date: setDue (A-1) drops a time whose date is
+                null, so an enabled time picker here would let the user set a value
+                that silently never persists. */}
+            <TimePopover value={item.due_time ?? null} disabled={!item.due_date} onPick={t => onDue(item.due_date ?? null, t)} />
+          </div>
+          {item.due_date && (
+            <button
+              onClick={() => onDue(null, null)}
+              className="mt-2 text-[10px] text-gray-400 dark:text-white/40 hover:text-red-500 dark:hover:text-red-400 transition"
+            >
+              Clear due date
+            </button>
+          )}
+        </div>
+
+        {/* STEPS — the editable list. Drag-reorder is A-3. */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/40">Steps</p>
+            {steps.length > 0 && (
+              <span className="text-[10px] tabular-nums text-gray-400 dark:text-white/35">{done} of {steps.length}</span>
+            )}
+          </div>
+          <div className="space-y-0.5">
+            {steps.map(s => (
+              <div key={s.id} className="flex items-start gap-2 group/step py-0.5">
+                <button
+                  onClick={() => onStepToggle(s.id)}
+                  className={`shrink-0 mt-[3px] w-[16px] h-[16px] rounded-full border-2 flex items-center justify-center transition-all duration-150 hover:scale-110 ${
+                    s.checked ? 'bg-indigo-500 border-indigo-500' : 'bg-gray-100 dark:bg-white/[0.08] border-gray-300 dark:border-white/30 hover:border-indigo-400'
+                  }`}
+                >
+                  {s.checked && (
+                    <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                      <path d="M2 5l2.5 2.5L8 2.5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                </button>
+                <span className={`flex-1 min-w-0 text-xs leading-snug break-words ${
+                  s.checked ? 'text-indigo-500 dark:text-indigo-300' : 'text-gray-600 dark:text-white/70'
+                }`}>
+                  {s.text}
+                </span>
+                <button
+                  onClick={() => onStepDelete(s.id)}
+                  className="opacity-0 group-hover/step:opacity-100 w-6 h-6 flex items-center justify-center rounded-md text-gray-500 dark:text-white/50 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/15 transition shrink-0"
+                  title="Delete step"
+                >
+                  <svg width="11" height="11" viewBox="0 0 10 10" fill="none">
+                    <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  </svg>
+                </button>
+              </div>
+            ))}
+            {/* The SAME module-level input 3b introduced, for the same reason: it
+                holds its own draft, so typing never re-renders Todo. */}
+            <div className="pt-1">
+              <AddStepInput onAdd={onStepAdd} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  )
+}
+
+/** Due-date colour for the BOARD-card row (plain text, unchanged from 3a). */
 function dueColorFor(item: DisplayItem): string {
   const k = urgency(item.due_date).k
   return k === 'pastdue' ? 'text-red-500 dark:text-red-400'
     : k === 'today' ? 'text-amber-500 dark:text-amber-400'
     : 'text-gray-400 dark:text-white/40'
+}
+
+/**
+ * THE DUE PILL (A-2 polish) — the personal card's due chip, keyed to the SAME
+ * urgency buckets that drive promotion and banding, so a pill can never disagree
+ * with the group its card is sitting in.
+ *
+ * The old chip was `text-[10px] text-gray-400` for everything but past-due and
+ * today — grey-on-near-white at ten pixels, which is not a chip so much as a
+ * rumour. Every bucket now gets a filled pill with a border and readable contrast.
+ *
+ * Full literal class strings (no composition) so Tailwind's scanner keeps them.
+ */
+const DUE_PILL: Record<UrgencyKey, string> = {
+  pastdue:  'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30',
+  today:    'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/30',
+  tomorrow: 'bg-amber-50 text-amber-700 border-amber-200/70 dark:bg-amber-500/[0.12] dark:text-amber-200/90 dark:border-amber-500/20',
+  d2:       'bg-amber-50 text-amber-700 border-amber-200/70 dark:bg-amber-500/[0.12] dark:text-amber-200/90 dark:border-amber-500/20',
+  d3:       'bg-amber-50 text-amber-700 border-amber-200/70 dark:bg-amber-500/[0.12] dark:text-amber-200/90 dark:border-amber-500/20',
+  // Visible, not ghosted — a dated item always reads as dated. Slate rather than
+  // grey-400 so it holds its own against the card without competing with amber.
+  later:    'bg-slate-100 text-slate-600 border-slate-200 dark:bg-white/[0.09] dark:text-white/70 dark:border-white/15',
+  none:     'bg-slate-100 text-slate-600 border-slate-200 dark:bg-white/[0.09] dark:text-white/70 dark:border-white/15',
+}
+
+function duePillFor(item: DisplayItem): string {
+  return DUE_PILL[urgency(item.due_date).k]
 }
 
 const BAND_LABELS: Record<UrgencyKey, string> = {
@@ -275,14 +742,10 @@ export default function Todo() {
   const [doneExpanded, setDoneExpanded] = useState(false)
   const [completing, setCompleting] = useState<Set<string>>(new Set())
 
-  // Which personal cards are expanded (step editing). Ephemeral by design — this
-  // is an editing affordance, not a preference worth persisting across sessions.
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const toggleExpanded = (id: string): void => setExpanded(prev => {
-    const next = new Set(prev)
-    next.has(id) ? next.delete(id) : next.add(id)
-    return next
-  })
+  // A-2. Which personal item the detail panel is showing. Replaces 3b's `expanded`
+  // set: the panel is a SINGLE editor for ONE item, so a set of open cards no longer
+  // has any meaning. Ephemeral by design — not persisted across sessions.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   // NOTE: add-step drafts deliberately do NOT live here. See AddStepInput — holding
   // them in this component re-rendered Todo on every keystroke, which recreated the
   // inline `Row` and remounted the input, losing focus after one character.
@@ -462,6 +925,44 @@ export default function Todo() {
     queueLoad()
   }
 
+  // ── Detail-panel field writes (A-2, over the A-1 setters) ──────────────────
+  // OPTIMISTIC, then fire-and-reconcile — the same contract handleStepToggle
+  // settled on in 3b. queueLoad() is deliberately NOT called on success: the patch
+  // below already holds the right state, and a refetch mid-interaction re-settles
+  // the list (a star jumping groups, a stripe repainting) for no gain. A genuinely
+  // failed write is corrected by the next natural refetch — focus, realtime, tab
+  // switch — and reverted immediately on an explicit refusal.
+  //
+  // NO `if (!online)` GUARD. These are personal writes: local-first, queued, and
+  // the one thing that works offline.
+  const patchItem = useCallback((id: string, patch: Partial<DisplayItem>) => {
+    setItems(prev => prev.map(i => (i.id === id ? { ...i, ...patch } : i)))
+  }, [])
+
+  async function handleSetColor(item: DisplayItem, key: string | null) {
+    const before = item.color ?? null
+    patchItem(item.id, { color: key })
+    const res = await window.api.personalTodo.setColor(item.raw_id, key)
+    if (!res?.ok) patchItem(item.id, { color: before })
+  }
+
+  async function handleSetStar(item: DisplayItem) {
+    const next = !item.starred
+    patchItem(item.id, { starred: next })
+    const res = await window.api.personalTodo.setStar(item.raw_id, next)
+    if (!res?.ok) patchItem(item.id, { starred: !next })
+  }
+
+  async function handleSetDue(item: DisplayItem, date: string | null, time: string | null) {
+    const before = { due_date: item.due_date, due_time: item.due_time }
+    // Mirror the handler's own rule locally (A-1: a null date drops the time), so
+    // the panel never shows a time the backend has just discarded.
+    const nextTime = date === null ? null : time
+    patchItem(item.id, { due_date: date, due_time: nextTime })
+    const res = await window.api.personalTodo.setDue(item.raw_id, date, nextTime)
+    if (!res?.ok) patchItem(item.id, before)
+  }
+
   async function handlePersonalToggle(item: DisplayItem) {
     const id = rawPersonalId(item.id)
     // Local-first (slice 1b): these run offline by design.
@@ -554,6 +1055,14 @@ export default function Todo() {
   }
 
   function handleItemClick(item: DisplayItem) {
+    // PERSONAL → the detail panel. Clicking the open item again closes it.
+    // ⚠ Board cards keep their EXISTING behaviour untouched: they deep-link into
+    // Workspace, they do not open this panel. The panel edits personal columns
+    // (colour, star, personal steps) that board cards structurally do not have.
+    if (item.source === 'personal') {
+      setSelectedId(prev => (prev === item.id ? null : item.id))
+      return
+    }
     if (item.source === 'kc-deadline' && item.board_id && item.linked_task_id) {
       setActiveBoardId(item.board_id)
       openTask(item.linked_task_id)
@@ -581,16 +1090,38 @@ export default function Todo() {
   // kc-intel directives pin above everything (slice 5 — empty until then).
   const directives = useMemo(() => active.filter(t => t.source === 'kc-intel'), [active])
 
+  /**
+   * ★ STARRED = A PINNED GROUP, NOT A SORT KEY (A-2).
+   *
+   * Sorting starred-first inside the bands would scatter starred items across five
+   * headings — the exact opposite of "move it to the top". So they lift OUT into
+   * their own group, the same way `promoted` and `directives` do.
+   *
+   * PERSONAL ONLY, and structurally so: no other source has a `starred` column to
+   * be true. The `source === 'personal'` test is therefore belt-and-braces over the
+   * `starred` test, and it stays because it documents the intent — a future source
+   * that grows a star must opt in here deliberately.
+   *
+   * ⚠ URGENCY BANDING DOES NOT APPLY to these. A starred past-due item appears ONCE,
+   * here, not also in "Needs attention" — the exclusion below is what guarantees it.
+   */
+  const isPinnedStar = (t: DisplayItem): boolean => t.source === 'personal' && !!t.starred
+
+  const starred = useMemo(() =>
+    active.filter(isPinnedStar)
+      .sort((a, b) => URGENCY_RANK[urgency(a.due_date).k] - URGENCY_RANK[urgency(b.due_date).k]),
+    [active])
+
   // PROMOTION: pastdue + today lift OUT of the bands into a pinned strip. They are
   // not duplicated below — `body` excludes them.
   const promoted = useMemo(() =>
     active
-      .filter(t => t.source !== 'kc-intel' && isPromoted(urgency(t.due_date).k))
+      .filter(t => t.source !== 'kc-intel' && !isPinnedStar(t) && isPromoted(urgency(t.due_date).k))
       .sort((a, b) => URGENCY_RANK[urgency(a.due_date).k] - URGENCY_RANK[urgency(b.due_date).k]),
     [active])
 
   const bands = useMemo(() => {
-    const body = active.filter(t => t.source !== 'kc-intel' && !isPromoted(urgency(t.due_date).k))
+    const body = active.filter(t => t.source !== 'kc-intel' && !isPinnedStar(t) && !isPromoted(urgency(t.due_date).k))
     const map = new Map<UrgencyKey, DisplayItem[]>()
     for (const t of body) {
       const k = urgency(t.due_date).k
@@ -614,6 +1145,51 @@ export default function Todo() {
     for (const t of TABS) out[t.id] = all.filter(i => !i.completed && inTab(i, t.id)).length
     return out
   }, [all])
+
+  /**
+   * The panel's item, DERIVED from the live list rather than held in state.
+   *
+   * That is what makes an edit anywhere show up here with no fetch and no second
+   * copy to drift. It also self-heals: if the item is deleted (or filtered away),
+   * `find` returns undefined, the panel unmounts, and no stale row can linger.
+   *
+   * Derived from `all`, not `tabItems`, so switching tabs does not yank the panel
+   * out from under an item you are still editing.
+   */
+  const selectedItem = useMemo(
+    () => (selectedId ? all.find(i => i.id === selectedId) ?? null : null),
+    [all, selectedId],
+  )
+
+  // ── PANEL SLIDE (A-2 polish) ───────────────────────────────────────────────
+  // A conditional mount cannot animate OUT — React removes the node before any
+  // transition can run. So the panel is kept mounted through its exit:
+  //
+  //   panelItem  WHAT it shows. Retained after selectedItem goes null, then
+  //              cleared by onExited when the closing slide finishes.
+  //   panelOpen  WHERE it sits. The class flip that drives translateX.
+  //
+  // The double rAF is load-bearing: the panel must be COMMITTED at
+  // translate-x-full and PAINTED there before flipping to 0, or the browser has no
+  // start value to interpolate from and it simply appears. One frame is not
+  // reliably enough — React can batch the state update into the same paint.
+  const reducedMotion = useReducedMotion()
+  const [panelItem, setPanelItem] = useState<DisplayItem | null>(null)
+  const [panelOpen, setPanelOpen] = useState(false)
+
+  useEffect(() => {
+    if (!selectedItem) {
+      setPanelOpen(false)
+      // No transition ⇒ no transitionend ⇒ onExited would never fire and the panel
+      // would stay mounted (invisible, off-screen) forever. Clear it here instead.
+      if (reducedMotion) setPanelItem(null)
+      return
+    }
+    setPanelItem(selectedItem)
+    let inner = 0
+    const outer = requestAnimationFrame(() => { inner = requestAnimationFrame(() => setPanelOpen(true)) })
+    return () => { cancelAnimationFrame(outer); cancelAnimationFrame(inner) }
+  }, [selectedItem, reducedMotion])
 
   // ── Item rendering ─────────────────────────────────────────────────────────
   /**
@@ -640,15 +1216,14 @@ export default function Todo() {
         <PersonalCard
           key={item.id}
           item={item}
-          isOpen={expanded.has(item.id)}
-          dueColor={dueColorFor(item)}
+          isSelected={selectedId === item.id}
+          duePill={duePillFor(item)}
           extraClass={extraClass}
           onComplete={() => handlePersonalToggle(item)}
           onDelete={() => handlePersonalDelete(item)}
-          onToggleExpand={() => toggleExpanded(item.id)}
+          onSelect={() => handleItemClick(item)}
+          onStar={() => handleSetStar(item)}
           onStepToggle={sid => handleStepToggle(item, sid)}
-          onStepAdd={text => handleStepAdd(item, text)}
-          onStepDelete={sid => handleStepDelete(sid, item)}
         />
       )
     }
@@ -742,8 +1317,16 @@ export default function Todo() {
 
   const totalPending = tabCounts.all
 
+  // NO page background on the root below — TRANSPARENT, exactly like Dashboard's
+  // root (`p-6 h-full overflow-y-auto`, no bg). The app paints its gradient on
+  // `body` (styles/index.css:44 — linear-gradient(135deg, --g-from, --g-via, --g-to),
+  // the theme-selectable navy→indigo→blue). A page shows it by NOT painting over it.
+  // A-2's `dark:bg-hub-navy` here was an opaque flat navy that hid the gradient and
+  // read as flat black. The header/tabs/list below are translucent
+  // (`dark:bg-black/10..20`), so the gradient reads through them as faint chrome
+  // darkening rather than a solid fill.
   return (
-    <div className="h-full flex flex-col bg-slate-50 dark:bg-hub-navy overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.06] bg-white dark:bg-black/20 shrink-0">
         <div className="flex items-center gap-3">
@@ -829,8 +1412,13 @@ export default function Todo() {
         </div>
       )}
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto">
+      {/* ── CONTENT ROW: list + detail panel ──────────────────────────────────
+          The header, tabs and add-form above stay FULL WIDTH; only this region
+          splits, per the mockup. `min-w-0` on the list is required — without it a
+          flex child refuses to shrink below its content width and long titles would
+          push the panel off-screen instead of wrapping. */}
+      <div className="flex-1 flex min-h-0 relative overflow-hidden">
+      <div className="flex-1 min-w-0 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32 text-gray-400 dark:text-white/50 text-sm">Loading…</div>
         ) : (
@@ -842,6 +1430,20 @@ export default function Todo() {
                   Directives
                 </div>
                 {directives.map(t => renderItem(t, 'bg-violet-50/40 dark:bg-violet-500/5'))}
+              </div>
+            )}
+
+            {/* PINNED: starred personal items — above the promotion strip. They are
+                NOT duplicated below: promoted and bands both exclude them. */}
+            {starred.length > 0 && (
+              <div>
+                <div className="px-4 py-2 flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-amber-500 dark:text-amber-400">
+                    Starred
+                  </span>
+                  <span className="text-xs text-gray-300 dark:text-white/25">({starred.length})</span>
+                </div>
+                {starred.map(t => renderItem(t, 'bg-amber-50/40 dark:bg-amber-500/5'))}
               </div>
             )}
 
@@ -900,7 +1502,7 @@ export default function Todo() {
 
             {/* EMPTY STATES — per tab, so the not-yet-built sources read as
                 intentional rather than broken. */}
-            {directives.length === 0 && promoted.length === 0 && bands.length === 0 && doneItems.length === 0 && (
+            {directives.length === 0 && starred.length === 0 && promoted.length === 0 && bands.length === 0 && doneItems.length === 0 && (
               <div className="flex flex-col items-center justify-center h-48 gap-3 px-6 text-center">
                 {tab === 'assigned' ? (
                   <>
@@ -942,6 +1544,50 @@ export default function Todo() {
             )}
           </div>
         )}
+      </div>
+
+      {/* ★ THE PANEL — a SIBLING of the list, rendered directly from Todo's JSX.
+          This placement is the whole fix: `Row` is still defined inside Todo, so
+          anything rendered from within it is unmounted on every render. Mounting the
+          panel here puts it ABOVE that boundary, so its date/time/add-step inputs
+          keep their DOM nodes and their focus. Do NOT move this inside renderItem,
+          PersonalCard or Row. */}
+      {/* THE SPACER — what actually makes room for the panel. Because the panel is
+          absolutely positioned, the list would otherwise sit underneath it. This
+          empty flex child widens in step with the slide, so the list is pushed
+          smoothly rather than snapping to its new width the moment the panel
+          mounts. Same duration and easing as the transform, so they move together. */}
+      <div
+        aria-hidden
+        className={`shrink-0 ${reducedMotion ? '' : 'transition-[width] duration-[260ms] ease-[cubic-bezier(.4,0,.2,1)]'}`}
+        style={{ width: panelOpen && panelItem ? 378 : 0 }}
+      />
+
+      {/* ★ THE PANEL — still a SIBLING of the list, rendered directly from Todo's
+          JSX. Absolute positioning changes where it PAINTS, not where it sits in
+          the tree: it remains above the `Row` unmount boundary, so its inputs keep
+          their DOM nodes and their focus. Do NOT move this inside renderItem,
+          PersonalCard or Row. */}
+      {panelItem && panelItem.source === 'personal' && (
+        <TodoDetailPanel
+          // Keyed on the item so switching selection gives the panel a FRESH
+          // subtree — otherwise an <input> would carry the previous item's
+          // uncommitted keystrokes across the swap.
+          key={panelItem.id}
+          item={panelItem}
+          open={panelOpen}
+          reducedMotion={reducedMotion}
+          onExited={() => setPanelItem(null)}
+          onClose={() => setSelectedId(null)}
+          onComplete={() => handlePersonalToggle(panelItem)}
+          onStar={() => handleSetStar(panelItem)}
+          onColor={key => handleSetColor(panelItem, key)}
+          onDue={(d, t) => handleSetDue(panelItem, d, t)}
+          onStepToggle={sid => handleStepToggle(panelItem, sid)}
+          onStepAdd={text => handleStepAdd(panelItem, text)}
+          onStepDelete={sid => handleStepDelete(sid, panelItem)}
+        />
+      )}
       </div>
     </div>
   )
