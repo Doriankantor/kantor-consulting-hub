@@ -2,7 +2,7 @@
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-20
   Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
-                   UNRELEASED since v2.3.0 — SEVENTEEN commits: 2d76b9a (visibleBoardIds
+                   UNRELEASED since v2.3.0 — EIGHTEEN commits: 2d76b9a (visibleBoardIds
                    non-root no-join fix), b211638 (slice 0b-0 — realtime channel-health
                    instrumentation), the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
                    c60c9c2 (Social form-loss), ae067da (updateStatus phantom-row guard),
@@ -19,13 +19,14 @@
                    863e5be (1c-2b-② — all reads/writes repointed id->email); and the
                    To-Do tab itself becoming visible: 065f6ce (slice 2 — the
                    listTodos aggregation layer) and d43445d (slice 3a — the visible
-                   To-Do tab: five tabs, CET urgency, promotion strip).
+                   To-Do tab: five tabs, CET urgency, promotion strip) and 4c240bd
+                   (slice 3b — the personal Step Rail).
                    The installed app is 2.3.0 and contains NONE of them.
                    Shipped in v2.3.0: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD d43445d   |   336 commits   |   ~38,600 lines of TS/TSX
+                   HEAD 4c240bd   |   338 commits   |   ~38,600 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -88,6 +89,52 @@
   as the To-Do prototype. To-Do slice 5 (intel culling directive) is its on-ramp; shared
   prerequisite: notifications → cloud.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-20 — SLICE 3b: THE PERSONAL STEP RAIL (4c240bd, UNRELEASED) ──
+  • personal_todo_steps handlers (create/toggle/delete) on the 1b local-first + sync-queue
+    pattern: local write lands first and alone decides ok:true, cloud op handed to
+    syncPersonalWrite un-awaited and queued on failure/offline. NO isOnline() guard anywhere
+    — personal is the offline-capable source and guarding it would block the one path that
+    works offline. Steps sync on reconnect like personal to-dos.
+  • personal_todo_steps was ALREADY in the SyncTable union + CONFLICT map (1b wired it
+    grow-ready) and the drain is table-agnostic, so launch/reconnect/manual drains covered
+    steps with ZERO new queue code. Verified, not assumed; cloud columns match local exactly.
+  • todos:list returns steps INLINE for personal items — one WHERE todo_id IN (...) for the
+    whole list, not per-item, because refetches fire on every realtime push. has_steps is now
+    REAL for personal; board cards still get undefined and their has_steps stays wrong until
+    the card-checklist work (slice 4).
+  • PREFIX LANDMINE: raw_id added to TodoItem. todos:list emits a DISPLAY id
+    (personal-<uuid>) but personal_todos.id is the bare uuid; passing the prefixed id would
+    insert steps whose todo_id matches no row, and there is NO FK locally or in cloud, so
+    nothing would error — the steps would just never be read again. Three layers of defence.
+  • personalTodo:delete now CASCADES to steps (no FK anywhere, so nothing else would), and
+    stepOwnerEmail refuses loudly because personal_todo_steps.user_email is NOT NULL and the
+    cloudRowFor skip-the-cloud-write trick is unavailable. toggle flips in SQL so two fast
+    clicks cannot eat one another.
+  • NEW StepRail component — pure presentational over {steps, labelMode, onToggle}. ONE
+    component, three future data sources: personal (now), off-card assigned (2.5), card
+    checklists (after 4). FLIP slide (done steps collect left) + CSS fill-width transition;
+    prefers-reduced-motion honored via a LIVE matchMedia listener rather than the prototype's
+    module-load constant.
+  • VISIBILITY RULE: 0 steps = no rail at all; >=1 step = bar + dots ALWAYS visible on the
+    collapsed card; expanded adds only the editing affordances (add-step input, per-step
+    delete). Board and meeting cards unaffected.
+  • Two animation bugs fixed in-slice: the double-hitch (dropped refetch-on-toggle, which
+    landed mid-animation and re-settled the rail; a revert on {ok:false} replaced it so a
+    refused toggle cannot diverge silently) and the phantom replay on blur/focus (FLIP now
+    gated on an order signature, and zero-size rects are never recorded).
+  • ★ LESSON — THE COMPONENT-INSIDE-COMPONENT REMOUNT TRAP. Row is defined inside Todo(), so
+    every Todo render creates a new Row function, React sees a different component TYPE and
+    UNMOUNTS + REMOUNTS the whole subtree. That destroys DOM nodes and silently breaks focus,
+    FLIP, and CSS transitions. React.memo and useCallback/useMemo CANNOT fix it — nothing
+    below a fiber being torn down survives, and the comparator is never reached. Attempted
+    twice, failed twice. The fix is to move the card ABOVE the unmount boundary: PersonalCard
+    is module-level AND rendered directly from Todo via a renderItem factory (a factory that
+    returns <PersonalCard/> is fine — only functions used AS JSX types need stable identity).
+    Row's personal branch was deleted so there is one path. Full lesson in HANDOFF.md.
+  • TECH DEBT (kept): hoist Row FULLY to module level. 3b moved only the personal branch;
+    board + meeting branches still remount. Harmless today, but any future focusable or
+    animated control inside Row hits the same trap. Its own cleanup slice.
 
   ── 2026-07-20 — COLLABORATION + PERMISSION MODEL DECIDED; 3b RESCOPED (docs only) ──
   • UNIFIED "HEAD" ROLE — can-assign and board-head collapse into ONE elevated role per board,

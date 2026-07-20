@@ -1,6 +1,6 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-20 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `d43445d`, `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: SEVENTEEN code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale), `065f6ce` (slice 2 — the `listTodos` aggregation layer) and `d43445d` (slice 3a — the visible To-Do tab). The installed app is 2.3.0 and contains NONE of them.** ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: FIFTEEN code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-20 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `4c240bd`, `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: EIGHTEEN code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale), `065f6ce` (slice 2 — the `listTodos` aggregation layer), `d43445d` (slice 3a — the visible To-Do tab) and `4c240bd` (slice 3b — the personal Step Rail). The installed app is 2.3.0 and contains NONE of them.** ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: FIFTEEN code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
@@ -10,12 +10,19 @@ the renderer migrated onto it. **The To-Do tab now renders from `todos:list`** �
 urgency, a pinned past-due/today strip, and refresh-on-change. Detail: the **SLICE 2** and
 **SLICE 3a** entries under the To-Do overhaul.
 
-**NEXT IS SLICE 3b — RESCOPED (2026-07-20) to the PERSONAL Step Rail ONLY:** the reusable rail
-component plus the `personal_todo_steps` write path. **The card-checklist mirror is NO LONGER in
-3b** — the checklist rail's toggle is a card edit, so it now waits for slice 4's EDIT tier.
-`has_steps` stays unconsumed and stays wrong for board cards until then; personal items report
-`false` unconditionally, which is correct. **Seventeen code commits are unreleased**; the
+**SLICE 3b IS DONE (`4c240bd`) — the personal Step Rail ships.** Handlers on the 1b local-first
++ sync-queue pattern (offline-capable), steps inline on `todos:list`, and a reusable `StepRail`
+component with FLIP slide + fill transition. `has_steps` is now real **for personal**; it stays
+wrong for board cards until the checklist work. **Eighteen code commits are unreleased**; the
 installed app is 2.3.0 and contains none of them.
+
+**★ READ THE REMOUNT-TRAP LESSON BEFORE TOUCHING `Todo.tsx`** — "NEVER DEFINE A COMPONENT INSIDE
+ANOTHER COMPONENT'S BODY". It cost the focus bug plus **three** failed animation fixes, two of
+them chasing `React.memo`, which cannot work. `Row` is still inside `Todo()`; only the personal
+branch was moved above the unmount boundary. **The full `Row` hoist is logged tech debt.**
+
+**NEXT:** slice 4 (the head role + card permission tiers) or slice 2.5 (the off-card assignment
+entity) — 2.5 unblocks both empty assigned tabs and is the prerequisite 5 also needs.
 
 **★ THE COLLABORATION / PERMISSION MODEL WAS DECIDED (2026-07-20) — read it before slice 4 or
 2.5.** Four things: the **UNIFIED HEAD ROLE** (one elevated role per board, replacing the
@@ -1189,6 +1196,68 @@ all four source types, plus project-scoped compose views.
 milestone in "Start here"; the Level-2 cross-source aggregation (design-first) remains on
 the backlog.
 
+## ⚠ Lesson — NEVER DEFINE A COMPONENT INSIDE ANOTHER COMPONENT'S BODY
+
+**The remount trap (found in 3b, 2026-07-20). It cost the add-step focus bug AND THREE failed
+animation fixes before the real cause was isolated.** Two of those three failures were mine,
+and the second failed for the exact reason I had just used to reject the first — which is why
+this is written down at length rather than as a one-liner.
+
+**THE MECHANISM.** `Row` is defined **inside** `Todo()` (`Todo.tsx`). React identifies
+components by **FUNCTION IDENTITY**, so every render of `Todo` creates a new `Row` function
+object, React sees a **different component type** in that slot, and it **UNMOUNTS + REMOUNTS
+the entire subtree** instead of updating it. Remounting destroys DOM nodes — which silently
+breaks everything that depends on node persistence:
+
+1. **FOCUS** — the add-step input lost focus after exactly one character. Typing set state in
+   `Todo` → `Todo` re-rendered → new `Row` → remount → the focused node was gone.
+2. **FLIP ANIMATION** — no stable "before" node to measure, so `prevRects` was a fresh empty
+   Map on every toggle and `.animate()` was never called. **It no-ops silently** — no error,
+   no warning, just no motion.
+3. **CSS WIDTH TRANSITION** — the fill element remounted already at its final width, so the
+   browser had no from-state to interpolate. It jumps.
+
+**⚠ WHAT DOES NOT FIX IT — ATTEMPTED TWICE, FAILED TWICE:**
+- **`React.memo` on a child.** `memo` skips **re-rendering a component that stays MOUNTED**. It
+  cannot survive a **parent unmount**, and its comparator is **never even reached** when the
+  parent element's type changed.
+- **`useCallback` / `useMemo` on the props.** Stable props help a component that persists; they
+  cannot stop its parent from being replaced.
+- **Hoisting the CHILD to module level while still rendering it from inside `Row`.** This was
+  the second failed attempt and the instructive one: a stable child type is irrelevant when the
+  teardown happens at the `Row` fiber **above** it. Everything below a fiber being torn down
+  goes with it, stable type or not.
+- **`useMemo`-ing `Row` itself** is a dead end too: its deps would include every handler and
+  piece of state it closes over — all recreated per render — so it invalidates every time;
+  empty deps would freeze it on first-render state.
+
+**WHAT FIXES IT — move the affected card ABOVE the unmount boundary.** `PersonalCard` was
+extracted to module level **AND** rendered **directly from `Todo`** via a `renderItem` factory,
+bypassing `Row` entirely. `Row`'s personal branch was **deleted**, leaving exactly one path to
+a personal card (leaving it as a fallback would have silently reinstated the bug for whoever
+routed an item through it).
+
+**★ THE DISTINCTION THAT GOVERNS ALL OF THIS:**
+- **Changing PROP identity → a re-render.** Harmless — and FLIP actually *requires* it.
+- **Changing COMPONENT TYPE → a remount.** Fatal to focus, animation and transitions.
+
+**A factory is not a component.** `renderItem` is defined inside `Todo` and that is fine: it is
+never used **as a JSX type**, so its unstable identity is irrelevant. React reconciles on the
+element type it RETURNS (`PersonalCard`, module-level). **Only functions used AS JSX types need
+stable identity.**
+
+**RULE: never define a component inside another component's body if it will hold focus,
+animation, or any DOM state. And when one of those breaks, target the UNMOUNT BOUNDARY — not
+anything below it.** The instinct to reach for `memo` is exactly backwards here: it optimizes
+the case that is already working and cannot touch the case that is broken.
+
+**⚠ TECH DEBT — HOIST `Row` FULLY TO MODULE LEVEL. Its own cleanup slice.** The 3b bypass moved
+only the **PERSONAL** branch above the boundary. **Board and meeting branches still live inside
+`Row` and still remount on every render.** Harmless *today* — they hold no focus or animation
+state — but **any future focusable or animated control added inside `Row` will hit this trap
+again**, and the next person will not know why. The full hoist means threading `areas`,
+`completing`, `expanded`, `openTask`, `navigate` and ~8 handlers through props.
+
 ## Release status at a glance
 
 - **v2.3.0 — RELEASED** (published 2026-07-17; version-bump commit `a4b161e`, tag `v2.3.0`
@@ -1850,19 +1919,17 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
          below for what is and isn't true about that data today.
     3a. ✅ **DONE — the visible To-Do tab (`d43445d`).** Urgency + tabs + promotion +
        migration onto `todos:list`. **NO Step Rail.** Detail in the **SLICE 3a** entry below.
-    3b. ▶ **NEXT — the PERSONAL Step Rail ONLY (RESCOPED 2026-07-20).** Two things: the
-       **reusable rail component** (port prototype behavior, theme tokens, **light AND dark**)
-       and the **`personal_todo_steps` write path** (handlers + channel — the table exists from
-       1a with 0 rows and no handlers). **Nothing else.**
+    3b. ✅ **DONE — the PERSONAL Step Rail (`4c240bd`, 2026-07-20, UNRELEASED).** Scope held:
+       the **reusable rail component** and the **`personal_todo_steps` write path**, nothing
+       else. Detail in the **SLICE 3b** entry below; the remount trap it uncovered has its own
+       lesson section.
        - **⚠ RESCOPED — the card-checklist mirror is NO LONGER part of 3b.** It was originally
          3b's prerequisite; the card-checklist rail now waits for **slice 4**, because its
          toggle is a card edit and must respect the **EDIT tier**. Building the mirror now
          would deliver a rail nobody is yet permitted to use correctly.
-       - **`has_steps` STAYS UNCONSUMED and stays wrong for board cards** until the checklist
-         work happens. Personal items report `has_steps: false` unconditionally
-         (`todos.ts:89`), which is **correct, not a stub** — nothing can write a personal step
-         until 3b builds the path. Diagnosis confirmed **nothing breaks**: the rail returns
-         `null` at zero steps, so an item with no steps simply renders no rail.
+       - **`has_steps` is now REAL for personal items** (`steps.length > 0`) and **stays wrong
+         for board cards** until the checklist work happens. The kc-deadline expression is a
+         separate one in a separate function, so 3b changed only the personal half.
     - **★ CHECKLIST STATE — WHAT IS ACTUALLY TRUE (verified 2026-07-20, and it is the OPPOSITE
       of "local-only, never synced").** Recorded precisely because the inverted version would
       send a future session on a pointless cloud migration:
@@ -1962,6 +2029,58 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
       empty the page (the `Promise.all`-poisoning lesson).
     - **⚠ DEFECT SHIPPED KNOWINGLY — `has_steps` reads a dead table.** See slice 3b. Nothing
       consumes it, and 3a kept it that way.
+  - **✅ SLICE 3b SHIPPED — the personal Step Rail (`4c240bd`, 2026-07-20, UNRELEASED).**
+    Three handlers on the **1b local-first + sync-queue pattern** —
+    `personalTodoStep:create/toggle/delete`. Local write lands FIRST and alone decides
+    `{ok:true}`; the cloud op is handed to `syncPersonalWrite` un-awaited and queues on failure
+    or offline. **NO `isOnline()` guard anywhere in the path**, deliberately: personal is the
+    offline-capable source, and the 1b lesson was that guarding a personal write blocks the one
+    thing that works offline.
+    - **`personal_todo_steps` was ALREADY in the `SyncTable` union and `CONFLICT` map** (1b
+      wired it grow-ready, `personalSync.ts:30,36`), and `applyToCloud`/`drainPersonalSyncQueue`
+      are table-agnostic — so **launch, reconnect and manual drains covered steps with ZERO new
+      queue code**. Verified rather than assumed; cloud columns match local exactly.
+    - **`todos:list` returns steps INLINE for personal items** — one `WHERE todo_id IN (…)`
+      for the whole list, not per-item, because refetches fire on every realtime push. Wrapped
+      in its own try/catch: a step-read failure degrades to no rails, never costs the list.
+      **`has_steps` is now real for personal.** Board cards get `steps: undefined`.
+    - **★ THE PREFIX LANDMINE — `raw_id` was added to `TodoItem`.** `todos:list` emits a
+      DISPLAY id (`personal-<uuid>`) but `personal_todos.id` is the BARE uuid. Passing the
+      prefixed id to a step handler would insert steps whose `todo_id` matches no row — and
+      **there is no FK locally OR in cloud** (the cloud SQL omits it deliberately so the queue
+      can upload a step before its parent), so **nothing would error**. The steps would simply
+      never be read again. Three layers: `raw_id` on the item, a `bareTodoId()` strip at the
+      handler boundary, and type comments on both fields.
+    - **`personalTodo:delete` now CASCADES to steps.** Nothing else would — no FK anywhere — so
+      deleting a to-do would strand its steps locally AND in cloud permanently. Each orphan is
+      enqueued for cloud deletion individually.
+    - **`stepOwnerEmail()` refuses loudly.** `personal_todo_steps.user_email` is `NOT NULL`,
+      unlike `personal_todos` which is user_id-keyed locally — so `cloudRowFor`'s trick (skip
+      the cloud write, keep the local row) is **unavailable**: the LOCAL insert would violate
+      the constraint. Resolved via the parent to-do up front, returning
+      `{ok:false, error:'unresolvable owner'}` rather than letting SQLite throw.
+    - **`toggle` flips in SQL** (`CASE WHEN checked=1 THEN 0 ELSE 1 END`) rather than
+      read-modify-write — two fast clicks would otherwise both read the same value and write
+      the same result, silently eating one toggle.
+    - **NEW `StepRail` COMPONENT** (`components/StepRail.tsx`) — pure presentational over
+      `{steps, labelMode, onToggle}`, no fetching, no backend assumption. **ONE component,
+      three future data sources**: personal (now), off-card assigned (2.5), card checklists
+      (after 4). FLIP slide (done steps collect left) via `getBoundingClientRect` + WAAPI, CSS
+      width transition on the fill, `prefers-reduced-motion` honored as a **live `matchMedia`
+      listener** (the prototype evaluates it once at module load, which is wrong for a renderer
+      that runs for days).
+    - **VISIBILITY RULE:** 0 steps ⇒ **no rail at all** (a step-less to-do renders exactly as
+      it did before 3b); ≥1 step ⇒ **bar + dots always visible on the COLLAPSED card**, no
+      expand needed; expanded ⇒ adds **only** the editing affordances (add-step input, per-step
+      delete). **Board and meeting cards are unaffected.**
+    - **TWO ANIMATION BUGS FIXED IN THE SAME SLICE:** the **double-hitch** (dropped
+      refetch-on-toggle — it landed mid-animation and re-settled the rail; persistence never
+      depended on it, and a **revert on `{ok:false}`** replaced it so a refused toggle can't
+      diverge silently), and the **phantom replay on blur/focus** (the layout effect has no dep
+      array and re-ran on focus renders where a hidden window reports different geometry — now
+      gated on an **order signature** of `id:checked`, plus **zero-size rects are never
+      recorded** since storing `0×0` would produce a bogus `dx` on return).
+    - **OUT OF SCOPE, held:** card checklists (slice 4) and assigned steps (2.5).
   - **✅ SLICE 3a SHIPPED — the visible To-Do tab (`d43445d`, 2026-07-20, UNRELEASED).**
     `Todo.tsx` migrated onto `todos:list`: **ONE call plus client-side tab filtering**,
     replacing the old `getMyTasks` + `personalTodo.list` pair. Google meetings stay a
