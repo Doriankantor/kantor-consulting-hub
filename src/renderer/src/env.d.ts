@@ -92,6 +92,24 @@ interface AppNotification {
   created_at: string
 }
 
+// The normalized To-Do aggregate (slice 2). Mirrors TodoItem in src/main/todos.ts.
+// The `source` union GROWS — 'assigned' (slice 2.5, off-card), 'kc-meeting' and
+// 'kc-intel' (slice 5) land as new values without reshaping the rest.
+interface TodoItem {
+  id: string
+  source: 'personal' | 'kc-deadline'
+  title: string
+  due_date: string | null
+  due_time: string | null
+  completed: boolean
+  completed_at: string | null
+  position: number | null
+  board_id: string | null
+  board_name: string | null
+  linked_task_id: string | null
+  has_steps: boolean
+}
+
 interface ChatMessage {
   id: string
   author_id: string
@@ -747,6 +765,10 @@ interface Window {
       dismiss:      (userId: string, taskId: string) => Promise<{ ok: boolean }>
       getDismissed: (userId: string) => Promise<string[]>
       uncomplete:   (taskId: string) => Promise<{ ok: boolean }>
+    }
+    // Slice 2 aggregation. Separate from `todo` above, which stays untouched.
+    todos: {
+      list: (actingUser: string) => Promise<TodoItem[]>
     }
     infoPages: {
       list:              ()                                                    => Promise<InfoPage[]>

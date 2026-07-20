@@ -254,6 +254,10 @@ const api = {
     getDismissed: (userId: string) => ipcRenderer.invoke('todo:getDismissed', userId),
     uncomplete:   (taskId: string) => ipcRenderer.invoke('todo:uncomplete', taskId),
   },
+  // Slice 2 aggregation. Separate from `todo` above, which stays untouched.
+  todos: {
+    list: (actingUser: string) => ipcRenderer.invoke('todos:list', actingUser),
+  },
   boardMembers: {
     list:        (boardId: string) => ipcRenderer.invoke('boardMembers:list', boardId),
     add:         (boardId: string, userId: string, addedByName: string) => ipcRenderer.invoke('boardMembers:add', boardId, userId, addedByName),

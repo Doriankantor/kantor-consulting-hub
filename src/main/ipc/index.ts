@@ -24,6 +24,7 @@ import {
 import * as boardsCloud from '../cloud/boards'
 import { resolveIdentity } from '../cloud/boards'
 import { assignedToSql, parseAssignees } from '../assignees'
+import { listTodos } from '../todos'
 import * as intelCloud from '../cloud/intel'
 import { isOnline } from '../cloud/connection'
 import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag } from '../cloud/tags'
@@ -1547,6 +1548,15 @@ function registerDriveConnectHandler() {
   ipcMain.handle('drive:connect', () => driveSync.connect())
 }
 
+// ── To-Do aggregation (slice 2) ────────────────────────────────────────────
+// ADDITIVE. `todo:getMyTasks` and the `personalTodo:*` handlers below are left
+// EXACTLY as they are, and Todo.tsx keeps calling them — the renderer migrates in
+// slice 3. Repointing the UI in the same slice that introduces the aggregate would
+// leave no working path to compare against ("ADD, don't repoint", per 1c-1).
+function registerTodosHandlers() {
+  ipcMain.handle('todos:list', (_e, actingUser: string) => listTodos(actingUser))
+}
+
 // ── To-Do ──────────────────────────────────────────────────────────────────
 
 function registerTodoHandlers() {
@@ -2040,6 +2050,7 @@ export function registerIpcHandlers(): void {
   registerDriveConnectHandler()
   registerBoardMembersHandlers()
   registerTodoHandlers()
+  registerTodosHandlers()
   registerPersonalTodoHandlers()
   registerNotificationSchedulerHandlers()
   startNotificationScheduler()
