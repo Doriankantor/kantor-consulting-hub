@@ -1756,6 +1756,35 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   **Populate model already decided for when it lands:** @mention **capped at 5 pre-typing**,
   **RECENCY-ranked** (recently mentioned/assigned first), **type-to-filter past the cap**,
   **scoped to board members**.
+- **CARD DATE PICKERS (future pass — reuses the A-2 date/time picker; lands WITH or AFTER
+  slice 4).** Give board cards the same calendar-popover date picker + hour/minute time picker
+  that A-2 added to the personal detail panel, on **both** the card's **start date** and **due
+  date**, replacing the bare native `<input type="date">` in `TaskDetailPanel` (lines ~1027 and
+  ~1042). A board/Workspace surface, distinct from the personal-to-do panel.
+  - **⚠ THE BRIEF THAT SPAWNED THIS ITEM WAS FACTUALLY WRONG — recorded corrected so a future
+    session does not do redundant, conflicting work.** The brief claimed *"start date does NOT
+    exist on `workspace_tasks` today — it's a NEW field needing local schema + cloud ALTER +
+    cloudRowFor + TASK_COLS plumbing."* **Every clause is false:**
+    - `start_date` **already exists** on `workspace_tasks` — `db.ts:303` (CREATE TABLE), the
+      insert projection at `db.ts:338`, and the `tasks`-table backfill `ALTER` at `db.ts:409`.
+    - It is **already in `TASK_COLS`** (`cloud/boards.ts:166`) and the cloud upsert projection
+      (`cloud/boards.ts:796/803/817`), so it **already syncs to and from cloud**. No ALTER.
+    - `cloudRowFor` is the **PERSONAL-todo** cloud helper (`ipc/index.ts`); board cards do not
+      use it at all — wrong subsystem. Board writes go through `boardsCloud.updateTask` +
+      `TASK_COLS`.
+    - **`TaskDetailPanel` already has a working start-date editor** (`TaskDetailPanel.tsx:1027`),
+      a native date input writing `start_date` via `updateTask`.
+    - **Net:** both `start_date` and `due_date` already exist, sync, and have editors. This item
+      is a **UI-ONLY swap** — no schema, no cloud ALTER, no `TASK_COLS`/`cloudRowFor` work. Had
+      the wrong version been recorded, a session would have added a `start_date` column that
+      already exists, risking a duplicate/conflict against the live one.
+  - **REAL prerequisite the brief omitted:** to "build the picker once and reuse it", the picker
+    must first be **EXTRACTED**. `DatePopover` / `TimePopover` currently live **module-level
+    inside `Todo.tsx`**, not in a shared component file — so step one of this pass is lifting them
+    to e.g. `components/DateTimePopover.tsx`, then consuming from both surfaces.
+  - **Permission gate (valid, keep):** card date editing must respect the **slice-4 card-edit
+    tiers** (only card-assignees or heads can edit a card), which is why this lands **with or
+    after slice 4**, never before.
 - **TO-DO TEAM BUILDOUT (ready to build — EXISTING design, not new scope).** This is the
   To-Do overhaul already designed in prior sessions; Dorian confirmed it is the same plan.
   Recorded here so it isn't lost in the backlog. **The point:** make To-Do a real
