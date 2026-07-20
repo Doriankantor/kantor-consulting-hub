@@ -2,7 +2,7 @@
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-21
   Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
-                   UNRELEASED since v2.3.0 — TWENTY commits: 2d76b9a (visibleBoardIds
+                   UNRELEASED since v2.3.0 — TWENTY-TWO commits: 2d76b9a (visibleBoardIds
                    non-root no-join fix), b211638 (slice 0b-0 — realtime channel-health
                    instrumentation), the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
                    c60c9c2 (Social form-loss), ae067da (updateStatus phantom-row guard),
@@ -25,14 +25,20 @@
                    + todoColors palette) and f1fb6df (slice A-2 — the personal detail
                    panel UI: color picker/stripe, star + pinned Starred group, date/
                    time popovers + urgency due pill, revive, panel-only step editor,
-                   slide, app-gradient fix). NOTE: A-2's commit subject says "editable
-                   title" but title is READ-ONLY (no setTitle handler exists).
+                   slide, app-gradient fix), 9c049e3 (slice A-3 — dnd-kit drag-to-
+                   reorder personal steps: dense position rewrite 0..n-1, self-heals
+                   3b's sparse positions, per-row sync) and 4bc236d (slice B —
+                   personal-to-do notes: setNotes + cloudRowFor clobber guard, a
+                   module-level NotesEditor with onBlur + unmount-flush keyed by
+                   item.id, plain textarea no debounce, hand-run cloud DDL).
+                   NOTE: A-2's commit subject says "editable title" but title is
+                   READ-ONLY (no setTitle handler exists).
                    The installed app is 2.3.0 and contains NONE of them.
                    Shipped in v2.3.0: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD 478030b   |   344 commits   |   ~40,200 lines of TS/TSX
+                   HEAD 4bc236d   |   347 commits   |   ~40,450 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -95,6 +101,36 @@
   as the To-Do prototype. To-Do slice 5 (intel culling directive) is its on-ramp; shared
   prerequisite: notifications → cloud.
   See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-21 — DETAIL PANEL: SLICES A-3 + B (9c049e3, 4bc236d, UNRELEASED) ──
+  • A-3 (drag-to-reorder personal steps): personalTodoStep:reorder(todoId, orderedStepIds) dense-
+    rewrites position 0..n-1 in one db.transaction with an AND todo_id=? guard (no FK, so a foreign
+    id no-ops instead of moving another to-do's step). Because it rewrites ALL rows it SELF-HEALS
+    3b's sparse/gappy positions (COALESCE(MAX,-1)+1 never reused a deleted slot; live data was 3-8)
+    to 0..n-1 on the first drag. One un-awaited syncPersonalWrite per row via stepCloudRow, no
+    isOnline guard. Frontend reuses the Kanban's dnd-kit exactly: module-level SortableStepRow
+    (useSortable), DndContext + SortableContext verticalListSortingStrategy, PointerSensor
+    distance:5, grip handle owns the drag listeners so the toggle dot + delete keep their onClick;
+    handleStepReorder optimistically arrayMoves on drop only (no refetch-on-move, the 3b lesson).
+  • B (personal-to-do notes): a free-text notes field in the detail panel. notes TEXT column
+    (local guarded ALTER beside color/starred + hand-run cloud DDL
+    sql/2026-07-21_personal_todos_notes.sql, already run). setNotes setter mirroring setColor
+    (empty string -> NULL, no isOnline guard); notes added to the cloudRowFor SELECT + return
+    literal — the mandatory CLOBBER GUARD (whole-row upsert would otherwise blank notes on the
+    next unrelated write). UI = a plain <textarea> styled to the mockup (NO TipTap, NO debounce)
+    in a module-level NotesEditor (own draft, so typing never re-renders Todo).
+  • B SAVE MODEL = onBlur + save-if-changed + an unmount-cleanup flush, rendered key={item.id}.
+    onBlur covers chevron/backdrop/select-another; the useEffect cleanup covers the Esc +
+    tab-switch/route-change paths a plain onBlur-only model (and the intel RichTextEditor) drop;
+    the key both forces the unmount flush on to-do switch AND binds each editor's flush to the
+    correct item, preventing cross-item draft bleed. Refs let the stale unmount closure compare
+    latest values; the baseline advances before the async call so blur-then-unmount can't re-save.
+  • GOTCHA (cost 4 transient web tsc errors): personal to-dos have TWO TodoItem type definitions —
+    src/main/todos.ts AND the renderer's env.d.ts (what DisplayItem widens). Not shared; any new
+    personal-to-do field must be added to BOTH or tsc drifts / the field never hydrates.
+  • NEXT: C closes Group A — C-recurring first (None/Daily/Weekly/Monthly + real next-occurrence
+    generation on completion, not a flag), then C-files (attachment storage). Direction still holds:
+    FINISH To-Do (A -> B -> C) before the team/collaboration/publication work.
 
   ── 2026-07-20 — DETAIL PANEL: SLICES A-1 + A-2 (7d5a38a, f1fb6df, UNRELEASED) ──
   • A-1 (data): color TEXT (a palette KEY, nullable) + starred INTEGER NOT NULL DEFAULT 0 on
