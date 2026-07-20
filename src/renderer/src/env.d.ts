@@ -142,6 +142,8 @@ interface TodoItem {
    */
   color?: string | null
   starred?: boolean
+  /** PERSONAL ONLY (slice B) — free-text notes; `undefined`/null = none. */
+  notes?: string | null
 }
 
 interface ChatMessage {
@@ -775,6 +777,8 @@ interface Window {
       setColor:   (id: string, color: string | null) => Promise<{ ok:boolean }>
       setStar:    (id: string, starred: boolean) => Promise<{ ok:boolean }>
       setDue:     (id: string, dueDate: string | null, dueTime: string | null) => Promise<{ ok:boolean }>
+      /** Slice B. Free-text notes; empty string stored as NULL. */
+      setNotes:   (id: string, notes: string | null) => Promise<{ ok:boolean }>
     }
     /** Slice 3b. `todoId` is the BARE personal_todos.id — pass TodoItem.raw_id. */
     personalTodoStep: {

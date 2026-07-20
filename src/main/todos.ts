@@ -95,6 +95,8 @@ export interface TodoItem {
    */
   color?: string | null
   starred?: boolean
+  /** Slice B. Free-text notes (plain text). NULL/absent = no notes. */
+  notes?: string | null
 }
 
 // ── Source a — personal ──────────────────────────────────────────────────────
@@ -105,7 +107,7 @@ function readPersonal(userId: string): TodoItem[] {
   const db = getDatabase()
   const rows = db.prepare(`
     SELECT id, title, due_date, due_time, completed, completed_at, position,
-           color, starred, created_at
+           color, starred, notes, created_at
     FROM personal_todos
     WHERE user_id = ?
     ORDER BY created_at DESC
@@ -169,6 +171,7 @@ function readPersonal(userId: string): TodoItem[] {
     // SQLite has no bool; `color` passes through as the stored PALETTE KEY.
     color: (r.color as string) ?? null,
     starred: !!r.starred,
+    notes: (r.notes as string) ?? null,
   }})
 }
 

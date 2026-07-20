@@ -135,6 +135,52 @@ function AddStepInput({ onAdd }: { onAdd: (text: string) => void }) {
 }
 
 /**
+ * ★ THE NOTES EDITOR (slice B) — MODULE-LEVEL, same discipline as AddStepInput.
+ *
+ * A plain <textarea>, NO TipTap, NO debounce. The draft lives HERE in local state,
+ * so typing never re-renders Todo and can't hit the remount/focus trap.
+ *
+ * SAVE MODEL = onBlur + save-if-changed + an unmount-cleanup flush — the only shape
+ * with zero lost-note paths. onBlur covers chevron/backdrop/select-another (all move
+ * focus, firing blur first); the unmount cleanup covers the paths a plain onBlur-only
+ * model drops — Esc-to-close and a Todo-page unmount (tab-switch / route-change).
+ * Keyed by item.id at the call site, so selecting another to-do unmounts THIS editor
+ * and its cleanup flushes the old draft before the new one mounts.
+ */
+function NotesEditor({ initial, onSave }: { initial: string; onSave: (notes: string | null) => void }) {
+  const [draft, setDraft] = useState(initial)
+  // `initial` is what is currently persisted; a save only fires when the draft
+  // diverges from it. Kept in a ref so the unmount cleanup (which runs with a stale
+  // closure) always compares against the latest values, never mount-time ones.
+  const savedRef = useRef(initial)
+  const draftRef = useRef(initial)
+  draftRef.current = draft
+
+  const flush = useCallback((): void => {
+    const next = draftRef.current
+    if (next === savedRef.current) return          // save-if-changed
+    savedRef.current = next                          // new baseline BEFORE the async call
+    onSave(next.length ? next : null)                // empty → NULL (matches the setter)
+  }, [onSave])
+
+  // Unmount flush. Empty deps: bind once, fire on teardown only. `flush` reads refs,
+  // so a stale identity here can't read a stale draft.
+  const flushRef = useRef(flush)
+  flushRef.current = flush
+  useEffect(() => () => flushRef.current(), [])
+
+  return (
+    <textarea
+      value={draft}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={flush}
+      placeholder="Add notes..."
+      className="w-full min-h-[76px] resize-y rounded-[9px] border border-gray-200 dark:border-white/[0.12] bg-gray-50 dark:bg-white/[0.05] px-3 py-2.5 text-[13px] leading-relaxed text-gray-700 dark:text-white/85 placeholder:text-gray-400 dark:placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-indigo-500/40 focus:border-indigo-400 dark:focus:border-indigo-400/60 transition"
+    />
+  )
+}
+
+/**
  * ★ THE PERSONAL CARD — MODULE-LEVEL, AND THAT IS THE WHOLE POINT.
  *
  * `Row` is defined INSIDE `Todo()`, so it gets a new function identity on every
@@ -539,7 +585,7 @@ function SortableStepRow({
  * leak into this panel.
  */
 function TodoDetailPanel({
-  item, open, reducedMotion, onClose, onComplete, onStar, onColor, onDue,
+  item, open, reducedMotion, onClose, onComplete, onStar, onColor, onDue, onNotes,
   onStepToggle, onStepAdd, onStepDelete, onStepReorder, onExited,
 }: {
   item: DisplayItem
@@ -553,6 +599,8 @@ function TodoDetailPanel({
   onStar: () => void
   onColor: (key: string | null) => void
   onDue: (date: string | null, time: string | null) => void
+  /** Slice B. Fired by NotesEditor's onBlur / unmount flush, save-if-changed. */
+  onNotes: (notes: string | null) => void
   onStepToggle: (stepId: string) => void
   onStepAdd: (text: string) => void
   onStepDelete: (stepId: string) => void
@@ -752,6 +800,13 @@ function TodoDetailPanel({
               <AddStepInput onAdd={onStepAdd} />
             </div>
           </div>
+        </div>
+
+        {/* NOTES (slice B) — plain textarea, keyed by item.id so switching to another
+            to-do UNMOUNTS the editor and its cleanup flushes the old draft. */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/40 mb-2">Notes</p>
+          <NotesEditor key={item.id} initial={item.notes ?? ''} onSave={onNotes} />
         </div>
       </div>
     </aside>
@@ -1031,6 +1086,17 @@ export default function Todo() {
     patchItem(item.id, { due_date: date, due_time: nextTime })
     const res = await window.api.personalTodo.setDue(item.raw_id, date, nextTime)
     if (!res?.ok) patchItem(item.id, before)
+  }
+
+  async function handleSetNotes(item: DisplayItem, notes: string | null) {
+    // Slice B. NotesEditor already gates on save-if-changed, so this only fires on a
+    // real change. Optimistic patch keeps the list's own copy in step (nothing renders
+    // notes on the card yet, but it keeps the source of truth honest for a refetch).
+    const before = item.notes ?? null
+    const value = notes && notes.length ? notes : null
+    patchItem(item.id, { notes: value })
+    const res = await window.api.personalTodo.setNotes(item.raw_id, value)
+    if (!res?.ok) patchItem(item.id, { notes: before })
   }
 
   async function handlePersonalToggle(item: DisplayItem) {
@@ -1671,6 +1737,7 @@ export default function Todo() {
           onStar={() => handleSetStar(panelItem)}
           onColor={key => handleSetColor(panelItem, key)}
           onDue={(d, t) => handleSetDue(panelItem, d, t)}
+          onNotes={notes => handleSetNotes(panelItem, notes)}
           onStepToggle={sid => handleStepToggle(panelItem, sid)}
           onStepAdd={text => handleStepAdd(panelItem, text)}
           onStepDelete={sid => handleStepDelete(sid, panelItem)}

@@ -1764,7 +1764,7 @@ function registerPersonalTodoHandlers() {
     // `starred` (A-1) are here for exactly that reason: without them, toggling a
     // to-do complete would wipe its colour and star in cloud.
     const r = db().prepare(
-      'SELECT id, user_id, title, due_date, due_time, completed, completed_at, position, color, starred, created_at, updated_at FROM personal_todos WHERE id=?'
+      'SELECT id, user_id, title, due_date, due_time, completed, completed_at, position, color, starred, notes, created_at, updated_at FROM personal_todos WHERE id=?'
     ).get(id) as Record<string, unknown> | undefined
     if (!r) return null
     const email = ownerEmail(r.user_id as string)
@@ -1780,6 +1780,7 @@ function registerPersonalTodoHandlers() {
       completed: r.completed ?? 0, completed_at: r.completed_at ?? null,
       position: r.position ?? null,
       color: r.color ?? null, starred: r.starred ?? 0,
+      notes: r.notes ?? null,
       created_at: r.created_at ?? nowIso(), updated_at: r.updated_at ?? nowIso(),
     }
   }
@@ -1852,6 +1853,18 @@ function registerPersonalTodoHandlers() {
     const time = date === null ? null : (dueTime ?? null)
     db().prepare('UPDATE personal_todos SET due_date=?, due_time=?, updated_at=? WHERE id=?')
       .run(date, time, nowIso(), key)
+    const row = cloudRowFor(key)
+    if (row) syncPersonalWrite('update', 'personal_todos', row)
+    return { ok: true }
+  })
+
+  ipcMain.handle('personalTodo:setNotes', (_e, id: string, notes: string | null) => {
+    // Slice B. Free-text notes, mirroring setColor exactly. Empty string is stored
+    // as NULL so "cleared" and "never had notes" read the same downstream.
+    const key = bareTodoId(id)
+    const value = notes && notes.length ? notes : null
+    db().prepare('UPDATE personal_todos SET notes=?, updated_at=? WHERE id=?')
+      .run(value, nowIso(), key)
     const row = cloudRowFor(key)
     if (row) syncPersonalWrite('update', 'personal_todos', row)
     return { ok: true }

@@ -718,6 +718,12 @@ export function initDatabase(): void {
     db.exec('ALTER TABLE personal_todos ADD COLUMN starred INTEGER NOT NULL DEFAULT 0')
   }
 
+  // Slice B: free-text notes on a personal to-do (detail panel). Plain nullable TEXT
+  // — no default, NULL = no notes. Same guarded-ALTER shape as color above.
+  if (!ptCols.some(c => c.name === 'notes')) {
+    db.exec('ALTER TABLE personal_todos ADD COLUMN notes TEXT')
+  }
+
   // Personal to-do sub-steps (Step Rail). Mirrors the cloud table's columns, but note
   // this one is user_email-keyed from birth — it has no legacy user_id rows to preserve.
   db.exec(`

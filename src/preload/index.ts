@@ -276,6 +276,7 @@ const api = {
     setColor:   (id: string, color: string | null) => ipcRenderer.invoke('personalTodo:setColor', id, color),
     setStar:    (id: string, starred: boolean) => ipcRenderer.invoke('personalTodo:setStar', id, starred),
     setDue:     (id: string, dueDate: string | null, dueTime: string | null) => ipcRenderer.invoke('personalTodo:setDue', id, dueDate, dueTime),
+    setNotes:   (id: string, notes: string | null) => ipcRenderer.invoke('personalTodo:setNotes', id, notes),
   },
 
   // Personal to-do STEPS (slice 3b). `todoId` is the BARE personal_todos.id —
