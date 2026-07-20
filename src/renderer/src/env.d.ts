@@ -472,7 +472,7 @@ interface Window {
     team: {
       list:            (includeAdmin?: boolean)                                              => Promise<LocalTeamMember[]>
       roster:          ()                                                                    => Promise<Array<{ email: string; display_name: string; assignable: boolean }>>
-      invite:          (p: { email: string; full_name: string; role?: string })             => Promise<{ ok?: boolean; id?: string; tempPassword?: string; emailSent?: boolean; emailError?: string; error?: string }>
+      invite:        (p: { email: string; full_name: string; role?: string })             => Promise<{ ok?: boolean; id?: string; tempPassword?: string; emailSent?: boolean; emailError?: string; error?: string }>
       remove:          (id: string)                                                          => Promise<{ ok?: boolean }>
       edit:            (p: { id: string; full_name?: string; email?: string; role?: string }) => Promise<{ ok?: boolean; error?: string }>
       heartbeat:       (userId: string)                                                      => Promise<boolean>
@@ -482,6 +482,11 @@ interface Window {
       markActive:      (id: string)                                                          => Promise<{ ok?: boolean }>
       markApiKeySet:   (userId: string)                                                      => Promise<boolean>
       savePreferences: (userId: string, prefs: Record<string, unknown>)                     => Promise<boolean>
+    }
+    // Slice 1c-2a: dev/admin control surface for the assignees id→email migration.
+    assigneesMigration: {
+      run:      () => Promise<{ ok: boolean; tasksRewritten?: number; emailsRewritten?: number; skipped?: number; reason?: string }>
+      rollback: () => Promise<{ ok: boolean; tasksRewritten?: number; emailsRewritten?: number; skipped?: number; reason?: string }>
     }
     drive: {
       connect:        () => Promise<{ ok: boolean; error?: string }>

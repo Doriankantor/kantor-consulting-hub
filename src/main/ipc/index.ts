@@ -27,6 +27,7 @@ import { isOnline } from '../cloud/connection'
 import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag } from '../cloud/tags'
 import { seedBoardsToCloud } from '../cloud/boardsSeed'
 import { getTeamRoster } from '../cloud/teamRoster'
+import { migrateAssigneesToEmail, rollbackAssigneesToIds } from '../cloud/assigneesEmailMigration'
 import { syncPersonalWrite, ownerEmail, nowIso } from '../cloud/personalSync'
 import { startRealtime, rescope as rescopeRealtime, teardownAll as teardownRealtime, getRealtimeHealth } from '../cloud/realtimeManager'
 import {
@@ -555,6 +556,13 @@ function registerTeamHandlers() {
   // This channel exists so display surfaces (assignee picker, @mentions) can show
   // the whole team without the id-keyed handlers inheriting an email as their key.
   ipcMain.handle('team:roster', () => getTeamRoster())
+
+  // Slice 1c-2a: assignees id→email migration control surface. Real channels rather
+  // than a documented SQL block so the rollback REHEARSAL exercises the same code
+  // path a real rollback would — a restore procedure that has only ever been run as
+  // hand-typed SQL is an untested restore procedure.
+  ipcMain.handle('assigneesMigration:run',      () => migrateAssigneesToEmail())
+  ipcMain.handle('assigneesMigration:rollback', () => rollbackAssigneesToIds())
 
   ipcMain.handle('team:invite', async (_e, params: { email: string; full_name: string; role?: string }) => {
     // Inviting people to the app is admin-only (enforced in main; never trust renderer).

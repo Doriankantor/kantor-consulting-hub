@@ -15,6 +15,7 @@ import { initConnection, isOnline, onReconnect } from './cloud/connection'
 import { runCompletedProjectsSweep } from './cloud/completedSweep'
 import { runPersonalTodosBackfill } from './cloud/personalTodosSeed'
 import { runPersonalSyncDrain } from './cloud/personalSync'
+import { runAssigneesEmailMigration } from './cloud/assigneesEmailMigration'
 
 // Module-level reference so the updater can push events to the window
 let mainWindow: BrowserWindow | null = null
@@ -119,6 +120,12 @@ app.whenReady().then(() => {
   // backfill so a first-ever launch uploads the founding rows before replaying edits
   // to them — the upserts make either order converge, but this keeps the log readable.
   setTimeout(() => { runPersonalSyncDrain('launch') }, 8000)
+  // Slice 1c-2a: one-time assignees_json device-id → work-email rewrite (LOCAL only,
+  // fully backed up, no cloud). Self-guarding via a settings flag and self-retrying:
+  // the flag is set only on full success. Deferred like the others so it never delays
+  // the window. ⚠ Its local task rewrite is TRANSIENT until 1c-2b rewrites cloud —
+  // syncTasksMirror clobbers it on any online read; the migration warns when online.
+  setTimeout(() => { runAssigneesEmailMigration() }, 9000)
 
   // ── Auto-updater (production only) ──────────────────────────────────────
   function saveLastChecked() {

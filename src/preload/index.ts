@@ -34,7 +34,7 @@ const api = {
   team: {
     list:            (includeAdmin?: boolean)                                              => ipcRenderer.invoke('team:list', includeAdmin),
     roster:          ()                                                                    => ipcRenderer.invoke('team:roster'),
-    invite:          (p: { email: string; full_name: string; role?: string })             => ipcRenderer.invoke('team:invite', p),
+    invite:        (p: { email: string; full_name: string; role?: string })             => ipcRenderer.invoke('team:invite', p),
     remove:          (id: string)                                                          => ipcRenderer.invoke('team:remove', id),
     edit:            (p: { id: string; full_name?: string; email?: string; role?: string }) => ipcRenderer.invoke('team:edit', p),
     heartbeat:       (userId: string)                                                      => ipcRenderer.invoke('team:heartbeat', userId),
@@ -44,6 +44,11 @@ const api = {
     markActive:      (id: string)                                                          => ipcRenderer.invoke('team:markActive', id),
     markApiKeySet:   (userId: string)                                                      => ipcRenderer.invoke('team:markApiKeySet', userId),
     savePreferences: (userId: string, prefs: Record<string, unknown>)                     => ipcRenderer.invoke('team:savePreferences', userId, prefs),
+  },
+  // Slice 1c-2a: dev/admin control surface for the assignees id→email migration.
+  assigneesMigration: {
+    run:      () => ipcRenderer.invoke('assigneesMigration:run'),
+    rollback: () => ipcRenderer.invoke('assigneesMigration:rollback'),
   },
   drive: {
     connect:        ()              => ipcRenderer.invoke('drive:connect'),

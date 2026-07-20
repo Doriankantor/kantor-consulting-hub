@@ -716,6 +716,23 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_personal_todo_steps_todo_id ON personal_todo_steps(todo_id);
   `)
 
+  // Slice 1c-2a: REVERSIBILITY tables for the assignees id→email migration.
+  // Deliberately SEPARATE tables, never columns on workspace_tasks: TASK_COLS drives
+  // syncTasksMirror's DELETE-then-reINSERT, so a backup column on that table would be
+  // destroyed by the next cloud read. These two are local-only and nothing syncs them.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS assignees_backup (
+      task_id            TEXT PRIMARY KEY,
+      assignees_json_old TEXT,
+      backed_up_at       TEXT
+    );
+    CREATE TABLE IF NOT EXISTS local_users_email_backup (
+      id           TEXT PRIMARY KEY,
+      email_old    TEXT,
+      backed_up_at TEXT
+    );
+  `)
+
   // Slice 1c-1: OFFLINE MIRROR of the cloud `team_members` roster. Keyed on the
   // stable work email — the one identity that survives a device change (local_users.id
   // is minted per-device and never syncs). This table is READ-ONLY roster display data:
