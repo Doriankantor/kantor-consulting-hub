@@ -144,6 +144,15 @@ interface TodoItem {
   starred?: boolean
   /** PERSONAL ONLY (slice B) — free-text notes; `undefined`/null = none. */
   notes?: string | null
+  /**
+   * PERSONAL ONLY (slice C-recurring). `recurrence` NULL = non-recurring; else
+   * daily|weekly|weekdays|monthly|yearly. `series_id` links instances of one
+   * recurring to-do; `spawned_successor` = 1 once this instance has spawned its next.
+   */
+  recurrence?: string | null
+  recurrence_anchor?: string | null
+  series_id?: string | null
+  spawned_successor?: number
 }
 
 interface ChatMessage {

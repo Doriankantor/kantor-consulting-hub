@@ -724,6 +724,25 @@ export function initDatabase(): void {
     db.exec('ALTER TABLE personal_todos ADD COLUMN notes TEXT')
   }
 
+  // Slice C-recurring: completion-anchored recurring personal to-dos.
+  //   recurrence        — NULL = non-recurring; else daily|weekly|weekdays|monthly|yearly.
+  //   recurrence_anchor — 'completion' (the only mode built); 'scheduled' reserved, unused.
+  //   series_id         — shared across every instance of one recurring to-do (NULL if not).
+  //   spawned_successor — 0/1; set to 1 once completing this instance has spawned the next,
+  //                       so a re-complete (after revive) can never double-spawn.
+  if (!ptCols.some(c => c.name === 'recurrence')) {
+    db.exec('ALTER TABLE personal_todos ADD COLUMN recurrence TEXT')
+  }
+  if (!ptCols.some(c => c.name === 'recurrence_anchor')) {
+    db.exec('ALTER TABLE personal_todos ADD COLUMN recurrence_anchor TEXT')
+  }
+  if (!ptCols.some(c => c.name === 'series_id')) {
+    db.exec('ALTER TABLE personal_todos ADD COLUMN series_id TEXT')
+  }
+  if (!ptCols.some(c => c.name === 'spawned_successor')) {
+    db.exec('ALTER TABLE personal_todos ADD COLUMN spawned_successor INTEGER NOT NULL DEFAULT 0')
+  }
+
   // Personal to-do sub-steps (Step Rail). Mirrors the cloud table's columns, but note
   // this one is user_email-keyed from birth — it has no legacy user_id rows to preserve.
   db.exec(`

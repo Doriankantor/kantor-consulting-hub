@@ -97,6 +97,16 @@ export interface TodoItem {
   starred?: boolean
   /** Slice B. Free-text notes (plain text). NULL/absent = no notes. */
   notes?: string | null
+  /**
+   * Slice C-recurring (personal only). `recurrence` NULL = non-recurring; else
+   * daily|weekly|weekdays|monthly|yearly. `series_id` links every instance of one
+   * recurring to-do. `spawned_successor` = 1 once completing this instance has
+   * generated the next (idempotency guard against double-spawn on re-complete).
+   */
+  recurrence?: string | null
+  recurrence_anchor?: string | null
+  series_id?: string | null
+  spawned_successor?: number
 }
 
 // ── Source a — personal ──────────────────────────────────────────────────────
@@ -107,7 +117,8 @@ function readPersonal(userId: string): TodoItem[] {
   const db = getDatabase()
   const rows = db.prepare(`
     SELECT id, title, due_date, due_time, completed, completed_at, position,
-           color, starred, notes, created_at
+           color, starred, notes, recurrence, recurrence_anchor, series_id,
+           spawned_successor, created_at
     FROM personal_todos
     WHERE user_id = ?
     ORDER BY created_at DESC
@@ -172,6 +183,10 @@ function readPersonal(userId: string): TodoItem[] {
     color: (r.color as string) ?? null,
     starred: !!r.starred,
     notes: (r.notes as string) ?? null,
+    recurrence: (r.recurrence as string) ?? null,
+    recurrence_anchor: (r.recurrence_anchor as string) ?? null,
+    series_id: (r.series_id as string) ?? null,
+    spawned_successor: r.spawned_successor === null || r.spawned_successor === undefined ? 0 : Number(r.spawned_successor),
   }})
 }
 

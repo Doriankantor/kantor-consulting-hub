@@ -25,6 +25,7 @@ import * as boardsCloud from '../cloud/boards'
 import { resolveIdentity } from '../cloud/boards'
 import { assignedToSql, parseAssignees } from '../assignees'
 import { listTodos } from '../todos'
+import { nextOccurrence } from '../todos/nextOccurrence'
 import * as intelCloud from '../cloud/intel'
 import { isOnline } from '../cloud/connection'
 import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag } from '../cloud/tags'
@@ -1764,7 +1765,7 @@ function registerPersonalTodoHandlers() {
     // `starred` (A-1) are here for exactly that reason: without them, toggling a
     // to-do complete would wipe its colour and star in cloud.
     const r = db().prepare(
-      'SELECT id, user_id, title, due_date, due_time, completed, completed_at, position, color, starred, notes, created_at, updated_at FROM personal_todos WHERE id=?'
+      'SELECT id, user_id, title, due_date, due_time, completed, completed_at, position, color, starred, notes, recurrence, recurrence_anchor, series_id, spawned_successor, created_at, updated_at FROM personal_todos WHERE id=?'
     ).get(id) as Record<string, unknown> | undefined
     if (!r) return null
     const email = ownerEmail(r.user_id as string)
@@ -1781,6 +1782,8 @@ function registerPersonalTodoHandlers() {
       position: r.position ?? null,
       color: r.color ?? null, starred: r.starred ?? 0,
       notes: r.notes ?? null,
+      recurrence: r.recurrence ?? null, recurrence_anchor: r.recurrence_anchor ?? null,
+      series_id: r.series_id ?? null, spawned_successor: r.spawned_successor ?? 0,
       created_at: r.created_at ?? nowIso(), updated_at: r.updated_at ?? nowIso(),
     }
   }
@@ -1796,10 +1799,65 @@ function registerPersonalTodoHandlers() {
 
   ipcMain.handle('personalTodo:complete', (_e, id: string) => {
     const ts = nowIso()
-    db().prepare('UPDATE personal_todos SET completed=1, completed_at=?, updated_at=? WHERE id=?').run(ts, ts, id)
+
+    // Slice C-recurring: completing a RECURRING to-do spawns its next occurrence.
+    // The complete-UPDATE and the spawn-INSERT run in ONE transaction so a crash
+    // can't leave the old instance done with no successor (or vice-versa). The
+    // spawned_successor guard makes this idempotent: complete → revive → complete
+    // can never spawn twice, because the first complete set the flag to 1 and
+    // revive (below) deliberately does NOT reset it.
+    let spawnedId: string | null = null
+    db().transaction(() => {
+      db().prepare('UPDATE personal_todos SET completed=1, completed_at=?, updated_at=? WHERE id=?').run(ts, ts, id)
+
+      const src = db().prepare(
+        'SELECT user_id, title, due_date, due_time, recurrence, series_id, spawned_successor, color, starred FROM personal_todos WHERE id=?'
+      ).get(id) as {
+        user_id: string; title: string; due_date: string | null; due_time: string | null
+        recurrence: string | null; series_id: string | null; spawned_successor: number
+        color: string | null; starred: number
+      } | undefined
+
+      if (src && src.recurrence && !src.spawned_successor) {
+        // First instance seeds the series from its OWN id, so every instance shares it.
+        const seriesId = src.series_id ?? id
+        const newId = uuid()
+        // No due_date ⇒ nothing to roll; the occurrence just carries recurrence forward.
+        const newDue = src.due_date ? nextOccurrence(src.due_date, src.recurrence) : null
+        // Append at the end, same idiom personal steps/todos use elsewhere.
+        const pos = (db().prepare(
+          'SELECT COALESCE(MAX(position),-1)+1 AS p FROM personal_todos WHERE user_id=?'
+        ).get(src.user_id) as { p: number }).p
+
+        db().prepare(
+          `INSERT INTO personal_todos
+             (id, user_id, title, due_date, due_time, completed, completed_at,
+              position, color, starred, notes, recurrence, recurrence_anchor,
+              series_id, spawned_successor, updated_at)
+           VALUES (?,?,?,?,?,0,NULL,?,?,?,NULL,?,?,?,0,?)`
+        ).run(
+          newId, src.user_id, src.title, newDue, src.due_time ?? null,
+          pos, src.color ?? null, src.starred ?? 0,
+          src.recurrence, 'completion', seriesId, ts
+        )
+        spawnedId = newId
+
+        // Flag the completed row so a re-complete can't double-spawn, and backfill
+        // its series_id if this was the first instance (so both rows share it).
+        db().prepare('UPDATE personal_todos SET spawned_successor=1, series_id=?, updated_at=? WHERE id=?')
+          .run(seriesId, ts, id)
+      }
+    })()
+
+    // Cloud after the local transaction commits. No isOnline guard — personal is
+    // offline-capable; both writes queue on failure and drain in id order.
     const row = cloudRowFor(id)
     if (row) syncPersonalWrite('update', 'personal_todos', row)
-    return { ok: true }
+    if (spawnedId) {
+      const spawnRow = cloudRowFor(spawnedId)
+      if (spawnRow) syncPersonalWrite('insert', 'personal_todos', spawnRow)
+    }
+    return { ok: true, spawnedId }
   })
 
   ipcMain.handle('personalTodo:uncomplete', (_e, id: string) => {
