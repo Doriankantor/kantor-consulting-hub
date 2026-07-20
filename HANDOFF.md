@@ -20,6 +20,13 @@ touching anything identity-shaped** — `dk@` is a fully-permissioned team membe
 several older entries in this file still say otherwise. Fifteen code commits are unreleased;
 the installed app is 2.3.0 and contains none of them.
 
+**★ SLICE 2 SCOPE IS DECIDED (2026-07-20) — it builds only the TWO sources that EXIST:
+personal + kc-deadline.** The slice-2 diagnosis found that "assigned to me" as spec'd needs an
+**off-card assignment entity that is not in the schema at all**, so it was split out as the new
+**SLICE 2.5** — which is the SAME mechanism slice 5's intel directive needs, and must be built
+ONCE. Full scope, the four tabs, and the deferred design items are in the **sequencing** block
+under the To-Do overhaul.
+
 (Historical — **v2.3.0 RELEASED** (published 2026-07-17; version-bump commit `a4b161e`,
 tag `v2.3.0` pushed BEFORE the release build — no tag race). HEAD = `a4b161e`,
 `origin/main` up to date, working tree clean apart from these two docs. **8 assets live on
@@ -1394,6 +1401,29 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
     NOT a 1b regression** — 1b made it more visible by making To-Do work offline. Fixing it
     means **active probing while healthy**, which the module deliberately avoids ("we never
     probe while healthy"), so the blast radius is app-wide. **Deferred, logged.**
+- **FOUR DEFERRED DESIGN ITEMS FROM THE SLICE-2 SCOPING (2026-07-20) — recorded so they are
+  not rediscovered. None are in slice 2:**
+  - **SHARED CALENDAR / CONNECTION MODEL — its own design item (decide, THEN build).** All app
+    instances should connect to (or subscribe to) **`kantorconsulting.hub@gmail.com`** — record
+    that as the **intended shared identity**. Today `kc-meeting` reads Google Calendar **live
+    and online-only** (NOT local `calendar_events`), per-machine and per-account, filtered by a
+    `cal-toggles-${userId}` localStorage set — so two people see two different To-Do pages.
+    **Meetings stay a renderer-side Google concern for slice 2**; the shared-account model is
+    decided separately before anything is built on it.
+  - **OFFLINE-COMPLETE + RECONCILE (future slice, net-new).** Board-task completion is
+    **online-required today** — `todo:complete` is cloud-first and **throws when offline**
+    (deliberate: the write-through fix `cc6aedf`). Desired future behavior: **complete offline
+    → sync on reconnect**, and if the assigner unassigned you meanwhile, reconcile with
+    **HIGHER-ORDER-ACTION-WINS (unassign trumps complete)** and notify the assignee *"your
+    assignment was removed."* That is a **net-new conflict-resolution system**; it **pairs with
+    `notifications` → cloud**. Its own slice.
+  - **CET-ANCHORED CLOCK (slice-3 note).** Urgency (past-due / today / tomorrow) must **NOT
+    rely on the local machine clock** — use a constant time source **bound to CET** so a
+    deadline means the same instant for everyone regardless of timezone or a wrong system
+    clock. **Decide the mechanism when building the urgency engine (slice 3).**
+  - **BOARD-COMPLETION PERMISSION GATE — deferred, NOT in slice 2.** `todo:complete` has **no
+    `can()` / `resolveActor` check today** — anyone can complete any task by id. Pairs with the
+    `board.assign` / permission work (slice 4).
 
 - **1. DONE (shipped in v2.1.0) — Narrative refinement.** Both halves landed: the summary
   half (`c0be06f`, own `summary` key) and the **reconcile half** (`edaab46`, reconcile
@@ -1634,12 +1664,48 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
        renderer only **filters**. **UNBLOCKED as of `863e5be`** — it could not aggregate
        "assigned to me" while the stored ids resolved on one machine only. Now that assignees
        are emails, `resolveIdentity` gives the same key on every device.
+       - **★ SCOPE DECIDED (2026-07-20) — slice 2 builds the TWO sources that EXIST:**
+         **personal** (local `personal_todos`) and **kc-deadline** (assigned board cards WITH a
+         `due_date`, from `workspace_tasks`). Items are **urgency-coded, with past-due/today
+         promoted to the top**; the urgency engine itself is **slice 3** — slice 2 only needs
+         the ordering to be correct.
+       - **DOUBLE-GATED — removal auto-clears the item.** Losing board access OR being
+         unassigned from the card removes it from the list: `visibleBoardIdsFor` (board axis)
+         **AND** an assignee-email match (card axis). Both, not either. Note this is a genuine
+         **tightening** — `todo:getMyTasks` has **no board gate at all** today, so a card on a
+         board you were removed from still shows.
+       - **NET-NEW ARCHITECTURE IN MAIN.** Trash is **not** a precedent (it normalizes in the
+         renderer). **One `todos:list` handler**, **additive** — leave `todo:getMyTasks` intact
+         until the renderer is migrated (the "ADD, don't repoint" pattern that paid off in
+         1c-1). **All-local reads**, with a **per-source `.catch`** so one failing source can't
+         empty the whole page.
+       - **TABS: KC / Assigned to me / Personal / All.** **KC is a SUPERSET** — it includes
+         assigned + meetings + intel + deadlines (per the `inTab` logic in
+         `TodoStepRail_6.html`). **"Assigned to me" and the intel directive render EMPTY until
+         their backing entity exists** (slice 2.5 and slice 5 respectively). An empty tab here
+         is correct behavior, not a bug.
+    2.5. **NEW — THE OFF-CARD ASSIGNMENT ENTITY. Net-new; BUILD ONCE, serves TWO tabs.**
+       - **"Assigned to me" is an OFF-CARD assignment:** a board head or info-page head (or
+         root) assigns a team member something with **NO Kanban card behind it**. **This does
+         not exist in the schema today** — which is why slice 2 ships that tab empty.
+       - **⚠ IT IS THE SAME MECHANISM AS SLICE 5's intel culling directive** (off-card
+         assignment + notification + mark-done). **Build ONE assignment entity** — table +
+         handlers + head/root gating + notification — let **"Assigned to me" consume it**, and
+         have **slice 5 EXTEND it** with a deep link into Intelligence. **Do NOT build the
+         assignment mechanism twice.**
+       - **Gating:** a board/info-page **HEAD or ROOT** can assign off-card. Ties into
+         `board.assign` (slice 4) and the head model.
+       - **⚠ PREREQUISITE OVERLAP — `notifications` → cloud.** 2.5's notification is subject to
+         the **same prerequisite already recorded for slice 5**: notifications are local-only
+         and `user_id`-keyed, so cross-device delivery does not work until they move to cloud.
     3. **Step Rail + urgency/promotion UI** (port prototype behavior, theme tokens, **light
        AND dark**). First real exercise of `personal_todo_steps` — the table and its queue
        path exist (1a/1b) but **nothing writes it yet**; there are no step handlers.
     4. **`board.assign` per-board permission, enforced in MAIN.**
     5. **Intel culling directive + calendar bidirectionality + completion write-back**
-       (respects board perms).
+       (respects board perms). **⚠ EXTENDS SLICE 2.5, does not re-implement it** — the
+       directive is an off-card assignment with a deep link into Intelligence. If 2.5 is built
+       first, slice 5 is the deep link plus the cull-specific UI, not a new mechanism.
        - **⚠ PREREQUISITE — `notifications` → cloud.** The directive is *pinned card +
          notification + deep link*, but `notifications` is **local-SQLite-only and
          `user_id`-keyed** (`db.ts:253`, zero cloud presence). A directive assigned from the
@@ -1785,6 +1851,22 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
       local-only. The To-Do surface depended on **four** local-only tables, not one, so the
       "last thing pinning a local-only table in place" framing was wrong (the timing argument
       still holds; it was just four times larger). Two are now migrated (1a).
+    - **⚠ `kc-meeting` READS GOOGLE CALENDAR LIVE — NOT local `calendar_events`
+      (slice-2 diagnosis, 2026-07-20).** Part A says local; the To-Do page actually calls
+      `userGoogle.getStatus` → `getCalendars` → `getCalendarEvents` per enabled calendar, over
+      a today→+14d window, with ids prefixed `gcal-`. Local `calendar_events` is a **different
+      dataset** that feeds TeamCalendar. **This is the one source that CANNOT be assembled
+      locally — it is online-only**, so meetings stay a **renderer-side Google concern for
+      slice 2** rather than joining the main-process aggregate.
+    - **⚠ THERE IS NO CREATOR COLUMN AND NO `assigned_by`** — re-verified in slice 2's
+      diagnosis, absent **both** locally (`db.ts:295`) and in cloud (`TASK_COLS`,
+      `boards.ts:165`). Any spec'd behavior that routes a card to whoever created or assigned
+      it is **unimplementable without a schema migration**. This is why kc-deadline is scoped
+      to *assigned* dated cards rather than creator-scoped ones.
+    - **REFERENCE PROTOTYPE — `TodoStepRail_6.html`** (tabs KC / Assigned / Personal / All,
+      the KC-superset rule, the pinned directive, urgency promotion). It is the **behavior
+      source for slices 2 and 3**, and carries the **same status as the earlier TodoStepRail
+      files: a design reference, NOT production code.**
   - **⚠ `docs/TodoStepRail.jsx:8` cites a nonexistent `STEP_RAIL_IMPLEMENTATION_PROMPT.md`** —
     almost certainly an earlier name for `TODO_OVERHAUL_PROMPT_1.md` (the spec points back at
     the prototype, so the pair is mutually referential with one filename wrong). **Left

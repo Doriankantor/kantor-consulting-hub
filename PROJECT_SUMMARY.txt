@@ -86,6 +86,28 @@
   prerequisite: notifications → cloud.
   See HANDOFF.md "Start here" for the resume point.
 
+  ── 2026-07-20 — SLICE-2 SCOPING (docs only, no code) ──
+  • SLICE 2 SCOPE DECIDED: listTodos builds only the TWO sources that EXIST — personal
+    (local personal_todos) and kc-deadline (assigned board cards WITH a due_date). Urgency-
+    coded with past-due/today promoted; the urgency engine itself is slice 3. Double-gated:
+    losing board access OR being unassigned auto-clears the item (visibleBoardIdsFor AND an
+    assignee-email match). One additive todos:list handler in MAIN, all-local reads, per-source
+    .catch so one failure can't empty the page. Tabs: KC / Assigned to me / Personal / All,
+    with KC a SUPERSET; "Assigned to me" and the intel directive render EMPTY until their
+    backing entity exists.
+  • NEW SLICE 2.5 — THE OFF-CARD ASSIGNMENT ENTITY. "Assigned to me" means a head or root
+    assigns a member something with NO Kanban card behind it, which is not in the schema at
+    all. It is the SAME mechanism as slice 5's intel culling directive, so it is built ONCE
+    (table + handlers + head/root gating + notification): "Assigned to me" consumes it and
+    slice 5 EXTENDS it with a deep link into Intelligence. Same notifications->cloud
+    prerequisite already recorded for slice 5.
+  • DEFERRED DESIGN ITEMS RECORDED: shared calendar/connection model (kantorconsulting.hub@
+    gmail.com as the intended shared identity; kc-meeting reads Google Calendar LIVE and
+    online-only, NOT local calendar_events); offline-complete + reconcile with higher-order-
+    action-wins (unassign trumps complete); a CET-anchored clock for urgency so deadlines mean
+    the same instant regardless of timezone or a wrong system clock (decide in slice 3); and
+    the board-completion permission gate (todo:complete has no can() check today).
+
   ── 2026-07-20 — THE 1c-2 ARC: CROSS-DEVICE ASSIGNMENT WORKS (d16b071, 74150c7, 863e5be) ──
   • THE POINT: assignees_json held device-local local_users.id UUIDs, minted per-machine and
     never synced, so an assignment made on one laptop resolved on NO other machine. Cross-team
