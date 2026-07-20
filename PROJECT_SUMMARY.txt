@@ -101,6 +101,18 @@
     (table + handlers + head/root gating + notification): "Assigned to me" consumes it and
     slice 5 EXTENDS it with a deep link into Intelligence. Same notifications->cloud
     prerequisite already recorded for slice 5.
+  • CARD ACTIVITY ON ASSIGNMENT — VERIFIED ABSENT, queued for slice 4. task_activity exists
+    but has only two writers ("added a comment", "marked this task as complete"); assigning a
+    member writes the task + a notification and NO activity entry. "X assigned Y to this card"
+    is net-new. This is card/board behavior, NOT To-Do aggregation: assigned_by does NOT go on
+    kc-deadline TodoItems (provenance lives in card activity); only off-card "Assigned to me"
+    items carry assigned_by, since they have no card to hold the history.
+  • NEW BUG FOUND WHILE VERIFYING IT (silent-failure INSTANCE EIGHT, unfixed): the activity log
+    is SPLIT-BRAIN — the comment event writes CLOUD, the completion event writes LOCAL, and the
+    only reader (activity:get -> getActivity) reads CLOUD ONLY with no mirror fallback. Every
+    completion entry since the one-time boardsSeed upload is written successfully and read by
+    nothing. Also: addActivity has no isOnline() guard and throws offline. Fix both before
+    slice 4 writes a third event type into that table.
   • DEFERRED DESIGN ITEMS RECORDED: shared calendar/connection model (kantorconsulting.hub@
     gmail.com as the intended shared identity; kc-meeting reads Google Calendar LIVE and
     online-only, NOT local calendar_events); offline-complete + reconcile with higher-order-

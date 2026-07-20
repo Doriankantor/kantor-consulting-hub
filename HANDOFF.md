@@ -837,12 +837,25 @@ hides it), wrong output accepted as real.**
   the failure that made the phantom test possible (below): the "present → deleted → gone"
   observation was UI state, because there was no persisted row to hide in the first place.
   Its own slice — see NEXT UP.
+- **(h) INSTANCE EIGHT — the WRITE-ONLY ACTIVITY LOG (NEW, 2026-07-20, UNFIXED).** Found while
+  verifying whether assignment logs card activity (it does not — see slice 4). `task_activity`
+  has **two writers pointing at two different stores**: the comment event writes **CLOUD**
+  (`TaskDetailPanel.tsx:654` → `addActivity`), the completion event writes **LOCAL**
+  (`ipc/index.ts:1606`). But the only reader, `activity:get` → `getActivity`
+  (`boards.ts:1120`), reads **CLOUD ONLY with no mirror fallback**. So every
+  `"marked this task as complete"` entry written after the one-time `boardsSeed` upload is
+  **written successfully, reports success, and is read by nothing.** A new variant of the
+  class: not a swallowed error but a **durable write into a store nobody queries** — no error
+  exists to swallow, which is why nothing caught it. Fix before slice 4 adds a third event
+  type. **Related:** `addActivity` has no `isOnline()` guard and throws offline.
 
 **RULE: never write a bare `catch {}`. Bind the error and log it. A fallback must not
 swallow the signal that something failed. A success message must be derived from the
 outcome, never hardcoded after it. A placeholder that flows into the AI as content is
-worse than a visible failure. And — instance seven — a SAVED badge must be derived from a
-CONFIRMED WRITE, never from the local optimistic state.**
+worse than a visible failure. Instance seven — a SAVED badge must be derived from a
+CONFIRMED WRITE, never from the local optimistic state. And — instance eight — a WRITE
+IS NOT DONE UNTIL SOMETHING READS IT BACK: check that the writer and the reader target
+the SAME store, because a write to the wrong store raises no error at all.**
 
 ## ★ Lesson — THE PHANTOM TEST: VERIFY PRECONDITIONS BEFORE TRUSTING A SECURITY RESULT
 
@@ -1702,6 +1715,28 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
        AND dark**). First real exercise of `personal_todo_steps` — the table and its queue
        path exist (1a/1b) but **nothing writes it yet**; there are no step handlers.
     4. **`board.assign` per-board permission, enforced in MAIN.**
+       - **CARD ACTIVITY ON ASSIGNMENT — VERIFIED ABSENT (2026-07-20), so BUILD IT HERE.**
+         When a member with `board.assign` assigns another member to a board CARD, the card's
+         activity log should record **"X assigned Y to this card."** `task_activity` exists
+         (`db.ts:103`) but has exactly **two** writers — `"added a comment"`
+         (`TaskDetailPanel.tsx:654` → cloud) and `"marked this task as complete"`
+         (`ipc/index.ts:1606` → local). **`toggleAssignee` (`TaskDetailPanel.tsx:781`) writes
+         the task update and a notification, but NO activity entry.** Net-new work.
+       - **⚠ THIS IS CARD/BOARD BEHAVIOR, NOT To-Do AGGREGATION.** `assigned_by` does **NOT**
+         go on kc-deadline `TodoItem`s — **their provenance lives in card activity.** Only the
+         **off-card "Assigned to me" items carry `assigned_by`**, because the slice-2.5 entity
+         has no card to hold the history.
+       - **⚠ TWO PRE-EXISTING ACTIVITY-LOG DEFECTS to resolve BEFORE writing a third event
+         type into this table (both found while verifying the above):**
+         - **SPLIT-BRAIN, and one half is INVISIBLE (silent-failure class).** `activity:get`
+           (`ipc:363` → `getActivity`, `boards.ts:1120`) reads **CLOUD ONLY** with no mirror
+           fallback, but the completion event is written to **LOCAL SQLite**. Every
+           `"marked this task as complete"` entry written since the one-time `boardsSeed`
+           upload **is never read by anything** — it accumulates unreadably. Pick ONE store.
+         - **`addActivity` is cloud-only and THROWS offline** — no `isOnline()` guard, no local
+           write. Logging assignment through it means **assigning offline throws or silently
+           drops the entry**, the same shape as the To-Do write-through bug `cc6aedf`. Decide
+           this deliberately in slice 4 rather than inheriting it.
     5. **Intel culling directive + calendar bidirectionality + completion write-back**
        (respects board perms). **⚠ EXTENDS SLICE 2.5, does not re-implement it** — the
        directive is an off-card assignment with a deep link into Intelligence. If 2.5 is built
