@@ -81,18 +81,22 @@ function getAreaColor(areaId: string | null, areas: Area[]): string {
 // ── Task card (display) ────────────────────────────────────────────────────
 
 function TaskCardDisplay({ task, isDragging = false, areas, readOnly = false }: { task: Task; isDragging?: boolean; areas: Area[]; readOnly?: boolean }) {
-  const { selectTask, commentCounts, checklistSummaries, taskLabelMap, members, highlightTaskId, archiveTask, markForDeletion, markCompleteNow } = useWorkspace()
+  const { selectTask, commentCounts, checklistSummaries, taskLabelMap, roster, highlightTaskId, archiveTask, markForDeletion, markCompleteNow } = useWorkspace()
   const overdue = isOverdue(task.due_date, task.column_id)
   const areaColor = getAreaColor(task.area_of_analysis, areas)
   const commentCount = commentCounts[task.id] ?? 0
   const clSummary = checklistSummaries[task.id]
   const taskLabels = taskLabelMap[task.id] ?? []
 
-  // Assignees: use assignee_ids array
-  const assigneeIds = task.assignee_ids ?? []
-  const assigneeMembers = assigneeIds
-    .map(id => members.find(m => m.id === id))
-    .filter(Boolean) as typeof members
+  // Assignees are WORK EMAILS as of 1c-2b-①. Resolve display names from the ROSTER
+  // (every teammate, on every device) and fall back to the address itself, so an
+  // avatar never renders blank just because this machine has no account row for
+  // that person — which is exactly what the old members-by-id lookup did.
+  const assigneeEmails = task.assignee_emails ?? []
+  const assigneeMembers = assigneeEmails.map(email => {
+    const r = roster.find(x => x.email.toLowerCase() === email.toLowerCase())
+    return { id: email, email, full_name: r?.display_name ?? email, avatar_url: null, role: 'member' as const }
+  })
 
   const visibleAssignees = assigneeMembers.slice(0, 2)
   const extraAssignees = assigneeMembers.length > 2 ? assigneeMembers.length - 2 : 0

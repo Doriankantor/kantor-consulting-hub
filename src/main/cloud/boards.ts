@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { cloud, CLOUD_ADMIN_EMAIL } from './client'
 import { isOnline, reportCloudResult } from './connection'
 import { getDatabase } from '../db'
+import { isAssignedTo, parseAssignees } from '../assignees'
 // Lazy import to avoid a circular dependency (attachmentsCloud imports boards).
 async function getBlobHelpers() {
   const m = await import('./attachmentsCloud')
@@ -653,7 +654,9 @@ export async function reorderColumns(columnIds: string[]): Promise<void> {
 // TASKS
 // ─────────────────────────────────────────────────────────────────────────────
 
-const mapTask = (r: Record<string, unknown>) => ({ ...r, assignee_ids: JSON.parse((r.assignees_json as string) || '[]') })
+// assignees_json holds WORK EMAILS as of 1c-2b-①; the exposed field is named
+// accordingly so a consumer can't mistake it for a local_users.id array.
+const mapTask = (r: Record<string, unknown>) => ({ ...r, assignee_emails: parseAssignees(r.assignees_json as string) })
 
 export async function getTasks(actingUserId?: string): Promise<Record<string, unknown>[]> {
   const actor = await resolveActor(actingUserId)
@@ -789,14 +792,14 @@ export async function getMarkedForDeletionTasks(actingUserId?: string): Promise<
 
 export async function createTask(t: {
   id: string; board_id?: string; column_id: string; title: string; content_type: string;
-  client: string | null; area_of_analysis: string | null; assignee_ids: string[];
+  client: string | null; area_of_analysis: string | null; assignee_emails: string[];
   due_date: string | null; start_date: string | null; priority: string;
   description: string | null; notes: string | null; sources_json: string | null; position: number
 }): Promise<{ ok: boolean }> {
   const { error } = await cloud.from('workspace_tasks').insert({
     id: t.id, board_id: t.board_id ?? 'board-main', column_id: t.column_id, title: t.title,
     content_type: t.content_type, client: t.client, area_of_analysis: t.area_of_analysis,
-    assignees_json: JSON.stringify(t.assignee_ids ?? []),
+    assignees_json: JSON.stringify(t.assignee_emails ?? []),
     due_date: t.due_date, start_date: t.start_date, priority: t.priority,
     description: t.description, notes: t.notes, sources_json: t.sources_json,
     position: t.position, created_at: now(), updated_at: now(),
@@ -814,7 +817,7 @@ export async function updateTask(taskId: string, partial: Record<string, unknown
     'due_date','start_date','priority','description','notes','sources_json','position','recurrence_json',
     'completed_at']
   for (const f of fields) { if (f in partial) patch[f] = partial[f] }
-  if ('assignee_ids' in partial) patch.assignees_json = JSON.stringify(partial.assignee_ids)
+  if ('assignee_emails' in partial) patch.assignees_json = JSON.stringify(partial.assignee_emails)
 
   // Pre-fetch current column_id before the update so we can detect real transitions.
   // Only fetched when a column change is incoming — no overhead on other update types.
@@ -1023,12 +1026,16 @@ export async function checkAccess(actingUserId: string | undefined, boardId: str
 }
 
 export async function memberTaskCount(boardId: string, userId: string): Promise<number> {
-  // Count tasks on the board assigned to this local user id (assignees store local ids).
+  // Assignees store WORK EMAILS as of 1c-2b-①. The caller (BoardMembersPanel) still
+  // passes a local_users.id, so resolve it — resolveIdentity accepts an id, an email
+  // or 'local-admin', which keeps the renderer unchanged.
+  const { email } = resolveIdentity(userId)
+  if (!email) return 0
   const { data, error } = await cloud.from('workspace_tasks').select('assignees_json').eq('board_id', boardId).or('archived.is.null,archived.eq.0')
   if (error) throw new Error(`member taskCount failed: ${error.message}`)
   let count = 0
   for (const r of (data ?? []) as { assignees_json: string }[]) {
-    try { if ((JSON.parse(r.assignees_json || '[]') as string[]).includes(userId)) count++ } catch { /* */ }
+    if (isAssignedTo(email, r.assignees_json)) count++
   }
   return count
 }
@@ -1070,7 +1077,7 @@ export async function getComments(taskId: string): Promise<Record<string, unknow
   return (data ?? []) as Record<string, unknown>[]
 }
 
-export async function addComment(c: { task_id: string; author_id: string; author_name: string; content: string; task_title?: string; assignee_ids?: string[] }): Promise<Record<string, unknown>> {
+export async function addComment(c: { task_id: string; author_id: string; author_name: string; content: string; task_title?: string; assignee_emails?: string[] }): Promise<Record<string, unknown>> {
   const entry = { id: randomUUID(), task_id: c.task_id, author_id: c.author_id, author_name: c.author_name, content: c.content, created_at: now() }
   const { error } = await cloud.from('task_comments').insert(entry)
   if (error) throw new Error(`comment add failed: ${error.message}`)

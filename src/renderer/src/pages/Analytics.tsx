@@ -112,6 +112,12 @@ export default function Analytics() {
   const [loading, setLoading] = useState(true)
   const [exportMsg, setExportMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const [exporting, setExporting] = useState(false)
+  // Roster for resolving assignee EMAILS to display names (1c-2b-②). Fetched here
+  // rather than via useWorkspace because this page renders outside that provider.
+  const [roster, setRoster] = useState<{ email: string; display_name: string }[]>([])
+  useEffect(() => {
+    window.api.team.roster().then(setRoster).catch(() => { /* names fall back to the address */ })
+  }, [])
 
   useEffect(() => {
     if (!isRoot) return
@@ -214,11 +220,18 @@ export default function Analytics() {
   // Workload per member — count tasks by assignee
   const memberMap: Record<string, { name: string; count: number }> = {}
   for (const t of data.tasks) {
-    const ids = (t.assignee_ids as string[]) ?? []
-    const names = (t.assignee_names as string[]) ?? []
-    ids.forEach((id, idx) => {
-      if (!memberMap[id]) memberMap[id] = { name: names[idx] ?? id, count: 0 }
-      memberMap[id].count++
+    // Assignees are WORK EMAILS as of 1c-2b-①. Keyed lowercase so the same person
+    // can't split into two bars on a casing difference; the display name comes from
+    // the roster, falling back to the per-task names and then the address itself.
+    const emails = (t.assignee_emails as string[]) ?? []
+    const names  = (t.assignee_names as string[]) ?? []
+    emails.forEach((email, idx) => {
+      const key = email.toLowerCase()
+      if (!memberMap[key]) {
+        const rosterName = roster.find(r => r.email.toLowerCase() === key)?.display_name
+        memberMap[key] = { name: rosterName ?? names[idx] ?? email, count: 0 }
+      }
+      memberMap[key].count++
     })
   }
   const memberList = Object.entries(memberMap)

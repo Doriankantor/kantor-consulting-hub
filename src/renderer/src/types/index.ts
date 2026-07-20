@@ -50,7 +50,9 @@ export interface Task {
   client_org: string | null        // contact organization (for Kanban badge)
   recurrence_json: string | null   // JSON: { type: 'weekly'|'monthly'|'quarterly'|'custom', interval?: number }
   area_of_analysis: string | null  // stores area ID (default or custom)
-  assignee_ids: string[]
+  // WORK EMAILS as of slice 1c-2b-① — NOT local_users.id values. Renamed from
+  // assignee_ids so the field name can't outlive what it actually holds.
+  assignee_emails: string[]
   due_date: string | null          // ISO "YYYY-MM-DD"
   start_date: string | null        // ISO "YYYY-MM-DD"
   priority: Priority
@@ -103,6 +105,15 @@ export interface ChatMessage {
 }
 
 // ── Team ───────────────────────────────────────────────────────────────────
+// The cloud roster (team_members), EMAIL-keyed. Distinct from TeamMember, which
+// is an ACCOUNT (local_users, per-device id). Roster = who is on the team and can
+// be assigned; account = auth and lifecycle. Do not resolve one by the other's key.
+export interface RosterMember {
+  email: string
+  display_name: string
+  assignable: boolean
+}
+
 export interface TeamMember {
   id: string
   email: string

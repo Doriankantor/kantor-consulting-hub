@@ -9,6 +9,7 @@ import {
   CONTENT_TYPE_COLORS,
 } from '../types'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { isAssignedTo, sameIdentity } from '../utils/assignees'
 import { useAuth } from '../contexts/AuthContext'
 import RichTextEditor from './RichTextEditor'
 import ClaudeAISidebar from './ClaudeAISidebar'
@@ -309,10 +310,13 @@ function ClientPicker({ clientId, clientName, clientOrg, createdBy, onChange }: 
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boolean }) {
-  const { selectedTask, selectTask, updateTask, deleteTask, columns, members, areas, labels, refreshTaskMeta, pendingSection, setPendingSection, boardContentVersion } = useWorkspace()
+  const { selectedTask, selectTask, updateTask, deleteTask, columns, members, roster, areas, labels, refreshTaskMeta, pendingSection, setPendingSection, boardContentVersion } = useWorkspace()
   const { localUser, isRoot, can } = useAuth()
   const currentUserId   = localUser?.id   ?? 'local-admin'
   const currentUserName = localUser?.name ?? 'Dorian Kantor'
+  // Assignments and their notifications are EMAIL-keyed as of 1c-2b-①. Every
+  // self-exclusion guard below compares this, never currentUserId.
+  const currentUserEmail = localUser?.email ?? ''
 
   // Editing state — overrides selected task fields until saved
   const [editing, setEditing] = useState<Partial<Task>>({})
@@ -372,43 +376,25 @@ export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boole
   const mentionMenuRef = useRef<HTMLDivElement>(null)
   const [mentionPos, setMentionPos] = useState<{ top: number; left: number } | null>(null)
 
-  // ── Team roster (slice 1c-1) ───────────────────────────────────────────────
-  // Cloud team_members, email-keyed, with an offline mirror behind it. This is the
-  // display source for the assignee picker and @mentions — the two surfaces that
-  // need the WHOLE team, not just the accounts that happen to exist on this device
-  // (local_users rows are created per-device at first sign-in, so `members` from
-  // WorkspaceContext is a subset of the real team on every machine but one).
+  // ── Team roster (slice 1c-1, completed in 1c-2b-②) ─────────────────────────
+  // Cloud team_members, email-keyed, with an offline mirror behind it. Now shared
+  // from WorkspaceContext rather than fetched here, so the picker, the Kanban
+  // cards and Analytics all resolve names from ONE list.
   //
-  // WorkspaceContext's `members` is intentionally NOT repointed: Dashboard and
-  // KanbanView resolve avatars from it by local_users.id, and assignees_json still
-  // stores those ids. Until 1c-2 migrates that storage to emails, the roster is the
-  // NAME source and `members` remains the ID source; the picker below joins them.
-  const [roster, setRoster] = useState<Array<{ email: string; display_name: string; assignable: boolean }>>([])
-  useEffect(() => {
-    let alive = true
-    window.api.team.roster()
-      .then(r => { if (alive) setRoster(r) })
-      .catch(() => { /* mirror covers it; picker falls back to `members` below */ })
-    return () => { alive = false }
-  }, [])
-
-  // Roster joined to on-device accounts. `id` is the local_users.id when this
-  // device knows the person, else null — a null id means "show them, but they
-  // can't be assigned yet" (assignees_json is still id-keyed; 1c-2 fixes it).
+  // The 1c-1 roster→accounts JOIN IS GONE. It existed only because assignees_json
+  // still held device ids, so a roster member with no local_users row on this
+  // machine had no assignable id and rendered greyed. Assignments are email-keyed
+  // as of 1c-2b-①, so the roster IS the picker: every assignable member is
+  // clickable on every device, which is the whole point of the migration.
   const pickerMembers = useMemo(() => {
     if (roster.length === 0) {
-      // No roster yet (first launch offline, or cloud+mirror both empty): fall
-      // back to the previous behaviour exactly, so this can only add names.
-      return members.map(m => ({ email: m.email, name: m.full_name ?? m.email, id: m.id as string | null }))
+      // No roster yet (first launch offline before any sync): fall back to the
+      // on-device accounts so the picker is never empty. Still email-keyed.
+      return members.map(m => ({ email: m.email, name: m.full_name ?? m.email }))
     }
-    const byEmail = new Map(members.map(m => [m.email.toLowerCase(), m]))
     return roster
       .filter(r => r.assignable)
-      .map(r => ({
-        email: r.email,
-        name: r.display_name || r.email,
-        id: byEmail.get(r.email.toLowerCase())?.id ?? null,
-      }))
+      .map(r => ({ email: r.email, name: r.display_name || r.email }))
   }, [roster, members])
 
   const mentionResults = (roster.length > 0
@@ -662,7 +648,7 @@ export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boole
       author_name: currentUserName,
       content: newComment.trim(),
       task_title: selectedTask.title,
-      assignee_ids: selectedTask.assignee_ids ?? [],
+      assignee_emails: selectedTask.assignee_emails ?? [],
     })
     setComments(prev => [...prev, comment])
     const entry = await window.api.activity.add({
@@ -790,20 +776,22 @@ export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boole
 
   // ── Assignees ────────────────────────────────────────────────────────────
 
-  const assigneeIds: string[] = (field('assignee_ids') as string[] | null) ?? []
+  const assigneeEmails: string[] = (field('assignee_emails') as string[] | null) ?? []
 
-  function toggleAssignee(memberId: string) {
+  function toggleAssignee(memberEmail: string) {
     if (readOnly) return
-    const isAdding = !assigneeIds.includes(memberId)
+    const isAdding = !isAssignedTo(assigneeEmails, memberEmail)
     const updated = isAdding
-      ? [...assigneeIds, memberId]
-      : assigneeIds.filter(id => id !== memberId)
-    set('assignee_ids', updated)
-    updateTask(selectedTask.id, { assignee_ids: updated })
-    // Notify newly assigned member
-    if (isAdding && memberId !== currentUserId) {
+      ? [...assigneeEmails, memberEmail]
+      : assigneeEmails.filter(e => !sameIdentity(e, memberEmail))
+    set('assignee_emails', updated)
+    updateTask(selectedTask.id, { assignee_emails: updated })
+    // Notify newly assigned member. Compare EMAIL to EMAIL — currentUserId is a
+    // local_users.id, so the old `memberId !== currentUserId` guard would never
+    // match once assignees became emails and you'd notify yourself.
+    if (isAdding && !sameIdentity(memberEmail, currentUserEmail)) {
       window.api.notifications.create({
-        user_id: memberId, type: 'assignment',
+        user_id: memberEmail, type: 'assignment',
         title: `${currentUserName} assigned you to "${selectedTask.title}"`,
         task_id: selectedTask.id, task_title: selectedTask.title,
         actor_name: currentUserName,
@@ -929,9 +917,12 @@ export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boole
                         updateTask(selectedTask.id, { column_id: newColId })
                         // Notify assignees of stage change
                         const newColName = columns.find(c => c.id === newColId)?.name ?? newColId
-                        const assignees = (field('assignee_ids') as string[] | null) ?? []
+                        const assignees = (field('assignee_emails') as string[] | null) ?? []
                         for (const uid of assignees) {
-                          if (uid === currentUserId) continue
+                          // Email-to-email; comparing against currentUserId (a
+                          // local_users.id) would never match and would notify you
+                          // about your own stage change.
+                          if (sameIdentity(uid, currentUserEmail)) continue
                           window.api.notifications.create({
                             user_id: uid, type: 'stage_change',
                             title: `"${selectedTask.title}" moved to ${newColName}`,
@@ -1117,20 +1108,17 @@ export default function TaskDetailPanel({ readOnly = false }: { readOnly?: boole
                     <SectionLabel title="Assignees" />
                     <div className="flex flex-wrap gap-2">
                       {pickerMembers.map(m => {
-                        // Roster members this device has no local_users row for can be
-                        // SEEN but not assigned — assignees_json is still id-keyed, and
-                        // writing an email into it here would fork the format ahead of
-                        // the 1c-2 migration. They light up once that lands.
-                        const pending  = m.id === null
-                        const assigned = m.id !== null && assigneeIds.includes(m.id)
+                        // Email-to-email, case-insensitive. Every assignable roster
+                        // member is clickable — the greyed/`pending` state from 1c-1
+                        // is gone along with the id join it depended on.
+                        const assigned = isAssignedTo(assigneeEmails, m.email)
                         const ini = initials(m.name)
                         return (
                           <button
                             key={m.email}
-                            onClick={() => { if (m.id) toggleAssignee(m.id) }}
-                            disabled={readOnly || pending}
-                            title={pending ? 'Not assignable on this device yet — pending the assignee migration' : undefined}
-                            className={`titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition ${readOnly ? 'cursor-default' : ''} ${pending ? 'opacity-50 cursor-default' : ''} ${
+                            onClick={() => toggleAssignee(m.email)}
+                            disabled={readOnly}
+                            className={`titlebar-no-drag flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition ${readOnly ? 'cursor-default' : ''} ${
                               assigned
                                 ? 'bg-hub-gold/15 border-hub-gold/30 text-gray-900 dark:text-white'
                                 : 'bg-gray-50 dark:bg-white/[0.04] border-gray-200 dark:border-white/[0.07] text-gray-500 dark:text-white/70 hover:text-gray-700 dark:hover:text-white/85 hover:bg-gray-100 dark:hover:bg-white/[0.07]'

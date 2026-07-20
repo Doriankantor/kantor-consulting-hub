@@ -9,9 +9,10 @@ import React, {
 } from 'react'
 import { arrayMove } from '@dnd-kit/sortable'
 import { DEFAULT_COLUMNS } from '../types'
-import type { Task, Column, TeamMember, ViewMode, Area, Board } from '../types'
+import type { Task, Column, TeamMember, RosterMember, ViewMode, Area, Board } from '../types'
 import { useAuth } from './AuthContext'
 import { useConnection } from './ConnectionContext'
+import { isAssignedTo } from '../utils/assignees'
 
 // Fallback areas used when the cloud areas list is unavailable (offline → the
 // main process returns [] rather than throwing, so apply defaults on empty too).
@@ -31,6 +32,12 @@ interface WorkspaceContextType {
   tasks: Task[]
   boardTasks: Task[]
   members: TeamMember[]
+  // Slice 1c-2b-②: the cloud team roster, EMAIL-keyed. This is the display source
+  // for anything that resolves an assignee to a name or avatar, because
+  // assignee_emails holds work emails and `members` (local_users) only covers the
+  // accounts that happen to exist on THIS device. One fetch, shared by the picker,
+  // the Kanban cards, Analytics and the member profile panel.
+  roster: RosterMember[]
   areas: Area[]
   labels: Label[]
   loading: boolean
@@ -114,6 +121,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS)
   const [tasks, setTasks] = useState<Task[]>([])
   const [members, setMembers] = useState<TeamMember[]>([])
+  const [roster, setRoster] = useState<RosterMember[]>([])
   const [areas, setAreas] = useState<Area[]>([])
   const [labels, setLabels] = useState<Label[]>([])
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({})
@@ -206,8 +214,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     try {
       const localUserRaw = localStorage.getItem('kantor-local-user')
       if (!localUserRaw) return
-      const localUser = JSON.parse(localUserRaw) as { id: string; name: string }
+      const localUser = JSON.parse(localUserRaw) as { id: string; name: string; email?: string }
       const userId = localUser.id
+      // Assignee matching is email-keyed (1c-2b-①); userId stays for notification
+      // rows and the dedup keys, which are still id-shaped.
+      const userEmail = localUser.email ?? ''
       const now = Date.now()
       const oneDayMs  = 86400000
       const threeDayMs = 3 * oneDayMs
@@ -222,10 +233,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         else if (diff < threeDayMs) type = '3d'
         if (!type) continue
 
-        // Only notify assignees (or everyone if unassigned)
-        const assignees = t.assignee_ids ?? []
-        const targets = assignees.length > 0 ? assignees : [userId]
-        if (!targets.includes(userId)) continue
+        // Only notify assignees (or everyone if unassigned). Assignees are EMAILS
+        // as of 1c-2b-①, so this compares email-to-email — against userId (a
+        // local_users.id) it would never match and every deadline notification
+        // would be suppressed.
+        const assignees = t.assignee_emails ?? []
+        const targets = assignees.length > 0 ? assignees : [userEmail]
+        if (!isAssignedTo(targets, userEmail)) continue
 
         const dedupKey = `deadline-notified-${t.id}-${type}`
         if (localStorage.getItem(dedupKey)) continue
@@ -312,11 +326,16 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         await loadBoards()
         // Use activeBoardId snapshot from initial state for column loading.
         const boardId = localStorage.getItem('activeBoard') ?? 'board-main'
-        const [cols, taskList, teamList] = await Promise.all([
+        // Each read has its own fallback inside main; the roster in particular must
+        // never poison this Promise.all — an unguarded throw here would discard the
+        // columns and tasks alongside it (the listArchivedBoards lesson).
+        const [cols, taskList, teamList, rosterList] = await Promise.all([
           window.api.workspace.getColumns(boardId, actorId),
           window.api.workspace.getTasks(actorId),
           window.api.team.list(),
+          window.api.team.roster().catch(() => [] as RosterMember[]),
         ])
+        setRoster(rosterList)
         if (!mounted) return
         setColumns(cols)
         setTasks(taskList)
@@ -439,6 +458,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         avatar_url: null, role: (m.role as 'admin' | 'member') ?? 'member',
       })))
     }).catch(() => {})
+    window.api.team.roster().then(setRoster).catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [online])
 
@@ -544,7 +564,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       content_type: partial.content_type ?? 'policy-brief',
       client: partial.client ?? null,
       area_of_analysis: partial.area_of_analysis ?? null,
-      assignee_ids: partial.assignee_ids ?? [],
+      assignee_emails: partial.assignee_emails ?? [],
       due_date: partial.due_date ?? null,
       start_date: partial.start_date ?? null,
       priority: partial.priority ?? 'medium',
@@ -594,7 +614,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const rows = await window.api.workspace.getTasks(localUser?.id) as Task[]
     const taskList = rows.map((r: Record<string, unknown>) => ({
       ...(r as unknown as Task),
-      assignee_ids: Array.isArray(r.assignee_ids) ? r.assignee_ids : [],
+      assignee_emails: Array.isArray(r.assignee_emails) ? r.assignee_emails : [],
     }))
     setTasks(taskList)
   }, [localUser?.id])
@@ -723,6 +743,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       tasks,
       boardTasks,
       members,
+      roster,
       areas,
       labels,
       commentCounts,

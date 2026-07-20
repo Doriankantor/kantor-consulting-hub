@@ -15,7 +15,7 @@ interface TodoTask {
   priority: string
   area_of_analysis: string | null
   completed_at: string | null
-  assignee_ids: string[]
+  assignee_emails: string[]
   content_type: string
 }
 

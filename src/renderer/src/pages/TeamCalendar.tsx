@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { isAssignedTo } from '../utils/assignees'
 import { useNavigate } from 'react-router-dom'
 
 type CalView = 'month' | 'week' | 'agenda'
@@ -941,13 +942,13 @@ export default function TeamCalendar() {
 
     // Task deadlines
     if (enabledCalendars.has('task-deadlines')) {
-      const userId = localUser?.id ?? 'local-admin'
+      const userEmail = localUser?.email ?? ''
       const deadlineTasks = myTasks.filter(t =>
         t.due_date &&
         !t.completed_at &&
         t.column_id !== 'col-published' &&
         t.archived !== 1 &&
-        (t.assignee_ids ?? []).includes(userId)
+        isAssignedTo(t.assignee_emails ?? [], userEmail)
       )
       for (const t of deadlineTasks) {
         out.push({

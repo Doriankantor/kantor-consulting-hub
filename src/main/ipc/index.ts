@@ -22,6 +22,8 @@ import {
   addClientContact, deleteClientContact, seedContactsToCloud,
 } from '../cloud/contacts'
 import * as boardsCloud from '../cloud/boards'
+import { resolveIdentity } from '../cloud/boards'
+import { assignedToSql, parseAssignees } from '../assignees'
 import * as intelCloud from '../cloud/intel'
 import { isOnline } from '../cloud/connection'
 import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag } from '../cloud/tags'
@@ -306,13 +308,17 @@ function registerCommentHandlers() {
   ipcMain.handle('comments:get', (_e, taskId: string) => boardsCloud.getComments(taskId))
   ipcMain.handle('comments:add', async (_e, c: {
     task_id: string; author_id: string; author_name: string; content: string;
-    task_title?: string; assignee_ids?: string[]
+    task_title?: string; assignee_emails?: string[]
   }) => {
-    const { task_title, assignee_ids } = c
+    const { task_title, assignee_emails } = c
     const entry = await boardsCloud.addComment(c)
 
-    // Notify assignees (except the commenter)
-    const targets = (assignee_ids ?? []).filter(id => id !== c.author_id)
+    // Notify assignees (except the commenter). Assignees are EMAILS as of 1c-2b-①,
+    // but author_id is still a local_users.id — comparing the two directly would
+    // never match, silently notifying the author about their own comment. Resolve
+    // the author to an email so the self-exclusion compares like with like.
+    const authorEmail = resolveIdentity(c.author_id).email.toLowerCase()
+    const targets = (assignee_emails ?? []).filter(e => e.toLowerCase() !== authorEmail)
     for (const userId of targets) {
       createNotification({
         user_id: userId, type: 'comment',
@@ -1136,11 +1142,11 @@ function registerAnalyticsHandlers() {
 
     // ── Completions data ──────────────────────────────────────────────────────
     const completedTasks = db.prepare(`
-      SELECT wt.*, lu.full_name as assignee_name
+      SELECT wt.*, tm.display_name as assignee_name
       FROM workspace_tasks wt
-      LEFT JOIN local_users lu ON lu.id = (
+      LEFT JOIN team_members tm ON LOWER(tm.email) = LOWER((
         SELECT json_each.value FROM json_each(wt.assignees_json) LIMIT 1
-      )
+      ))
       WHERE wt.column_id = 'col-published' AND wt.archived = 0
       ORDER BY wt.updated_at DESC
     `).all() as any[]
@@ -1165,9 +1171,9 @@ function registerAnalyticsHandlers() {
     // Exclude the system admin account from the team breakdown.
     const allMembers = db.prepare("SELECT id, full_name, email FROM local_users WHERE status=? AND LOWER(email) != ?").all('active', CLOUD_ADMIN_EMAIL) as any[]
     const memberStats = allMembers.map(m => {
-      const assigned = db.prepare(`SELECT COUNT(*) as c FROM workspace_tasks WHERE archived=0 AND assignees_json LIKE ?`).get(`%"${m.id}"%`) as {c:number}
-      const completed = db.prepare(`SELECT COUNT(*) as c FROM workspace_tasks WHERE column_id='col-published' AND archived=0 AND assignees_json LIKE ?`).get(`%"${m.id}"%`) as {c:number}
-      const overdue = db.prepare(`SELECT COUNT(*) as c FROM workspace_tasks WHERE archived=0 AND column_id!='col-published' AND due_date < ? AND assignees_json LIKE ?`).get(todayStr, `%"${m.id}"%`) as {c:number}
+      const assigned = db.prepare(`SELECT COUNT(*) as c FROM workspace_tasks WHERE archived=0 AND ${assignedToSql('assignees_json')}`).get(m.email) as {c:number}
+      const completed = db.prepare(`SELECT COUNT(*) as c FROM workspace_tasks WHERE column_id='col-published' AND archived=0 AND ${assignedToSql('assignees_json')}`).get(m.email) as {c:number}
+      const overdue = db.prepare(`SELECT COUNT(*) as c FROM workspace_tasks WHERE archived=0 AND column_id!='col-published' AND due_date < ? AND ${assignedToSql('assignees_json')}`).get(todayStr, m.email) as {c:number}
       return {
         id: m.id,
         name: m.full_name || m.email,
@@ -1546,20 +1552,23 @@ function registerDriveConnectHandler() {
 function registerTodoHandlers() {
   // Get all tasks assigned to a user (across all boards they're a member of)
   ipcMain.handle('todo:getMyTasks', (_e, userId: string) => {
+    // Callers still pass localUser.id; resolveIdentity accepts an id, an email or
+    // 'local-admin' and returns the stable work email, so the renderer needed no
+    // change. Assignments are email-keyed as of 1c-2b-①.
+    const { email } = resolveIdentity(userId)
+    if (!email) return []
     const rows = getDatabase().prepare(`
       SELECT wt.*, wb.name as board_name
       FROM workspace_tasks wt
       LEFT JOIN workspace_boards wb ON wb.id = wt.board_id
       WHERE wt.archived = 0
-        AND (
-          wt.assignees_json LIKE ? OR wt.assignees_json LIKE ? OR wt.assignees_json LIKE ?
-        )
+        AND ${assignedToSql('wt.assignees_json')}
       ORDER BY wt.due_date ASC, wt.created_at DESC
-    `).all(`%"${userId}"%`, `%${userId}%`, `["${userId}"]`) as any[]
+    `).all(email) as any[]
 
     return rows.map(r => ({
       ...r,
-      assignee_ids: (() => { try { return JSON.parse(r.assignees_json || '[]') } catch { return [] } })(),
+      assignee_emails: parseAssignees(r.assignees_json),
     }))
   })
 
@@ -1902,8 +1911,13 @@ async function checkAndSendReminders() {
           sentReminders.add(key)
 
           const body = `Due ${mins >= 60 ? `${mins/60}h` : `${mins}min`} from now`
-          const assigneeIds: string[] = (() => { try { return JSON.parse(t.assignees_json ?? '[]') } catch { return [] } })()
-          const notifyUsers = assigneeIds.length > 0 ? assigneeIds : ['local-admin']
+          // Assignees are EMAILS as of 1c-2b-①, so notifications.user_id now holds
+          // emails on this path while older rows still hold device ids — the table
+          // is MIXED-FORMAT and stays that way until it moves to cloud (a slice-5
+          // prerequisite, since a directive notification currently never leaves the
+          // assigner's machine). The 'local-admin' fallback is unchanged.
+          const assigneeEmails = parseAssignees(t.assignees_json)
+          const notifyUsers = assigneeEmails.length > 0 ? assigneeEmails : ['local-admin']
 
           for (const uid of notifyUsers) {
             createNotification({ user_id: uid, type: 'deadline', title: `Reminder: ${t.title}`, body })

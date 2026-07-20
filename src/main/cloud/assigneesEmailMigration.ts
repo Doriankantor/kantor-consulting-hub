@@ -345,11 +345,14 @@ export async function migrateCloudAssigneesToEmail(): Promise<MigrationResult> {
       }
 
       try {
-        // The EXISTING cloud write path. Passing only assignee_ids means none of
-        // updateTask's column_id branches fire — no published_at stamp, no
+        // The EXISTING cloud write path. Passing only assignee_emails means none
+        // of updateTask's column_id branches fire — no published_at stamp, no
         // recurrence auto-copy, no prefetch. It stamps updated_at, which is what
         // we want: realtime propagates the rewrite to any open renderer.
-        await updateTask(row.id, { assignee_ids: mapped })
+        // ⚠ The key MUST match updateTask's `'assignee_emails' in partial` check.
+        // It was `assignee_ids` until the 1c-2b-② rename; a stale key here would
+        // silently write nothing and still report success.
+        await updateTask(row.id, { assignee_emails: mapped })
         tasksRewritten++
       } catch (e) {
         console.error(`[assigneesCloudMigration] cloud write FAILED for task ${row.id}:`, (e as Error)?.message)

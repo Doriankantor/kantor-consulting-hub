@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { isAssignedTo } from '../utils/assignees'
 import { useAuth } from '../contexts/AuthContext'
 
 const AVATAR_PALETTE = ['#ef4444','#f59e0b','#22c55e','#3b82f6','#a855f7','#06b6d4','#ec4899','#8b5cf6']
@@ -78,7 +79,9 @@ export default function TeamMemberProfilePanel({ memberId, onClose, showSendMess
 
   // Compute stats from tasks
   const memberTasks = tasks.filter(t => {
-    return (t.assignee_ids ?? []).includes(memberId)
+    // Assignments are email-keyed as of 1c-2b-①; memberId is a local_users.id, so
+    // match on the member's email instead — the id would never appear in the array.
+    return isAssignedTo(t.assignee_emails ?? [], member?.email)
   })
 
   const activeTasks = memberTasks.filter(t => t.column_id !== 'col-published')
