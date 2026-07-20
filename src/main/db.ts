@@ -700,6 +700,24 @@ export function initDatabase(): void {
     `)
   }
 
+  // Slice A-1: detail-panel data foundation. BOTH ARE NEW COLUMNS — neither has
+  // ever existed on this table (`git log -S"starred" -- src/main/db.ts` returns
+  // nothing), so there is no legacy shape to preserve and nothing to backfill.
+  //
+  // `color` stores a PALETTE KEY ('indigo', 'red', …), NOT a hex. The renderer
+  // resolves the key through src/renderer/src/utils/todoColors.ts, which supplies a
+  // different value per theme. Storing hex would freeze one theme's colour into the
+  // data and make a palette change a migration.
+  if (!ptCols.some(c => c.name === 'color')) {
+    db.exec('ALTER TABLE personal_todos ADD COLUMN color TEXT')
+  }
+  if (!ptCols.some(c => c.name === 'starred')) {
+    // NOT NULL DEFAULT 0 is legal in SQLite ADD COLUMN (unlike CURRENT_TIMESTAMP,
+    // which is why updated_at above had to be nullable + backfilled). Existing rows
+    // take the default, so no UPDATE pass is needed.
+    db.exec('ALTER TABLE personal_todos ADD COLUMN starred INTEGER NOT NULL DEFAULT 0')
+  }
+
   // Personal to-do sub-steps (Step Rail). Mirrors the cloud table's columns, but note
   // this one is user_email-keyed from birth — it has no legacy user_id rows to preserve.
   db.exec(`

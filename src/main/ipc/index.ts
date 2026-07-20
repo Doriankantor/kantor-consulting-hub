@@ -1758,8 +1758,13 @@ function registerPersonalTodoHandlers() {
 
   /** Re-read a row and shape it for the cloud, resolving the stable owner email. */
   function cloudRowFor(id: string): Record<string, unknown> | null {
+    // ⚠ THIS COLUMN LIST MUST STAY COMPLETE. syncPersonalWrite upserts the WHOLE
+    // row, so a column missing here is sent as absent and BLANKED in cloud on the
+    // next unrelated write — silent data loss, not a display bug. `color` and
+    // `starred` (A-1) are here for exactly that reason: without them, toggling a
+    // to-do complete would wipe its colour and star in cloud.
     const r = db().prepare(
-      'SELECT id, user_id, title, due_date, due_time, completed, completed_at, position, created_at, updated_at FROM personal_todos WHERE id=?'
+      'SELECT id, user_id, title, due_date, due_time, completed, completed_at, position, color, starred, created_at, updated_at FROM personal_todos WHERE id=?'
     ).get(id) as Record<string, unknown> | undefined
     if (!r) return null
     const email = ownerEmail(r.user_id as string)
@@ -1774,6 +1779,7 @@ function registerPersonalTodoHandlers() {
       due_date: r.due_date ?? null, due_time: r.due_time ?? null,
       completed: r.completed ?? 0, completed_at: r.completed_at ?? null,
       position: r.position ?? null,
+      color: r.color ?? null, starred: r.starred ?? 0,
       created_at: r.created_at ?? nowIso(), updated_at: r.updated_at ?? nowIso(),
     }
   }
@@ -1798,6 +1804,55 @@ function registerPersonalTodoHandlers() {
   ipcMain.handle('personalTodo:uncomplete', (_e, id: string) => {
     db().prepare('UPDATE personal_todos SET completed=0, completed_at=NULL, updated_at=? WHERE id=?').run(nowIso(), id)
     const row = cloudRowFor(id)
+    if (row) syncPersonalWrite('update', 'personal_todos', row)
+    return { ok: true }
+  })
+
+  // ── Detail-panel field setters (slice A-1) ───────────────────────────────
+  // Same 1b contract as everything above: LOCAL WRITE FIRST and alone decides
+  // {ok:true}; the cloud upsert goes to syncPersonalWrite un-awaited and queues on
+  // failure or offline. NO isOnline() guard — personal is the offline-capable
+  // source, and guarding it would block the one thing that works offline.
+  //
+  // All three take the BARE personal_todos.id and strip a stray `personal-` prefix
+  // via bareTodoId (defined below, in scope by the time any handler fires). An
+  // unstripped id matches zero rows: UPDATE would report 0 changes, cloudRowFor
+  // would return null, and the write would vanish without an error — the same
+  // silent shape as the 3b step landmine.
+
+  ipcMain.handle('personalTodo:setColor', (_e, id: string, color: string | null) => {
+    const key = bareTodoId(id)
+    // Validation lives in the renderer (isTodoColorKey); main stores what it is
+    // given so a future palette addition needs no main-process change. NULL clears.
+    db().prepare('UPDATE personal_todos SET color=?, updated_at=? WHERE id=?')
+      .run(color ?? null, nowIso(), key)
+    const row = cloudRowFor(key)
+    if (row) syncPersonalWrite('update', 'personal_todos', row)
+    return { ok: true }
+  })
+
+  ipcMain.handle('personalTodo:setStar', (_e, id: string, starred: boolean) => {
+    const key = bareTodoId(id)
+    // Coerced at the boundary: the column is INTEGER NOT NULL, and SQLite would
+    // otherwise bind a JS boolean as a type better-sqlite3 rejects outright.
+    db().prepare('UPDATE personal_todos SET starred=?, updated_at=? WHERE id=?')
+      .run(starred ? 1 : 0, nowIso(), key)
+    const row = cloudRowFor(key)
+    if (row) syncPersonalWrite('update', 'personal_todos', row)
+    return { ok: true }
+  })
+
+  ipcMain.handle('personalTodo:setDue', (_e, id: string, dueDate: string | null, dueTime: string | null) => {
+    const key = bareTodoId(id)
+    // BOTH fields are written on every call, so clearing a date is a real write of
+    // NULL rather than an omission. due_time without due_date is meaningless, so a
+    // null date drops the time with it — otherwise an orphan "14:30, no day" would
+    // survive and the urgency banding (3a, CET-anchored) has no date to rank on.
+    const date = dueDate ?? null
+    const time = date === null ? null : (dueTime ?? null)
+    db().prepare('UPDATE personal_todos SET due_date=?, due_time=?, updated_at=? WHERE id=?')
+      .run(date, time, nowIso(), key)
+    const row = cloudRowFor(key)
     if (row) syncPersonalWrite('update', 'personal_todos', row)
     return { ok: true }
   })

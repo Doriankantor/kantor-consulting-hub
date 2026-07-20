@@ -132,6 +132,16 @@ interface TodoItem {
   has_steps: boolean
   /** PERSONAL ONLY — `undefined` for kc-deadline (card checklists are slice 4). */
   steps?: TodoStep[]
+  /**
+   * PERSONAL ONLY (slice A-1) — `undefined` for kc-deadline, and structurally so:
+   * a board card's colour and priority derive from its board and column, and it has
+   * no per-user row to hang a star on. These are not "not yet implemented" for
+   * kc-deadline; there is nowhere to store them.
+   *
+   * A PALETTE KEY ('indigo', …) resolved via utils/todoColors.ts — never a hex.
+   */
+  color?: string | null
+  starred?: boolean
 }
 
 interface ChatMessage {
@@ -759,6 +769,12 @@ interface Window {
       complete:   (id: string) => Promise<{ ok:boolean }>
       uncomplete: (id: string) => Promise<{ ok:boolean }>
       delete:     (id: string) => Promise<{ ok:boolean }>
+      /** Slice A-1. `id` is the BARE personal_todos.id — pass TodoItem.raw_id.
+       *  `color` is a PALETTE KEY from utils/todoColors.ts, never a hex; null clears.
+       *  setDue clears due_time whenever dueDate is null. */
+      setColor:   (id: string, color: string | null) => Promise<{ ok:boolean }>
+      setStar:    (id: string, starred: boolean) => Promise<{ ok:boolean }>
+      setDue:     (id: string, dueDate: string | null, dueTime: string | null) => Promise<{ ok:boolean }>
     }
     /** Slice 3b. `todoId` is the BARE personal_todos.id — pass TodoItem.raw_id. */
     personalTodoStep: {

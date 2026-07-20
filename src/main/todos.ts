@@ -85,6 +85,16 @@ export interface TodoItem {
    * NOT surfaced here.
    */
   steps?: TodoStep[]
+  /**
+   * PERSONAL ONLY (slice A-1) — deliberately absent on kc-deadline. A board card
+   * has no per-user row to carry a star, and its colour comes from its board/column,
+   * so these are structurally inapplicable rather than merely unimplemented.
+   *
+   * `color` is a PALETTE KEY ('indigo', …) resolved by the renderer's
+   * utils/todoColors.ts, NOT a hex — see that module for why.
+   */
+  color?: string | null
+  starred?: boolean
 }
 
 // ── Source a — personal ──────────────────────────────────────────────────────
@@ -94,7 +104,8 @@ export interface TodoItem {
 function readPersonal(userId: string): TodoItem[] {
   const db = getDatabase()
   const rows = db.prepare(`
-    SELECT id, title, due_date, due_time, completed, completed_at, position, created_at
+    SELECT id, title, due_date, due_time, completed, completed_at, position,
+           color, starred, created_at
     FROM personal_todos
     WHERE user_id = ?
     ORDER BY created_at DESC
@@ -154,6 +165,10 @@ function readPersonal(userId: string): TodoItem[] {
     // REAL as of 3b — was hardcoded false while nothing could write a step.
     has_steps: steps.length > 0,
     steps,
+    // A-1. Coerced 0/1 → boolean here so no consumer ever has to remember that
+    // SQLite has no bool; `color` passes through as the stored PALETTE KEY.
+    color: (r.color as string) ?? null,
+    starred: !!r.starred,
   }})
 }
 

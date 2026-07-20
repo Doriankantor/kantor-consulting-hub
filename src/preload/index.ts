@@ -272,6 +272,10 @@ const api = {
     complete:   (id: string) => ipcRenderer.invoke('personalTodo:complete', id),
     uncomplete: (id: string) => ipcRenderer.invoke('personalTodo:uncomplete', id),
     delete:     (id: string) => ipcRenderer.invoke('personalTodo:delete', id),
+    // Slice A-1 — detail-panel fields. `id` is the BARE personal_todos.id (TodoItem.raw_id).
+    setColor:   (id: string, color: string | null) => ipcRenderer.invoke('personalTodo:setColor', id, color),
+    setStar:    (id: string, starred: boolean) => ipcRenderer.invoke('personalTodo:setStar', id, starred),
+    setDue:     (id: string, dueDate: string | null, dueTime: string | null) => ipcRenderer.invoke('personalTodo:setDue', id, dueDate, dueTime),
   },
 
   // Personal to-do STEPS (slice 3b). `todoId` is the BARE personal_todos.id —
