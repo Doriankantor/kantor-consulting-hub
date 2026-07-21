@@ -788,6 +788,8 @@ interface Window {
       setDue:     (id: string, dueDate: string | null, dueTime: string | null) => Promise<{ ok:boolean }>
       /** Slice B. Free-text notes; empty string stored as NULL. */
       setNotes:   (id: string, notes: string | null) => Promise<{ ok:boolean }>
+      /** Slice C-recurring-2. freq NULL = non-recurring; else daily|weekly|weekdays|monthly|yearly. */
+      setRecurrence: (id: string, freq: string | null) => Promise<{ ok:boolean }>
     }
     /** Slice 3b. `todoId` is the BARE personal_todos.id — pass TodoItem.raw_id. */
     personalTodoStep: {

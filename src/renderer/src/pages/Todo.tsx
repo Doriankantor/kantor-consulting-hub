@@ -202,6 +202,39 @@ function NotesEditor({ initial, onSave }: { initial: string; onSave: (notes: str
  * `Row` itself stays inside Todo (logged tech debt) — only the branch that owns
  * DOM state needed to move.
  */
+/**
+ * Slice C-recurring-2. ONE source of truth for recurrence labels, shared by the
+ * picker trigger, its rows, and the card chip so wording never drifts. Keys match
+ * the `recurrence` column values (C-recurring-1); null = non-recurring.
+ */
+const RECUR_LABELS: Record<string, string> = {
+  daily: 'Daily', weekly: 'Weekly', weekdays: 'Weekdays', monthly: 'Monthly', yearly: 'Yearly',
+}
+/** Ordered options for the popover; `null` clears recurrence. */
+const RECUR_OPTIONS: { value: string | null; label: string }[] = [
+  { value: null, label: 'Does not repeat' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'weekdays', label: 'Weekdays' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'yearly', label: 'Yearly' },
+]
+/** Renderer-side validation, mirroring isTodoColorKey. */
+const isRecurKey = (k: string | null): boolean => k === null || k in RECUR_LABELS
+
+/** Inline "repeat" glyph (feather path from the mockup) — NO icon library. */
+function RepeatIcon({ size = 13 }: { size?: number }): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="17 1 21 5 17 9" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <polyline points="7 23 3 19 7 15" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+    </svg>
+  )
+}
+
 function PersonalCard({
   item, isSelected, duePill, extraClass = '',
   onComplete, onDelete, onSelect, onStar, onStepToggle,
@@ -263,11 +296,22 @@ function PersonalCard({
               Personal
             </span>
           </div>
-          {(item.due_date || item.due_time) && (
-            <span className={`inline-block mt-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold leading-[1.4] ${duePill}`}>
-              {dueLabel(item.due_date, item.due_time)}
-            </span>
-          )}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {(item.due_date || item.due_time) && (
+              <span className={`inline-block mt-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold leading-[1.4] ${duePill}`}>
+                {dueLabel(item.due_date, item.due_time)}
+              </span>
+            )}
+            {/* Slice C-recurring-2. Repeat chip — same pill styling as the due pill,
+                neutral tokens already on the card. */}
+            {item.recurrence && RECUR_LABELS[item.recurrence] && (
+              <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full border border-gray-200 dark:border-white/[0.08] bg-gray-100 dark:bg-white/[0.08] text-gray-500 dark:text-white/50 text-[10px] font-semibold leading-[1.4]"
+                    title={`Repeats ${RECUR_LABELS[item.recurrence].toLowerCase()}`}>
+                <RepeatIcon size={10} />
+                {RECUR_LABELS[item.recurrence]}
+              </span>
+            )}
+          </div>
         </div>
         {/* ★ AFFORDANCES — visible at rest, not hover-only. They were opacity-0
             until hover on a gray-300 / white-25 icon, which is invisible twice
@@ -366,6 +410,48 @@ const PILL_CLASS =
   'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.12] ' +
   'bg-gray-50 dark:bg-white/[0.05] text-gray-700 dark:text-white/80 text-xs hover:border-indigo-300 ' +
   'dark:hover:border-indigo-400/50 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200'
+
+/**
+ * Slice C-recurring-2. Recurrence picker — reuses the exact DatePopover machinery
+ * (usePopoverDismiss + PILL_CLASS trigger + the shared dropdown container). Six
+ * rows from RECUR_OPTIONS; picking one fires onPick and closes.
+ */
+function RecurrencePopover({ value, onPick }: { value: string | null; onPick: (freq: string | null) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = usePopoverDismiss(open, useCallback(() => setOpen(false), []))
+  const label = value && RECUR_LABELS[value] ? RECUR_LABELS[value] : 'Does not repeat'
+
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)} className={PILL_CLASS}>
+        <RepeatIcon size={13} />
+        {label}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1.5 z-30 w-[196px] rounded-xl border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-hub-navy-light shadow-xl p-1.5">
+          {RECUR_OPTIONS.map(opt => {
+            const active = (value ?? null) === opt.value
+            return (
+              <button
+                key={opt.value ?? 'none'}
+                type="button"
+                onClick={() => { onPick(opt.value); setOpen(false) }}
+                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left transition ${
+                  active
+                    ? 'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-semibold'
+                    : 'text-gray-700 dark:text-white/80 hover:bg-black/[0.05] dark:hover:bg-white/[0.08]'
+                }`}
+              >
+                {opt.value ? <RepeatIcon size={12} /> : <span className="w-3 h-3 inline-block" />}
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function DatePopover({ value, onPick }: { value: string | null; onPick: (iso: string | null) => void }) {
   const [open, setOpen] = useState(false)
@@ -585,7 +671,7 @@ function SortableStepRow({
  * leak into this panel.
  */
 function TodoDetailPanel({
-  item, open, reducedMotion, onClose, onComplete, onStar, onColor, onDue, onNotes,
+  item, open, reducedMotion, onClose, onComplete, onStar, onColor, onDue, onNotes, onRecurrence,
   onStepToggle, onStepAdd, onStepDelete, onStepReorder, onExited,
 }: {
   item: DisplayItem
@@ -601,6 +687,8 @@ function TodoDetailPanel({
   onDue: (date: string | null, time: string | null) => void
   /** Slice B. Fired by NotesEditor's onBlur / unmount flush, save-if-changed. */
   onNotes: (notes: string | null) => void
+  /** Slice C-recurring-2. Recurrence frequency; null clears. */
+  onRecurrence: (freq: string | null) => void
   onStepToggle: (stepId: string) => void
   onStepAdd: (text: string) => void
   onStepDelete: (stepId: string) => void
@@ -776,6 +864,12 @@ function TodoDetailPanel({
               Clear due date
             </button>
           )}
+        </div>
+
+        {/* RECURRENCE (slice C-recurring-2) — placed after DUE (date-adjacent). */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/40 mb-2">Repeat</p>
+          <RecurrencePopover value={item.recurrence ?? null} onPick={onRecurrence} />
         </div>
 
         {/* STEPS — the editable list. Drag-reorder is A-3. */}
@@ -1097,6 +1191,16 @@ export default function Todo() {
     patchItem(item.id, { notes: value })
     const res = await window.api.personalTodo.setNotes(item.raw_id, value)
     if (!res?.ok) patchItem(item.id, { notes: before })
+  }
+
+  async function handleSetRecurrence(item: DisplayItem, freq: string | null) {
+    // Slice C-recurring-2. Mirror handleSetColor: optimistic patch, revert on refusal.
+    // No queueLoad on success (A-2 contract). Backend spawn logic is unchanged.
+    if (!isRecurKey(freq)) return   // renderer-side validation, like isTodoColorKey
+    const before = item.recurrence ?? null
+    patchItem(item.id, { recurrence: freq })
+    const res = await window.api.personalTodo.setRecurrence(item.raw_id, freq)
+    if (!res?.ok) patchItem(item.id, { recurrence: before })
   }
 
   async function handlePersonalToggle(item: DisplayItem) {
@@ -1737,6 +1841,7 @@ export default function Todo() {
           onStar={() => handleSetStar(panelItem)}
           onColor={key => handleSetColor(panelItem, key)}
           onDue={(d, t) => handleSetDue(panelItem, d, t)}
+          onRecurrence={freq => handleSetRecurrence(panelItem, freq)}
           onNotes={notes => handleSetNotes(panelItem, notes)}
           onStepToggle={sid => handleStepToggle(panelItem, sid)}
           onStepAdd={text => handleStepAdd(panelItem, text)}

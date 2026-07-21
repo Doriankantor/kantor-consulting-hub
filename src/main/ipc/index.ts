@@ -1901,6 +1901,19 @@ function registerPersonalTodoHandlers() {
     return { ok: true }
   })
 
+  ipcMain.handle('personalTodo:setRecurrence', (_e, id: string, freq: string | null) => {
+    // Slice C-recurring-2. Verbatim setColor clone. Validation lives renderer-side
+    // (against RECUR_LABELS); main stores what it is given, NULL = non-recurring.
+    // Deliberately does NOT touch series_id (the spawn seeds it via `?? id` on first
+    // completion) or spawned_successor. `recurrence` is already in cloudRowFor.
+    const key = bareTodoId(id)
+    db().prepare('UPDATE personal_todos SET recurrence=?, updated_at=? WHERE id=?')
+      .run(freq ?? null, nowIso(), key)
+    const row = cloudRowFor(key)
+    if (row) syncPersonalWrite('update', 'personal_todos', row)
+    return { ok: true }
+  })
+
   ipcMain.handle('personalTodo:setDue', (_e, id: string, dueDate: string | null, dueTime: string | null) => {
     const key = bareTodoId(id)
     // BOTH fields are written on every call, so clearing a date is a real write of
