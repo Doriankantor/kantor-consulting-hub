@@ -1,10 +1,57 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-21 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `9376ba7`, `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: TWENTY-SIX code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale), `065f6ce` (slice 2 — the `listTodos` aggregation layer), `d43445d` (slice 3a — the visible To-Do tab), `4c240bd` (slice 3b — the personal Step Rail), `7d5a38a` (slice A-1 — detail-panel color/starred columns + setters), `f1fb6df` (slice A-2 — the personal detail panel UI), `9c049e3` (slice A-3 — drag-to-reorder personal steps), `4bc236d` (slice B — personal-to-do notes), `1795418` (slice C-recurring-1 — completion-anchored recurrence backend), `76bafb0` (slice C-recurring-2 — recurrence picker UI + row chip), `a6f82d7` (slice C-recurring-3 — missed-occurrence tracking) and `9376ba7` (chore — remove orphaned personalTodo:list channel). The installed app is 2.3.0 and contains NONE of them.** ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: TWENTY-SIX code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-21 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `f918e42`, `origin/main` up to date; working tree carries the uncommitted DATE-PICKER slice (built, TESTING). UNRELEASED since v2.3.0: TWENTY-SEVEN code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale), `065f6ce` (slice 2 — the `listTodos` aggregation layer), `d43445d` (slice 3a — the visible To-Do tab), `4c240bd` (slice 3b — the personal Step Rail), `7d5a38a` (slice A-1 — detail-panel color/starred columns + setters), `f1fb6df` (slice A-2 — the personal detail panel UI), `9c049e3` (slice A-3 — drag-to-reorder personal steps), `4bc236d` (slice B — personal-to-do notes), `1795418` (slice C-recurring-1 — completion-anchored recurrence backend), `76bafb0` (slice C-recurring-2 — recurrence picker UI + row chip), `a6f82d7` (slice C-recurring-3 — missed-occurrence tracking), `9376ba7` (chore — remove orphaned personalTodo:list channel) and `f918e42` (OFF-WORK / leave-window — per-member future-only leave window in a new cloud `off_work` table + local mirror; the missed-evaluator reads the acting user's window and skips stamping misses for boundaries inside it; Team page "on leave" pill + self-service picker + "End leave"; notification-drop DEFERRED). The installed app is 2.3.0 and contains NONE of them.** ★ **DATE-PICKER SLICE — BUILT, TESTING (uncommitted in the working tree).** Three bundled fixes: native `<input type=date/time>` now open on clicking the field body via `onClick→showPicker()` + `[color-scheme:dark]` for glyph visibility (root cause was Chromium only opening the picker from the tiny edge glyph, a behavior quirk not a bug), on 4 inputs (off-work start/end, new-todo date/time); native OS positioning auto-flips so the off-work-at-bottom picker never clips (custom popovers would have — native chosen deliberately); and RECURRENCE is now GATED ON A DUE DATE (the panel `RecurrencePopover` is disabled+greyed with a "set a due date first" hint when the to-do has no `due_date`), preventing the recurrence-without-due zombie state at the source (the one entry point — the quick-add row has no recurrence control). ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: TWENTY-SEVEN code commits** (listed at the top of this block), plus the uncommitted date-picker slice in the working tree — installed app is 2.3.0 and does NOT contain any of it. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
-**LATEST (2026-07-21) — HEAD `9376ba7`, tree clean. ★ THE FULL RECURRENCE FEATURE
+**LATEST (2026-07-21) — HEAD `f918e42` (off-work SHIPPED); the DATE-PICKER slice is BUILT
+and TESTING in the working tree (uncommitted). ★ THE LAST TWO To-Do FEATURES BEFORE THE
+TEAM THREAD ARE DONE — off-work leave windows + the date-picker fixes.**
+
+**OFF-WORK / LEAVE-WINDOW — SHIPPED (`f918e42`).** A per-member self-set future-only leave
+window (start→end) lives in a new cloud **`off_work`** table (PK `user_email`, RLS enabled) +
+a local mirror the offline missed-evaluator can read. The evaluator reads the acting user's
+window and **skips stamping misses** for boundaries inside it (the `due_date` still rolls
+forward — suppression only gates the STAMP). Team page: an **"on leave" pill** on members
+within a window, a **self-service leave picker**, an **"End leave"** action (deletes the row =
+you're back; forward-only, so nothing already suppressed is retroactively un-suppressed) and an
+**Update** path. **Notification-drop is DEFERRED** (blocked on notifications→cloud) with a
+documented stub. IPC: `offWork` get/set/list/clear. Cloud DDL: `sql/2026-07-21_off_work.sql`.
+Suppression was verified both directions via a local-seed test.
+
+**DATE-PICKER SLICE — BUILT, TESTING (uncommitted).** Three bundled fixes: **(a)** the native
+`<input type=date/time>` pickers now open on clicking the field **body** via
+`onClick→showPicker()` + `[color-scheme:dark]` for glyph visibility — the root cause was
+Chromium only opening the picker from the tiny edge glyph (a behavior quirk, not a bug), on 4
+inputs (off-work start/end in `Team.tsx`, new-todo date/time in `Todo.tsx`); **(b)**
+upward-opening was **MOOT** — native OS positioning auto-flips so the off-work-at-bottom picker
+never clips (custom popovers WOULD have clipped; native was chosen deliberately, no flip logic
+added); **(c)** RECURRENCE is now **GATED ON A DUE DATE** (Option A / block) — the panel
+`RecurrencePopover` is disabled + greyed with a "set a due date first" hint when the to-do has
+no `due_date`, preventing the recurrence-without-due-date zombie state at the source (this is
+what caused the "call mom" mess). Only **ONE** recurrence entry point (the panel), so one gate
+covers all — the new-todo quick-add row has no recurrence control.
+
+**"call mom" STUCK ITEM — RESOLVED.** Not a bug; a stray daily recurrence respawning on
+completion. Its recurrence was cleared. **NOTE:** 15 completed "call mom" spawn-chain rows
+remain in `personal_todos` (local + cloud), all `completed=1`, `recurrence=daily`, no
+`due_date` — benign/invisible; cleanup deferred as optional.
+
+**★ NEXT IS A DELIBERATE FORK — Dorian must decide:**
+- **(A) The To-Do team/collaboration thread.** Slice **2.5** (the off-card assignment entity —
+  unblocks the empty Assigned-to-me / Assigned-by-me tabs), then **2.6 / 4 / 5** (invited
+  collaboration, head roles + card-permission tiers, the intel-directive assignment loop), with
+  **`notifications`→cloud as a shared prerequisite** that ALSO unblocks the deferred off-work
+  notification-drop.
+- **(B) JUMP to the Intelligence + Info Pages restructure** — the PRIMARY goal, with a HARD
+  deadline (complete the intel process by end of July / publish in August). This is the same
+  "Path 2" reprioritization Dorian made once before. **The August deadline argues for starting
+  the intel restructure's design-first phase soon** — flagged here so the fork is made
+  consciously, not by default-continuing the To-Do thread.
+
+---
+
+**(Historical — 2026-07-21) — HEAD `9376ba7`, tree clean. ★ THE FULL RECURRENCE FEATURE
 (C-recurring-1/2/3) IS COMPLETE — MISSED-OCCURRENCE TRACKING SHIPPED.** **C-recurring-3
 (`a6f82d7`)** adds a time-driven **missed-occurrence evaluator** (runs at login + on a
 CET-midnight timer) that rolls a stale `due_date` forward one boundary at a time, stamping each
@@ -25,16 +72,15 @@ C-recurring-1/2/3** entries under the To-Do overhaul.)
 **C-files is PARKED** — deferred, non-essential; personal to-dos have no attachment precedent, so
 picking it up later is its own diagnose-first project, not the next step.
 
-**NEXT — the "Off work" leave-window setting (design-first).** C-recurring-3 is DONE, so the one
-remaining To-Do feature before the team thread is the **per-team-member leave window** in Settings:
-during it the missed-evaluator **skips** boundaries (nothing stamped missed) AND **no notifications**
-fire to that member. It hooks the **`skipRanges` seam already wired into
-`runMissedOccurrenceEvaluator`** (a `SkipRange[]` param + `dateFallsInAnyRange`, defaulted `[]`
-today), and is **stored per-user IN CLOUD** (applies across devices, visible to the notification
-sender). Full spec: the **QUEUED: C-recurring-3 + OFF-WORK** block under the To-Do overhaul. Only
-after Off-work does the **team/collaboration thread Group A was blocking (2.5 / 2.6 / 4 / 5)** resume.
-**★ The finish-To-Do-before-team direction still holds.** **Twenty-six code commits are unreleased**;
-the installed app is 2.3.0 and contains none of them.
+**(Historical — 2026-07-21) NEXT WAS the "Off work" leave-window setting — NOW SHIPPED
+(`f918e42`).** It hooked the **`skipRanges` seam** that was pre-wired into
+`runMissedOccurrenceEvaluator` (a `SkipRange[]` param + `dateFallsInAnyRange`), stored per-user
+IN CLOUD (`off_work`) with a local mirror. See the SHIPPED description at the top of Start-here.
+With off-work + the date-picker slice done, the **team/collaboration thread (2.5 / 2.6 / 4 / 5)**
+is no longer force-sequenced behind more To-Do work — the NEXT decision is the **A/B FORK above**
+(collaboration thread vs. the intel restructure with its August deadline). **Twenty-seven code
+commits are unreleased** plus the uncommitted date-picker slice; the installed app is 2.3.0 and
+contains none of it.
 
 **(Historical — 2026-07-21) — GROUP A WAS NEARLY CLOSED — A-3 AND B SHIPPED.** Drag-to-reorder
 steps (**A-3, `9c049e3`**) and a free-text notes field (**B, `4bc236d`**, save model: onBlur +
@@ -2156,11 +2202,24 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
            Open questions to settle in the diagnosis: the launch-time evaluator is **NEW machinery**
            (completion-anchoring had deliberately let us avoid a time-driven scheduler); and where
            missed dates live (a `missed_dates` JSON array on the row vs a child table).
-         - **(b) "OFF WORK" SETTING.** A per-team-member leave window in Settings during which the
-           evaluator **skips** the window (nothing marked missed) AND **no notifications** are sent to
-           that member. Stored per-user IN CLOUD (applies across devices, visible to the notification
-           sender). **DEPENDS ON C-recurring-3** (it suppresses that evaluator) — so **build
-           C-recurring-3 FIRST**, even though Dorian said "build both next."
+         - **(b) "OFF WORK" SETTING. ✅ SHIPPED (`f918e42`, 2026-07-21).** A per-member future-only
+           leave window (start→end) in a new cloud **`off_work`** table (PK `user_email`, RLS enabled) +
+           a local mirror the offline evaluator reads. The evaluator reads the acting user's window and
+           **skips stamping misses** for boundaries inside it (the `due_date` still rolls forward —
+           suppression only gates the STAMP, not the roll). It landed on the Team page (provisional
+           placement) rather than Settings: an **"on leave" pill**, a **self-service picker**, an
+           **"End leave"** action (deletes the row = you're back; forward-only) and an **Update** path.
+           IPC `offWork` get/set/list/clear; cloud DDL `sql/2026-07-21_off_work.sql`. **Notification-drop
+           DEFERRED** (blocked on notifications→cloud) with a documented stub. Verified both directions
+           via a local-seed test.
+       - **★ DATE-PICKER SLICE — BUILT, TESTING (uncommitted, 2026-07-21).** Not on the original queue;
+         surfaced while using off-work. Three bundled fixes across `Team.tsx` + `Todo.tsx`: (a) native
+         `<input type=date/time>` open on a body click via `onClick→showPicker()` + `[color-scheme:dark]`
+         (root cause: Chromium only opens the picker from the tiny edge glyph — a quirk, not a bug); (b)
+         upward-opening was MOOT (native OS auto-flips — no custom flip logic); (c) recurrence GATED ON A
+         DUE DATE (the panel `RecurrencePopover` disabled+greyed with a "set a due date first" hint when
+         `!item.due_date`) — kills the recurrence-without-due zombie state at the source. One recurrence
+         entry point (the panel); the quick-add row has none. Full learnings under the SLICE entry below.
     4. **The HEAD role + CARD PERMISSION TIERS, enforced in MAIN.** *(Was "`board.assign`
        per-board permission" — the capability is now carried by the unified **head** role, not
        a standalone `can_assign` flag. See the UNIFIED HEAD ROLE entry under Known issues.)*
@@ -2306,6 +2365,46 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
       `readPersonal` (`parseMissed`); the card/panel map it directly (no self-parse). The old
       `personalTodo:list` (`SELECT *`, unshaped, returned the raw string) was **deleted** in `9376ba7`
       — `todos:list` is now the single shaped read.
+  - **✅ SLICE OFF-WORK SHIPPED — per-member leave windows (`f918e42`, 2026-07-21, UNRELEASED).**
+    A future-only leave window (`start_date`→`end_date`) per member. New cloud **`off_work`** (PK
+    `user_email`, RLS enabled; DDL `sql/2026-07-21_off_work.sql`) is the source of truth; a local
+    `off_work` mirror lets the offline missed-evaluator read a window with no cloud roundtrip
+    (`cloud/offWork.ts` mirrors the `teamRoster.ts` shape: cloud-first → upsert-only `syncMirror` →
+    mirror fallback, never throws). The evaluator resolves the acting user's email
+    (`ownerEmail(userId)`), reads `offWorkMirror(email)` synchronously, and passes it as a `skipRange`
+    so boundaries inside the window are **not stamped** — the `due_date` STILL rolls forward
+    (suppression gates only the STAMP). A scheduler-side `refreshLeaveThenRun` does one best-effort
+    async cloud read to freshen the mirror (incl. cross-device) before each evaluator run. **"End
+    leave" = DELETE the row, not truncate `end_date`** — suppression is forward-only, so removing the
+    window just lets future boundaries stamp again; nothing already suppressed is un-suppressed.
+    Team page (provisional placement): "on leave" pill, self-service picker, End-leave/Update. IPC
+    `offWork` get/set/list/clear. **Notification-drop DEFERRED** (notifications are still
+    local/per-device — `db.ts:253`; the drop half is blocked on notifications→cloud, left as a
+    documented stub at `createNotification`).
+  - **✅ SLICE DATE-PICKER — BUILT, TESTING (uncommitted, 2026-07-21).** Three bundled fixes in
+    `Team.tsx` (off-work start/end) + `Todo.tsx` (new-todo date/time + panel recurrence). ★ **THREE
+    REUSABLE LEARNINGS:**
+    - **(a) Native date inputs only open the picker from the tiny edge glyph** — a body click does
+      nothing. Wire `onClick={e => { try { e.currentTarget.showPicker() } catch {} }}` (the try/catch
+      guards the already-open `InvalidStateError`; `showPicker()` is supported on Electron 31 /
+      Chromium 126) so the whole field opens it, and add **`[color-scheme:dark]`** so the glyph is
+      visible on the dark field. **The app-wide standard IS native inputs** — the custom `DatePopover`
+      exists in only ONE place (the To-Do panel due-date); every other date field (Contacts,
+      TeamCalendar, SocialTab, ManualInfoTab, TaskDetailPanel) is native. TaskDetailPanel's inputs
+      already had `[color-scheme:dark]`; these four didn't.
+    - **(b) Native OS picker positioning auto-flips** — the off-work block sits at the BOTTOM of the
+      Team page, and the native picker opens upward on its own. **Prefer native over a custom popover
+      for edge/bottom-of-screen date fields:** the existing `RecurrencePopover`/`DatePopover` use
+      `absolute … top-full` (always DOWNWARD, no flip/overflow logic), so a custom picker there WOULD
+      have clipped off-screen. No custom flip logic was needed or added.
+    - **(c) Prevent bad states at the SOURCE, not downstream.** Recurrence is now GATED ON A DUE DATE:
+      `RecurrencePopover` gained a `disabled` prop, passed `disabled={!item.due_date}`, greying the
+      trigger + showing a "set a due date first" hint. This kills the recurrence-without-due-date
+      zombie state (what produced the "call mom" mess) at creation — better than the old downstream
+      tolerance (`nextOccurrence` returning "no roll" on a NULL `due_date`). One entry point (the
+      panel) covers all paths; the quick-add row has no recurrence control. **Left for optional
+      cleanup:** 15 completed `call mom` rows (local + cloud, all `completed=1`/`recurrence=daily`/no
+      `due_date`) — benign, invisible, not deleted in this slice.
   - **✅ SLICE A-3 SHIPPED — DRAG-TO-REORDER personal steps (`9c049e3`, 2026-07-21, UNRELEASED).**
     `personalTodoStep:reorder(todoId, orderedStepIds)` dense-rewrites `position` 0..n-1 in one
     `db.transaction` (`AND todo_id=?` guard — no FK, so a foreign id no-ops instead of moving another

@@ -2,7 +2,7 @@
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-21
   Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
-                   UNRELEASED since v2.3.0 — TWENTY-SIX commits: 2d76b9a (visibleBoardIds
+                   UNRELEASED since v2.3.0 — TWENTY-SEVEN commits: 2d76b9a (visibleBoardIds
                    non-root no-join fix), b211638 (slice 0b-0 — realtime channel-health
                    instrumentation), the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
                    c60c9c2 (Social form-loss), ae067da (updateStatus phantom-row guard),
@@ -38,7 +38,21 @@
                    missed-occurrence tracking: launch/CET-midnight evaluator, roll-
                    forward + missed_dates, completion gate, Missed-repeats panel,
                    personalCloudRow hoist, complete/uncomplete prefix-hardening) and
-                   9376ba7 (chore — removed the orphaned personalTodo:list SELECT * channel).
+                   9376ba7 (chore — removed the orphaned personalTodo:list SELECT * channel);
+                   and f918e42 (OFF-WORK / leave-window — per-member future-only leave
+                   window in a new cloud off_work table (PK user_email, RLS) + local
+                   mirror; the missed-evaluator reads the acting user's window and skips
+                   STAMPING misses inside it (due_date still rolls forward); Team page
+                   on-leave pill + self-service picker + End-leave/Update; offWork
+                   get/set/list/clear IPC; notification-drop DEFERRED).
+                   PLUS the uncommitted DATE-PICKER slice (BUILT, TESTING — not a commit
+                   yet): native <input type=date/time> open on a body click via
+                   onClick->showPicker() + [color-scheme:dark] for glyph visibility (4
+                   inputs); native OS positioning auto-flips (off-work-at-bottom picker
+                   never clips); and RECURRENCE GATED ON A DUE DATE (panel
+                   RecurrencePopover disabled+greyed with a "set a due date first" hint
+                   when no due_date) — kills the recurrence-without-due zombie state at
+                   the source.
                    NOTE: A-2's commit subject says "editable title" but title is
                    READ-ONLY (no setTitle handler exists).
                    The installed app is 2.3.0 and contains NONE of them.
@@ -46,7 +60,8 @@
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD 9376ba7   |   353 commits   |   ~41,150 lines of TS/TSX
+                   HEAD f918e42   |   355 commits   |   ~41,570 lines of TS/TSX
+                   (+ uncommitted date-picker slice in the working tree)
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -108,6 +123,49 @@
   Sources — iterated BEFORE any spec / Part-A / diagnosis / slices, same design-first approach
   as the To-Do prototype. To-Do slice 5 (intel culling directive) is its on-ramp; shared
   prerequisite: notifications → cloud.
+  See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-21 — OFF-WORK LEAVE WINDOWS (f918e42, UNRELEASED) + DATE-PICKER SLICE (BUILT, TESTING) ──
+  The last two To-Do features before the team thread. Off-work SHIPPED; date-picker built but
+  uncommitted (Dorian tests first).
+  • OFF-WORK (f918e42). A per-member future-only leave window (start_date→end_date). New cloud
+    off_work table (PK user_email, RLS enabled; DDL sql/2026-07-21_off_work.sql) is the source of
+    truth; a local off_work mirror lets the OFFLINE missed-evaluator read a window with no cloud
+    roundtrip. cloud/offWork.ts mirrors teamRoster.ts: cloud-first → upsert-only syncMirror → mirror
+    fallback, never throws. The evaluator resolves the acting user's email (ownerEmail), reads
+    offWorkMirror(email) synchronously, and passes it as a skipRange so boundaries inside the window
+    are NOT stamped — the due_date STILL rolls forward (suppression gates only the STAMP). Scheduler
+    refreshLeaveThenRun does one best-effort async cloud read to freshen the mirror (incl.
+    cross-device) before each run. "End leave" = DELETE the row (not truncate end_date) — suppression
+    is forward-only, so removing the window just lets future boundaries stamp again; nothing already
+    suppressed is un-suppressed. Team page (provisional): on-leave pill, self-service picker,
+    End-leave/Update. IPC offWork get/set/list/clear. Notification-drop DEFERRED (notifications are
+    still local/per-device; blocked on notifications→cloud, left as a documented stub). Suppression
+    verified both directions via a local-seed test.
+  • DATE-PICKER (built, TESTING — not yet committed). Three bundled fixes in Team.tsx + Todo.tsx,
+    with three reusable learnings:
+    (a) Native <input type=date/time> only open the picker from the tiny edge glyph — a body click
+        does nothing. Wired onClick→showPicker() (try/catch guards the already-open InvalidStateError;
+        supported on Electron 31 / Chromium 126) so the whole field opens it, plus [color-scheme:dark]
+        so the glyph is visible on the dark field. Native inputs ARE the app-wide standard (the custom
+        DatePopover exists in only one place); TaskDetailPanel already had [color-scheme:dark].
+    (b) Native OS picker positioning auto-flips — the off-work block is at the BOTTOM of the Team page
+        and the native picker opens upward on its own. No custom flip logic needed or added; a custom
+        popover (top-full, downward-only) WOULD have clipped. Prefer native for edge/bottom date fields.
+    (c) Prevent bad states at the SOURCE: recurrence is now GATED ON A DUE DATE. RecurrencePopover
+        gained a disabled prop, passed disabled={!item.due_date}, greying the trigger + a "set a due
+        date first" hint — killing the recurrence-without-due-date zombie state (the "call mom" mess)
+        at creation, better than the old downstream "no due → no roll" tolerance. One entry point (the
+        panel) covers all; the quick-add row has no recurrence control.
+  • "call mom" RESOLVED — a stray daily recurrence respawning on completion; recurrence cleared.
+    15 completed call-mom spawn rows remain (local + cloud, completed=1/daily/no due_date) — benign,
+    invisible; optional cleanup deferred.
+  • NEXT — a DELIBERATE FORK: (A) the To-Do team/collaboration thread (slice 2.5 off-card assignment,
+    then 2.6/4/5, with notifications→cloud a shared prerequisite that also unblocks the deferred
+    off-work notification-drop); OR (B) JUMP to the Intelligence + Info Pages restructure (the primary
+    goal; HARD deadline: intel process by end of July / publish in August — the "Path 2"
+    reprioritization). The August deadline argues for starting the intel restructure's design-first
+    phase soon.
   See HANDOFF.md "Start here" for the resume point.
 
   ── 2026-07-21 — C-RECURRING-3: MISSED-OCCURRENCE TRACKING (a6f82d7, 9376ba7, UNRELEASED) ──
