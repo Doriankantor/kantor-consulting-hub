@@ -2,7 +2,7 @@
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-21
   Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
-                   UNRELEASED since v2.3.0 — TWENTY-FOUR commits: 2d76b9a (visibleBoardIds
+                   UNRELEASED since v2.3.0 — TWENTY-SIX commits: 2d76b9a (visibleBoardIds
                    non-root no-join fix), b211638 (slice 0b-0 — realtime channel-health
                    instrumentation), the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
                    c60c9c2 (Social form-loss), ae067da (updateStatus phantom-row guard),
@@ -33,8 +33,12 @@
                    item.id, plain textarea no debounce, hand-run cloud DDL); and
                    C-recurring, closing Group A: 1795418 (C-recurring-1 —
                    completion-anchored spawn-on-complete backend: 4 columns +
-                   nextOccurrence string date math) and 76bafb0 (C-recurring-2 —
-                   recurrence picker UI + card repeat chip).
+                   nextOccurrence string date math), 76bafb0 (C-recurring-2 —
+                   recurrence picker UI + card repeat chip), a6f82d7 (C-recurring-3 —
+                   missed-occurrence tracking: launch/CET-midnight evaluator, roll-
+                   forward + missed_dates, completion gate, Missed-repeats panel,
+                   personalCloudRow hoist, complete/uncomplete prefix-hardening) and
+                   9376ba7 (chore — removed the orphaned personalTodo:list SELECT * channel).
                    NOTE: A-2's commit subject says "editable title" but title is
                    READ-ONLY (no setTitle handler exists).
                    The installed app is 2.3.0 and contains NONE of them.
@@ -42,7 +46,7 @@
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD 76bafb0   |   350 commits   |   ~40,800 lines of TS/TSX
+                   HEAD 9376ba7   |   353 commits   |   ~41,150 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -104,6 +108,44 @@
   Sources — iterated BEFORE any spec / Part-A / diagnosis / slices, same design-first approach
   as the To-Do prototype. To-Do slice 5 (intel culling directive) is its on-ramp; shared
   prerequisite: notifications → cloud.
+  See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-21 — C-RECURRING-3: MISSED-OCCURRENCE TRACKING (a6f82d7, 9376ba7, UNRELEASED) ──
+  The full recurrence feature (C-recurring-1/2/3) is now complete.
+  • THE APP'S ONE TIME-DRIVEN MACHINE. C-recurring-1 avoided a scheduler; missed-tracking needs
+    one because a boundary can pass with the app closed. New column missed_dates (guarded local
+    ALTER + hand-run cloud DDL sql/2026-07-21_personal_todos_missed.sql) — a JSON array of passed
+    'YYYY-MM-DD' boundaries.
+  • EVALUATOR (src/main/todos/missedEvaluator.ts): for every recurring, incomplete row with
+    due_date < cetToday(), loops nextOccurrence, stamping each passed boundary into missed_dates
+    (unless in a skipRange) and rolling due_date forward, in ONE pass (closed 3 weeks/weekly ⇒ 3
+    misses + due_date on the next occurrence). Guard caps at 10000; bails if nextDue <= due. Writes
+    on the same 1b path (local UPDATE then un-awaited syncPersonalWrite via canonical personalCloudRow).
+  • SCHEDULER: one module-level timer (startMissedSchedule/stopMissedSchedule) — runs at login and
+    re-arms for the next CET midnight (msToNextCetMidnight, +5s; DST-safe, idempotent). Torn down in
+    the exact 4 realtime places: logout/user-switch (ipc app:setActingUser) + window-all-closed/
+    before-quit (index.ts). Acting user is known only at login (currentActingUserId), hence the hook.
+  • GATE: personalTodo:complete returns {ok:false, reason:'missed'} BEFORE any write when misses
+    exist (net-new failure shape both sides); renderer opens the panel + a 4s "Clear missed repeats
+    first" cue + an amber card ring (completion isn't optimistic, nothing reverts). clearMissed(id,
+    date) is bookkeeping-only — pure array edit (empty→NULL), never spawns/never touches due_date.
+  • CET SPLIT: new main-side cetToday() (src/main/todos/cetToday.ts, Intl en-CA Europe/Berlin),
+    DUPLICATE-BY-DESIGN of the renderer urgency.ts copy (no shared main/renderer module).
+  • personalCloudRow HOIST: the clobber-critical cloud column list moved to a canonical exported
+    builder in cloud/personalSync.ts; ipc cloudRowFor delegates and the evaluator imports it — ONE
+    column list across three call sites.
+  • PREFIX-HARDENING (same session): personalTodo:complete/uncomplete were the only mutating
+    handlers binding the RAW id; a personal-<uuid> display id matched zero rows and returned ok:true
+    doing nothing. Both now strip via bareTodoId once and use the bare key everywhere (incl. the
+    series_id ?? key spawn seed). A "spawn returns null" DevTools scare was exactly this.
+  • CLEANUP (9376ba7): deleted the orphaned personalTodo:list SELECT * channel (unshaped, returned
+    missed_dates as a raw string). The sole shaped read is now todos:list → readPersonal (parseMissed).
+  • FOUR TEST LESSONS (cost hours): (iii) the app + evaluator read LOCAL sqlite — seed under the
+    acting user_id, never cloud-first (cloud is user_email-keyed and doesn't sync down). (iv) test
+    via window.api.todos.list, NOT the deleted personalTodo.list. (v) JSON.stringify in a diagnostic
+    read makes a clean array LOOK double-encoded — read with console.log(value)+typeof+Array.isArray.
+    (vi) fresh series_id per spawn test; verify a seed took before triggering. See HANDOFF learnings.
+  • NEXT: the "Off work" leave-window setting — the evaluator's skipRanges seam is already wired.
   See HANDOFF.md "Start here" for the resume point.
 
   ── 2026-07-21 — C-RECURRING: RECURRING PERSONAL TO-DOS (1795418, 76bafb0, UNRELEASED) ──

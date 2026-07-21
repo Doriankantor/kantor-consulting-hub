@@ -1,32 +1,40 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-21 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `76bafb0` (code; docs commit on top this session), `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: TWENTY-FOUR code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale), `065f6ce` (slice 2 — the `listTodos` aggregation layer), `d43445d` (slice 3a — the visible To-Do tab), `4c240bd` (slice 3b — the personal Step Rail), `7d5a38a` (slice A-1 — detail-panel color/starred columns + setters), `f1fb6df` (slice A-2 — the personal detail panel UI), `9c049e3` (slice A-3 — drag-to-reorder personal steps), `4bc236d` (slice B — personal-to-do notes), `1795418` (slice C-recurring-1 — completion-anchored recurrence backend) and `76bafb0` (slice C-recurring-2 — recurrence picker UI + row chip). The installed app is 2.3.0 and contains NONE of them.** ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: TWENTY-FOUR code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-21 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `9376ba7`, `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: TWENTY-SIX code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale), `065f6ce` (slice 2 — the `listTodos` aggregation layer), `d43445d` (slice 3a — the visible To-Do tab), `4c240bd` (slice 3b — the personal Step Rail), `7d5a38a` (slice A-1 — detail-panel color/starred columns + setters), `f1fb6df` (slice A-2 — the personal detail panel UI), `9c049e3` (slice A-3 — drag-to-reorder personal steps), `4bc236d` (slice B — personal-to-do notes), `1795418` (slice C-recurring-1 — completion-anchored recurrence backend), `76bafb0` (slice C-recurring-2 — recurrence picker UI + row chip), `a6f82d7` (slice C-recurring-3 — missed-occurrence tracking) and `9376ba7` (chore — remove orphaned personalTodo:list channel). The installed app is 2.3.0 and contains NONE of them.** ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: TWENTY-SIX code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
-**LATEST (2026-07-21) — HEAD `76bafb0`, tree clean. ★ GROUP A IS CLOSED — RECURRING PERSONAL
-TO-DOS ARE LIVE END-TO-END.** C-recurring shipped in two slices: **C-recurring-1 (`1795418`,
-backend spawn-on-complete)** and **C-recurring-2 (`76bafb0`, recurrence picker UI + row chip)**.
-Completing a recurring personal to-do now spawns its next occurrence; a "Repeat" row in the detail
-panel + a repeat chip on the card let the user set None/Daily/Weekly/Weekdays/Monthly/Yearly.
-**Locked semantics: completion-anchored, spawn-on-complete, exactly ONE active instance, a
-`spawned_successor` idempotency guard (a re-complete after revive never double-spawns), and
-string-only date math** (`nextOccurrence` — month-end clamp, Feb-29→Feb-28, weekdays skip). Needs
-the hand-run cloud DDL `sql/2026-07-21_personal_todos_recurrence.sql` (**already run**). Detail: the
-**SLICE C-recurring-1** and **C-recurring-2** entries under the To-Do overhaul.
+**LATEST (2026-07-21) — HEAD `9376ba7`, tree clean. ★ THE FULL RECURRENCE FEATURE
+(C-recurring-1/2/3) IS COMPLETE — MISSED-OCCURRENCE TRACKING SHIPPED.** **C-recurring-3
+(`a6f82d7`)** adds a time-driven **missed-occurrence evaluator** (runs at login + on a
+CET-midnight timer) that rolls a stale `due_date` forward one boundary at a time, stamping each
+passed boundary into a `missed_dates` array; **completion is GATED** until the misses are cleared
+(`{ok:false, reason:'missed'}`), surfaced as an amber card ring + "missed: MM-DD" chips + a
+**"Missed repeats"** panel section (each row Mark-done clears one — bookkeeping-only, never spawns).
+The evaluator's **`skipRanges` seam is already wired** for the Off-work setting. A same-session
+**prefix-hardening** made `personalTodo:complete`/`uncomplete` strip the `personal-` display prefix
+(they were the only mutating handlers that didn't — a display id silently no-op'd with `ok:true`),
+and the clobber-critical cloud column list was hoisted to a canonical **`personalCloudRow`** shared
+by the ipc handlers and the evaluator. A follow-up cleanup (`9376ba7`) **deleted the orphaned
+`personalTodo:list` `SELECT *` channel** — the sole shaped read path is now `todos:list` →
+`readPersonal` (parseMissed applied). Needs the hand-run cloud DDL
+`sql/2026-07-21_personal_todos_missed.sql`. (The earlier arc — **C-recurring-1 `1795418`**
+spawn-on-complete backend, **C-recurring-2 `76bafb0`** picker UI — is detailed in the **SLICE
+C-recurring-1/2/3** entries under the To-Do overhaul.)
 
 **C-files is PARKED** — deferred, non-essential; personal to-dos have no attachment precedent, so
 picking it up later is its own diagnose-first project, not the next step.
 
-**NEXT — two newly-queued To-Do features Dorian wants built next (design-first), AHEAD of resuming
-team work:** (a) **C-recurring-3 — missed-occurrence tracking** (a NEW time-driven evaluator that
-stamps "missed: <date>" chips + a "Missed repeats" panel section; bookkeeping-only, does NOT spawn),
-then (b) the **"Off work" leave-window setting** (suppresses that evaluator + notifications for a
-member). **Build C-recurring-3 FIRST — the Off-work setting depends on it.** Full spec: the
-**QUEUED: C-recurring-3 + OFF-WORK** block under the To-Do overhaul. Only after these does the
-**team/collaboration thread Group A was blocking (2.5 / 2.6 / 4 / 5)** resume. **★ The finish-To-Do-
-before-team direction still holds** — these two features are To-Do work, not a pivot to team work.
-**Twenty-four code commits are unreleased**; the installed app is 2.3.0 and contains none of them.
+**NEXT — the "Off work" leave-window setting (design-first).** C-recurring-3 is DONE, so the one
+remaining To-Do feature before the team thread is the **per-team-member leave window** in Settings:
+during it the missed-evaluator **skips** boundaries (nothing stamped missed) AND **no notifications**
+fire to that member. It hooks the **`skipRanges` seam already wired into
+`runMissedOccurrenceEvaluator`** (a `SkipRange[]` param + `dateFallsInAnyRange`, defaulted `[]`
+today), and is **stored per-user IN CLOUD** (applies across devices, visible to the notification
+sender). Full spec: the **QUEUED: C-recurring-3 + OFF-WORK** block under the To-Do overhaul. Only
+after Off-work does the **team/collaboration thread Group A was blocking (2.5 / 2.6 / 4 / 5)** resume.
+**★ The finish-To-Do-before-team direction still holds.** **Twenty-six code commits are unreleased**;
+the installed app is 2.3.0 and contains none of them.
 
 **(Historical — 2026-07-21) — GROUP A WAS NEARLY CLOSED — A-3 AND B SHIPPED.** Drag-to-reorder
 steps (**A-3, `9c049e3`**) and a free-text notes field (**B, `4bc236d`**, save model: onBlur +
@@ -1254,6 +1262,35 @@ ops, deleting each on success). So an empty queue ⇒ every attempted write land
 for reasoning about sync state, and it independently confirms whether a hand-run cloud DDL was
 applied (if a column were missing, the upsert would 400 and park in the queue).
 
+**(iii) TEST-DATA LOCATION — the app and the missed-evaluator read LOCAL sqlite, NOT cloud.** Hand-seed
+test rows in the LOCAL DB under the **acting user's `user_id`** — NEVER cloud-first. A cloud-only INSERT
+is invisible to the running session for TWO reasons: it's the wrong store (the app reads local; cloud
+rows don't sync DOWN except via realtime the session may not receive), AND cloud `personal_todos` is keyed
+by **`user_email`** while local is keyed by **`user_id`** — a cloud row won't even resolve to the session's
+`user_id`. This cost real time in C-recurring-3 testing. (Complement of learning (i): (i) is "local seeds
+don't go UP"; this is "cloud seeds don't come DOWN / wrong key".)
+
+**(iv) READ CHANNEL — personal to-dos render via `window.api.todos.list`, NOT `personalTodo.list`.**
+`todos:list` → `listTodos` → `readPersonal` applies `parseMissed` and coerces booleans, returning shaped
+`TodoItem`s. The old `personalTodo:list` was an unshaped `SELECT *` (returned `missed_dates` as the raw
+JSON string, booleans as ints) and is now **DELETED** (`9376ba7`). When hand-testing in DevTools, query
+`await window.api.todos.list('<userId>')` and find the `personal-…` item — NOT `personalTodo.list`, which
+no longer exists. A "type contract broken" scare this session was purely from reading the wrong (now-gone)
+channel.
+
+**(v) CONSOLE ARTIFACT — `JSON.stringify(value)` in a diagnostic read makes a clean array LOOK
+double-encoded.** A `console.log(JSON.stringify(x))` (or an inspector that re-serializes) renders a plain
+`["2026-06-30",…]` as `"[\"2026-06-30\",…]"` — escaped quotes that look like a double-encode. Read the TRUE
+shape with `console.log(value)` + `typeof value` + `Array.isArray(value)`, not a stringified view. An entire
+"double-encode" investigation this session chased this artifact; disk and display were single-encoded and
+correct the whole time.
+
+**(vi) TEST HYGIENE (reinforced).** Beyond (i): reusing ONE `series_id` across re-seeds **stacks spawn
+chains** — use a fresh id per spawn test. **Verify a seed actually took** (`SELECT` it) BEFORE triggering,
+because a `DELETE … WHERE series_id=…` can catch the base row via its own self-referencing `series_id` and
+leave you testing a row that isn't there. Evaluator/app writes DO sync up (clean cloud residue separately);
+raw-SQL seeds do not.
+
 ## ⚠ Lesson — NEVER DEFINE A COMPONENT INSIDE ANOTHER COMPONENT'S BODY
 
 **The remount trap (found in 3b, 2026-07-20). It cost the add-step focus bug AND THREE failed
@@ -2089,6 +2126,13 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
          the DatePopover machinery) as a "Repeat" row after DUE; a repeat chip on the card; one
          `RECUR_LABELS` source of truth; inline repeat SVG (no icon dep). Detail in the **SLICE
          C-recurring-2** entry below.
+       - C-recurring-3. ✅ **DONE — missed-occurrence tracking + roll-forward + completion gate
+         (`a6f82d7`, 2026-07-21, UNRELEASED)**, plus a follow-up cleanup (`9376ba7`) removing the
+         orphaned `personalTodo:list` channel. A time-driven evaluator (login + CET-midnight timer)
+         rolls a stale `due_date` forward stamping `missed_dates`; completion is GATED until misses
+         are cleared; amber card chips + a "Missed repeats" panel section clear them (bookkeeping-
+         only, never spawns); the `skipRanges` seam is wired for Off-work. Detail in the **SLICE
+         C-recurring-3** entry below.
        - **★ GROUP A IS CLOSED.** A-1/A-2/A-3/B/C-recurring all shipped. **C-files is PARKED** —
          deferred, non-essential; personal to-dos have no attachment precedent, so it's its own
          diagnose-first project if revisited, NOT the next step.
@@ -2099,7 +2143,9 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
          redesign LATER. Recorded so a future session does not "helpfully" jump to slice 4 next.
        - **★ QUEUED: C-recurring-3 + OFF-WORK (Dorian's next build targets, 2026-07-21 — DESIGN-FIRST,
          diagnose before building).** Two features, in this order (the second depends on the first):
-         - **(a) C-recurring-3 — MISSED-OCCURRENCE TRACKING.** Keep spawn-on-completion exactly as
+         - **(a) C-recurring-3 — MISSED-OCCURRENCE TRACKING. ✅ SHIPPED (`a6f82d7`, 2026-07-21).**
+           Built as spec'd below — see the **SLICE C-recurring-3** entry for what actually landed.
+           Kept spawn-on-completion exactly as
            C-recurring-1 built it, but ADD a **time-driven evaluator** (runs at launch, maybe
            periodically) that stamps a **"missed: <date>"** chip when an interval boundary passes
            without the active instance being completed (room for SEVERAL chips beside the repeat
@@ -2220,6 +2266,46 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
     **repeat chip on `PersonalCard`** beside the due pill. **One `RECUR_LABELS` source of truth** drives
     trigger + rows + chip so labels never drift; `isRecurKey` validates renderer-side (like
     `isTodoColorKey`); the repeat glyph is an **inline SVG** (mockup's path, no icon dependency).
+  - **✅ SLICE C-recurring-3 SHIPPED — MISSED-OCCURRENCE TRACKING + ROLL-FORWARD + COMPLETION GATE
+    (`a6f82d7`, 2026-07-21, UNRELEASED)**, plus a follow-up cleanup (`9376ba7`) removing the orphaned
+    `personalTodo:list` channel. The one piece of **time-driven machinery** in the app — C-recurring-1
+    deliberately avoided a scheduler; missed-tracking needs one because a boundary can pass with the
+    app closed. **`missed_dates`** (one new column: guarded local ALTER + hand-run cloud DDL
+    `sql/2026-07-21_personal_todos_missed.sql`) is a JSON array of 'YYYY-MM-DD' boundary dates.
+    - **THE EVALUATOR** (`src/main/todos/missedEvaluator.ts`): for every recurring, incomplete row
+      whose `due_date < cetToday()`, it loops `nextOccurrence`, stamping each passed boundary into
+      `missed_dates` (unless it falls in a `skipRange`) and rolling `due_date` forward, in ONE pass
+      (app closed 3 weeks / weekly ⇒ 3 misses + `due_date` on the next occurrence). A guard caps the
+      loop at 10000 and bails if `nextDue <= due`. Writes go through the SAME 1b path (local UPDATE
+      then un-awaited `syncPersonalWrite` via the canonical `personalCloudRow`), no isOnline guard.
+    - **SCHEDULER**: a single module-level timer (`startMissedSchedule`/`stopMissedSchedule`) — runs
+      the evaluator at login and re-arms for the next **CET midnight** (`msToNextCetMidnight`, +5s
+      buffer; DST drift harmless — the evaluator is idempotent and reschedules daily). Torn down in
+      the EXACT four places realtime is: **logout / user-switch** (ipc `app:setActingUser`, beside the
+      realtime lifecycle) and **window-all-closed / before-quit** (`index.ts`). ⚠ The acting user is
+      known only at login (`currentActingUserId` is set in `app:setActingUser`, not at `whenReady`) —
+      that's why the login hook lives there.
+    - **THE GATE**: `personalTodo:complete` returns **`{ok:false, reason:'missed'}`** (net-new failure
+      shape, both sides) BEFORE any write when `missed_dates` is non-empty. Renderer opens the panel +
+      flashes a 4s "Clear missed repeats first ↓" cue + an amber card ring; completion isn't optimistic
+      so nothing reverts. **`personalTodo:clearMissed(id, date)`** is bookkeeping-only — a pure array
+      edit (empty→NULL), never spawns / never touches `due_date`.
+    - **CET AUTHORITY SPLIT**: a NEW **main-side `cetToday()`** (`src/main/todos/cetToday.ts`, Intl
+      `en-CA` Europe/Berlin) — DUPLICATE-BY-DESIGN of the renderer's `urgency.ts` copy (no shared
+      main/renderer module); both carry a "keep in sync" note.
+    - **`personalCloudRow` HOIST**: the clobber-critical cloud column list moved to a canonical
+      exported builder in `cloud/personalSync.ts`; ipc `cloudRowFor` now delegates, and the evaluator
+      imports the same builder — ONE column list across three call sites (added `missed_dates` there).
+    - **PREFIX-HARDENING (same session)**: `personalTodo:complete`/`uncomplete` were the ONLY mutating
+      handlers that bound the RAW id instead of `bareTodoId(id)` — a `personal-<uuid>` display id
+      matched zero rows and returned `ok:true` having done nothing (the setter zero-match landmine).
+      Both now strip once at the top and use the bare `key` for every statement (incl. the
+      `series_id ?? key` spawn seed). A DevTools "spawn returns null" scare traced to exactly this: the
+      test called `complete('personal-…')` with the prefix.
+    - **RENDER PATH**: `missed_dates` reaches the renderer as a real `string[]` via `todos:list` →
+      `readPersonal` (`parseMissed`); the card/panel map it directly (no self-parse). The old
+      `personalTodo:list` (`SELECT *`, unshaped, returned the raw string) was **deleted** in `9376ba7`
+      — `todos:list` is now the single shaped read.
   - **✅ SLICE A-3 SHIPPED — DRAG-TO-REORDER personal steps (`9c049e3`, 2026-07-21, UNRELEASED).**
     `personalTodoStep:reorder(todoId, orderedStepIds)` dense-rewrites `position` 0..n-1 in one
     `db.transaction` (`AND todo_id=?` guard — no FK, so a foreign id no-ops instead of moving another
