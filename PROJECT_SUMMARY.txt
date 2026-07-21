@@ -171,6 +171,11 @@
     goal; HARD deadline: intel process by end of July / publish in August — the "Path 2"
     reprioritization). The August deadline argues for starting the intel restructure's design-first
     phase soon.
+  • BACKLOG (preserved, whichever fork): deferred off-work notification-drop (needs notifications→
+    cloud); To-Do write-through CORE already fixed (cc6aedf) — only the offline-surfacing gap +
+    todo:dismiss remain; T6b (suggested-tag chips not clickable on Interviews/Documents/Social
+    compose); consolidate all people-management under Team (off-work UI placement is provisional,
+    rehomes there); the info_page_sources migration; optional cleanup of the 15 dead call-mom rows.
   See HANDOFF.md "Start here" for the resume point.
 
   ── 2026-07-21 — C-RECURRING-3: MISSED-OCCURRENCE TRACKING (a6f82d7, 9376ba7, UNRELEASED) ──

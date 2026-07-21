@@ -54,6 +54,32 @@ remain in `personal_todos` (local + cloud), all `completed=1`, `recurrence=daily
   the intel restructure's design-first phase soon** — flagged here so the fork is made
   consciously, not by default-continuing the To-Do thread.
 
+**★ BACKLOG / PARKED ITEMS — DO NOT DROP (consolidated index; full detail at the linked
+sections).** Whichever fork is chosen, these remain queued:
+- **Deferred off-work NOTIFICATION-DROP** — the "no notifications to a member on leave" half of
+  off-work is a documented stub (`createNotification`), BLOCKED on **notifications→cloud**
+  (notifications are still local/per-device, `db.ts:253`). Wire it when notifications→cloud ships
+  (that same prerequisite sits under fork A).
+- **To-Do write-through — CORE ALREADY FIXED (`cc6aedf`).** `todo:complete`/`uncomplete` now route
+  through cloud (`updateTask`) so completions survive re-sync — see the ✅ slice under the To-Do
+  overhaul. **Do NOT re-diagnose the revert.** Two follow-ups it LEFT open: the **offline
+  surfacing gap** (a cloud-backed to-do write while offline throws with no UI error — folds into the
+  overhaul UI pass) and **`todo:dismiss` still local-only** (`todo_dismissed` table, deliberately
+  untouched). The stale "route those writes through cloud" phrasings in KNOWN GAPS / NEXT UP are
+  reconciled below.
+- **T6b + per-card tag scoping** — extend the T6a `SuggestedTagChip` so suggested-tag chips are
+  clickable on the Intelligence **Interviews / Documents / Social** compose tabs (confirmed
+  not-clickable in testing); combined into one slice with per-card tag scoping (same prop threading).
+- **Consolidate ALL people-management under Team (the Team console / Team-view redesign).** ROOT-only
+  surface merging roster + work-board membership + intel-project membership (one member↔head toggle
+  per board). **The off-work UI's current Team-page placement is PROVISIONAL and rehomes here.** A
+  2-iteration mockup exists but needs a dk-not-root revision before it becomes a spec.
+- **Intelligence + Info Pages RESTRUCTURE — the PRIMARY milestone** (fork B), hard deadline: intel
+  process by end of July / publish in August. Includes the LAST cloud migration
+  (`info_page_sources`, the pointer tier under `intelligence_sources`).
+- **Optional cleanup of the 15 dead "call mom" rows** (recurrence-without-due-date, local + cloud,
+  all `completed=1`) — benign/invisible; not urgent.
+
 ---
 
 **(Historical — 2026-07-21) — HEAD `9376ba7`, tree clean. ★ THE FULL RECURRENCE FEATURE
@@ -677,10 +703,12 @@ tsc held at the 8-error baseline (zero new).
 - **Cross-device DELETE relies on realtime's `applyToMirror`** — the read sync is
   upsert-only and never removes; if the DELETE event is missed (app closed during it),
   the stale mirror row lingers until the row is touched again.
-- **To-Do write-through revert** — `todo:complete`/`uncomplete`/`dismiss` still write
-  `column_id`/`completed_at` to LOCAL `workspace_tasks` only, so a To-Do completion
-  REVERTS on the next successful `getTasks` (the mirror overwrites it from cloud). Fix =
-  route those writes through cloud (`updateTask`/archive). Its own slice.
+- **To-Do write-through revert — CORE FIXED (`cc6aedf`, 2026-07-18, UNRELEASED).**
+  `todo:complete`/`uncomplete` now route through cloud (`updateTask`, `completed_at` added to the
+  allowlist AND `TASK_COLS`) BEFORE the local write, so completions survive the next `getTasks`
+  re-sync. **Do NOT re-diagnose.** STILL OPEN (folded into the overhaul, not this gap): the offline
+  surfacing gap (a cloud-backed write while offline throws with no UI error) and `todo:dismiss`
+  (a different `todo_dismissed` handler, deliberately left local-only).
 - **`info_page_sources` migration** — the LAST table; the pointer tier under the
   already-migrated `intelligence_sources`.
 - **Local `known_tags` global-unique index** — `db.ts:770` recreates the `(name,type)`
@@ -828,8 +856,9 @@ DORIAN ALONE** and can stay local indefinitely. This **INVERTS the old Phase-B p
    / 1 document" figures — all three were wrong.)
 1. **`info_page_sources` migration** — the LAST table (the pointer tier under the
    migrated `intelligence_sources`; same template).
-2. **To-Do write-through** — route `todo:complete`/`uncomplete`/`dismiss` through cloud so
-   To-Do completions stop reverting on the next `getTasks` (see KNOWN GAPS). Small slice.
+2. **To-Do write-through — CORE DONE (`cc6aedf`).** `complete`/`uncomplete` route through cloud;
+   completions no longer revert on the next `getTasks`. Remaining (folded into the overhaul, not a
+   standalone slice): the offline surfacing gap + `todo:dismiss` (still local-only). See KNOWN GAPS.
 3. **To-Do data half** — `personal_todos` → cloud, personal steps,
    `board_members.can_assign`, `assigned_by`, completion notification.
 4. **Pre-route editing** (locked decision — full statement under **Known issues → Pre-route
@@ -1886,9 +1915,11 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
     a UI-only permission is a suggestion, not a gate. A head who is silently not a member
     would fail every membership-scoped read gate while the console showed them as attached.
 - **TEAM CONSOLE (design-first; specced and built AFTER 1c finishes).** The queued
-  *"consolidate access management under the Team page"* item. **ROOT-ONLY.** Consolidates the
-  roster + work-board membership + intel-project membership into one surface — **now ONE
-  member↔head toggle per board** under the unified head role, not member + can-assign + head.
+  *"consolidate ALL people-management under the Team page"* item — the Team-view redesign.
+  **ROOT-ONLY.** Consolidates the roster + work-board membership + intel-project membership into
+  one surface — **now ONE member↔head toggle per board** under the unified head role, not member +
+  can-assign + head. **⚠ The off-work / leave-window UI's current Team-page placement is
+  PROVISIONAL and rehomes into this redesign** (it was dropped on the Team page as a v1 stopgap).
   - **An interactive mockup EXISTS (2 iterations, design-first).** ⚠ **It NEEDS revision for
     dk-not-root before it becomes a spec** — it was drawn under the old assumption. Revise
     the mockup → write the spec (a `TODO_OVERHAUL_PROMPT`-equivalent) → then build.
