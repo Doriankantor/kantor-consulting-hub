@@ -553,6 +553,25 @@ export async function updateContent(id: string, content: string): Promise<{ ok: 
   return { ok: true }
 }
 
+// Social edit: patch a saved social post's editable fields in one cloud write, then
+// re-sync the mirror via resyncRow — exactly like updateContent. Only keys in the
+// SOCIAL_EDITABLE allowlist are ever written; every other key in `patch` (url,
+// geography, relevance/score, project_board_id, tags, status, ai/human blocks) is
+// ignored. An empty filtered patch is a no-op that returns { ok:true } without a write.
+export async function updateSocialFields(id: string, patch: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+  if (!isOnline()) return OFFLINE
+  const SOCIAL_EDITABLE = ['platform','handle','published_at','content','location_mentioned','actors_mentioned','confidence','categories_json'] as const
+  const update: Record<string, unknown> = {}
+  for (const k of SOCIAL_EDITABLE) {
+    if (patch[k] !== undefined) update[k] = patch[k]
+  }
+  if (Object.keys(update).length === 0) return { ok: true }
+  const { error } = await cloud.from('intelligence_sources').update(update).eq('id', id)
+  if (error) return { ok: false, error: `updateSocialFields failed: ${error.message}` }
+  await resyncRow(id)
+  return { ok: true }
+}
+
 export async function updateReconciledNotes(id: string, html: string): Promise<{ ok: boolean; error?: string }> {
   if (!isOnline()) return OFFLINE
   const h = (html ?? '').trim()

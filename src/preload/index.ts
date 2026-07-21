@@ -311,6 +311,7 @@ const api = {
     routeToProject:       (sourceId: string, boardId: string) => ipcRenderer.invoke('intelligence:routeToProject', sourceId, boardId),
     updateNotes:          (id: string, notesHtml: string)    => ipcRenderer.invoke('intelligence:updateNotes', id, notesHtml),
     updateContent:        (id: string, content: string)      => ipcRenderer.invoke('intelligence:updateContent', id, content),
+    updateSocialFields:   (id: string, patch: Record<string, any>) => ipcRenderer.invoke('intelligence:updateSocialFields', id, patch),
     saveAiAnalysis:       (id: string, ai: Record<string, unknown>)         => ipcRenderer.invoke('intelligence:saveAiAnalysis', id, ai),
     saveReconciled:       (id: string, reconciled: Record<string, unknown>) => ipcRenderer.invoke('intelligence:saveReconciled', id, reconciled),
     updateReconciledNotes:(id: string, html: string)         => ipcRenderer.invoke('intelligence:updateReconciledNotes', id, html),

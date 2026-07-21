@@ -99,6 +99,9 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ ...EMPTY_FORM })
+  // Social edit: when set, the top form edits this post id (mutually exclusive with
+  // Add). Cancel/Save clears it back to null.
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   // Form-level save error (distinct from `errors`, which is per-FIELD validation).
   // The save path must never clear the form on a failed write — see handleSubmit.
@@ -118,6 +121,8 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   // T3: the selected project's thematic tag vocabulary (project-scoped, from T1).
   const [knownThematic, setKnownThematic] = useState<string[]>([])
   const handleRef = useRef<HTMLInputElement>(null)
+  // Social edit: scroll the top form into view when entering edit mode.
+  const formRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async (opts?: { background?: boolean }) => {
     // Background refetch (realtime echo / reconnect): swap the data under the
@@ -224,6 +229,35 @@ export default function SocialTab({ onApprove, project = null }: Props) {
     }
   }
 
+  // Social edit: repopulate the top form from a saved post (INVERSE of the addSocial
+  // field mapping) and switch into edit mode. categories_json may be a JSON string, an
+  // already-parsed array, or null — guard all three → default [].
+  function handleEdit(post: IntelligenceSource) {
+    let categories: string[] = []
+    try {
+      const raw = post.categories_json as unknown
+      const parsed = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw
+      if (Array.isArray(parsed)) categories = parsed
+    } catch { categories = [] }
+    setForm({
+      platform: post.platform || 'X / Twitter',
+      handle: post.handle || '',
+      post_date: (post.published_at || '').slice(0, 10),
+      content: post.content || '',
+      location_mentioned: post.location_mentioned || '',
+      actors_mentioned: post.actors_mentioned || '',
+      url: post.url || '',
+      confidence: (post.confidence as 'high' | 'medium' | 'low') || 'low',
+      categories,
+    })
+    setErrors({})
+    setFormError(null)
+    setFetchNote(null)
+    setEditingId(post.id)
+    // Scroll the (now edit-mode) form into view so the researcher sees it populate.
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   async function handleSubmit() {
     const errs: Record<string, string> = {}
     if (!form.handle.trim()) errs.handle = 'Handle is required'
@@ -235,6 +269,30 @@ export default function SocialTab({ onApprove, project = null }: Props) {
 
     setSaving(true)
     try {
+      // Social edit: one allowlisted patch write, then REFETCH. url is intentionally
+      // omitted (Part A ignores it; keeping it out of the patch keeps the renderer
+      // honest). Same required-field validation as Add ran above.
+      if (editingId) {
+        const patch = {
+          platform: form.platform,
+          handle: form.handle.trim(),
+          published_at: form.post_date,
+          content: form.content.trim(),
+          location_mentioned: form.location_mentioned.trim(),
+          actors_mentioned: form.actors_mentioned.trim(),
+          confidence: form.confidence,
+          categories_json: JSON.stringify(form.categories || []),
+        }
+        const res = await window.api.intelligence.updateSocialFields(editingId, patch)
+        if (!res.ok) { setFormError('Could not save changes.'); return }
+        setEditingId(null)
+        setForm({ ...EMPTY_FORM })
+        setErrors({})
+        setUrlInput('')
+        setFetchNote(null)
+        await load()
+        return
+      }
       const res = await window.api.intelligence.addSocial({
         platform: form.platform,
         handle: form.handle.trim(),
@@ -373,10 +431,12 @@ export default function SocialTab({ onApprove, project = null }: Props) {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {/* Add form */}
-        <div className="bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Add Social Media Post</h3>
+        <div ref={formRef} className="bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">{editingId ? 'Edit Social Media Post' : 'Add Social Media Post'}</h3>
 
-          {/* URL paste — convenience autofill on top of the manual form (not a gate) */}
+          {/* URL paste — convenience autofill on top of the manual form (not a gate).
+              Add-only affordance: hidden while editing an existing post. */}
+          {!editingId && (
           <div className="mb-3">
             <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Paste a post URL (optional)</label>
             <div className="flex gap-2">
@@ -405,6 +465,7 @@ export default function SocialTab({ onApprove, project = null }: Props) {
               </p>
             )}
           </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             {/* Platform */}
@@ -472,7 +533,9 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                 value={form.url}
                 onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
                 placeholder="https://..."
-                className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] text-sm bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                disabled={!!editingId}
+                title={editingId ? 'The post URL cannot be changed after saving' : undefined}
+                className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] text-sm bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
             {/* Location */}
@@ -530,16 +593,29 @@ export default function SocialTab({ onApprove, project = null }: Props) {
           </div>
           <div className="flex items-center justify-between mt-3">
             <p className="text-[11px] text-gray-400 dark:text-white/30">
-              {!project?.id ? 'Select a project above to add sources.' : "Add the post, then describe what's happening and analyze it on its card below."}
+              {editingId
+                ? 'Editing this post — Save changes or Cancel.'
+                : (!project?.id ? 'Select a project above to add sources.' : "Add the post, then describe what's happening and analyze it on its card below.")}
             </p>
             {formError && <span className="text-xs text-red-500 dark:text-red-400 ml-3">{formError}</span>}
-            <button
-              onClick={handleSubmit}
-              disabled={saving || !project?.id}
-              className="px-4 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium transition disabled:opacity-50"
-            >
-              {saving ? 'Adding...' : 'Add Post'}
-            </button>
+            <div className="flex items-center gap-2">
+              {editingId && (
+                <button
+                  onClick={() => { setEditingId(null); setForm({ ...EMPTY_FORM }); setErrors({}); setFormError(null) }}
+                  disabled={saving}
+                  className="px-4 py-1.5 rounded-lg border border-gray-300 dark:border-white/[0.15] text-gray-600 dark:text-white/70 text-sm font-medium transition hover:bg-gray-50 dark:hover:bg-white/[0.04] disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                onClick={handleSubmit}
+                disabled={saving || (!editingId && !project?.id)}
+                className="px-4 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium transition disabled:opacity-50"
+              >
+                {saving ? (editingId ? 'Saving…' : 'Adding...') : (editingId ? 'Save changes' : 'Add Post')}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -597,6 +673,13 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                     View original ↗
                   </button>
                 )}
+                <button
+                  onClick={() => handleEdit(post)}
+                  title="Edit post"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition shrink-0"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M8.4 1.6a1.1 1.1 0 0 1 1.6 1.6L4.7 8.5 2.3 9.1l.6-2.4 4.9-5z" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </button>
                 {(can('delete_intel_social') || isRoot) && (
                   <button
                     onClick={() => handleDelete(post.id)}

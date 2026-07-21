@@ -3225,6 +3225,11 @@ function registerIntelligenceHandlers(): void {
   ipcMain.handle('intelligence:updateContent', (_e, id: string, content: string) =>
     intelCloud.updateContent(id, content))
 
+  // Social edit: patch a saved social post's editable fields (allowlisted main-side
+  // in updateSocialFields). Pure write → cloud + mirror. Offline → { ok:false }.
+  ipcMain.handle('intelligence:updateSocialFields', (_e, id: string, patch: Record<string, any>) =>
+    intelCloud.updateSocialFields(id, patch))
+
   // 2b: store a reconciled AI read UNDER analysis_json.reconciled, leaving the
   // original top-level analysis untouched. Stamps reconciled_at server-side and
   // returns the stored block so the renderer can merge it without a refetch.
