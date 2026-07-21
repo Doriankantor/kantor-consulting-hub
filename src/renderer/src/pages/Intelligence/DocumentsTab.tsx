@@ -4,6 +4,7 @@ import { useConnection } from '../../contexts/ConnectionContext'
 import RichTextEditor from '../../components/RichTextEditor'
 import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
+import CondensedSummary from './CondensedSummary'
 
 // 2b: the selected project's config, threaded from the Intelligence container so
 // the reconcile call is project-aware. null when "All sources" is selected.
@@ -64,6 +65,8 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
   // T3: the selected project's thematic tag vocabulary (project-scoped, from T1).
   const [knownThematic, setKnownThematic] = useState<string[]>([])
+  // Slice 4: per-card collapse state (id → open). Absent = fall back to default-open.
+  const [openCards, setOpenCards] = useState<Record<string, boolean>>({})
 
   const load = useCallback(async (opts?: { background?: boolean }) => {
     // Background refetch (realtime echo / reconnect): swap the data under the
@@ -356,6 +359,13 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
           const themaTags = readTags(doc.thematic_tags)
 
           const isFading = fadingIds.has(doc.id)
+          // Slice 4: condensed-summary flags + collapse state. Default-open iff the
+          // card already has substance (notes / AI read / reconcile).
+          const _analysis = parseAnalysis(doc.analysis_json)
+          const _hasNotes = stripHtml(doc.intel_notes || '').trim().length > 0
+          const _analyzed = !!_analysis.ai
+          const _reconciled = !!_analysis.reconciled || !!doc.reconciled_notes
+          const cardOpen = openCards[doc.id] ?? (_hasNotes || _analyzed || _reconciled)
           return (
             <div key={doc.id} className={`bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4 transition-all duration-300 ${isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
               {/* Header */}
@@ -404,15 +414,35 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
                 </div>
               )}
 
+              {/* Slice 4: collapse toggle — hides the compose panel only; header,
+                  category badges and the tail controls stay visible. */}
+              <div className="mt-2 pt-2 border-t border-gray-100 dark:border-white/[0.06]">
+                <button
+                  onClick={() => setOpenCards(prev => ({ ...prev, [doc.id]: !cardOpen }))}
+                  className="w-full flex items-center gap-2 text-left"
+                >
+                  <span className="text-[11px] font-medium text-gray-500 dark:text-white/45">Details</span>
+                  <span className="flex-1" />
+                  <svg width="16" height="16" viewBox="0 0 12 12" fill="none" className={`text-gray-500 dark:text-white/50 transition-transform ${cardOpen ? 'rotate-180' : ''}`}>
+                    <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+                {!cardOpen && (
+                  <CondensedSummary hasNotes={_hasNotes} analyzed={_analyzed} reconciled={_reconciled} tagCount={themaTags.length} confidence={doc.confidence} />
+                )}
+              </div>
+
               {/* 2b (human-first): notes-primary compose. Researcher notes come FIRST;
                   AI is on-demand (never auto-runs) in a separate box; reconcile is an
                   editable merged read. See DocumentCompose. */}
-              <DocumentCompose
-                doc={doc} project={project} onPatch={patchDoc} formatDate={formatDate}
-                knownThematic={knownThematic} themaTags={themaTags} projectBoardSel={projectBoardSel}
-                onAttachTag={tag => handleSetTags(doc.id, [...themaTags, tag])}
-                onCreateTag={tag => handleCreateTag(doc.id, themaTags, tag, projectBoardSel)}
-              />
+              {cardOpen && (
+                <DocumentCompose
+                  doc={doc} project={project} onPatch={patchDoc} formatDate={formatDate}
+                  knownThematic={knownThematic} themaTags={themaTags} projectBoardSel={projectBoardSel}
+                  onAttachTag={tag => handleSetTags(doc.id, [...themaTags, tag])}
+                  onCreateTag={tag => handleCreateTag(doc.id, themaTags, tag, projectBoardSel)}
+                />
+              )}
 
               {/* Actions */}
               <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">

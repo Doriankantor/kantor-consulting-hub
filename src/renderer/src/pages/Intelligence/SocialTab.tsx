@@ -4,6 +4,7 @@ import { useConnection } from '../../contexts/ConnectionContext'
 import RichTextEditor from '../../components/RichTextEditor'
 import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
+import CondensedSummary from './CondensedSummary'
 
 const PLATFORMS = ['X / Twitter', 'Telegram', 'LinkedIn', 'Facebook', 'Instagram', 'Other']
 
@@ -102,6 +103,8 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   // Social edit: when set, the top form edits this post id (mutually exclusive with
   // Add). Cancel/Save clears it back to null.
   const [editingId, setEditingId] = useState<string | null>(null)
+  // Slice 4: per-card collapse state (id → open). Absent = fall back to default-open.
+  const [openCards, setOpenCards] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   // Form-level save error (distinct from `errors`, which is per-FIELD validation).
   // The save path must never clear the form on a failed write — see handleSubmit.
@@ -644,6 +647,13 @@ export default function SocialTab({ onApprove, project = null }: Props) {
           // T3: this item's topic tags (project-scoped write target = projectBoardSel).
           const themaTags = readTags(post.thematic_tags)
           const isFading = fadingIds.has(post.id)
+          // Slice 4: condensed-summary flags + collapse state. Default-open iff the
+          // card already has substance (notes / AI read / reconcile).
+          const _analysis = parseAnalysis(post.analysis_json)
+          const _hasNotes = stripHtml(post.intel_notes || '').trim().length > 0
+          const _analyzed = !!_analysis.ai
+          const _reconciled = !!_analysis.reconciled || !!post.reconciled_notes
+          const cardOpen = openCards[post.id] ?? (_hasNotes || _analyzed || _reconciled)
           return (
             <div key={post.id} className={`bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4 transition-all duration-300 ${isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
               <div className="flex items-start gap-2 mb-2">
@@ -718,13 +728,33 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                 </div>
               )}
 
+              {/* Slice 4: collapse toggle — hides the compose panel only; header,
+                  content preview, category badges and the tail controls stay visible. */}
+              <div className="mt-2 pt-2 border-t border-gray-100 dark:border-white/[0.06]">
+                <button
+                  onClick={() => setOpenCards(prev => ({ ...prev, [post.id]: !cardOpen }))}
+                  className="w-full flex items-center gap-2 text-left"
+                >
+                  <span className="text-[11px] font-medium text-gray-500 dark:text-white/45">Details</span>
+                  <span className="flex-1" />
+                  <svg width="16" height="16" viewBox="0 0 12 12" fill="none" className={`text-gray-500 dark:text-white/50 transition-transform ${cardOpen ? 'rotate-180' : ''}`}>
+                    <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+                {!cardOpen && (
+                  <CondensedSummary hasNotes={_hasNotes} analyzed={_analyzed} reconciled={_reconciled} tagCount={themaTags.length} confidence={post.confidence} />
+                )}
+              </div>
+
               {/* Human-first compose: describe → on-demand AI → editable reconcile */}
-              <SocialCompose
-                doc={post} project={project} onPatch={patchDoc} formatDate={formatDate}
-                knownThematic={knownThematic} themaTags={themaTags} projectBoardSel={projectBoardSel}
-                onAttachTag={tag => handleSetTags(post.id, [...themaTags, tag])}
-                onCreateTag={tag => handleCreateTag(post.id, themaTags, tag, projectBoardSel)}
-              />
+              {cardOpen && (
+                <SocialCompose
+                  doc={post} project={project} onPatch={patchDoc} formatDate={formatDate}
+                  knownThematic={knownThematic} themaTags={themaTags} projectBoardSel={projectBoardSel}
+                  onAttachTag={tag => handleSetTags(post.id, [...themaTags, tag])}
+                  onCreateTag={tag => handleCreateTag(post.id, themaTags, tag, projectBoardSel)}
+                />
+              )}
 
               {/* Status actions */}
               <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
