@@ -403,16 +403,10 @@ function PersonalCard({
 // for weekday math and display, never to derive the stored string.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December']
+// pad2 is retained for TimePopover's hour/minute option lists (the calendar-grid
+// helpers WEEKDAYS/MONTH_NAMES/toISODate/todayISO/prettyDate went with DatePopover,
+// which the native <input type="date"> replaced).
 const pad2 = (n: number): string => String(n).padStart(2, '0')
-const toISODate = (y: number, m: number, d: number): string => `${y}-${pad2(m + 1)}-${pad2(d)}`
-const todayISO = (): string => { const n = new Date(); return toISODate(n.getFullYear(), n.getMonth(), n.getDate()) }
-function prettyDate(iso: string): string {
-  const y = +iso.slice(0, 4), m = +iso.slice(5, 7), d = +iso.slice(8, 10)
-  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
 
 /** Close a popover on outside-click or Escape. Shared by both pickers. */
 function usePopoverDismiss(open: boolean, close: () => void): React.RefObject<HTMLDivElement> {
@@ -436,22 +430,29 @@ const PILL_CLASS =
   'dark:hover:border-indigo-400/50 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-gray-200'
 
 /**
- * Slice C-recurring-2. Recurrence picker — reuses the exact DatePopover machinery
- * (usePopoverDismiss + PILL_CLASS trigger + the shared dropdown container). Six
+ * Slice C-recurring-2. Recurrence picker — reuses the shared popover machinery
+ * (usePopoverDismiss + PILL_CLASS trigger + the shared dropdown container; the
+ * former DatePopover, now a native <input type="date">, once shared it too). Six
  * rows from RECUR_OPTIONS; picking one fires onPick and closes.
  */
-function RecurrencePopover({ value, onPick }: { value: string | null; onPick: (freq: string | null) => void }) {
+function RecurrencePopover({ value, onPick, disabled = false }: { value: string | null; onPick: (freq: string | null) => void; disabled?: boolean }) {
   const [open, setOpen] = useState(false)
   const ref = usePopoverDismiss(open, useCallback(() => setOpen(false), []))
   const label = value && RECUR_LABELS[value] ? RECUR_LABELS[value] : 'Does not repeat'
 
   return (
-    <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen(o => !o)} className={PILL_CLASS}>
+    <div ref={ref} className="relative inline-flex items-center gap-2">
+      <button type="button" disabled={disabled} onClick={() => { if (!disabled) setOpen(o => !o) }} className={PILL_CLASS}>
         <RepeatIcon size={13} />
         {label}
       </button>
-      {open && (
+      {/* Slice date-picker-C: recurrence is gated on a due date — a to-do with no
+          due_date can't be made recurring (prevents the recurrence-without-due
+          zombie state at the source). */}
+      {disabled && (
+        <span className="text-[11px] text-gray-400 dark:text-white/45">Set a due date first</span>
+      )}
+      {open && !disabled && (
         <div className="absolute left-0 top-full mt-1.5 z-30 w-[196px] rounded-xl border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-hub-navy-light shadow-xl p-1.5">
           {RECUR_OPTIONS.map(opt => {
             const active = (value ?? null) === opt.value
@@ -471,84 +472,6 @@ function RecurrencePopover({ value, onPick }: { value: string | null; onPick: (f
               </button>
             )
           })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function DatePopover({ value, onPick }: { value: string | null; onPick: (iso: string | null) => void }) {
-  const [open, setOpen] = useState(false)
-  const ref = usePopoverDismiss(open, useCallback(() => setOpen(false), []))
-  const seed = (): { y: number; m: number } => {
-    const src = value ?? todayISO()
-    return { y: +src.slice(0, 4), m: +src.slice(5, 7) - 1 }
-  }
-  const [view, setView] = useState(seed)
-
-  function toggle(): void {
-    setOpen(o => { if (!o) setView(seed()); return !o })   // always reopen on the selected month
-  }
-  const stepMonth = (delta: number): void =>
-    setView(v => { const m = v.m + delta; return { y: v.y + Math.floor(m / 12), m: ((m % 12) + 12) % 12 } })
-
-  const firstDow = new Date(view.y, view.m, 1).getDay()
-  const nDays = new Date(view.y, view.m + 1, 0).getDate()
-  const cells: (number | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: nDays }, (_, i) => i + 1)]
-  const today = todayISO()
-
-  return (
-    <div ref={ref} className="relative">
-      <button type="button" onClick={toggle} className={PILL_CLASS}>
-        <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
-          <rect x="0.5" y="1.5" width="11" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.1"/>
-          <path d="M0.5 4.5h11" stroke="currentColor" strokeWidth="1.1"/>
-          <path d="M3.5 0v2M8.5 0v2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-        </svg>
-        {value ? prettyDate(value) : 'Set date'}
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1.5 z-30 w-[248px] rounded-xl border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-hub-navy-light shadow-xl p-2.5">
-          <div className="flex items-center justify-between mb-2">
-            <button type="button" onClick={() => stepMonth(-1)}
-              className="w-6 h-6 flex items-center justify-center rounded-md text-gray-500 dark:text-white/50 hover:bg-black/[0.05] dark:hover:bg-white/[0.08]">
-              <svg width="7" height="7" viewBox="0 0 8 8" fill="none"><path d="M5 1L2 4l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
-            <span className="text-xs font-semibold text-gray-700 dark:text-white/80">{MONTH_NAMES[view.m]} {view.y}</span>
-            <button type="button" onClick={() => stepMonth(1)}
-              className="w-6 h-6 flex items-center justify-center rounded-md text-gray-500 dark:text-white/50 hover:bg-black/[0.05] dark:hover:bg-white/[0.08]">
-              <svg width="7" height="7" viewBox="0 0 8 8" fill="none"><path d="M3 1l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
-          </div>
-          <div className="grid grid-cols-7 gap-0.5 mb-1">
-            {WEEKDAYS.map((w, i) => (
-              <div key={i} className="h-5 flex items-center justify-center text-[9px] font-semibold text-gray-400 dark:text-white/35">{w}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-0.5">
-            {cells.map((d, i) => {
-              if (d === null) return <div key={i} className="h-7" />
-              const iso = toISODate(view.y, view.m, d)
-              const isSel = iso === value
-              const isToday = iso === today
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => { onPick(iso); setOpen(false) }}
-                  className={`h-7 rounded-md text-xs transition ${
-                    isSel
-                      ? 'bg-indigo-500 text-white font-semibold'
-                      : isToday
-                        ? 'text-indigo-600 dark:text-indigo-300 font-semibold ring-1 ring-inset ring-indigo-300 dark:ring-indigo-400/40 hover:bg-indigo-50 dark:hover:bg-indigo-500/15'
-                        : 'text-gray-700 dark:text-white/75 hover:bg-indigo-50 dark:hover:bg-indigo-500/15'
-                  }`}
-                >
-                  {d}
-                </button>
-              )
-            })}
-          </div>
         </div>
       )}
     </div>
@@ -871,12 +794,21 @@ function TodoDetailPanel({
           </div>
         </div>
 
-        {/* DUE — popover pickers, not bare native inputs. */}
+        {/* DUE — native date input (app-wide standard; OS picker positions itself) +
+            a custom time popover. */}
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/40 mb-2">Due</p>
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Picking a date carries the current time through. */}
-            <DatePopover value={item.due_date ?? null} onPick={d => onDue(d, item.due_time ?? null)} />
+            {/* Picking a date carries the current time through; '' clears to null.
+                onClick opens the OS picker on a body click (native inputs otherwise
+                open only from the tiny edge glyph). */}
+            <input
+              type="date"
+              value={item.due_date ?? ''}
+              onChange={e => onDue(e.target.value || null, item.due_time ?? null)}
+              onClick={e => { try { (e.currentTarget as HTMLInputElement).showPicker() } catch {} }}
+              className="titlebar-no-drag px-2.5 py-2 rounded-lg bg-gray-50 dark:bg-white/[0.05] border border-gray-200 dark:border-white/[0.08] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-hub-gold/40 [color-scheme:dark]"
+            />
             {/* Disabled without a date: setDue (A-1) drops a time whose date is
                 null, so an enabled time picker here would let the user set a value
                 that silently never persists. */}
@@ -895,7 +827,7 @@ function TodoDetailPanel({
         {/* RECURRENCE (slice C-recurring-2) — placed after DUE (date-adjacent). */}
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/40 mb-2">Repeat</p>
-          <RecurrencePopover value={item.recurrence ?? null} onPick={onRecurrence} />
+          <RecurrencePopover value={item.recurrence ?? null} onPick={onRecurrence} disabled={!item.due_date} />
         </div>
 
         {/* STEPS — the editable list. Drag-reorder is A-3. */}
@@ -1740,9 +1672,11 @@ export default function Todo() {
               className="flex-1 min-w-[200px] px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/35 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
             />
             <input type="date" value={newPersonalDate} onChange={e => setNewPersonalDate(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
+              onClick={e => { try { (e.currentTarget as HTMLInputElement).showPicker() } catch {} }}
+              className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 [color-scheme:dark]" />
             <input type="time" value={newPersonalTime} onChange={e => setNewPersonalTime(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
+              onClick={e => { try { (e.currentTarget as HTMLInputElement).showPicker() } catch {} }}
+              className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 [color-scheme:dark]" />
             <button onClick={handleAddPersonal} disabled={!newPersonalTitle.trim() || addingPersonal}
               className="px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white text-sm font-medium transition">
               {addingPersonal ? 'Adding…' : 'Add'}

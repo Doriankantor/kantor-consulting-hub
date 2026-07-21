@@ -525,7 +525,8 @@ export default function Team() {
                 value={leaveStart}
                 min={cetToday()}
                 onChange={e => setLeaveStart(e.target.value)}
-                className="titlebar-no-drag px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition"
+                onClick={e => { try { (e.currentTarget as HTMLInputElement).showPicker() } catch {} }}
+                className="titlebar-no-drag px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition [color-scheme:dark]"
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -535,7 +536,8 @@ export default function Team() {
                 value={leaveEnd}
                 min={leaveStart || cetToday()}
                 onChange={e => setLeaveEnd(e.target.value)}
-                className="titlebar-no-drag px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition"
+                onClick={e => { try { (e.currentTarget as HTMLInputElement).showPicker() } catch {} }}
+                className="titlebar-no-drag px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition [color-scheme:dark]"
               />
             </label>
             <button
