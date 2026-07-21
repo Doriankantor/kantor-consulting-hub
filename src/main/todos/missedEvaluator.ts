@@ -20,7 +20,8 @@
 import { getDatabase } from '../db'
 import { nextOccurrence } from './nextOccurrence'
 import { cetToday } from './cetToday'
-import { syncPersonalWrite, personalCloudRow, nowIso } from '../cloud/personalSync'
+import { syncPersonalWrite, personalCloudRow, nowIso, ownerEmail } from '../cloud/personalSync'
+import { getOffWork, offWorkMirror } from '../cloud/offWork'
 
 /** A leave window (inclusive) during which boundaries are rolled but NOT stamped. */
 export interface SkipRange { start: string; end: string }
@@ -42,6 +43,20 @@ export function dateFallsInAnyRange(date: string, ranges: SkipRange[]): boolean 
 export function runMissedOccurrenceEvaluator(userId: string, skipRanges: SkipRange[] = []): void {
   if (!userId) return
   const db = getDatabase()
+
+  // OFF-WORK suppression (v1). If the caller didn't pass explicit ranges (tests do),
+  // read THIS user's leave window from the local off_work MIRROR (sync, offline-safe,
+  // never throws) and build a skipRange from it. A boundary inside the window rolls
+  // due_date forward but is NOT stamped missed (dateFallsInAnyRange at the loop below).
+  // FAIL-OPEN: any failure → no window → a miss may be stamped that the user clears.
+  let ranges = skipRanges
+  if (ranges.length === 0) {
+    try {
+      const email = ownerEmail(userId)
+      const w = email ? offWorkMirror(email) : null
+      if (w) ranges = [{ start: w.start_date, end: w.end_date }]
+    } catch { ranges = [] }
+  }
 
   let rows: { id: string; due_date: string | null; recurrence: string | null; missed_dates: string | null }[]
   try {
@@ -74,7 +89,7 @@ export function runMissedOccurrenceEvaluator(userId: string, skipRanges: SkipRan
     while (due < today && guard < 10000) {
       guard++
       // A boundary INSIDE a leave window rolls forward but is not stamped as missed.
-      if (!dateFallsInAnyRange(due, skipRanges)) missed.push(due)
+      if (!dateFallsInAnyRange(due, ranges)) missed.push(due)
       const nextDue = nextOccurrence(due, row.recurrence)
       if (nextDue <= due) break   // never-advancing guard (unknown freq)
       due = nextDue
@@ -124,12 +139,23 @@ function msToNextCetMidnight(): number {
   return (secsToMidnight + 5) * 1000
 }
 
+// Refresh this user's off_work mirror from cloud (best-effort), THEN run the
+// evaluator — so a leave window set on ANOTHER device is respected here without a
+// Team-page visit first. The refresh NEVER throws; on failure/offline the run
+// proceeds against the current local mirror (fail-open). getOffWork syncs the
+// mirror as a side-effect; we ignore its return.
+async function refreshLeaveThenRun(userId: string, label: string): Promise<void> {
+  try {
+    const email = ownerEmail(userId)
+    if (email) await getOffWork(email)
+  } catch { /* run against the current mirror */ }
+  try { runMissedOccurrenceEvaluator(userId) } catch (e) { console.warn(`[missedEval] ${label} run failed:`, (e as Error)?.message) }
+}
+
 function scheduleNext(): void {
   if (missedTimer) clearTimeout(missedTimer)
   missedTimer = setTimeout(() => {
-    if (missedUserId) {
-      try { runMissedOccurrenceEvaluator(missedUserId) } catch (e) { console.warn('[missedEval] midnight run failed:', (e as Error)?.message) }
-    }
+    if (missedUserId) void refreshLeaveThenRun(missedUserId, 'midnight')
     scheduleNext()   // reschedule for the following midnight
   }, msToNextCetMidnight())
 }
@@ -138,7 +164,7 @@ function scheduleNext(): void {
 export function startMissedSchedule(userId: string): void {
   if (!userId) return
   missedUserId = userId
-  try { runMissedOccurrenceEvaluator(userId) } catch (e) { console.warn('[missedEval] login run failed:', (e as Error)?.message) }
+  void refreshLeaveThenRun(userId, 'login')
   scheduleNext()
 }
 

@@ -32,6 +32,7 @@ import { isOnline } from '../cloud/connection'
 import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag } from '../cloud/tags'
 import { seedBoardsToCloud } from '../cloud/boardsSeed'
 import { getTeamRoster } from '../cloud/teamRoster'
+import { getOffWork, setOffWork, listOffWork, clearOffWork } from '../cloud/offWork'
 import { migrateAssigneesToEmail, rollbackAssigneesToIds, migrateCloudAssigneesToEmail, rollbackCloudAssignees } from '../cloud/assigneesEmailMigration'
 import { syncPersonalWrite, ownerEmail, nowIso, personalCloudRow } from '../cloud/personalSync'
 import { startRealtime, rescope as rescopeRealtime, teardownAll as teardownRealtime, getRealtimeHealth } from '../cloud/realtimeManager'
@@ -298,6 +299,11 @@ function createNotification(n: {
   user_id: string; type: string; title: string; body?: string;
   task_id?: string; task_title?: string; actor_name?: string
 }) {
+  // TODO(off-work): when notifications move to cloud (the cross-member sender that
+  // slice 5 also needs), DROP notifications to a member whose off_work window
+  // contains today — look up off_work by the recipient's email and skip the send.
+  // No-op today: notifications are local/per-device (this row targets THIS device's
+  // own user_id), so there is no cross-member send to suppress yet.
   try {
     getDatabase().prepare(`INSERT INTO notifications (id,user_id,type,title,body,task_id,task_title,actor_name)
       VALUES (?,?,?,?,?,?,?,?)`)
@@ -565,6 +571,27 @@ function registerTeamHandlers() {
   // This channel exists so display surfaces (assignee picker, @mentions) can show
   // the whole team without the id-keyed handlers inheriting an email as their key.
   ipcMain.handle('team:roster', () => getTeamRoster())
+
+  // ── Off-work / leave windows (v1) ─────────────────────────────────────────
+  // Per-member self-set ONE leave window, email-keyed in cloud (+ local mirror the
+  // evaluator reads offline). get/set resolve the ACTING user's email — a member
+  // only ever reads/writes their OWN window. list feeds the Team "on leave" pill.
+  ipcMain.handle('offWork:get', () => {
+    const email = resolveIdentity(currentActingUserId).email
+    if (!email) return null
+    return getOffWork(email)
+  })
+  ipcMain.handle('offWork:set', (_e, start: string, end: string) => {
+    const email = resolveIdentity(currentActingUserId).email
+    if (!email) return { ok: false, error: 'No user identity.' }
+    return setOffWork(email, start, end)
+  })
+  ipcMain.handle('offWork:list', () => listOffWork())
+  ipcMain.handle('offWork:clear', () => {
+    const email = resolveIdentity(currentActingUserId).email
+    if (!email) return { ok: false, error: 'No user identity.' }
+    return clearOffWork(email)
+  })
 
   // Slice 1c-2a: assignees id→email migration control surface. Real channels rather
   // than a documented SQL block so the rollback REHEARSAL exercises the same code

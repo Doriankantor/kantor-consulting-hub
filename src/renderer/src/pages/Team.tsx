@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react'
 import { useAuth } from '../contexts/AuthContext'
+import { cetToday } from '../utils/urgency'
 import TeamMemberProfilePanel from '../components/TeamMemberProfilePanel'
 import { ADMIN_EMAIL } from '../supabase/client'
 
@@ -63,6 +64,14 @@ export default function Team() {
   const [profileMemberId, setProfileMemberId] = useState<string | null>(null)
   // Access codes for members still pending — surfaced inline so the admin can re-share.
   const [inviteCodes, setInviteCodes] = useState<Record<string, string>>({})
+  // Off-work (v1): emails currently on leave (drives the pill), and the current
+  // user's own window + the date-range picker for setting it.
+  const [onLeaveEmails, setOnLeaveEmails] = useState<Set<string>>(new Set())
+  const [myLeave, setMyLeave] = useState<{ start_date: string; end_date: string } | null>(null)
+  const [leaveStart, setLeaveStart] = useState('')
+  const [leaveEnd, setLeaveEnd] = useState('')
+  const [savingLeave, setSavingLeave] = useState(false)
+  const [leaveMsg, setLeaveMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
   // Invite form
   const [name,   setName]   = useState('')
@@ -123,8 +132,75 @@ export default function Team() {
       if (isRoot) {
         try { setAllPerms(await window.api.permissions.getAll()) } catch {}
       }
+      // Off-work: who is currently on leave (pill) + my own window (picker prefill).
+      try {
+        const [leaves, mine] = await Promise.all([
+          window.api.offWork.list(),
+          window.api.offWork.get(),
+        ])
+        setOnLeaveEmails(new Set((leaves ?? []).map(l => l.user_email.toLowerCase())))
+        if (mine) { setMyLeave(mine); setLeaveStart(mine.start_date); setLeaveEnd(mine.end_date) }
+        else setMyLeave(null)
+      } catch {}
     } catch {}
     setLoading(false)
+  }
+
+  async function handleSaveLeave() {
+    setLeaveMsg(null)
+    const today = cetToday()
+    if (!leaveStart || !leaveEnd) { setLeaveMsg({ type: 'err', text: 'Pick both a start and end date.' }); return }
+    if (leaveStart < today)   { setLeaveMsg({ type: 'err', text: 'Start date must be today or later.' }); return }
+    if (leaveEnd < leaveStart) { setLeaveMsg({ type: 'err', text: 'End date must be on or after the start date.' }); return }
+    setSavingLeave(true)
+    try {
+      const res = await window.api.offWork.set(leaveStart, leaveEnd)
+      if (res?.ok) {
+        setMyLeave({ start_date: leaveStart, end_date: leaveEnd })
+        setLeaveMsg({ type: 'ok', text: 'Leave window saved.' })
+        // Reflect my own pill immediately if the window covers today.
+        const myEmail = localUser?.email?.toLowerCase()
+        if (myEmail) {
+          setOnLeaveEmails(prev => {
+            const next = new Set(prev)
+            if (leaveStart <= today && today <= leaveEnd) next.add(myEmail)
+            else next.delete(myEmail)
+            return next
+          })
+        }
+      } else {
+        setLeaveMsg({ type: 'err', text: res?.error || 'Could not save your leave window.' })
+      }
+    } catch {
+      setLeaveMsg({ type: 'err', text: 'Could not save your leave window.' })
+    }
+    setSavingLeave(false)
+  }
+
+  async function handleClearLeave() {
+    setLeaveMsg(null)
+    setSavingLeave(true)
+    try {
+      const res = await window.api.offWork.clear()
+      if (res?.ok) {
+        setMyLeave(null)
+        setLeaveStart('')
+        setLeaveEnd('')
+        setLeaveMsg({ type: 'ok', text: "Leave ended — welcome back." })
+        // Optimistically drop my own pill (mirror of Save's optimistic add).
+        const myEmail = localUser?.email?.toLowerCase()
+        if (myEmail) setOnLeaveEmails(prev => {
+          const next = new Set(prev)
+          next.delete(myEmail)
+          return next
+        })
+      } else {
+        setLeaveMsg({ type: 'err', text: res?.error || 'Could not end your leave window.' })
+      }
+    } catch {
+      setLeaveMsg({ type: 'err', text: 'Could not end your leave window.' })
+    }
+    setSavingLeave(false)
   }
 
   async function togglePerm(userEmail: string, key: string, on: boolean) {
@@ -391,6 +467,14 @@ export default function Team() {
                         Mark active
                       </button>
                     )}
+                    {onLeaveEmails.has(member.email.toLowerCase()) && (
+                      <span
+                        className="px-2 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/25 text-sky-600 dark:text-sky-400 text-[10px] font-semibold uppercase tracking-wider"
+                        title="Currently within their off-work leave window"
+                      >
+                        On leave
+                      </span>
+                    )}
                     <StatusBadge status={member.status} />
                     <RoleBadge role={member.role} />
                     {isRoot && (
@@ -416,6 +500,69 @@ export default function Team() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── My off-work / leave window (v1) ─────────────────────────────────
+            Placement is provisional — the Team redesign will rehome this. A member
+            sets ONE future-only window; while today is inside it, misses aren't
+            stamped on their recurring to-dos and they show an "On leave" pill. */}
+        <div className="mt-6 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl p-5 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-white/85 mb-1">Off work / leave</h2>
+          <p className="text-xs text-gray-500 dark:text-white/55 mb-4">
+            Set a future date range when you're away. Recurring to-dos won't be marked missed during
+            it (they still roll forward), and your teammates see an “On leave” badge.
+            {myLeave && (
+              <> Current window: <span className="font-medium text-gray-700 dark:text-white/80">{myLeave.start_date} → {myLeave.end_date}</span>.</>
+            )}
+          </p>
+          <div className="flex flex-wrap items-end gap-2.5">
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50">Start</span>
+              <input
+                type="date"
+                value={leaveStart}
+                min={cetToday()}
+                onChange={e => setLeaveStart(e.target.value)}
+                className="titlebar-no-drag px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/50">End</span>
+              <input
+                type="date"
+                value={leaveEnd}
+                min={leaveStart || cetToday()}
+                onChange={e => setLeaveEnd(e.target.value)}
+                className="titlebar-no-drag px-3 py-2 rounded-xl bg-gray-50 dark:bg-black/20 border border-gray-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-hub-gold/40 transition"
+              />
+            </label>
+            <button
+              onClick={handleSaveLeave}
+              disabled={savingLeave || !leaveStart || !leaveEnd}
+              className="titlebar-no-drag px-5 py-2 rounded-xl bg-hub-gold hover:bg-hub-gold-light disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold transition shadow-sm"
+            >
+              {savingLeave ? 'Saving…' : myLeave ? 'Update' : 'Save'}
+            </button>
+            {myLeave && (
+              <button
+                onClick={handleClearLeave}
+                disabled={savingLeave}
+                className="titlebar-no-drag px-4 py-2 rounded-xl border border-gray-200 dark:border-white/[0.12] text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/[0.06] disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium transition"
+                title="End your leave window — future recurring boundaries will be tracked again"
+              >
+                End leave
+              </button>
+            )}
+          </div>
+          {leaveMsg && (
+            <div className={`mt-3 px-3 py-2 rounded-xl text-sm border ${
+              leaveMsg.type === 'ok'
+                ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400'
+                : 'bg-red-500/10 border-red-500/20 text-red-500 dark:text-red-400'
+            }`}>
+              {leaveMsg.text}
             </div>
           )}
         </div>

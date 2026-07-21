@@ -534,6 +534,14 @@ interface Window {
       add:     (e: { task_id: string; actor_name: string; action: string }) => Promise<import('./types').ActivityEntry>
       getFeed: (actorId?: string) => Promise<Array<{ id: string; task_id: string; actor_name: string; action: string; created_at: string; source: 'activity' | 'comment'; task_title: string | null }>>
     }
+    /** Off-work / leave windows (v1). Email-keyed in cloud + local mirror. A member
+     *  only ever reads/writes their OWN window (resolved from the acting user). */
+    offWork: {
+      get:  ()                            => Promise<{ user_email: string; start_date: string; end_date: string } | null>
+      set:  (start: string, end: string)  => Promise<{ ok: boolean; error?: string; window?: { user_email: string; start_date: string; end_date: string } }>
+      list: ()                            => Promise<Array<{ user_email: string; start_date: string; end_date: string }>>
+      clear: ()                           => Promise<{ ok: boolean; error?: string }>
+    }
     team: {
       list:            (includeAdmin?: boolean)                                              => Promise<LocalTeamMember[]>
       roster:          ()                                                                    => Promise<Array<{ email: string; display_name: string; assignable: boolean }>>

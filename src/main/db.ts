@@ -798,6 +798,20 @@ export function initDatabase(): void {
     );
   `)
 
+  // Off-work v1: OFFLINE MIRROR of the cloud `off_work` leave windows. Email-keyed
+  // like team_members. THIS is what the missed-occurrence evaluator reads (it runs
+  // in main on the offline-capable path, so it must not depend on a cloud roundtrip
+  // to know a member is on leave). Cloud is the source of truth; setOffWork writes
+  // both, getOffWork/listOffWork sync-on-read. See cloud/offWork.ts.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS off_work (
+      user_email TEXT PRIMARY KEY,
+      start_date TEXT,
+      end_date   TEXT,
+      updated_at TEXT
+    );
+  `)
+
   // Slice 1b: durable outbox for PERSONAL-source cloud writes. Durable (not in-memory)
   // so an op queued while offline survives quitting the app — the launch drain flushes
   // it. AUTOINTEGER id doubles as the replay order, which is what makes last-write-wins

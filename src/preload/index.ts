@@ -31,6 +31,12 @@ const api = {
     add:     (e: { task_id: string; actor_name: string; action: string }) => ipcRenderer.invoke('activity:add', e),
     getFeed: (actorId?: string) => ipcRenderer.invoke('activity:getFeed', actorId),
   },
+  offWork: {
+    get:  ()                            => ipcRenderer.invoke('offWork:get'),
+    set:  (start: string, end: string)  => ipcRenderer.invoke('offWork:set', start, end),
+    list: ()                            => ipcRenderer.invoke('offWork:list'),
+    clear: ()                           => ipcRenderer.invoke('offWork:clear'),
+  },
   team: {
     list:            (includeAdmin?: boolean)                                              => ipcRenderer.invoke('team:list', includeAdmin),
     roster:          ()                                                                    => ipcRenderer.invoke('team:roster'),
