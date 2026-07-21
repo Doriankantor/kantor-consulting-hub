@@ -743,6 +743,13 @@ export function initDatabase(): void {
     db.exec('ALTER TABLE personal_todos ADD COLUMN spawned_successor INTEGER NOT NULL DEFAULT 0')
   }
 
+  // Slice C-recurring-3: missed-occurrence tracking. A JSON array string of
+  // 'YYYY-MM-DD' dates for recurrence boundaries that passed while the active
+  // instance was still incomplete. NULL/absent = no misses. Same guarded-ALTER shape.
+  if (!ptCols.some(c => c.name === 'missed_dates')) {
+    db.exec('ALTER TABLE personal_todos ADD COLUMN missed_dates TEXT')
+  }
+
   // Personal to-do sub-steps (Step Rail). Mirrors the cloud table's columns, but note
   // this one is user_email-keyed from birth — it has no legacy user_id rows to preserve.
   db.exec(`

@@ -30,7 +30,13 @@ const CET_DATE = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 })
 
-/** Today's calendar date in CET, as 'YYYY-MM-DD'. */
+/**
+ * Today's calendar date in CET, as 'YYYY-MM-DD'.
+ *
+ * ⚠ DUPLICATE-BY-DESIGN: src/main/todos/cetToday.ts is a hand-kept copy of this,
+ * for the missed-occurrence evaluator (C-recurring-3), because there is no shared
+ * module across the main/renderer boundary. Change one → change the other.
+ */
 export function cetToday(): string {
   return CET_DATE.format(new Date())
 }

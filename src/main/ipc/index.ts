@@ -26,13 +26,14 @@ import { resolveIdentity } from '../cloud/boards'
 import { assignedToSql, parseAssignees } from '../assignees'
 import { listTodos } from '../todos'
 import { nextOccurrence } from '../todos/nextOccurrence'
+import { startMissedSchedule, stopMissedSchedule } from '../todos/missedEvaluator'
 import * as intelCloud from '../cloud/intel'
 import { isOnline } from '../cloud/connection'
 import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag } from '../cloud/tags'
 import { seedBoardsToCloud } from '../cloud/boardsSeed'
 import { getTeamRoster } from '../cloud/teamRoster'
 import { migrateAssigneesToEmail, rollbackAssigneesToIds, migrateCloudAssigneesToEmail, rollbackCloudAssignees } from '../cloud/assigneesEmailMigration'
-import { syncPersonalWrite, ownerEmail, nowIso } from '../cloud/personalSync'
+import { syncPersonalWrite, ownerEmail, nowIso, personalCloudRow } from '../cloud/personalSync'
 import { startRealtime, rescope as rescopeRealtime, teardownAll as teardownRealtime, getRealtimeHealth } from '../cloud/realtimeManager'
 import {
   listAttachments, addFileAttachment, addUrlAttachment,
@@ -994,6 +995,17 @@ function registerBoardsCloudHandlers() {
     } catch (e) {
       console.warn('[realtime] lifecycle on setActingUser failed:', (e as Error)?.message)
     }
+    // C-recurring-3: the missed-occurrence evaluator + CET-midnight timer follow the
+    // SAME lifecycle as realtime — start on login, restart scoped to the new user on
+    // switch, stop on logout. Teardown also happens in window-all-closed / before-quit
+    // (index.ts), matching the realtime teardown discipline.
+    try {
+      if (!currentActingUserId) stopMissedSchedule()
+      else if (!prev) startMissedSchedule(currentActingUserId)
+      else if (prev !== currentActingUserId) { stopMissedSchedule(); startMissedSchedule(currentActingUserId) }
+    } catch (e) {
+      console.warn('[missedEval] lifecycle on setActingUser failed:', (e as Error)?.message)
+    }
     return { ok: true }
   })
   // Admin-only, one-time, idempotent seed of this machine's local board tables.
@@ -1758,35 +1770,10 @@ function registerPersonalTodoHandlers() {
   // unhandled rejection.
 
   /** Re-read a row and shape it for the cloud, resolving the stable owner email. */
-  function cloudRowFor(id: string): Record<string, unknown> | null {
-    // ⚠ THIS COLUMN LIST MUST STAY COMPLETE. syncPersonalWrite upserts the WHOLE
-    // row, so a column missing here is sent as absent and BLANKED in cloud on the
-    // next unrelated write — silent data loss, not a display bug. `color` and
-    // `starred` (A-1) are here for exactly that reason: without them, toggling a
-    // to-do complete would wipe its colour and star in cloud.
-    const r = db().prepare(
-      'SELECT id, user_id, title, due_date, due_time, completed, completed_at, position, color, starred, notes, recurrence, recurrence_anchor, series_id, spawned_successor, created_at, updated_at FROM personal_todos WHERE id=?'
-    ).get(id) as Record<string, unknown> | undefined
-    if (!r) return null
-    const email = ownerEmail(r.user_id as string)
-    // Unresolvable owner ⇒ no safe cloud identity. Skip rather than guess: the local
-    // row still exists and is authoritative for this device's reads.
-    if (!email) {
-      console.warn(`[personalSync] SKIP cloud write for todo ${id} — user_id "${r.user_id}" does not resolve to an email.`)
-      return null
-    }
-    return {
-      id: r.id, user_email: email, title: r.title,
-      due_date: r.due_date ?? null, due_time: r.due_time ?? null,
-      completed: r.completed ?? 0, completed_at: r.completed_at ?? null,
-      position: r.position ?? null,
-      color: r.color ?? null, starred: r.starred ?? 0,
-      notes: r.notes ?? null,
-      recurrence: r.recurrence ?? null, recurrence_anchor: r.recurrence_anchor ?? null,
-      series_id: r.series_id ?? null, spawned_successor: r.spawned_successor ?? 0,
-      created_at: r.created_at ?? nowIso(), updated_at: r.updated_at ?? nowIso(),
-    }
-  }
+  // Delegates to the CANONICAL builder in cloud/personalSync.ts (shared with the
+  // C-recurring-3 missed-occurrence evaluator) so the clobber-critical column list
+  // lives in exactly one place. See personalCloudRow for the ⚠ completeness note.
+  const cloudRowFor = personalCloudRow
 
   ipcMain.handle('personalTodo:create', (_e, item: { id: string; user_id: string; title: string; due_date?: string; due_time?: string }) => {
     const ts = nowIso()
@@ -1798,6 +1785,25 @@ function registerPersonalTodoHandlers() {
   })
 
   ipcMain.handle('personalTodo:complete', (_e, id: string) => {
+    // Normalize a possibly display-prefixed id ONCE — exactly like every setter
+    // below (bareTodoId). complete/uncomplete historically bound the RAW id, so a
+    // 'personal-<uuid>' would silently match zero rows and return ok:true having
+    // done nothing (the setter zero-match landmine, see comment further down).
+    const key = bareTodoId(id)
+    // Slice C-recurring-3 GATE: a to-do with un-cleared missed occurrences cannot be
+    // completed — the user must clear the misses first (bookkeeping) so completion
+    // never silently papers over a skipped cycle. Checked BEFORE any write: no
+    // UPDATE, no spawn. The renderer surfaces reason:'missed' as a block.
+    {
+      const g = db().prepare('SELECT missed_dates FROM personal_todos WHERE id=?').get(key) as { missed_dates: string | null } | undefined
+      if (g && g.missed_dates) {
+        try {
+          const arr = JSON.parse(g.missed_dates)
+          if (Array.isArray(arr) && arr.length > 0) return { ok: false, reason: 'missed' as const }
+        } catch { /* malformed → treat as no misses, fall through */ }
+      }
+    }
+
     const ts = nowIso()
 
     // Slice C-recurring: completing a RECURRING to-do spawns its next occurrence.
@@ -1808,11 +1814,11 @@ function registerPersonalTodoHandlers() {
     // revive (below) deliberately does NOT reset it.
     let spawnedId: string | null = null
     db().transaction(() => {
-      db().prepare('UPDATE personal_todos SET completed=1, completed_at=?, updated_at=? WHERE id=?').run(ts, ts, id)
+      db().prepare('UPDATE personal_todos SET completed=1, completed_at=?, updated_at=? WHERE id=?').run(ts, ts, key)
 
       const src = db().prepare(
         'SELECT user_id, title, due_date, due_time, recurrence, series_id, spawned_successor, color, starred FROM personal_todos WHERE id=?'
-      ).get(id) as {
+      ).get(key) as {
         user_id: string; title: string; due_date: string | null; due_time: string | null
         recurrence: string | null; series_id: string | null; spawned_successor: number
         color: string | null; starred: number
@@ -1820,7 +1826,7 @@ function registerPersonalTodoHandlers() {
 
       if (src && src.recurrence && !src.spawned_successor) {
         // First instance seeds the series from its OWN id, so every instance shares it.
-        const seriesId = src.series_id ?? id
+        const seriesId = src.series_id ?? key
         const newId = uuid()
         // No due_date ⇒ nothing to roll; the occurrence just carries recurrence forward.
         const newDue = src.due_date ? nextOccurrence(src.due_date, src.recurrence) : null
@@ -1845,13 +1851,13 @@ function registerPersonalTodoHandlers() {
         // Flag the completed row so a re-complete can't double-spawn, and backfill
         // its series_id if this was the first instance (so both rows share it).
         db().prepare('UPDATE personal_todos SET spawned_successor=1, series_id=?, updated_at=? WHERE id=?')
-          .run(seriesId, ts, id)
+          .run(seriesId, ts, key)
       }
     })()
 
     // Cloud after the local transaction commits. No isOnline guard — personal is
     // offline-capable; both writes queue on failure and drain in id order.
-    const row = cloudRowFor(id)
+    const row = cloudRowFor(key)
     if (row) syncPersonalWrite('update', 'personal_todos', row)
     if (spawnedId) {
       const spawnRow = cloudRowFor(spawnedId)
@@ -1861,8 +1867,9 @@ function registerPersonalTodoHandlers() {
   })
 
   ipcMain.handle('personalTodo:uncomplete', (_e, id: string) => {
-    db().prepare('UPDATE personal_todos SET completed=0, completed_at=NULL, updated_at=? WHERE id=?').run(nowIso(), id)
-    const row = cloudRowFor(id)
+    const key = bareTodoId(id)
+    db().prepare('UPDATE personal_todos SET completed=0, completed_at=NULL, updated_at=? WHERE id=?').run(nowIso(), key)
+    const row = cloudRowFor(key)
     if (row) syncPersonalWrite('update', 'personal_todos', row)
     return { ok: true }
   })
@@ -1909,6 +1916,26 @@ function registerPersonalTodoHandlers() {
     const key = bareTodoId(id)
     db().prepare('UPDATE personal_todos SET recurrence=?, updated_at=? WHERE id=?')
       .run(freq ?? null, nowIso(), key)
+    const row = cloudRowFor(key)
+    if (row) syncPersonalWrite('update', 'personal_todos', row)
+    return { ok: true }
+  })
+
+  ipcMain.handle('personalTodo:clearMissed', (_e, id: string, date: string) => {
+    // Slice C-recurring-3. BOOKKEEPING ONLY — removes one date from missed_dates so
+    // the completion gate can pass. MUST NOT spawn, and MUST NOT touch due_date /
+    // spawned_successor / series_id: it is a pure array edit on the setColor shape.
+    const key = bareTodoId(id)
+    const cur = db().prepare('SELECT missed_dates FROM personal_todos WHERE id=?').get(key) as { missed_dates: string | null } | undefined
+    let arr: string[] = []
+    if (cur && cur.missed_dates) {
+      try { const v = JSON.parse(cur.missed_dates); if (Array.isArray(v)) arr = v.filter((x): x is string => typeof x === 'string') } catch { arr = [] }
+    }
+    const next = arr.filter(d => d !== date)
+    // Empty → NULL so "cleared" and "never missed" read identically downstream.
+    const value = next.length ? JSON.stringify(next) : null
+    db().prepare('UPDATE personal_todos SET missed_dates=?, updated_at=? WHERE id=?')
+      .run(value, nowIso(), key)
     const row = cloudRowFor(key)
     if (row) syncPersonalWrite('update', 'personal_todos', row)
     return { ok: true }

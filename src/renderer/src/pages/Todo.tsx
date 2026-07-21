@@ -236,7 +236,7 @@ function RepeatIcon({ size = 13 }: { size?: number }): JSX.Element {
 }
 
 function PersonalCard({
-  item, isSelected, duePill, extraClass = '',
+  item, isSelected, duePill, extraClass = '', showMissedBlock = false,
   onComplete, onDelete, onSelect, onStar, onStepToggle,
 }: {
   item: DisplayItem
@@ -244,6 +244,8 @@ function PersonalCard({
   /** Pill classes from duePillFor — the urgency-keyed chip, not a text colour. */
   duePill: string
   extraClass?: string
+  /** Slice C-recurring-3. Transient cue when this card's completion was just blocked. */
+  showMissedBlock?: boolean
   onComplete: () => void
   onDelete: () => void
   onSelect: () => void
@@ -251,6 +253,9 @@ function PersonalCard({
   onStepToggle: (stepId: string) => void
 }) {
   const steps = item.steps ?? []
+  // Slice C-recurring-3. Un-cleared misses block completion, so the card gets a
+  // subtle amber "action needed" cue (a left-edge tint) whenever misses exist.
+  const hasMissed = (item.missed_dates ?? []).length > 0
   // A-2. Null for "no colour" AND for an unrecognised key — see todoColors.ts for
   // why an unknown key degrades instead of throwing. No colour ⇒ no stripe at all,
   // not a neutral grey one: a grey bar reads as a colour someone chose.
@@ -263,6 +268,9 @@ function PersonalCard({
         className={`group relative overflow-hidden border rounded-xl mx-3 my-1 px-3 py-2.5 cursor-pointer transition ${
           isSelected
             ? 'border-indigo-400 dark:border-indigo-400/60 bg-indigo-50/60 dark:bg-indigo-500/[0.1]'
+            : hasMissed
+            // Action-needed cue: amber border + faint amber wash while misses block completion.
+            ? 'border-amber-300 dark:border-amber-500/40 bg-amber-50/50 dark:bg-amber-500/[0.06] hover:border-amber-400 dark:hover:border-amber-500/60'
             // SOLID border + the app's standard elevated-card surface
             // (dark:bg-white/[0.04], as Dashboard cards), NOT the near-invisible
             // white/[0.015] over black that read as flat black in A-2.
@@ -311,7 +319,23 @@ function PersonalCard({
                 {RECUR_LABELS[item.recurrence]}
               </span>
             )}
+            {/* Slice C-recurring-3. Missed chips — amber attention (reuses the amber
+                due-pill tokens). Their presence blocks completion until cleared. */}
+            {(item.missed_dates ?? []).map(d => (
+              <span key={d}
+                    className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold leading-[1.4] bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/30"
+                    title="Missed occurrence — clear it in the panel to complete this to-do">
+                <RepeatIcon size={10} />
+                missed: {d.slice(5)}
+              </span>
+            ))}
           </div>
+          {/* Transient block cue when completion was just refused for un-cleared misses. */}
+          {showMissedBlock && (
+            <p className="mt-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+              Clear missed repeats first ↓
+            </p>
+          )}
         </div>
         {/* ★ AFFORDANCES — visible at rest, not hover-only. They were opacity-0
             until hover on a gray-300 / white-25 icon, which is invisible twice
@@ -671,7 +695,7 @@ function SortableStepRow({
  * leak into this panel.
  */
 function TodoDetailPanel({
-  item, open, reducedMotion, onClose, onComplete, onStar, onColor, onDue, onNotes, onRecurrence,
+  item, open, reducedMotion, onClose, onComplete, onStar, onColor, onDue, onNotes, onRecurrence, onClearMissed,
   onStepToggle, onStepAdd, onStepDelete, onStepReorder, onExited,
 }: {
   item: DisplayItem
@@ -689,6 +713,8 @@ function TodoDetailPanel({
   onNotes: (notes: string | null) => void
   /** Slice C-recurring-2. Recurrence frequency; null clears. */
   onRecurrence: (freq: string | null) => void
+  /** Slice C-recurring-3. Mark one missed date done (bookkeeping-only). */
+  onClearMissed: (date: string) => void
   onStepToggle: (stepId: string) => void
   onStepAdd: (text: string) => void
   onStepDelete: (stepId: string) => void
@@ -902,6 +928,34 @@ function TodoDetailPanel({
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/40 mb-2">Notes</p>
           <NotesEditor key={item.id} initial={item.notes ?? ''} onSave={onNotes} />
         </div>
+
+        {/* MISSED REPEATS (slice C-recurring-3) — after Notes. Hidden when empty.
+            Each row marks ONE miss done (bookkeeping-only — never spawns). While any
+            remain, completion is blocked, so this is the escape hatch. */}
+        {(item.missed_dates ?? []).length > 0 && (
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-2">
+              Missed repeats · clear to complete
+            </p>
+            <div className="space-y-1">
+              {(item.missed_dates ?? []).map(d => (
+                <div key={d} className="flex items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-500/25 bg-amber-50/60 dark:bg-amber-500/[0.08] px-2.5 py-1.5">
+                  <RepeatIcon size={12} />
+                  <span className="flex-1 min-w-0 text-xs text-amber-800 dark:text-amber-200">
+                    {new Date(`${d}T00:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                  </span>
+                  <button
+                    onClick={() => onClearMissed(d)}
+                    className="shrink-0 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-white dark:bg-white/10 border border-amber-300 dark:border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-white/15 transition"
+                    title="Mark this missed occurrence done (bookkeeping only — does not create a new to-do)"
+                  >
+                    Mark done
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </aside>
   )
@@ -965,6 +1019,14 @@ export default function Todo() {
   // set: the panel is a SINGLE editor for ONE item, so a set of open cards no longer
   // has any meaning. Ephemeral by design — not persisted across sessions.
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Slice C-recurring-3: the item whose completion was just blocked for un-cleared
+  // misses. Drives a transient inline "clear missed repeats first" cue; auto-expires.
+  const [missedBlockId, setMissedBlockId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!missedBlockId) return
+    const t = setTimeout(() => setMissedBlockId(null), 4000)
+    return () => clearTimeout(t)
+  }, [missedBlockId])
   // NOTE: add-step drafts deliberately do NOT live here. See AddStepInput — holding
   // them in this component re-rendered Todo on every keystroke, which recreated the
   // inline `Row` and remounted the input, losing focus after one character.
@@ -1203,11 +1265,33 @@ export default function Todo() {
     if (!res?.ok) patchItem(item.id, { recurrence: before })
   }
 
+  async function handleClearMissed(item: DisplayItem, date: string) {
+    // Slice C-recurring-3. BOOKKEEPING ONLY — mirror handleSetColor: optimistic array
+    // edit, revert on refusal. Never spawns, never touches due_date.
+    const before = item.missed_dates ?? []
+    const next = before.filter(d => d !== date)
+    patchItem(item.id, { missed_dates: next })
+    const res = await window.api.personalTodo.clearMissed(item.raw_id, date)
+    if (!res?.ok) patchItem(item.id, { missed_dates: before })
+  }
+
   async function handlePersonalToggle(item: DisplayItem) {
     const id = rawPersonalId(item.id)
     // Local-first (slice 1b): these run offline by design.
-    if (item.completed) await window.api.personalTodo.uncomplete(id)
-    else await window.api.personalTodo.complete(id)
+    if (item.completed) {
+      await window.api.personalTodo.uncomplete(id)
+      queueLoad()
+      return
+    }
+    // Slice C-recurring-3 GATE: main refuses completion while misses are un-cleared.
+    // The tick must NOT take — surface the block and open the panel so the user can
+    // clear the "Missed repeats" section. No queueLoad (nothing changed server-side).
+    const res = await window.api.personalTodo.complete(id)
+    if (!res?.ok && res?.reason === 'missed') {
+      setMissedBlockId(item.id)
+      setSelectedId(item.id)   // open the panel → Missed repeats section
+      return
+    }
     queueLoad()
   }
 
@@ -1477,6 +1561,7 @@ export default function Todo() {
           isSelected={selectedId === item.id}
           duePill={duePillFor(item)}
           extraClass={extraClass}
+          showMissedBlock={missedBlockId === item.id}
           onComplete={() => handlePersonalToggle(item)}
           onDelete={() => handlePersonalDelete(item)}
           onSelect={() => handleItemClick(item)}
@@ -1843,6 +1928,7 @@ export default function Todo() {
           onDue={(d, t) => handleSetDue(panelItem, d, t)}
           onRecurrence={freq => handleSetRecurrence(panelItem, freq)}
           onNotes={notes => handleSetNotes(panelItem, notes)}
+          onClearMissed={date => handleClearMissed(panelItem, date)}
           onStepToggle={sid => handleStepToggle(panelItem, sid)}
           onStepAdd={text => handleStepAdd(panelItem, text)}
           onStepDelete={sid => handleStepDelete(sid, panelItem)}

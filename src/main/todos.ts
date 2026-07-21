@@ -107,18 +107,40 @@ export interface TodoItem {
   recurrence_anchor?: string | null
   series_id?: string | null
   spawned_successor?: number
+  /**
+   * Slice C-recurring-3. Boundaries that passed while the active instance was still
+   * incomplete, as a PARSED array of 'YYYY-MM-DD' (the DB stores a JSON string;
+   * readPersonal parses it here so the renderer never sees the raw text). Empty = none.
+   */
+  missed_dates?: string[]
 }
 
 // ── Source a — personal ──────────────────────────────────────────────────────
 // LOCAL `personal_todos`, `user_id`-keyed. Slice 1a deliberately kept the local
 // table id-keyed and translates to email only at the cloud boundary, so this must
 // NOT be email-keyed — doing so would match zero rows.
+
+/**
+ * Slice C-recurring-3. Parse the stored `missed_dates` JSON string to string[].
+ * NEVER throws — a NULL/empty/malformed value degrades to [] rather than failing a
+ * whole to-do list read (same spirit as the steps try/catch below).
+ */
+function parseMissed(raw: unknown): string[] {
+  if (typeof raw !== 'string' || raw.length === 0) return []
+  try {
+    const v = JSON.parse(raw)
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
 function readPersonal(userId: string): TodoItem[] {
   const db = getDatabase()
   const rows = db.prepare(`
     SELECT id, title, due_date, due_time, completed, completed_at, position,
            color, starred, notes, recurrence, recurrence_anchor, series_id,
-           spawned_successor, created_at
+           spawned_successor, missed_dates, created_at
     FROM personal_todos
     WHERE user_id = ?
     ORDER BY created_at DESC
@@ -187,6 +209,7 @@ function readPersonal(userId: string): TodoItem[] {
     recurrence_anchor: (r.recurrence_anchor as string) ?? null,
     series_id: (r.series_id as string) ?? null,
     spawned_successor: r.spawned_successor === null || r.spawned_successor === undefined ? 0 : Number(r.spawned_successor),
+    missed_dates: parseMissed(r.missed_dates),
   }})
 }
 

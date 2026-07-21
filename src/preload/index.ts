@@ -278,6 +278,7 @@ const api = {
     setDue:     (id: string, dueDate: string | null, dueTime: string | null) => ipcRenderer.invoke('personalTodo:setDue', id, dueDate, dueTime),
     setNotes:   (id: string, notes: string | null) => ipcRenderer.invoke('personalTodo:setNotes', id, notes),
     setRecurrence: (id: string, freq: string | null) => ipcRenderer.invoke('personalTodo:setRecurrence', id, freq),
+    clearMissed: (id: string, date: string) => ipcRenderer.invoke('personalTodo:clearMissed', id, date),
   },
 
   // Personal to-do STEPS (slice 3b). `todoId` is the BARE personal_todos.id —

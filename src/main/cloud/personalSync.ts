@@ -45,6 +45,42 @@ export function ownerEmail(userId: string | null | undefined): string {
   try { return (resolveIdentity(userId).email ?? '').toLowerCase() } catch { return '' }
 }
 
+/**
+ * Build the cloud upsert payload for a personal_todos row, or null if the row is
+ * gone / has no resolvable owner. THE CANONICAL BUILDER — the ipc `cloudRowFor`
+ * delegates here, and the missed-occurrence evaluator (C-recurring-3) calls it too,
+ * so there is exactly ONE column list.
+ *
+ * ⚠ THIS COLUMN LIST MUST STAY COMPLETE. syncPersonalWrite upserts the WHOLE row,
+ * so a column missing here is sent as absent and BLANKED in cloud on the next
+ * unrelated write — silent data loss, not a display bug.
+ */
+export function personalCloudRow(id: string): Record<string, unknown> | null {
+  const r = getDatabase().prepare(
+    'SELECT id, user_id, title, due_date, due_time, completed, completed_at, position, color, starred, notes, recurrence, recurrence_anchor, series_id, spawned_successor, missed_dates, created_at, updated_at FROM personal_todos WHERE id=?'
+  ).get(id) as Record<string, unknown> | undefined
+  if (!r) return null
+  const email = ownerEmail(r.user_id as string)
+  // Unresolvable owner ⇒ no safe cloud identity. Skip rather than guess: the local
+  // row still exists and is authoritative for this device's reads.
+  if (!email) {
+    console.warn(`[personalSync] SKIP cloud write for todo ${id} — user_id "${r.user_id}" does not resolve to an email.`)
+    return null
+  }
+  return {
+    id: r.id, user_email: email, title: r.title,
+    due_date: r.due_date ?? null, due_time: r.due_time ?? null,
+    completed: r.completed ?? 0, completed_at: r.completed_at ?? null,
+    position: r.position ?? null,
+    color: r.color ?? null, starred: r.starred ?? 0,
+    notes: r.notes ?? null,
+    recurrence: r.recurrence ?? null, recurrence_anchor: r.recurrence_anchor ?? null,
+    series_id: r.series_id ?? null, spawned_successor: r.spawned_successor ?? 0,
+    missed_dates: r.missed_dates ?? null,
+    created_at: r.created_at ?? nowIso(), updated_at: r.updated_at ?? nowIso(),
+  }
+}
+
 // ── Queue ────────────────────────────────────────────────────────────────────
 
 function enqueue(op: SyncOp, table: SyncTable, payload: Record<string, unknown>, err?: string): void {

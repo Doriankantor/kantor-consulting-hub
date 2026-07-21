@@ -153,6 +153,8 @@ interface TodoItem {
   recurrence_anchor?: string | null
   series_id?: string | null
   spawned_successor?: number
+  /** PERSONAL ONLY (slice C-recurring-3) — parsed 'YYYY-MM-DD' misses; empty = none. */
+  missed_dates?: string[]
 }
 
 interface ChatMessage {
@@ -777,7 +779,10 @@ interface Window {
     personalTodo: {
       list:       (userId: string) => Promise<{ id:string; user_id:string; title:string; due_date:string|null; due_time:string|null; completed:number; completed_at:string|null; created_at:string }[]>
       create:     (item: { id:string; user_id:string; title:string; due_date?:string; due_time?:string }) => Promise<{ ok:boolean }>
-      complete:   (id: string) => Promise<{ ok:boolean }>
+      /** Slice C-recurring-3: `ok:false, reason:'missed'` when the to-do has
+       *  un-cleared missed occurrences (clear them first). `spawnedId` is the new
+       *  occurrence's id when completing a recurring to-do spawned its successor. */
+      complete:   (id: string) => Promise<{ ok:boolean; spawnedId?:string|null; reason?:string }>
       uncomplete: (id: string) => Promise<{ ok:boolean }>
       delete:     (id: string) => Promise<{ ok:boolean }>
       /** Slice A-1. `id` is the BARE personal_todos.id — pass TodoItem.raw_id.
@@ -790,6 +795,8 @@ interface Window {
       setNotes:   (id: string, notes: string | null) => Promise<{ ok:boolean }>
       /** Slice C-recurring-2. freq NULL = non-recurring; else daily|weekly|weekdays|monthly|yearly. */
       setRecurrence: (id: string, freq: string | null) => Promise<{ ok:boolean }>
+      /** Slice C-recurring-3. Bookkeeping-only: removes one date from missed_dates; never spawns. */
+      clearMissed: (id: string, date: string) => Promise<{ ok:boolean }>
     }
     /** Slice 3b. `todoId` is the BARE personal_todos.id — pass TodoItem.raw_id. */
     personalTodoStep: {

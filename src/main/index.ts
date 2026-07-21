@@ -15,6 +15,7 @@ import { initConnection, isOnline, onReconnect } from './cloud/connection'
 import { runCompletedProjectsSweep } from './cloud/completedSweep'
 import { runPersonalTodosBackfill } from './cloud/personalTodosSeed'
 import { runPersonalSyncDrain } from './cloud/personalSync'
+import { stopMissedSchedule } from './todos/missedEvaluator'
 import { runAssigneesEmailMigration, runCloudAssigneesMigration } from './cloud/assigneesEmailMigration'
 
 // Module-level reference so the updater can push events to the window
@@ -257,9 +258,11 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   teardownRealtime()
+  stopMissedSchedule()   // C-recurring-3: match realtime teardown discipline
   if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('before-quit', () => {
   teardownRealtime()
+  stopMissedSchedule()   // C-recurring-3: no leaked timer across sessions
 })
