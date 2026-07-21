@@ -1756,9 +1756,11 @@ function registerBoardMembersHandlers() {
 function registerPersonalTodoHandlers() {
   const db = () => getDatabase()
 
-  ipcMain.handle('personalTodo:list', (_e, userId: string) => {
-    return db().prepare('SELECT * FROM personal_todos WHERE user_id=? ORDER BY due_date ASC, due_time ASC, created_at DESC').all(userId)
-  })
+  // NOTE: there is deliberately NO `personalTodo:list` channel. Personal to-dos are
+  // read only through `todos:list` (listTodos → readPersonal), the single shaped path
+  // that applies parseMissed and coerces booleans. A raw `SELECT *` list channel used
+  // to exist here; it was removed because it bypassed that shaping and returned
+  // missed_dates as an unparsed string, diverging from the TodoItem contract.
 
   // ── Dual-write (slice 1b) ────────────────────────────────────────────────
   // Every mutating handler below writes LOCAL FIRST and returns {ok:true} on that

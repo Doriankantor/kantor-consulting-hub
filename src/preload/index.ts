@@ -267,7 +267,6 @@ const api = {
     listForUser: (userId: string) => ipcRenderer.invoke('boardMembers:listForUser', userId),
   },
   personalTodo: {
-    list:       (userId: string) => ipcRenderer.invoke('personalTodo:list', userId),
     create:     (item: { id: string; user_id: string; title: string; due_date?: string; due_time?: string }) => ipcRenderer.invoke('personalTodo:create', item),
     complete:   (id: string) => ipcRenderer.invoke('personalTodo:complete', id),
     uncomplete: (id: string) => ipcRenderer.invoke('personalTodo:uncomplete', id),

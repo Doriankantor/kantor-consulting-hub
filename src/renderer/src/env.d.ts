@@ -777,7 +777,6 @@ interface Window {
       diagnose:          (userId: string) => Promise<{ ok: boolean; storedScopes: string | null; calendarError: string | null; tokenExists: boolean }>
     }
     personalTodo: {
-      list:       (userId: string) => Promise<{ id:string; user_id:string; title:string; due_date:string|null; due_time:string|null; completed:number; completed_at:string|null; created_at:string }[]>
       create:     (item: { id:string; user_id:string; title:string; due_date?:string; due_time?:string }) => Promise<{ ok:boolean }>
       /** Slice C-recurring-3: `ok:false, reason:'missed'` when the to-do has
        *  un-cleared missed occurrences (clear them first). `spawnedId` is the new
