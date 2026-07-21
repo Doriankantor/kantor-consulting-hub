@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useConnection } from '../../contexts/ConnectionContext'
 import RichTextEditor from '../../components/RichTextEditor'
-import TagPicker from './TagPicker'
+import TagPicker, { normalizeTagClient } from './TagPicker'
+import SuggestedTagChip from './SuggestedTagChip'
 
 const PLATFORMS = ['X / Twitter', 'Telegram', 'LinkedIn', 'Facebook', 'Instagram', 'Other']
 
@@ -635,7 +636,12 @@ export default function SocialTab({ onApprove, project = null }: Props) {
               )}
 
               {/* Human-first compose: describe → on-demand AI → editable reconcile */}
-              <SocialCompose doc={post} project={project} onPatch={patchDoc} formatDate={formatDate} />
+              <SocialCompose
+                doc={post} project={project} onPatch={patchDoc} formatDate={formatDate}
+                knownThematic={knownThematic} themaTags={themaTags} projectBoardSel={projectBoardSel}
+                onAttachTag={tag => handleSetTags(post.id, [...themaTags, tag])}
+                onCreateTag={tag => handleCreateTag(post.id, themaTags, tag, projectBoardSel)}
+              />
 
               {/* Status actions */}
               <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
@@ -703,11 +709,17 @@ export default function SocialTab({ onApprove, project = null }: Props) {
 // explicit button. The relevance AI reads the post text + the researcher's take.
 function SocialCompose({
   doc, project, onPatch, formatDate,
+  knownThematic, themaTags, projectBoardSel, onAttachTag, onCreateTag,
 }: {
   doc: IntelligenceSource
   project: ProjectInfo
   onPatch: (id: string, patch: Partial<IntelligenceSource>) => void
   formatDate: (d: string | null) => string
+  knownThematic: string[]
+  themaTags: string[]
+  projectBoardSel: string
+  onAttachTag: (tag: string) => void
+  onCreateTag: (tag: string) => void
 }) {
   const [notes, setNotes] = useState<string>(doc.intel_notes || '')
   const [reconciledText, setReconciledText] = useState<string>(doc.reconciled_notes || '')
@@ -842,7 +854,15 @@ function SocialCompose({
             {Array.isArray(ai!.suggested_tags) && ai!.suggested_tags.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {ai!.suggested_tags.map((t: string, i: number) => (
-                  <span key={`${t}-${i}`} className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-medium">{t}</span>
+                  <SuggestedTagChip
+                    key={`${t}-${i}`}
+                    tag={t}
+                    onArticle={themaTags.includes(normalizeTagClient(t))}
+                    inLibrary={knownThematic.includes(normalizeTagClient(t))}
+                    canApply={!!projectBoardSel}
+                    onAttach={onAttachTag}
+                    onCreate={onCreateTag}
+                  />
                 ))}
               </div>
             )}
@@ -882,7 +902,15 @@ function SocialCompose({
                 <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold text-[10px]">relevance {reconciledMeta.relevance_score}/10</span>
               )}
               {Array.isArray(reconciledMeta.suggested_tags) && reconciledMeta.suggested_tags.map((t: string, i: number) => (
-                <span key={`${t}-${i}`} className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-medium">{t}</span>
+                <SuggestedTagChip
+                  key={`${t}-${i}`}
+                  tag={t}
+                  onArticle={themaTags.includes(normalizeTagClient(t))}
+                  inLibrary={knownThematic.includes(normalizeTagClient(t))}
+                  canApply={!!projectBoardSel}
+                  onAttach={onAttachTag}
+                  onCreate={onCreateTag}
+                />
               ))}
               {reconciledMeta.reconciled_at && (
                 <span className="text-[10px] text-amber-600/60 dark:text-amber-400/40 ml-1">Reconciled {formatDate(reconciledMeta.reconciled_at)}</span>
