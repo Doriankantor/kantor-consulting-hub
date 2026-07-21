@@ -1,21 +1,38 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-21 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `4bc236d` (code; docs commit on top this session), `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: TWENTY-TWO code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale), `065f6ce` (slice 2 — the `listTodos` aggregation layer), `d43445d` (slice 3a — the visible To-Do tab), `4c240bd` (slice 3b — the personal Step Rail), `7d5a38a` (slice A-1 — detail-panel color/starred columns + setters), `f1fb6df` (slice A-2 — the personal detail panel UI), `9c049e3` (slice A-3 — drag-to-reorder personal steps) and `4bc236d` (slice B — personal-to-do notes). The installed app is 2.3.0 and contains NONE of them.** ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: TWENTY-TWO code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
+_Last updated: 2026-07-21 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `76bafb0` (code; docs commit on top this session), `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: TWENTY-FOUR code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale), `065f6ce` (slice 2 — the `listTodos` aggregation layer), `d43445d` (slice 3a — the visible To-Do tab), `4c240bd` (slice 3b — the personal Step Rail), `7d5a38a` (slice A-1 — detail-panel color/starred columns + setters), `f1fb6df` (slice A-2 — the personal detail panel UI), `9c049e3` (slice A-3 — drag-to-reorder personal steps), `4bc236d` (slice B — personal-to-do notes), `1795418` (slice C-recurring-1 — completion-anchored recurrence backend) and `76bafb0` (slice C-recurring-2 — recurrence picker UI + row chip). The installed app is 2.3.0 and contains NONE of them.** ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: TWENTY-FOUR code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.**_
 
 ## ▶ Start here — resume point for the next session
 
-**LATEST (2026-07-21) — HEAD `4bc236d`, tree clean. GROUP A IS NEARLY CLOSED — A-3 AND B BOTH
-SHIPPED.** The personal-to-do detail panel now has drag-to-reorder steps (**A-3, `9c049e3`**) and a
-free-text notes field (**B, `4bc236d`**). B's save model — **onBlur + save-if-changed + an
-unmount-cleanup flush, `key={item.id}`** — is the shape with zero lost-note paths (closes the Esc/
-tab-switch gap and prevents cross-item draft bleed); plain `<textarea>`, no debounce; needs the
-hand-run cloud DDL `sql/2026-07-21_personal_todos_notes.sql` (**already run**). Detail: the **SLICE
-A-3** and **SLICE B** entries under the To-Do overhaul. **NEXT = C-recurring** — recurring personal
-to-dos (None/Daily/Weekly/Monthly with real next-occurrence generation on completion), then
-**C-files** after it. **C is the ONLY Group-A slice left**; once it lands, Group A is closed and the
-team/collaboration work (2.5 / 2.6 / 4 / 5) unblocks. **★ LOCKED DIRECTION HOLDS — finish To-Do
-A→B→C before pivoting to team/collaboration/publication work.** **Twenty-two code commits are
-unreleased**; the installed app is 2.3.0 and contains none of them.
+**LATEST (2026-07-21) — HEAD `76bafb0`, tree clean. ★ GROUP A IS CLOSED — RECURRING PERSONAL
+TO-DOS ARE LIVE END-TO-END.** C-recurring shipped in two slices: **C-recurring-1 (`1795418`,
+backend spawn-on-complete)** and **C-recurring-2 (`76bafb0`, recurrence picker UI + row chip)**.
+Completing a recurring personal to-do now spawns its next occurrence; a "Repeat" row in the detail
+panel + a repeat chip on the card let the user set None/Daily/Weekly/Weekdays/Monthly/Yearly.
+**Locked semantics: completion-anchored, spawn-on-complete, exactly ONE active instance, a
+`spawned_successor` idempotency guard (a re-complete after revive never double-spawns), and
+string-only date math** (`nextOccurrence` — month-end clamp, Feb-29→Feb-28, weekdays skip). Needs
+the hand-run cloud DDL `sql/2026-07-21_personal_todos_recurrence.sql` (**already run**). Detail: the
+**SLICE C-recurring-1** and **C-recurring-2** entries under the To-Do overhaul.
+
+**C-files is PARKED** — deferred, non-essential; personal to-dos have no attachment precedent, so
+picking it up later is its own diagnose-first project, not the next step.
+
+**NEXT — two newly-queued To-Do features Dorian wants built next (design-first), AHEAD of resuming
+team work:** (a) **C-recurring-3 — missed-occurrence tracking** (a NEW time-driven evaluator that
+stamps "missed: <date>" chips + a "Missed repeats" panel section; bookkeeping-only, does NOT spawn),
+then (b) the **"Off work" leave-window setting** (suppresses that evaluator + notifications for a
+member). **Build C-recurring-3 FIRST — the Off-work setting depends on it.** Full spec: the
+**QUEUED: C-recurring-3 + OFF-WORK** block under the To-Do overhaul. Only after these does the
+**team/collaboration thread Group A was blocking (2.5 / 2.6 / 4 / 5)** resume. **★ The finish-To-Do-
+before-team direction still holds** — these two features are To-Do work, not a pivot to team work.
+**Twenty-four code commits are unreleased**; the installed app is 2.3.0 and contains none of them.
+
+**(Historical — 2026-07-21) — GROUP A WAS NEARLY CLOSED — A-3 AND B SHIPPED.** Drag-to-reorder
+steps (**A-3, `9c049e3`**) and a free-text notes field (**B, `4bc236d`**, save model: onBlur +
+save-if-changed + unmount-cleanup flush, `key={item.id}`; cloud DDL
+`sql/2026-07-21_personal_todos_notes.sql` already run). Detail: the **SLICE A-3** and **SLICE B**
+entries under the To-Do overhaul.
 
 **(Historical — 2026-07-20) — HEAD `d43445d`, tree clean. THE To-Do TAB IS VISIBLE AND LIVE.** Slices
 2 (`065f6ce`) and 3a (`d43445d`) both shipped this session: the aggregation layer in MAIN, then
@@ -1220,6 +1237,23 @@ does not exist on type 'DisplayItem'`); adding it to the env.d.ts `TodoItem` too
 new personal-to-do field must be added to BOTH `TodoItem` definitions** (plus the ipc `cloudRowFor`
 SELECT+return, the `readPersonal` SELECT+return, preload, and the env.d.ts API type).
 
+## ⚠ Lesson — TESTING HYGIENE for personal-to-do sync (found while testing C-recurring, 2026-07-21)
+
+**(i) Raw-SQL edits to the live LOCAL DB do NOT sync — they bypass `syncPersonalWrite`.** Seeding or
+resetting `personal_todos` with `sqlite3` (the only way to drive C-recurring tests before the picker
+existed) writes locally but never reaches cloud, and a raw `DELETE` of a spawned row removes it
+locally while leaving it in Supabase. So **any DevTools/sqlite spawn-or-sync test leaves CLOUD
+RESIDUE that must be cleaned cloud-side separately** — delete the orphaned rows in the Supabase SQL
+editor, not just locally. (C-recurring testing left 4 orphan spawns + a dirty base row in cloud;
+they were cleaned with a `delete … where series_id=… and id!=base` + a reset `update`.) Because
+`personal_todos` is on the realtime publication, uncleaned cloud orphans can even sync back DOWN.
+
+**(ii) An empty `personal_sync_queue` means writes SUCCEEDED to cloud.** `syncPersonalWrite` applies
+to cloud IMMEDIATELY when online and only enqueues on failure/offline (the queue holds *parked*
+ops, deleting each on success). So an empty queue ⇒ every attempted write landed — a handy invariant
+for reasoning about sync state, and it independently confirms whether a hand-run cloud DDL was
+applied (if a column were missing, the upsert would 400 and park in the queue).
+
 ## ⚠ Lesson — NEVER DEFINE A COMPONENT INSIDE ANOTHER COMPONENT'S BODY
 
 **The remount trap (found in 3b, 2026-07-20). It cost the add-step focus bug AND THREE failed
@@ -2043,14 +2077,44 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
          backdrop/select-another, the unmount flush covers the Esc + tab-switch gaps a plain
          onBlur-only model drops, and the key both closes those gaps and prevents cross-item draft
          bleed (an old editor's flush is bound to the old item). Detail in the **SLICE B** entry below.
-       - C. **NEXT — closes Group A: RECURRING then FILES — both heavy, each its own slice.**
-         C-recurring first = None/Daily/Weekly/Monthly + real next-occurrence generation on
-         completion (recurrence logic, not a flag). C-files after = attachment storage for personal
-         to-dos (none exists today). After C, Group A is closed and the team work (2.5/2.6/4/5) unblocks.
+       - C-recurring-1. ✅ **DONE — completion-anchored recurrence BACKEND (`1795418`, 2026-07-21,
+         UNRELEASED).** Completing a recurring personal to-do spawns its next occurrence in ONE
+         transaction. Four columns (`recurrence` / `recurrence_anchor` / `series_id` /
+         `spawned_successor`); `nextOccurrence` STRING date math (no `Date`); locked semantics:
+         completion-anchored, exactly ONE active instance, `spawned_successor` idempotency guard
+         (re-complete after revive never double-spawns), no-due-date → no roll. Detail in the
+         **SLICE C-recurring-1** entry below.
+       - C-recurring-2. ✅ **DONE — recurrence PICKER UI + row chip (`76bafb0`, 2026-07-21,
+         UNRELEASED).** `setRecurrence` (verbatim `setColor` clone); a `RecurrencePopover` (reuses
+         the DatePopover machinery) as a "Repeat" row after DUE; a repeat chip on the card; one
+         `RECUR_LABELS` source of truth; inline repeat SVG (no icon dep). Detail in the **SLICE
+         C-recurring-2** entry below.
+       - **★ GROUP A IS CLOSED.** A-1/A-2/A-3/B/C-recurring all shipped. **C-files is PARKED** —
+         deferred, non-essential; personal to-dos have no attachment precedent, so it's its own
+         diagnose-first project if revisited, NOT the next step.
        - **★ DIRECTION (Dorian, 2026-07-20): FINISH TO-DO COMPLETELY — A-3 → B → C — BEFORE
-         pivoting to the team/collaboration/publication work.** This deliberately pushes 2.5, 2.6,
-         4, 5, the Team console and the publication redesign LATER in the queue. Recorded so a
-         future session does not "helpfully" jump to slice 4 next.
+         pivoting to the team/collaboration/publication work.** Group A is now done; the two QUEUED
+         To-Do features below (C-recurring-3, Off-work) are also To-Do work and come BEFORE the
+         team thread. This still pushes 2.5, 2.6, 4, 5, the Team console and the publication
+         redesign LATER. Recorded so a future session does not "helpfully" jump to slice 4 next.
+       - **★ QUEUED: C-recurring-3 + OFF-WORK (Dorian's next build targets, 2026-07-21 — DESIGN-FIRST,
+         diagnose before building).** Two features, in this order (the second depends on the first):
+         - **(a) C-recurring-3 — MISSED-OCCURRENCE TRACKING.** Keep spawn-on-completion exactly as
+           C-recurring-1 built it, but ADD a **time-driven evaluator** (runs at launch, maybe
+           periodically) that stamps a **"missed: <date>"** chip when an interval boundary passes
+           without the active instance being completed (room for SEVERAL chips beside the repeat
+           chip). A **"Missed repeats" section** is added to the detail panel UNDER Notes — new panel
+           order **Colour → Due → Recurrence → Steps → Notes → Missed repeats**; each missed entry is
+           markable-done there, and clearing it removes the chip. **LOCKED SEMANTIC: marking a missed
+           occurrence done = BOOKKEEPING ONLY, does NOT spawn** (the active instance already exists).
+           Open questions to settle in the diagnosis: the launch-time evaluator is **NEW machinery**
+           (completion-anchoring had deliberately let us avoid a time-driven scheduler); and where
+           missed dates live (a `missed_dates` JSON array on the row vs a child table).
+         - **(b) "OFF WORK" SETTING.** A per-team-member leave window in Settings during which the
+           evaluator **skips** the window (nothing marked missed) AND **no notifications** are sent to
+           that member. Stored per-user IN CLOUD (applies across devices, visible to the notification
+           sender). **DEPENDS ON C-recurring-3** (it suppresses that evaluator) — so **build
+           C-recurring-3 FIRST**, even though Dorian said "build both next."
     4. **The HEAD role + CARD PERMISSION TIERS, enforced in MAIN.** *(Was "`board.assign`
        per-board permission" — the capability is now carried by the unified **head** role, not
        a standalone `can_assign` flag. See the UNIFIED HEAD ROLE entry under Known issues.)*
@@ -2122,6 +2186,40 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
       empty the page (the `Promise.all`-poisoning lesson).
     - **⚠ DEFECT SHIPPED KNOWINGLY — `has_steps` reads a dead table.** See slice 3b. Nothing
       consumes it, and 3a kept it that way.
+  - **✅ SLICE C-recurring-1 SHIPPED — completion-anchored recurrence BACKEND (`1795418`, 2026-07-21,
+    UNRELEASED).** Completing a recurring personal to-do spawns its next occurrence. FOUR new columns
+    (guarded local ALTER + hand-run cloud DDL `sql/2026-07-21_personal_todos_recurrence.sql`, already
+    run): `recurrence` (NULL = non-recurring; else daily|weekly|weekdays|monthly|yearly),
+    `recurrence_anchor` ('completion'; 'scheduled' reserved/unused), `series_id` (links every instance
+    of one series), `spawned_successor` (0/1). All four added to `cloudRowFor` (clobber guard) and to
+    `readPersonal` + BOTH `TodoItem` types. **Spawn lives in `personalTodo:complete`**, wrapped so the
+    complete-UPDATE and spawn-INSERT are ONE `db.transaction`: it reads the row, and **iff
+    `recurrence` set AND `spawned_successor=0`** it seeds `series_id = series_id ?? id`, computes
+    `nextOccurrence(due_date, recurrence)` (NULL due → no roll), INSERTs a fresh row (copies title/
+    due_time/recurrence/color/starred; NOT notes/steps — clean slate; `recurrence_anchor='completion'`,
+    append `position`), and flips the completed row `spawned_successor=1`. Cloud writes fire AFTER the
+    transaction (`update` for the parent, `insert` for the spawn), no isOnline guard. **`nextOccurrence`
+    ([src/main/todos/nextOccurrence.ts]) is pure STRING math** — parses `'YYYY-MM-DD'` to integer y/m/d,
+    never `new Date(str)` (which the To-Do CET engine avoids for the same tz reason). Edge cases,
+    all verified in-app: **monthly month-end clamp** (Jan-31 → Feb-28 via `daysInMonth`), **yearly
+    Feb-29 → Feb-28** in a non-leap target year, **weekdays** Fri→Mon (Zeller day-of-week, no Date).
+    **Locked semantics: completion-anchored, exactly ONE active instance, and the `spawned_successor`
+    guard means a re-complete after revive NEVER double-spawns.** Revive/uncomplete is unchanged (it
+    does NOT reset `spawned_successor` — the noted backlog item). **All three date edge cases + carry-
+    forward + clean-slate + series linking + idempotency were verified end-to-end through the running
+    app** (seed via sqlite → complete via `window.api.personalTodo.complete` → read back).
+  - **✅ SLICE C-recurring-2 SHIPPED — recurrence PICKER UI + row chip (`76bafb0`, 2026-07-21,
+    UNRELEASED).** `personalTodo:setRecurrence(id, freq)` is a **verbatim `setColor` clone** (bareTodoId
+    → UPDATE recurrence → `cloudRowFor` → `syncPersonalWrite`, no isOnline guard); `recurrence` was
+    already in `cloudRowFor` (C-recurring-1) so no clobber work, and it deliberately does NOT touch
+    `series_id`/`spawned_successor`. Renderer `handleSetRecurrence` mirrors `handleSetColor` (optimistic
+    `patchItem`, revert on refusal, **no `queueLoad` on success**). UI: a **`RecurrencePopover`** reusing
+    the DatePopover machinery (`usePopoverDismiss` + `PILL_CLASS` trigger + the shared dropdown
+    container — no new primitive) as a **"Repeat" row placed after DUE, before STEPS**; six rows
+    (Does-not-repeat → null, Daily, Weekly, Weekdays, Monthly, Yearly), active row highlighted. A
+    **repeat chip on `PersonalCard`** beside the due pill. **One `RECUR_LABELS` source of truth** drives
+    trigger + rows + chip so labels never drift; `isRecurKey` validates renderer-side (like
+    `isTodoColorKey`); the repeat glyph is an **inline SVG** (mockup's path, no icon dependency).
   - **✅ SLICE A-3 SHIPPED — DRAG-TO-REORDER personal steps (`9c049e3`, 2026-07-21, UNRELEASED).**
     `personalTodoStep:reorder(todoId, orderedStepIds)` dense-rewrites `position` 0..n-1 in one
     `db.transaction` (`AND todo_id=?` guard — no FK, so a foreign id no-ops instead of moving another

@@ -2,7 +2,7 @@
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-21
   Current version: v2.3.0 (RELEASED 2026-07-17, tag v2.3.0, version-bump a4b161e).
-                   UNRELEASED since v2.3.0 — TWENTY-TWO commits: 2d76b9a (visibleBoardIds
+                   UNRELEASED since v2.3.0 — TWENTY-FOUR commits: 2d76b9a (visibleBoardIds
                    non-root no-join fix), b211638 (slice 0b-0 — realtime channel-health
                    instrumentation), the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
                    c60c9c2 (Social form-loss), ae067da (updateStatus phantom-row guard),
@@ -30,7 +30,11 @@
                    3b's sparse positions, per-row sync) and 4bc236d (slice B —
                    personal-to-do notes: setNotes + cloudRowFor clobber guard, a
                    module-level NotesEditor with onBlur + unmount-flush keyed by
-                   item.id, plain textarea no debounce, hand-run cloud DDL).
+                   item.id, plain textarea no debounce, hand-run cloud DDL); and
+                   C-recurring, closing Group A: 1795418 (C-recurring-1 —
+                   completion-anchored spawn-on-complete backend: 4 columns +
+                   nextOccurrence string date math) and 76bafb0 (C-recurring-2 —
+                   recurrence picker UI + card repeat chip).
                    NOTE: A-2's commit subject says "editable title" but title is
                    READ-ONLY (no setTitle handler exists).
                    The installed app is 2.3.0 and contains NONE of them.
@@ -38,7 +42,7 @@
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD 4bc236d   |   347 commits   |   ~40,450 lines of TS/TSX
+                   HEAD 76bafb0   |   350 commits   |   ~40,800 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
@@ -100,6 +104,49 @@
   Sources — iterated BEFORE any spec / Part-A / diagnosis / slices, same design-first approach
   as the To-Do prototype. To-Do slice 5 (intel culling directive) is its on-ramp; shared
   prerequisite: notifications → cloud.
+  See HANDOFF.md "Start here" for the resume point.
+
+  ── 2026-07-21 — C-RECURRING: RECURRING PERSONAL TO-DOS (1795418, 76bafb0, UNRELEASED) ──
+  GROUP A IS NOW CLOSED. Recurring personal to-dos are live end-to-end, in two slices.
+  • C-recurring-1 (backend, 1795418): completion-anchored recurrence. FOUR new columns on
+    personal_todos (guarded local ALTER + hand-run cloud DDL
+    sql/2026-07-21_personal_todos_recurrence.sql): recurrence (NULL=non-recurring; else
+    daily|weekly|weekdays|monthly|yearly), recurrence_anchor ('completion'; 'scheduled'
+    reserved/unused), series_id (links every instance of one series), spawned_successor (0/1).
+    All four added to cloudRowFor (clobber guard) + readPersonal + BOTH TodoItem types.
+  • SPAWN-ON-COMPLETE lives in personalTodo:complete, wrapped so the complete-UPDATE and the
+    spawn-INSERT are ONE db.transaction. Iff recurrence set AND spawned_successor=0: seed
+    series_id = series_id ?? own id, compute nextOccurrence(due_date, recurrence) (NULL due →
+    no roll), INSERT a fresh row (copies title/due_time/recurrence/color/starred; NOT notes/
+    steps — clean slate; recurrence_anchor='completion', appended position), flip the completed
+    row spawned_successor=1. Cloud writes fire AFTER commit (update parent, insert spawn), no
+    isOnline guard. LOCKED SEMANTICS: completion-anchored, exactly ONE active instance, and the
+    spawned_successor guard means a re-complete after revive NEVER double-spawns.
+  • nextOccurrence (src/main/todos/nextOccurrence.ts) is PURE STRING math — parses 'YYYY-MM-DD'
+    to integer y/m/d, never new Date(str) (the tz trap the To-Do CET engine already avoids).
+    Three edge cases, all verified in-app: monthly month-end CLAMP (Jan-31 → Feb-28 via
+    daysInMonth), yearly Feb-29 → Feb-28 in a non-leap year, weekdays Fri→Mon (Zeller day-of-
+    week, no Date). Verified end-to-end through the running app (seed via sqlite → complete via
+    window.api → read back): 2026-01-31→2026-02-28, 2028-02-29→2029-02-28, Fri 2026-07-24→Mon 2026-07-27.
+  • C-recurring-2 (picker UI, 76bafb0): setRecurrence is a verbatim setColor clone (recurrence
+    already in cloudRowFor, no clobber work; does NOT touch series_id/spawned_successor).
+    handleSetRecurrence mirrors handleSetColor (optimistic patch, revert on refusal, no queueLoad
+    on success). A RecurrencePopover REUSES the DatePopover machinery (usePopoverDismiss +
+    PILL_CLASS + shared dropdown container — no new primitive) as a "Repeat" row after DUE, before
+    STEPS; six rows (Does-not-repeat→null, Daily, Weekly, Weekdays, Monthly, Yearly). A repeat chip
+    on the card beside the due pill. ONE RECUR_LABELS source of truth (trigger + rows + chip);
+    inline repeat SVG, no icon dependency.
+  • TESTING-HYGIENE LEARNINGS (from C-recurring testing): (i) raw-SQL edits to the live LOCAL DB
+    do NOT sync — they bypass syncPersonalWrite — so any DevTools/sqlite spawn-or-sync test leaves
+    CLOUD RESIDUE that must be cleaned cloud-side (delete orphaned Supabase rows, not just local;
+    C-recurring left 4 orphan spawns + a dirty base, cleaned by hand). (ii) an empty
+    personal_sync_queue means writes SUCCEEDED to cloud (online applies immediately; queue holds
+    only failures/offline) — also confirms a hand-run cloud DDL was applied.
+  • C-files is PARKED (deferred, non-essential; no attachment precedent → own diagnose-first
+    project). NEXT (design-first, To-Do work, BEFORE the team thread): C-recurring-3 (missed-
+    occurrence tracking — a NEW time-driven evaluator stamping "missed: <date>" chips + a "Missed
+    repeats" panel section; bookkeeping-only, does NOT spawn), then an "Off work" leave-window
+    setting (suppresses that evaluator + notifications; depends on C-recurring-3, so build it first).
   See HANDOFF.md "Start here" for the resume point.
 
   ── 2026-07-21 — DETAIL PANEL: SLICES A-3 + B (9c049e3, 4bc236d, UNRELEASED) ──
