@@ -434,8 +434,13 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const boards = await window.api.infoPages.list()
-        setProjects((boards as Array<{ id: string; name: string }>).map(b => ({ id: b.id, name: b.name })))
+        // Cloud-first board list (filters deleted=0/archived=0), same source the Info Pages
+        // list uses — so a deleted info-page board no longer lingers in the picker via the
+        // stale local mirror. Picker needs only {id,name}; no other field is consumed.
+        const boards = await window.api.boards.list()
+        setProjects((boards as Array<{ id: string; name: string; board_type?: string }>)
+          .filter(b => b.board_type === 'info-page')
+          .map(b => ({ id: b.id, name: b.name })))
       } catch (e) { console.warn('[NewsTab] projects load failed:', e) }
     })()
   }, [])
