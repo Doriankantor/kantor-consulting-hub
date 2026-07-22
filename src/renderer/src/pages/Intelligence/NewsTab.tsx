@@ -94,6 +94,15 @@ const NEWS_EMPTY_FORM = {
   project_board_id: '',
 }
 
+// ISO/date string -> yyyy-mm-dd for <input type="date">, or '' if unparseable
+// (mirrors SocialTab's toDateInput). Used by the "Read link" autofill.
+function toDateInput(s?: string): string {
+  if (!s) return ''
+  const d = new Date(s)
+  if (isNaN(d.getTime())) return ''
+  return d.toISOString().slice(0, 10)
+}
+
 export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const { localUser, isRoot, can } = useAuth()
   const { online } = useConnection()
@@ -149,6 +158,9 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const [newsErrors, setNewsErrors] = useState<Record<string, string>>({})
   const [newsFormError, setNewsFormError] = useState<string | null>(null)
   const [newsDup, setNewsDup] = useState<{ existingId?: string; existingTitle?: string; notVisible?: boolean } | null>(null)
+  // "Read link" autofill: in-flight flag + a plain-language result note (success caveat or failure reason).
+  const [newsFetching, setNewsFetching] = useState(false)
+  const [newsFetchNote, setNewsFetchNote] = useState<string | null>(null)
   const [newsSaving, setNewsSaving] = useState(false)
   // News hand-add: briefly ring the card a "jump to existing" action scrolls to.
   const [highlightId, setHighlightId] = useState<string | null>(null)
@@ -501,6 +513,45 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     }
   }
 
+  // "Read link": fetch the pasted URL's <head> metadata and autofill ONLY the blank fields
+  // (never overwrite what the researcher already typed). The fetcher reads meta tags only,
+  // so `content` is the summary blurb, not the full article — the note says so. On any
+  // failure the form is left UNTOUCHED and a plain-language reason is shown. Never fakes success.
+  async function handleReadNewsLink() {
+    const u = newsForm.url.trim()
+    if (!u || newsFetching) return
+    setNewsFetching(true)
+    setNewsFetchNote(null)
+    try {
+      const res = await window.api.intelligence.fetchUrlMetadata(u)
+      if (res.ok) {
+        const m = res.metadata
+        setNewsForm(f => ({
+          ...f,
+          title:        f.title.trim()       ? f.title       : (m.title || f.title),
+          source_name:  f.source_name.trim() ? f.source_name : (m.site_name || f.source_name),
+          published_at: f.published_at       ? f.published_at : (toDateInput(m.published) || f.published_at),
+          content:      f.content.trim()     ? f.content     : (m.description || f.content),
+          url:          m.url || f.url,   // resolved/canonical url normalizes what they pasted
+        }))
+        setNewsFetchNote("Filled from the page's metadata. Content is the summary blurb, not the full article — paste the article text if you need it.")
+      } else {
+        const REASONS: Record<string, string> = {
+          blocked:      'That site blocked the request. Fill the fields in manually.',
+          timeout:      'The page took too long to respond. Try again or fill in manually.',
+          not_html:     "That link isn't a web page we can read. Fill in manually.",
+          invalid_url:  "That doesn't look like a valid URL.",
+          fetch_failed: "Couldn't reach that page. Fill in manually.",
+        }
+        setNewsFetchNote(REASONS[res.reason] || "Couldn't read this link — fill in manually.")
+      }
+    } catch {
+      setNewsFetchNote("Couldn't read this link — fill in manually.")
+    } finally {
+      setNewsFetching(false)
+    }
+  }
+
   // News hand-add: submit the manual "Add article" form. Title is required; author must
   // be the real user's display name — News hides 'Kantor Framework' rows, so that author
   // (or none) would save a row that reports success yet never renders. The three addNews
@@ -509,6 +560,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   async function handleAddNews() {
     const errs: Record<string, string> = {}
     if (!newsForm.title.trim()) errs.title = 'Title is required'
+    if (!newsForm.project_board_id) errs.project_board_id = "Pick a project — articles without one won't appear in any project's queue."
     setNewsErrors(errs)
     if (Object.keys(errs).length) return
     setNewsFormError(null)
@@ -539,6 +591,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       if (res.ok) {
         setNewsForm({ ...NEWS_EMPTY_FORM })
         setNewsErrors({})
+        setNewsFetchNote(null)
         setShowAddPanel(false)
         await load()
         return
@@ -564,6 +617,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     if (!el) { setNewsDup(d => (d ? { ...d, notVisible: true } : d)); return }
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     setHighlightId(id)
+    setNewsFetchNote(null)
     setShowAddPanel(false)
     window.setTimeout(() => setHighlightId(cur => (cur === id ? null : cur)), 2000)
   }
@@ -893,7 +947,17 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
             stays root-only — it triggers the shared Contested Skies pipeline pull. */}
         <div className="ml-auto flex items-center gap-2">
           <button
-            onClick={() => setShowAddPanel(v => !v)}
+            onClick={() => {
+              const opening = !showAddPanel
+              // On open, default the required Project field to the tab's selected project
+              // (blank when the top filter is "all", so the placeholder shows and validation fires).
+              if (opening) {
+                const def = selectedProjectId && selectedProjectId !== 'all' ? selectedProjectId : ''
+                setNewsForm(f => ({ ...f, project_board_id: def }))
+              }
+              setNewsFetchNote(null)
+              setShowAddPanel(opening)
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-white/[0.15] text-gray-700 dark:text-white/80 hover:bg-gray-50 dark:hover:bg-white/[0.05] text-xs font-medium transition"
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2.5v7M2.5 6h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
@@ -956,12 +1020,24 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">URL (optional)</label>
-                <input
-                  value={newsForm.url}
-                  onChange={e => setNewsForm(f => ({ ...f, url: e.target.value }))}
-                  placeholder="https://..."
-                  className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] text-sm bg-white dark:bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                />
+                <div className="flex gap-2">
+                  <input
+                    value={newsForm.url}
+                    onChange={e => setNewsForm(f => ({ ...f, url: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleReadNewsLink() } }}
+                    placeholder="https://..."
+                    className="flex-1 min-w-0 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] text-sm bg-white dark:bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleReadNewsLink}
+                    disabled={!newsForm.url.trim() || newsFetching}
+                    title="Auto-fill the fields from the link's page metadata"
+                    className="shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium bg-indigo-500 hover:bg-indigo-600 text-white transition whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {newsFetching ? 'Reading…' : '✦ Read link'}
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Outlet / Source</label>
@@ -996,15 +1072,17 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                 </select>
               </div>
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Project (optional)</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Project *</label>
                 <select
                   value={newsForm.project_board_id}
                   onChange={e => setNewsForm(f => ({ ...f, project_board_id: e.target.value }))}
-                  className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-transparent text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  className={`w-full px-3 py-1.5 rounded-lg border text-sm bg-white dark:bg-transparent text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 ${newsErrors.project_board_id ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-white/[0.1]'}`}
                 >
-                  <option value="">No project</option>
+                  {/* Placeholder only while nothing valid is chosen — its empty value fails validation. */}
+                  {!newsForm.project_board_id && <option value="">— Select a project —</option>}
                   {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
+                {newsErrors.project_board_id && <p className="text-xs text-red-500 dark:text-red-400 mt-1">{newsErrors.project_board_id}</p>}
               </div>
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Content</label>
@@ -1036,10 +1114,14 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
               </div>
             )}
 
+            {newsFetchNote && (
+              <p className="mt-2 text-xs text-gray-500 dark:text-white/45">{newsFetchNote}</p>
+            )}
+
             <div className="flex items-center justify-end gap-2 mt-3">
               {newsFormError && <span className="text-xs text-red-500 dark:text-red-400 mr-auto">{newsFormError}</span>}
               <button
-                onClick={() => { setShowAddPanel(false); setNewsForm({ ...NEWS_EMPTY_FORM }); setNewsErrors({}); setNewsFormError(null); setNewsDup(null) }}
+                onClick={() => { setShowAddPanel(false); setNewsForm({ ...NEWS_EMPTY_FORM }); setNewsErrors({}); setNewsFormError(null); setNewsDup(null); setNewsFetchNote(null) }}
                 disabled={newsSaving}
                 className="px-4 py-1.5 rounded-lg border border-gray-300 dark:border-white/[0.15] text-gray-600 dark:text-white/70 text-sm font-medium transition hover:bg-gray-50 dark:hover:bg-white/[0.04] disabled:opacity-50"
               >
