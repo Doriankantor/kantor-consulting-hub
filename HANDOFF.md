@@ -11,6 +11,86 @@ process complete by end of July, publishing in August.** The stage order is LOCK
 → Analysis & design → Publish → Latest update notes → Sources**, with Claude PROPOSING placements
 and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not jump to code.
 
+**LATEST (2026-07-23) — INTEL LIST SCOPING + PAGING SHIPPED. HEAD `ad6469a`,
+tree clean.**
+
+**SHIPPED — query-level project scoping + paging on all four Intelligence tabs
+(one commit, `ad6469a`).** `getSources` gained `project` + `excludeStatus`, applied
+in BOTH cloud and mirror paths IN ADDITION to the `visibleBoardIdsFor`
+membership gate (gate = security, project = view — never one replacing the
+other). New `getSourcesCount` (`count:'exact'`, `head:true`, NO range) gives an
+exact total over the same WHERE, driving the "Showing X of Y" line and
+`hasMore`. `getStatusCounts` is now project-scoped (News badges show the
+selected project; identical today at 100/27/79 since all articles are on
+board-info-latam, diverges once other projects have content). All four tabs page
+at 50 via fresh / append / background modes; background refetch uses
+`limit=max(loadedCount,50), offset=0` to preserve depth. Compose tabs exclude
+`routed` AT THE QUERY so raw-fetched === displayed (paging provably correct).
+"Refresh now" was fixed to use background mode so refreshing while deep-paged
+holds position instead of snapping to page one.
+
+**WHAT IT FIXED:** the 101st unreviewed article was UNREACHABLE under the old
+100-row cap (query returned newest 100, then filtered client-side). And once
+Phase 2 opens the other three projects, the old code would have shown EMPTY
+queues for any project whose rows weren't in the global newest-100 — a silent
+wrong-empty-list, the recurring bug class. Both closed.
+
+**DELIBERATELY UNTOUCHED:** the index-level "PENDING REVIEW" stat and
+`getUnreviewedCount` — still type-agnostic AND project-agnostic. What "pending"
+should mean is the NEXT slice (spec below).
+
+**★ NEXT SLICE — PENDING COUNTER REDEFINITION (design RESOLVED this session,
+ready to build after a status-lifecycle diagnose).** Dorian's model, confirmed
+against the live UI:
+- **Articles:** pending = `status='unreviewed'`. Saved/approved/rejected excluded
+  (a saved article is a deliberate post-review parking decision).
+- **Non-articles (social/documents/interviews):** pending = ANY item not yet
+  ROUTED. Those tabs have NO approve/reject — the only action is "Send to New
+  sources" — so a SAVED social/doc/interview is NOT reviewed, it's resting =
+  waiting = pending. Same status string, opposite meaning from an article, purely
+  by type. (Tension with locked decision #1's "same kind of item" — the STATUS
+  model is not unified; flagged, not relitigated.)
+- **Header "PENDING REVIEW" must become PROJECT-SCOPED.** Today Immigration Undone
+  shows 100 (Contested Skies' count) — wrong. Should show that project's own
+  pending total (currently 0).
+- **"All sources" selection → a PER-PROJECT BREAKDOWN, not one number** (which
+  projects have pending items, with counts). This is NEW UI (panel/hover), the
+  biggest part of the slice, needs a placement decision.
+- Correct Contested Skies total under this model = 104 (100 articles + 2 social +
+  1 doc + 1 interview), reconciling against the News badge's 100 by exactly the
+  4 non-article items — each visible in its tab.
+
+**PREREQUISITE for that slice — STATUS-LIFECYCLE DIAGNOSE (not yet done).** Need
+to confirm what `addSocial`/`addDocument`/`addInterview` write as `status` on
+create, what transitions exist, and whether all three behave identically. If new
+compose items are born `unreviewed`, they inflate the header from capture until
+routed — the counter redefinition depends on knowing this. Do this read-only
+FIRST, before building the counter.
+
+**LOGGED THIS SESSION (do not drop):**
+- **Social chevron reopens on navigate-back.** From `9ce1e7f`: the collapse state
+  is component state, so leaving the Intelligence page unmounts the tab and it
+  reopens expanded on return. Small renderer fix; the compose block should
+  persist collapsed. (Confirmed live.)
+- **Delete asymmetry.** `a1ceeed` hard-BLOCKS deletion of `type='article'` (every
+  decision survives as a relevance-training label). But social/documents/
+  interviews still HARD-DELETE via their trash icon — the unreviewed trump social
+  `d064b462` was removed this way during this session's testing (that's what took
+  the header 102→101; an actioned article took it →100). Decide whether the
+  no-delete-preserve-the-label principle should extend to the other three types,
+  or whether their delete is intentional.
+- **Mirror can lag cloud.** Offline counts are "last known" and can trail cloud
+  (surfaced as a transient offline-101/online-100 during testing — stale mirror
+  vs fresh cloud, NOT a code bug). Offline surfaces show last-synced numbers by
+  design.
+
+**COUNTER DETOUR — CLOSED, no bug.** The 101-vs-102 that opened this session was
+never a bug: `getUnreviewedCount` counts all types/all boards (was 101 articles
++ 1 trump social = 102); the News badge is article-scoped (101). Zero
+NULL-project rows, no stranded articles. The trump social is legitimate content
+on a Phase-2 board Dorian placed himself as root. Both regression checks from the
+prior session (Make-unreviewed count, Info Pages move-back) verified WORKS.
+
 **LATEST (2026-07-22) — INTEL CARD SESSION. HEAD `e591fc8`, tree clean. A run of
 renderer-and-main intel-card slices, each diagnosed read-only, built, tested in the real
 app, and committed with a dictated message. SHIPPED this session, in order:**
