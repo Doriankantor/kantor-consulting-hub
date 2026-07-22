@@ -4,6 +4,72 @@ _Last updated: 2026-07-21 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
+**LATEST (2026-07-22) — INTEL CARD SESSION. HEAD `1285bc4`, tree clean. A run of
+renderer-and-main intel-card slices, each diagnosed read-only, built, tested in the real
+app, and committed with a dictated message. SHIPPED this session, in order:**
+
+- **T6b — AI suggested-tag chips made clickable on Documents/Interviews/Social (`1fd48ff`).**
+  They rendered as dead spans; `SuggestedTagChip` was threaded into each compose sub-component
+  using each tab's own handler arity and row id var.
+- **Social card editing (`6323a48`).** The add-form reopens pre-filled as an edit panel. New
+  main-side `updateSocialFields(id, patch)` with an internal allowlist; `url` deliberately
+  excluded (provenance).
+- **Collapse chevron + CondensedSummary on Social/Documents/Interviews (`9ce1e7f`, Option 1).**
+  Collapses the compose block only, matching News; header, preview, tags and Save/Send stay
+  visible. **TECH DEBT:** `CondensedSummary` carries its own copy of the confidence colour scale
+  (Interviews had none), so two copies now exist and could drift.
+- **News hand-add (`b076929`).** `addNews` with a `url` duplicate pre-check (returns
+  `existingId`/`existingTitle`) and an author guard rejecting empty or 'Kantor Framework' names —
+  News filters that author out of its list, so such a row saves successfully but renders
+  invisibly.
+- **Article deletion hidden AND disabled (`a1ceeed`).** A type-scoped guard in the shared
+  `deleteSource` rejects `type='article'`, placed before the permission gate so no caller can
+  bypass it. Articles are accepted, rejected, or marked duplicate (with `duplicate_of`) so every
+  decision survives as a relevance-training label. **CONSEQUENCE:** a genuinely broken article
+  row can now only be removed in Supabase.
+- **Duplicate auto-suggest (`d6bb90e`).** Seeds candidates from the article title's two most
+  distinctive tokens, ranked by title-token overlap. Seeds from title, not `source_name` — a
+  duplicate is the same story from a different outlet.
+- **Editable AI analysis (`418d1dd`).** Human overrides for KEY FACTS + SYSTEMS stored in
+  `analysis.human.overrides`, keyed by fact label and by the AI's original system string, so
+  re-running Analyze (which replaces `.ai` wholesale) cannot wipe a correction. Shared
+  `resolveAnalysis` helper; Intelligence shows full provenance (edited chip, "AI said", revert),
+  Info Pages shows the resolved value only. Overrides reach Info Pages automatically via the
+  existing pointer + live join — no copy, no sync step.
+- **News footer toggle renamed to "Review and annotate" and restyled as a prominent button
+  (`8aef44e`).**
+- **News add panel: Read link auto-fill (`d4e8ce9`).** Fills only untyped fields from page
+  metadata, with plain-language failure reasons. **CAVEAT:** the fetcher reads `<head>` meta
+  only, so Content receives the page description, not the article body.
+- **Hand-add now REQUIRES a project, defaulted to the selected one (`d4e8ce9`).** An unscoped
+  article saves successfully but appears in no project queue.
+- **"Make unreviewed" on saved News articles (`3026fca`).** Exposes the existing
+  `revertToUnreviewed` as a standalone intelligence IPC, extended to also clear
+  `reviewed_by`/`reviewed_at`. Deliberately NOT routed through `handleStatus`, which would stamp
+  a reviewer, log a decision, and push an 'unreviewed' verdict to Supabase, polluting the
+  relevance-feedback signal.
+- **Intel card project pickers (all four tabs) switched from the local-mirror-only
+  `infoPages.list` to the cloud-first `boards.list` (`1285bc4`).** Deleted info-page boards now
+  disappear from the pickers. **KNOWN LIMITATION:** offline, `listBoards` falls back to the stale
+  mirror and a deleted board can reappear until reconnect. The durable fix (propagating deletions
+  to info-page rows in `syncBoardsMirror`) risks wiping genuinely local-only info-page boards and
+  is out of scope.
+
+**OPEN / IN-PROGRESS from the intel card session:**
+- **LATENT BUG worth its own slice — project keywords never reach AI analysis.** `projectConfig`
+  passed into AI analysis carries `keywords: (proj as any).keywords`, but `projects` is mapped to
+  `{ id, name }` only, so `keywords` has always been `undefined` — project-aware analysis runs
+  without the project's keywords. Keywords live inside `board_config` JSON, which neither board
+  source returns as a top-level column. Predates the picker fix and is unchanged by it. Relevant
+  to the per-project analytical framework plans.
+- **One stranded article ("Drones reshape war in Colombia")** saved with a null project before
+  the requirement landed; invisible in every project view. Needs a project assigned in Supabase.
+- **Interview transcript editing** deliberately deferred into the interview restructure, since
+  that work replaces the read-only transcript with an annotation surface.
+- **Untested regression points on "Make unreviewed"** — whether the pending count increments on
+  revert, and whether Info Pages "move back to intel" still works after `revertToUnreviewed` was
+  changed.
+
 **LATEST (2026-07-21) — HEAD `1ea04a7`, tree clean. Both off-work (`f918e42`) and the
 DATE-PICKER slice (`1ea04a7`) are SHIPPED. ★ THE LAST TWO To-Do FEATURES BEFORE THE
 TEAM THREAD ARE DONE — off-work leave windows + the date-picker fixes.**
