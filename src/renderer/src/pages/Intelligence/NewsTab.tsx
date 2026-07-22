@@ -631,12 +631,6 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     } catch (e) { console.warn('[NewsTab] deleteTag failed:', e) }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Delete this source permanently?')) return
-    await window.api.intelligence.deleteSource(id)
-    setSources(prev => prev.filter(s => s.id !== id))
-  }
-
   function formatDate(dateStr: string | null) {
     if (!dateStr) return ''
     try { return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
@@ -1316,16 +1310,6 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                     title={!online ? 'Unavailable while offline' : 'Mark as a duplicate of another article (no learning signal)'}
                   >
                     Duplicate
-                  </button>
-                )}
-                {/* Delete */}
-                {(can('delete_intel_news') || isRoot) && (
-                  <button
-                    onClick={() => handleDelete(source.id)}
-                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
-                    title="Delete permanently"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 3h8M5 3V2h2v1M4.5 3l.5 7h3l.5-7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </button>
                 )}
               </div>

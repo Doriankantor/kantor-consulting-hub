@@ -598,6 +598,12 @@ export async function deleteSource(actingUserId: string | undefined, id: string)
   reportCloudResult(!rErr)
   if (rErr) return { ok: false, error: `delete read failed: ${rErr.message}` }
   if (!row) { mirrorDeleteOne(id); return { ok: true } } // already gone
+  // Articles are NEVER hard-deleted: a delete would drop the review decision that
+  // relevance training reads. Reject or Duplicate (both retain the row) are the paths.
+  // Placed before the permission gate + delete so no caller can bypass it.
+  if (row.type === 'article') {
+    return { ok: false, error: 'Articles cannot be deleted. Use Reject or Duplicate so the review decision is preserved for relevance training.' }
+  }
   const key = row.type === 'document' ? 'delete_intel_doc'
             : row.type === 'article'  ? 'delete_intel_news'
             : row.type === 'social'   ? 'delete_intel_social'
