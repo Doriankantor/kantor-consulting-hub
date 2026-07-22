@@ -4,7 +4,14 @@ _Last updated: 2026-07-21 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
-**LATEST (2026-07-22) — INTEL CARD SESSION. HEAD `1285bc4`, tree clean. A run of
+**★ NEXT / IN FLIGHT — THE INTELLIGENCE + INFO PAGES RESTRUCTURE (the primary goal).**
+DESIGN-FIRST, in this order: **(1)** a vision conversation, **(2)** read-only diagnosis of the
+two large components, **(3)** the last cloud migration (`info_page_sources`). **Deadline: intel
+process complete by end of July, publishing in August.** The stage order is LOCKED: **New sources
+→ Analysis & design → Publish → Latest update notes → Sources**, with Claude PROPOSING placements
+and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not jump to code.
+
+**LATEST (2026-07-22) — INTEL CARD SESSION. HEAD `e591fc8`, tree clean. A run of
 renderer-and-main intel-card slices, each diagnosed read-only, built, tested in the real
 app, and committed with a dictated message. SHIPPED this session, in order:**
 
@@ -54,16 +61,19 @@ app, and committed with a dictated message. SHIPPED this session, in order:**
   mirror and a deleted board can reappear until reconnect. The durable fix (propagating deletions
   to info-page rows in `syncBoardsMirror`) risks wiping genuinely local-only info-page boards and
   is out of scope.
+- **NewsTab now passes real project keywords into AI analysis (`e591fc8`).** The bug was
+  NewsTab-ONLY — Social, Documents and Interviews already received real keywords via the
+  `selectedProjectConfig` prop built in `Intelligence/index.tsx` from
+  `parseConfig(board_config).keywords`. NewsTab instead re-derived its own `projects` list mapped
+  to `{ id, name }`, discarding `board_config`, so `projectConfig.keywords` was always `undefined`
+  and every on-demand "Analyze with AI" run from a News card judged relevance against the article
+  and project name alone, without the project's collection keywords. An `as any` cast was masking
+  the missing property. Fixed by widening the `projects` state to carry keywords and deriving them
+  with the same `parseConfig` call the parent already uses — `boards.list()` already returned
+  `board_config`, NewsTab was simply dropping it. (This SUPERSEDES the earlier "latent bug"
+  framing that called it an all-tabs gap; it was never all four tabs.)
 
 **OPEN / IN-PROGRESS from the intel card session:**
-- **LATENT BUG worth its own slice — project keywords never reach AI analysis.** `projectConfig`
-  passed into AI analysis carries `keywords: (proj as any).keywords`, but `projects` is mapped to
-  `{ id, name }` only, so `keywords` has always been `undefined` — project-aware analysis runs
-  without the project's keywords. Keywords live inside `board_config` JSON, which neither board
-  source returns as a top-level column. Predates the picker fix and is unchanged by it. Relevant
-  to the per-project analytical framework plans.
-- **One stranded article ("Drones reshape war in Colombia")** saved with a null project before
-  the requirement landed; invisible in every project view. Needs a project assigned in Supabase.
 - **Interview transcript editing** deliberately deferred into the interview restructure, since
   that work replaces the read-only transcript with an annotation surface.
 - **Untested regression points on "Make unreviewed"** — whether the pending count increments on
