@@ -79,6 +79,19 @@ interface Props {
   selectedProjectId?: string   // 3a: top-dropdown project (Slice 1) → default for unset cards
 }
 
+// News hand-add: the manual "Add article" form. Title is the ONLY required field —
+// everything else is optional. An unscoped, ungated article is valid; the researcher
+// fills relevance / project / tags post-hoc on the card, exactly like a pipeline row.
+const NEWS_EMPTY_FORM = {
+  title: '',
+  url: '',
+  source_name: '',
+  published_at: '',
+  content: '',
+  confidence: '',
+  project_board_id: '',
+}
+
 export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const { localUser, isRoot, can } = useAuth()
   const { online } = useConnection()
@@ -125,6 +138,15 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const [dupResults, setDupResults]   = useState<Array<{ id: string; title: string; source_name?: string; published_at?: string }>>([])
   const [dupChosen, setDupChosen]     = useState<{ id: string; title: string } | null>(null)
   const [dupSearching, setDupSearching] = useState(false)
+  // News hand-add: the "Add article" panel + its form (author = localUser?.name).
+  const [showAddPanel, setShowAddPanel] = useState(false)
+  const [newsForm, setNewsForm] = useState({ ...NEWS_EMPTY_FORM })
+  const [newsErrors, setNewsErrors] = useState<Record<string, string>>({})
+  const [newsFormError, setNewsFormError] = useState<string | null>(null)
+  const [newsDup, setNewsDup] = useState<{ existingId?: string; existingTitle?: string; notVisible?: boolean } | null>(null)
+  const [newsSaving, setNewsSaving] = useState(false)
+  // News hand-add: briefly ring the card a "jump to existing" action scrolls to.
+  const [highlightId, setHighlightId] = useState<string | null>(null)
 
   // Autosave researcher notes to intel_notes (existing row → safe). Save-if-changed.
   async function saveNote(id: string) {
@@ -358,6 +380,73 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     } finally {
       setRefreshing(false)
     }
+  }
+
+  // News hand-add: submit the manual "Add article" form. Title is required; author must
+  // be the real user's display name — News hides 'Kantor Framework' rows, so that author
+  // (or none) would save a row that reports success yet never renders. The three addNews
+  // outcomes are handled explicitly (ok → reset+close+refetch; duplicate → keep open,
+  // offer to jump; error → keep open, surface it). Never a bare catch, never fake success.
+  async function handleAddNews() {
+    const errs: Record<string, string> = {}
+    if (!newsForm.title.trim()) errs.title = 'Title is required'
+    setNewsErrors(errs)
+    if (Object.keys(errs).length) return
+    setNewsFormError(null)
+    setNewsDup(null)
+
+    const author = (localUser?.name ?? '').trim()
+    if (!author || author === 'Kantor Framework') {
+      setNewsFormError('Your account has no display name set — cannot attribute the article.')
+      return
+    }
+
+    setNewsSaving(true)
+    try {
+      const content = newsForm.content.trim()
+      const row = {
+        title: newsForm.title.trim(),
+        url: newsForm.url.trim() || null,
+        source_name: newsForm.source_name.trim() || null,
+        published_at: newsForm.published_at || null,
+        content: content || null,
+        snippet: content ? content.slice(0, 300) : null,
+        confidence: newsForm.confidence || null,
+        project_board_id: newsForm.project_board_id || null,
+        added_by_name: author,
+        added_by_id: localUser?.id ?? null,
+      }
+      const res = await window.api.intelligence.addNews(row)
+      if (res.ok) {
+        setNewsForm({ ...NEWS_EMPTY_FORM })
+        setNewsErrors({})
+        setShowAddPanel(false)
+        await load()
+        return
+      }
+      if (res.duplicate) {
+        setNewsDup({ existingId: res.existingId, existingTitle: res.existingTitle })
+        return
+      }
+      setNewsFormError(res.error || 'Could not save the article.')
+    } catch (e) {
+      setNewsFormError((e as Error)?.message || 'Could not save the article.')
+    } finally {
+      setNewsSaving(false)
+    }
+  }
+
+  // News hand-add: jump to the article a duplicate collided with. Scrolls its card into
+  // view + briefly rings it. If that card isn't currently rendered (filtered out / other
+  // project), flag notVisible so the panel tells the user instead of scrolling to nothing.
+  function goToExisting(id?: string) {
+    if (!id) return
+    const el = document.getElementById(`news-card-${id}`)
+    if (!el) { setNewsDup(d => (d ? { ...d, notVisible: true } : d)); return }
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlightId(id)
+    setShowAddPanel(false)
+    window.setTimeout(() => setHighlightId(cur => (cur === id ? null : cur)), 2000)
   }
 
   async function handleConfirmImported() {
@@ -640,8 +729,17 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           </span>
         </div>
 
-        {isRoot && (
-          <div className="ml-auto flex items-center gap-2">
+        {/* Add article is ALWAYS visible (any researcher can hand-add); Refresh now
+            stays root-only — it triggers the shared Contested Skies pipeline pull. */}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setShowAddPanel(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-white/[0.15] text-gray-700 dark:text-white/80 hover:bg-gray-50 dark:hover:bg-white/[0.05] text-xs font-medium transition"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2.5v7M2.5 6h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            Add article
+          </button>
+          {isRoot && (
             <button
               onClick={handleRefreshNews}
               disabled={refreshing}
@@ -654,8 +752,8 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
               )}
               {refreshing ? 'Fetching...' : 'Refresh now'}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Imported-from-Contested-Skies banner */}
@@ -679,6 +777,125 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
 
       {/* Article list */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+        {/* News hand-add: manual "Add article" panel (toggled from the toolbar). Lives
+            INSIDE the scroll container so it scrolls with the list — a saved article is
+            a normal ungated/unreviewed card, no special-casing anywhere. */}
+        {showAddPanel && (
+          <div className="bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Add article</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Title *</label>
+                <input
+                  value={newsForm.title}
+                  onChange={e => setNewsForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="Article headline"
+                  className={`w-full px-3 py-1.5 rounded-lg border text-sm bg-white dark:bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 ${newsErrors.title ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-white/[0.1]'}`}
+                />
+                {newsErrors.title && <p className="text-xs text-red-500 dark:text-red-400 mt-1">{newsErrors.title}</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">URL (optional)</label>
+                <input
+                  value={newsForm.url}
+                  onChange={e => setNewsForm(f => ({ ...f, url: e.target.value }))}
+                  placeholder="https://..."
+                  className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] text-sm bg-white dark:bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Outlet / Source</label>
+                <input
+                  value={newsForm.source_name}
+                  onChange={e => setNewsForm(f => ({ ...f, source_name: e.target.value }))}
+                  placeholder="e.g. Reuters"
+                  className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] text-sm bg-white dark:bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Published date</label>
+                <input
+                  type="date"
+                  value={newsForm.published_at}
+                  onChange={e => setNewsForm(f => ({ ...f, published_at: e.target.value }))}
+                  onClick={e => { try { (e.currentTarget as HTMLInputElement).showPicker() } catch { /* already open */ } }}
+                  className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] text-sm bg-white dark:bg-transparent text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 [color-scheme:dark]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Confidence</label>
+                <select
+                  value={newsForm.confidence}
+                  onChange={e => setNewsForm(f => ({ ...f, confidence: e.target.value }))}
+                  className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-transparent text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                >
+                  <option value="">— confidence —</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Project (optional)</label>
+                <select
+                  value={newsForm.project_board_id}
+                  onChange={e => setNewsForm(f => ({ ...f, project_board_id: e.target.value }))}
+                  className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-transparent text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                >
+                  <option value="">No project</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Content</label>
+                <textarea
+                  value={newsForm.content}
+                  onChange={e => setNewsForm(f => ({ ...f, content: e.target.value }))}
+                  rows={4}
+                  placeholder="Paste the article text (optional — a snippet is derived from the first 300 characters)."
+                  className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] text-sm bg-white dark:bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 resize-y"
+                />
+              </div>
+            </div>
+
+            {newsDup && (
+              <div className="mt-3 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-xs text-amber-800 dark:text-amber-300">
+                {newsDup.notVisible ? (
+                  <span>Already saved as: <span className="font-semibold">{newsDup.existingTitle || 'an existing article'}</span> — not visible in the current view.</span>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <span>This article is already in the queue.</span>
+                    <button
+                      onClick={() => goToExisting(newsDup.existingId)}
+                      className="shrink-0 px-2 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium transition"
+                    >
+                      Go to existing article
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 mt-3">
+              {newsFormError && <span className="text-xs text-red-500 dark:text-red-400 mr-auto">{newsFormError}</span>}
+              <button
+                onClick={() => { setShowAddPanel(false); setNewsForm({ ...NEWS_EMPTY_FORM }); setNewsErrors({}); setNewsFormError(null); setNewsDup(null) }}
+                disabled={newsSaving}
+                className="px-4 py-1.5 rounded-lg border border-gray-300 dark:border-white/[0.15] text-gray-600 dark:text-white/70 text-sm font-medium transition hover:bg-gray-50 dark:hover:bg-white/[0.04] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddNews}
+                disabled={newsSaving}
+                className="px-4 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium transition disabled:opacity-50"
+              >
+                {newsSaving ? 'Saving…' : 'Save article'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {loading && (
           <div className="flex items-center justify-center py-16">
             <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
@@ -757,7 +974,8 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           return (
             <div
               key={source.id}
-              className={`bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4 hover:border-gray-300 dark:hover:border-white/[0.12] transition-all duration-300 ${isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
+              id={`news-card-${source.id}`}
+              className={`bg-white dark:bg-white/[0.04] rounded-xl border p-4 hover:border-gray-300 dark:hover:border-white/[0.12] transition-all duration-300 ${highlightId === source.id ? 'border-indigo-400 dark:border-indigo-400 ring-2 ring-indigo-400/40' : 'border-gray-200 dark:border-white/[0.08]'} ${isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
             >
               <div className="flex items-start gap-3">
                 {source.image_url && (

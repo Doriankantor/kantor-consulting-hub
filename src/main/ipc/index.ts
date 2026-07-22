@@ -3330,6 +3330,19 @@ function registerIntelligenceHandlers(): void {
     return intelCloud.addSocial(post, id, JSON.stringify(cats))
   })
 
+  // News hand-add: manual article capture. UNGATED insert (no relevance / gate) so it
+  // enters the review queue as unreviewed. id is minted here like addSocial; url is
+  // deduped inside addNews. Offline → { ok:false }.
+  ipcMain.handle('intelligence:addNews', (_e, row: {
+    title: string; content?: string; url?: string; source_name?: string;
+    published_at?: string; snippet?: string; confidence?: string;
+    added_by_id?: string; added_by_name?: string; project_board_id?: string;
+  }) => {
+    const { randomUUID } = require('crypto')
+    const id = randomUUID()
+    return intelCloud.addNews(row, id)
+  })
+
   // 2c: manual interview capture. Transcript is stored as PLAIN TEXT in `content`
   // (NOT JSON-wrapped) so the deferred per-span annotation slice can anchor to
   // character offsets. Reuses the 2b compose columns (intel_notes / analysis_json /

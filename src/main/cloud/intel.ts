@@ -642,6 +642,56 @@ export async function addSocial(post: {
   })
 }
 
+// News hand-add: manual article capture (News otherwise has no user-entry path —
+// rows arrive only via the Contested Skies pipeline). Modeled on addSocial but
+// UNGATED — no relevance_score / gate_processed — so it lands as a normal unreviewed
+// item in the review queue. project_board_id is OPTIONAL (pipeline articles are
+// unscoped until a researcher assigns one). Duplicates are caught by a url pre-check
+// and, as a race backstop, by the unique-violation fallback after the insert.
+export async function addNews(row: {
+  title: string; content?: string; url?: string; source_name?: string;
+  published_at?: string; snippet?: string; confidence?: string;
+  added_by_id?: string; added_by_name?: string; project_board_id?: string;
+}, id: string): Promise<{ ok: boolean; id?: string; duplicate?: boolean; existingId?: string; existingTitle?: string; error?: string }> {
+  if (!isOnline()) return OFFLINE
+  // Author guard: News filters out rows authored by 'Kantor Framework' (the pipeline
+  // author) — inserting that name, or none, would create an invisible row that still
+  // reports success. Reject before any write.
+  const author = (row.added_by_name ?? '').trim()
+  if (!author || author === 'Kantor Framework') return { ok: false, error: 'invalid author' }
+
+  const url = (row.url ?? '').trim()
+  // Duplicate pre-check — only when a url is present. Surface (never swallow) a query error.
+  if (url) {
+    const { data: dup, error: dupErr } = await cloud.from('intelligence_sources')
+      .select('id,title').eq('url', url).limit(1).maybeSingle()
+    if (dupErr) return { ok: false, error: `addNews duplicate check failed: ${dupErr.message}` }
+    if (dup) return { ok: false, duplicate: true, existingId: String(dup.id), existingTitle: (dup.title as string | null) ?? undefined }
+  }
+
+  const res = await insertSource({
+    id, type: 'article',
+    title: (row.title ?? '').trim(),
+    content: row.content ?? null,
+    url: url || null,
+    source_name: (row.source_name ?? '').trim() || null,
+    published_at: (row.published_at ?? '').trim() || null,
+    snippet: (row.snippet ?? '').trim() || null,
+    confidence: row.confidence ?? null,
+    status: 'unreviewed',
+    added_by_id: row.added_by_id || null,
+    added_by_name: author,
+    project_board_id: (row.project_board_id ?? '').trim() || null,
+  })
+  // Unique-violation fallback: a url that slipped past the pre-check (concurrent add)
+  // → report as a duplicate, not a raw DB error. Postgres unique violation is SQLSTATE
+  // 23505, which supabase-js surfaces in the error message text.
+  if (!res.ok && res.error && /duplicate|unique|23505/i.test(res.error)) {
+    return { ok: false, duplicate: true }
+  }
+  return res
+}
+
 export async function addInterview(iv: {
   title: string; transcript: string; date?: string; added_by_id?: string; added_by_name?: string;
   project_board_id?: string;

@@ -331,6 +331,7 @@ const api = {
     logDecision:          (payload: Record<string, unknown>)        => ipcRenderer.invoke('intelligence:logDecision', payload),
     deleteSource:         (id: string)                       => ipcRenderer.invoke('intelligence:deleteSource', id),
     addSocial:            (post: Record<string, unknown>)    => ipcRenderer.invoke('intelligence:addSocial', post),
+    addNews:              (row: Record<string, unknown>)     => ipcRenderer.invoke('intelligence:addNews', row),
     addInterview:         (iv: Record<string, unknown>)      => ipcRenderer.invoke('intelligence:addInterview', iv),
     fetchNews:            ()                                 => ipcRenderer.invoke('intelligence:fetchNews'),
     uploadDocument:       (params: Record<string, unknown>)  => ipcRenderer.invoke('intelligence:uploadDocument', params),

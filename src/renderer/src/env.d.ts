@@ -924,6 +924,7 @@ interface Window {
       logDecision:          (payload: { articleId: string; action: string; aiProposed?: unknown; humanFinal?: unknown; reason?: string | null }) => Promise<{ ok: boolean }>
       deleteSource:         (id: string)                       => Promise<{ ok: boolean }>
       addSocial:            (post: Record<string, unknown>)    => Promise<{ ok: boolean; id?: string }>
+      addNews:              (row: Record<string, any>) => Promise<{ ok: boolean; duplicate?: boolean; existingId?: string; existingTitle?: string; error?: string }>
       // 2c: manual interview capture — transcript stored plain-text in content, type='interview'.
       addInterview:         (iv: { title: string; transcript: string; date?: string; added_by_id?: string; added_by_name?: string; project_board_id?: string }) => Promise<{ ok: boolean; id?: string }>
       fetchNews:            ()                                 => Promise<{ ok: boolean; count?: number; error?: string }>
