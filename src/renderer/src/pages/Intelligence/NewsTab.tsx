@@ -8,6 +8,7 @@ import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
 import { actorTypeClass } from './actorTypeClass'
 import { resolveFacts, resolveCaps, type ResolvedFact, type ResolvedCap } from './resolveAnalysis'
+import { parseConfig } from './frameworkConfig'
 
 const CONFIDENCE_COLORS = {
   high:   { bg: 'bg-green-100 dark:bg-green-900/30',   text: 'text-green-700 dark:text-green-400',   dot: 'bg-green-500' },
@@ -119,7 +120,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
   const [fadingIds, setFadingIds] = useState<Set<string>>(new Set())
   // Phase 1: project list sourced from info-page boards (replaces disposition tag registry).
-  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([])
+  const [projects, setProjects] = useState<Array<{ id: string; name: string; keywords?: string }>>([])
   // Phase 3: live count badges (Pending / Approved / Rejected).
   const [statusCounts, setStatusCounts] = useState({ unreviewed: 0, approved: 0, rejected: 0 })
   // Phase 4: gate error state per article + force-open topic picker.
@@ -210,7 +211,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       const res = await window.api.intelligence.analyzeText({
         task: 'relevance',
         text,
-        projectConfig: proj ? { name: proj.name, keywords: (proj as any).keywords } : null,
+        projectConfig: proj ? { name: proj.name, keywords: proj.keywords } : null,
         existingTags: knownThematic,   // T7: bias the AI toward reusing existing project tags
       })
       if (!res.ok) { setAiErr(p => ({ ...p, [id]: res.error || 'Analysis failed.' })); return }
@@ -240,7 +241,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       const proj = boardId ? projects.find(p => p.id === boardId) : null
       const res = await window.api.intelligence.analyzeText({
         task: 'reconcile', text, userNotes: plainNotes,
-        projectConfig: proj ? { name: proj.name, keywords: (proj as any).keywords } : null,
+        projectConfig: proj ? { name: proj.name, keywords: proj.keywords } : null,
         existingTags: knownThematic,   // T7: bias the AI toward reusing existing project tags
         priorAi,
       })
@@ -436,11 +437,13 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       try {
         // Cloud-first board list (filters deleted=0/archived=0), same source the Info Pages
         // list uses — so a deleted info-page board no longer lingers in the picker via the
-        // stale local mirror. Picker needs only {id,name}; no other field is consumed.
+        // stale local mirror. Carry keywords from board_config (parsed the SAME way the parent
+        // does for the other tabs) so project-aware analysis is judged against the project's
+        // collection keywords, not generically.
         const boards = await window.api.boards.list()
-        setProjects((boards as Array<{ id: string; name: string; board_type?: string }>)
+        setProjects((boards as Array<{ id: string; name: string; board_type?: string; board_config?: string | null }>)
           .filter(b => b.board_type === 'info-page')
-          .map(b => ({ id: b.id, name: b.name })))
+          .map(b => ({ id: b.id, name: b.name, keywords: parseConfig(b.board_config).keywords })))
       } catch (e) { console.warn('[NewsTab] projects load failed:', e) }
     })()
   }, [])
