@@ -300,6 +300,7 @@ const api = {
   },
   intelligence: {
     getSources:           (params?: Record<string, unknown>) => ipcRenderer.invoke('intelligence:getSources', params),
+    getSourcesCount:      (params?: Record<string, unknown>) => ipcRenderer.invoke('intelligence:getSourcesCount', params),
     analyzeText:          (opts: Record<string, unknown>)    => ipcRenderer.invoke('intelligence:analyzeText', opts),
     fetchUrlMetadata:     (url: string)                      => ipcRenderer.invoke('intelligence:fetchUrlMetadata', url),
     getUnreviewedCount:   ()                                 => ipcRenderer.invoke('intelligence:getUnreviewedCount'),
@@ -338,7 +339,7 @@ const api = {
     fetchNews:            ()                                 => ipcRenderer.invoke('intelligence:fetchNews'),
     uploadDocument:       (params: Record<string, unknown>)  => ipcRenderer.invoke('intelligence:uploadDocument', params),
     getPipelineStats:     ()                                 => ipcRenderer.invoke('intelligence:getPipelineStats'),
-    getStatusCounts:      ()                                 => ipcRenderer.invoke('intelligence:getStatusCounts'),
+    getStatusCounts:      (project?: string)                => ipcRenderer.invoke('intelligence:getStatusCounts', project),
     getUnscoredCount:     ()                                 => ipcRenderer.invoke('intelligence:getUnscoredCount'),
     rescoreUnscored:      ()                                 => ipcRenderer.invoke('intelligence:rescoreUnscored'),
     importFromContestedSkies: (params: Record<string, unknown>) => ipcRenderer.invoke('intelligence:importFromContestedSkies', params),

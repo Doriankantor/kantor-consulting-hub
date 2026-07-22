@@ -104,6 +104,10 @@ function toDateInput(s?: string): string {
   return d.toISOString().slice(0, 10)
 }
 
+// Paging: how many rows a page fetches. Passed explicitly to getSources; the
+// main-side default (limit ?? 100) is left untouched for other callers.
+const PAGE_SIZE = 50
+
 export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const { localUser, isRoot, can } = useAuth()
   const { online } = useConnection()
@@ -123,6 +127,14 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const [projects, setProjects] = useState<Array<{ id: string; name: string; keywords?: string }>>([])
   // Phase 3: live count badges (Pending / Approved / Rejected).
   const [statusCounts, setStatusCounts] = useState({ unreviewed: 0, approved: 0, rejected: 0 })
+  // Paging: loadedCount = RAW rows fetched so far (pre-'Kantor Framework' filter, so the
+  // next offset stays aligned with the DB). total = exact count for the current query.
+  // The ref lets load() read the depth without depending on it (which would loop the
+  // filter-driven effect). loadingMore drives the button spinner.
+  const [loadedCount, setLoadedCount] = useState(0)
+  const loadedCountRef = useRef(0)
+  const [total, setTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
   // Phase 4: gate error state per article + force-open topic picker.
   const [gateError, setGateError] = useState<Record<string, { missingProject: boolean; missingTopic: boolean }>>({})
   const [forceOpenTopicId, setForceOpenTopicId] = useState<string | null>(null)
@@ -395,39 +407,61 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     try { setImportedCount(await window.api.intelligence.getImportedCount()) } catch { /* ignore */ }
   }, [])
 
-  // Phase 3: refresh the three live count badges.
+  // Phase 3: refresh the three live count badges — now scoped to the selected project.
   const refreshStatusCounts = useCallback(async () => {
     try {
-      const c = await window.api.intelligence.getStatusCounts()
+      const project = selectedProjectId && selectedProjectId !== 'all' ? selectedProjectId : undefined
+      const c = await window.api.intelligence.getStatusCounts(project)
       setStatusCounts(c)
     } catch { /* ignore */ }
-  }, [])
+  }, [selectedProjectId])
 
-  const load = useCallback(async (opts?: { background?: boolean }) => {
-    // Background refetch (realtime echo / reconnect): swap the data under the
-    // existing stable keys WITHOUT flipping `loading`, so the card list stays
-    // mounted and scroll position is preserved. Only the initial/foreground load
-    // (and explicit user reloads) show the spinner via the !loading list gate.
+  const load = useCallback(async (opts?: { background?: boolean; append?: boolean }) => {
+    // Three modes:
+    //  fresh (default) — filter/project change: offset 0, one page, REPLACE, spinner.
+    //  append          — "Load more": offset = depth, one page, APPEND, no spinner.
+    //  background      — realtime echo/reconnect: ONE query, limit = current depth,
+    //                    offset 0, REPLACE. Preserves how far the user paged without a
+    //                    snap-back to page one and without append/dedupe logic (2d).
     const background = opts?.background ?? false
-    if (!background) setLoading(true)
+    const append = opts?.append ?? false
+    if (!background && !append) setLoading(true)
+    if (append) setLoadingMore(true)
+    // Server-side filters (shared by the page query AND the exact-count query).
+    const project = selectedProjectId && selectedProjectId !== 'all' ? selectedProjectId : undefined
+    const filters: { type: string; status?: string; confidence?: string; category?: string; search?: string; project?: string } = { type: 'article' }
+    if (statusFilter)     filters.status     = statusFilter
+    if (confidenceFilter) filters.confidence = confidenceFilter
+    if (categoryFilter)   filters.category   = categoryFilter
+    if (search)           filters.search     = search
+    if (project)          filters.project    = project
+    const offset = append ? loadedCountRef.current : 0
+    const limit = background ? Math.max(loadedCountRef.current, PAGE_SIZE) : PAGE_SIZE
     try {
-      const params: Record<string, string> = { type: 'article' }
-      if (statusFilter)     params.status     = statusFilter
-      if (confidenceFilter) params.confidence = confidenceFilter
-      if (categoryFilter)   params.category   = categoryFilter
-      if (search)           params.search     = search
-      const data = await window.api.intelligence.getSources(params)
+      const data = await window.api.intelligence.getSources({ ...filters, limit, offset })
       // Framework references (Kantor Consulting + FIU publications) are FIXED
       // citations, not news — they must never appear in the News Articles feed.
-      setSources(data.filter((s) => s.added_by_name !== 'Kantor Framework'))
+      const rows = data.filter((s) => s.added_by_name !== 'Kantor Framework')
+      if (append) {
+        setSources(prev => [...prev, ...rows])
+        const n = loadedCountRef.current + data.length
+        loadedCountRef.current = n; setLoadedCount(n)
+      } else {
+        setSources(rows)
+        loadedCountRef.current = data.length; setLoadedCount(data.length)
+      }
     } catch (e) {
       console.error('[NewsTab] load error:', e)
     } finally {
-      if (!background) setLoading(false)
+      if (!background && !append) setLoading(false)
+      if (append) setLoadingMore(false)
     }
+    // Exact total for the "Showing X of Y" line + the Load-more gate (same server
+    // filters, sans limit/offset). Not needed on append — the total is filter-scoped.
+    if (!append) window.api.intelligence.getSourcesCount(filters).then(setTotal).catch(() => {})
     refreshImportedCount()
     refreshStatusCounts()
-  }, [statusFilter, confidenceFilter, categoryFilter, search, refreshImportedCount, refreshStatusCounts])
+  }, [statusFilter, confidenceFilter, categoryFilter, search, selectedProjectId, refreshImportedCount, refreshStatusCounts])
 
   useEffect(() => { load() }, [load])
 
@@ -515,7 +549,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     setRefreshing(true)
     try {
       const result = await window.api.intelligence.fetchNews()
-      if (result.ok) { await load() }
+      if (result.ok) { await load({ background: true }) }
     } finally {
       setRefreshing(false)
     }
@@ -1856,6 +1890,22 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
             </div>
           )
         })}
+
+        {/* Paging: honest count + Load more. Makes the old 100-row truncation visible. */}
+        {!loading && total > 0 && (
+          <div className="flex flex-col items-center gap-2 pt-3 pb-1">
+            <p className="text-xs text-gray-400 dark:text-white/40">Showing {visible.length} of {total}</p>
+            {loadedCount < total && (
+              <button
+                onClick={() => load({ append: true })}
+                disabled={loadingMore || !online}
+                className="px-4 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.12] text-sm text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition disabled:opacity-50"
+              >
+                {loadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Duplicate slice: link modal — portal to document.body so it escapes card

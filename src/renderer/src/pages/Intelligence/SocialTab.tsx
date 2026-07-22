@@ -93,11 +93,21 @@ function readTags(raw: string | null): string[] {
   try { const a = JSON.parse(raw || '[]'); return Array.isArray(a) ? a : [] } catch { return [] }
 }
 
+// Paging page size (see NewsTab). getSources' own limit ?? 100 default is untouched.
+const PAGE_SIZE = 50
+
 export default function SocialTab({ onApprove, project = null }: Props) {
   const { localUser, isRoot, can } = useAuth()
   const { online } = useConnection()
   const [posts, setPosts] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
+  // Paging: loadedCount = rows fetched (routed excluded at the query, so this equals the
+  // displayed count). total = exact non-routed count for the project. Ref lets load() read
+  // depth without depending on it (which would loop the load effect).
+  const [loadedCount, setLoadedCount] = useState(0)
+  const loadedCountRef = useRef(0)
+  const [total, setTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   // Social edit: when set, the top form edits this post id (mutually exclusive with
@@ -127,19 +137,36 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   // Social edit: scroll the top form into view when entering edit mode.
   const formRef = useRef<HTMLDivElement>(null)
 
-  const load = useCallback(async (opts?: { background?: boolean }) => {
-    // Background refetch (realtime echo / reconnect): swap the data under the
-    // existing stable keys WITHOUT flipping `loading`, so the card list stays
-    // mounted and scroll is preserved. Only the initial/foreground load spins.
+  const load = useCallback(async (opts?: { background?: boolean; append?: boolean }) => {
+    // fresh (default): filter/project change → offset 0, one page, REPLACE, spinner.
+    // append: "Load more" → offset = depth, one page, APPEND.
+    // background: realtime echo/reconnect → one query, limit = depth, offset 0, REPLACE
+    //   (preserves paging depth without snapping to page one — see NewsTab 2d).
     const background = opts?.background ?? false
-    if (!background) setLoading(true)
+    const append = opts?.append ?? false
+    if (!background && !append) setLoading(true)
+    if (append) setLoadingMore(true)
+    // routed items live in the pipeline now — excluded at the QUERY so raw === displayed.
+    const filters = { type: 'social', excludeStatus: 'routed', ...(project?.id ? { project: project.id } : {}) }
+    const offset = append ? loadedCountRef.current : 0
+    const limit = background ? Math.max(loadedCountRef.current, PAGE_SIZE) : PAGE_SIZE
     try {
-      const data = await window.api.intelligence.getSources({ type: 'social' })
-      // 3d: sent items (status='routed') live in the pipeline now — drop from compose.
-      setPosts(data.filter((d: any) => d.status !== 'routed'))
+      const data = await window.api.intelligence.getSources({ ...filters, limit, offset })
+      if (append) {
+        setPosts(prev => [...prev, ...data])
+        const n = loadedCountRef.current + data.length
+        loadedCountRef.current = n; setLoadedCount(n)
+      } else {
+        setPosts(data)
+        loadedCountRef.current = data.length; setLoadedCount(data.length)
+      }
     } catch { /* ignore */ }
-    if (!background) setLoading(false)
-  }, [])
+    finally {
+      if (!background && !append) setLoading(false)
+      if (append) setLoadingMore(false)
+    }
+    if (!append) window.api.intelligence.getSourcesCount(filters).then(setTotal).catch(() => {})
+  }, [project?.id])
 
   useEffect(() => { load() }, [load])
 
@@ -814,6 +841,22 @@ export default function SocialTab({ onApprove, project = null }: Props) {
             </div>
           )
         })}
+
+        {/* Paging: honest count + Load more (routed excluded, so this matches the query). */}
+        {!loading && total > 0 && (
+          <div className="flex flex-col items-center gap-2 pt-3 pb-1">
+            <p className="text-xs text-gray-400 dark:text-white/40">Showing {visible.length} of {total}</p>
+            {loadedCount < total && (
+              <button
+                onClick={() => load({ append: true })}
+                disabled={loadingMore || !online}
+                className="px-4 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.12] text-sm text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition disabled:opacity-50"
+              >
+                {loadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

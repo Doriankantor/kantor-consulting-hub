@@ -47,11 +47,20 @@ function readTags(raw: string | null): string[] {
   try { const a = JSON.parse(raw || '[]'); return Array.isArray(a) ? a : [] } catch { return [] }
 }
 
+// Paging page size (see NewsTab). getSources' own limit ?? 100 default is untouched.
+const PAGE_SIZE = 50
+
 export default function DocumentsTab({ onApprove, project = null }: Props) {
   const { localUser, isRoot, can } = useAuth()
   const { online } = useConnection()
   const [documents, setDocuments] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
+  // Paging (see SocialTab): loadedCount = rows fetched (routed excluded at query = displayed),
+  // total = exact non-routed count for the project, ref lets load() read depth without looping.
+  const [loadedCount, setLoadedCount] = useState(0)
+  const loadedCountRef = useRef(0)
+  const [total, setTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [uploading, setUploading] = useState(false)
   // Upload-bar error. The DocumentCompose-internal `error` state is per-card and unreachable
   // from here, so the bar needs its own surface for a failed/partial upload.
@@ -68,19 +77,33 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
   // Slice 4: per-card collapse state (id → open). Absent = fall back to default-open.
   const [openCards, setOpenCards] = useState<Record<string, boolean>>({})
 
-  const load = useCallback(async (opts?: { background?: boolean }) => {
-    // Background refetch (realtime echo / reconnect): swap the data under the
-    // existing stable keys WITHOUT flipping `loading`, so the card list stays
-    // mounted and scroll is preserved. Only the initial/foreground load spins.
+  const load = useCallback(async (opts?: { background?: boolean; append?: boolean }) => {
+    // fresh/append/background modes — see SocialTab. routed excluded at the QUERY so
+    // raw-fetched === displayed and offset paging never hides a row.
     const background = opts?.background ?? false
-    if (!background) setLoading(true)
+    const append = opts?.append ?? false
+    if (!background && !append) setLoading(true)
+    if (append) setLoadingMore(true)
+    const filters = { type: 'document', excludeStatus: 'routed', ...(project?.id ? { project: project.id } : {}) }
+    const offset = append ? loadedCountRef.current : 0
+    const limit = background ? Math.max(loadedCountRef.current, PAGE_SIZE) : PAGE_SIZE
     try {
-      const data = await window.api.intelligence.getSources({ type: 'document' })
-      // 3d: sent items (status='routed') live in the pipeline now — drop from compose.
-      setDocuments(data.filter(d => d.status !== 'routed'))
+      const data = await window.api.intelligence.getSources({ ...filters, limit, offset })
+      if (append) {
+        setDocuments(prev => [...prev, ...data])
+        const n = loadedCountRef.current + data.length
+        loadedCountRef.current = n; setLoadedCount(n)
+      } else {
+        setDocuments(data)
+        loadedCountRef.current = data.length; setLoadedCount(data.length)
+      }
     } catch {}
-    if (!background) setLoading(false)
-  }, [])
+    finally {
+      if (!background && !append) setLoading(false)
+      if (append) setLoadingMore(false)
+    }
+    if (!append) window.api.intelligence.getSourcesCount(filters).then(setTotal).catch(() => {})
+  }, [project?.id])
 
   useEffect(() => { load() }, [load])
 
@@ -507,6 +530,22 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
             </div>
           )
         })}
+
+        {/* Paging: honest count + Load more (routed excluded, so this matches the query). */}
+        {!loading && total > 0 && (
+          <div className="flex flex-col items-center gap-2 pt-3 pb-1">
+            <p className="text-xs text-gray-400 dark:text-white/40">Showing {visible.length} of {total}</p>
+            {loadedCount < total && (
+              <button
+                onClick={() => load({ append: true })}
+                disabled={loadingMore || !online}
+                className="px-4 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.12] text-sm text-gray-600 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/[0.04] transition disabled:opacity-50"
+              >
+                {loadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

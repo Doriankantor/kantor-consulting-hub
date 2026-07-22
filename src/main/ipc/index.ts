@@ -3066,8 +3066,14 @@ function registerIntelligenceHandlers(): void {
   // Cloud-first (mirror-fallback, sync-on-read). Channel/args/return shape unchanged.
   ipcMain.handle('intelligence:getSources', (_e, params: {
     type?: string; status?: string; confidence?: string;
-    category?: string; search?: string; limit?: number; offset?: number
+    category?: string; search?: string; limit?: number; offset?: number; project?: string; excludeStatus?: string
   } = {}) => intelCloud.getSources(params, currentActingUserId))
+
+  // Exact total for the same query (drives each tab's "Showing X of Y" + Load-more gate).
+  ipcMain.handle('intelligence:getSourcesCount', (_e, params: {
+    type?: string; status?: string; confidence?: string;
+    category?: string; search?: string; project?: string; excludeStatus?: string
+  } = {}) => intelCloud.getSourcesCount(params, currentActingUserId))
 
   ipcMain.handle('intelligence:getUnreviewedCount', () => intelCloud.getUnreviewedCount(currentActingUserId))
 
@@ -3117,7 +3123,7 @@ function registerIntelligenceHandlers(): void {
   })
 
   // Phase 3: live queue counts for the News Articles filter bar. Cloud-first.
-  ipcMain.handle('intelligence:getStatusCounts', () => intelCloud.getStatusCounts(currentActingUserId))
+  ipcMain.handle('intelligence:getStatusCounts', (_e, project?: string) => intelCloud.getStatusCounts(currentActingUserId, project))
 
   // Count articles still waiting for gate scoring (gate_processed=0 or NULL).
   // Excludes 'Kantor Framework' rows — same filter as classifyUnscoredArticles —

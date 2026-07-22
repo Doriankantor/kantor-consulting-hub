@@ -115,6 +115,21 @@ function localScalar(sql: string, ...args: unknown[]): number {
 export interface GetSourcesOpts {
   type?: string; status?: string; confidence?: string
   category?: string; search?: string; limit?: number; offset?: number
+  project?: string
+  // Exclude a single status at the QUERY (e.g. the compose tabs drop 'routed'). Doing
+  // this server-side keeps raw-fetched === displayed, so offset paging never hides a
+  // row behind a client-side status filter.
+  excludeStatus?: string
+}
+
+// Sentinel normalization for the top-dropdown project filter (slice: query-level
+// project scoping). The renderer sends two conventions — NewsTab's literal 'all'
+// and the other tabs' truthy board id — and both must collapse to "no filter".
+// undefined / null / '' / 'all' → null (unscoped); anything else → the board id.
+// One place, main-side, so the four tabs never each reinvent it.
+function normalizeProject(project?: string | null): string | null {
+  const p = (project ?? '').trim()
+  return p && p !== 'all' ? p : null
 }
 
 // Offline / on-error fallback: the EXACT dynamic WHERE from the old handler,
@@ -138,6 +153,9 @@ function readMirrorSources(opts: GetSourcesOpts, gate?: { isRoot: boolean; ids: 
     const s = `%${opts.search}%`
     args.push(s, s, s, s)
   }
+  const proj = normalizeProject(opts.project)
+  if (proj)              { sql += ' AND project_board_id=?';   args.push(proj) }
+  if (opts.excludeStatus){ sql += ' AND status != ?';         args.push(opts.excludeStatus) }
   sql += ' ORDER BY added_at DESC, published_at DESC'
   sql += ` LIMIT ${opts.limit ?? 100} OFFSET ${opts.offset ?? 0}`
   try { return getDatabase().prepare(sql).all(...args) as Record<string, unknown>[] }
@@ -169,6 +187,11 @@ export async function getSources(opts: GetSourcesOpts = {}, actingUserId?: strin
     const s = String(opts.search).replace(/[,()]/g, ' ')
     q = q.or(`title.ilike.%${s}%,snippet.ilike.%${s}%,source_name.ilike.%${s}%,content.ilike.%${s}%`)
   }
+  // Project view filter — applied IN ADDITION to the membership gate above (the gate
+  // is security, this is the top-dropdown's chosen board). Never replaces the gate.
+  const proj = normalizeProject(opts.project)
+  if (proj) q = q.eq('project_board_id', proj)
+  if (opts.excludeStatus) q = q.neq('status', opts.excludeStatus)
   const limit = opts.limit ?? 100
   const offset = opts.offset ?? 0
   const { data, error } = await q
@@ -183,6 +206,49 @@ export async function getSources(opts: GetSourcesOpts = {}, actingUserId?: strin
   const rows = (data ?? []) as Record<string, unknown>[]
   mirrorUpsertRows(rows)
   return rows
+}
+
+// Exact total for the SAME query getSources runs (gate + type/status/confidence/
+// category/search/project) — powers each tab's "Showing X of Y" line and the
+// hasMore gate for paging. Cloud head+count; mirror COUNT(*) on offline/error.
+// Mirrors getSources' WHERE exactly so the total can never disagree with the page.
+export async function getSourcesCount(opts: GetSourcesOpts = {}, actingUserId?: string): Promise<number> {
+  const gate = await visibleBoardIdsFor(actingUserId)
+  if (!gate.isRoot && gate.ids.size === 0) return 0
+  const proj = normalizeProject(opts.project)
+  const localCount = (): number => {
+    let sql = 'SELECT COUNT(*) as c FROM intelligence_sources WHERE 1=1'
+    const args: unknown[] = []
+    if (!gate.isRoot) { sql += ` AND project_board_id IN (${[...gate.ids].map(() => '?').join(',')})`; args.push(...gate.ids) }
+    if (opts.type)       { sql += ' AND type=?';                 args.push(opts.type) }
+    if (opts.status)     { sql += ' AND status=?';               args.push(opts.status) }
+    if (opts.confidence) { sql += ' AND confidence=?';           args.push(opts.confidence) }
+    if (opts.category)   { sql += ' AND categories_json LIKE ?'; args.push(`%${opts.category}%`) }
+    if (opts.search)     {
+      sql += ' AND (title LIKE ? OR snippet LIKE ? OR source_name LIKE ? OR content LIKE ?)'
+      const s = `%${opts.search}%`; args.push(s, s, s, s)
+    }
+    if (proj)              { sql += ' AND project_board_id=?';   args.push(proj) }
+    if (opts.excludeStatus){ sql += ' AND status != ?';         args.push(opts.excludeStatus) }
+    try { return localScalar(sql, ...args) } catch (e) { console.warn('[intel] local getSourcesCount failed:', (e as Error)?.message); return 0 }
+  }
+  if (!isOnline()) return localCount()
+  let q = cloud.from('intelligence_sources').select('id', { count: 'exact', head: true })
+  if (!gate.isRoot) q = q.in('project_board_id', [...gate.ids])
+  if (opts.type)       q = q.eq('type', opts.type)
+  if (opts.status)     q = q.eq('status', opts.status)
+  if (opts.confidence) q = q.eq('confidence', opts.confidence)
+  if (opts.category)   q = q.ilike('categories_json', `%${opts.category}%`)
+  if (opts.search) {
+    const s = String(opts.search).replace(/[,()]/g, ' ')
+    q = q.or(`title.ilike.%${s}%,snippet.ilike.%${s}%,source_name.ilike.%${s}%,content.ilike.%${s}%`)
+  }
+  if (proj) q = q.eq('project_board_id', proj)
+  if (opts.excludeStatus) q = q.neq('status', opts.excludeStatus)
+  const { count, error } = await q
+  reportCloudResult(!error)
+  if (error) { console.warn('[intel] cloud getSourcesCount failed, serving mirror:', error.message); return localCount() }
+  return count ?? 0
 }
 
 // Count reads: cloud-first (head+count), fall back to the mirror on offline/error.
@@ -209,15 +275,18 @@ export async function getPipelinePending(actingUserId?: string): Promise<number>
   return getUnreviewedCount(actingUserId)
 }
 
-export async function getStatusCounts(actingUserId?: string): Promise<{ unreviewed: number; approved: number; rejected: number }> {
+export async function getStatusCounts(actingUserId?: string, project?: string): Promise<{ unreviewed: number; approved: number; rejected: number }> {
   const gate = await visibleBoardIdsFor(actingUserId)
   if (!gate.isRoot && gate.ids.size === 0) return { unreviewed: 0, approved: 0, rejected: 0 }
   const inClause = gate.isRoot ? '' : ` AND project_board_id IN (${[...gate.ids].map(() => '?').join(',')})`
-  const localArgs = gate.isRoot ? [] : [...gate.ids]
+  // Project view filter (same normalization as getSources), applied on top of the gate.
+  const proj = normalizeProject(project)
+  const projClause = proj ? ' AND project_board_id=?' : ''
+  const localArgs = [...(gate.isRoot ? [] : [...gate.ids]), ...(proj ? [proj] : [])]
   const localRead = (): { unreviewed: number; approved: number; rejected: number } => {
     try {
       const rows = getDatabase().prepare(
-        `SELECT status, COUNT(*) as c FROM intelligence_sources WHERE type='article'${inClause} GROUP BY status`
+        `SELECT status, COUNT(*) as c FROM intelligence_sources WHERE type='article'${inClause}${projClause} GROUP BY status`
       ).all(...localArgs) as { status: string; c: number }[]
       const m: Record<string, number> = {}
       for (const r of rows) m[r.status] = r.c
@@ -230,6 +299,7 @@ export async function getStatusCounts(actingUserId?: string): Promise<{ unreview
     let b = cloud.from('intelligence_sources')
       .select('id', { count: 'exact', head: true }).eq('type', 'article').eq('status', status)
     if (!gate.isRoot) b = b.in('project_board_id', [...gate.ids])
+    if (proj) b = b.eq('project_board_id', proj)
     return b
   }
   const [u, a, r] = await Promise.all([q('unreviewed'), q('approved'), q('rejected')])

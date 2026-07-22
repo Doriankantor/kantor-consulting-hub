@@ -892,7 +892,9 @@ interface Window {
       getSourcePipelineCounts: (pageId: string) => Promise<{ new: number; review: number; committed: number }>
     }
     intelligence: {
-      getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number }) => Promise<IntelligenceSource[]>
+      getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number; project?: string; excludeStatus?: string }) => Promise<IntelligenceSource[]>
+      // Exact total for the same query (drives "Showing X of Y" + Load-more gate). No limit/offset.
+      getSourcesCount:      (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; project?: string; excludeStatus?: string }) => Promise<number>
       // Intelligence restructure 2a: shared project-aware AI helper (not yet wired to a tab).
       analyzeText:          (opts: { task: 'relevance' | 'reconcile'; text: string; projectConfig?: { name?: string; keywords?: string; scope?: string } | null; userNotes?: string | null; existingTags?: string[]; priorAi?: Record<string, unknown> | null }) => Promise<{ ok: true; result: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]; article_type?: string; capabilities?: Array<{ system: string; actor?: string; actor_type?: string; cost?: string; category?: string; relationship?: string }>; key_facts?: Array<{ label: string; value: string }> } } | { ok: false; error: string }>
       // Social-a: URL metadata fetcher (OpenGraph/meta tags). Not yet wired to a tab.
@@ -934,7 +936,7 @@ interface Window {
       fetchNews:            ()                                 => Promise<{ ok: boolean; count?: number; error?: string }>
       uploadDocument:       (params: { userId?: string; addedByName?: string; projectBoardId?: string }) => Promise<{ ok: boolean; canceled?: boolean; results?: Array<{ id: string; file_name: string }>; errors?: Array<{ file: string; error: string }>; error?: string }>
       getPipelineStats:     ()                                 => Promise<{ pending: number; sentToPages: number }>
-      getStatusCounts:      ()                                 => Promise<{ unreviewed: number; approved: number; rejected: number }>
+      getStatusCounts:      (project?: string)                => Promise<{ unreviewed: number; approved: number; rejected: number }>
       getUnscoredCount:     ()                                 => Promise<number>
       rescoreUnscored:      ()                                 => Promise<{ ok: boolean; processed: number; relevant: number; failed: number; remaining: number; error?: string }>
       importFromContestedSkies: (params: { userId?: string; addedByName?: string }) => Promise<{ ok: boolean; imported?: number; total?: number; error?: string }>
