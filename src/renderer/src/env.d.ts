@@ -906,6 +906,8 @@ interface Window {
       updateReconciledNotes:(id: string, html: string)        => Promise<{ ok: boolean }>
       // News human layer: researcher relevance override stored in analysis_json.human (gate-safe).
       setHumanRelevance:    (id: string, value: string | null) => Promise<{ ok: true; human: { relevance?: string; overridden_at?: string } | null } | { ok: false; error: string }>
+      // Human overrides for AI-extracted KEY FACTS / SYSTEMS → analysis_json.human.overrides (survives re-analysis). patch=null clears.
+      setAnalysisOverride:  (id: string, kind: 'key_fact' | 'capability', key: string, patch: Record<string, unknown> | null) => Promise<{ ok: true; human: Record<string, any> | null } | { ok: false; error: string }>
       getUnreviewedCount:   ()                                 => Promise<number>
       updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => Promise<{ ok: boolean; addedToPages?: string[]; projectBoardId?: string | null; url?: string | null; error?: string }>
       markDuplicate:        (id: string, duplicateOf: string | null) => Promise<{ ok: boolean }>

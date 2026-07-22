@@ -372,6 +372,55 @@ export async function setHumanRelevance(id: string, value: string | null): Promi
   return { ok: true, human: analysis.human ?? null }
 }
 
+// Human overrides for the AI's extracted KEY FACTS + SYSTEMS. Stored OUTSIDE analysis.ai
+// (under analysis.human.overrides) so re-running Analyze — which replaces analysis.ai
+// WHOLESALE (see saveAiAnalysis) — can never clobber a researcher's correction. Modeled
+// exactly on setHumanRelevance: read CLOUD (never the mirror), merge ONE entry, preserve
+// every sibling sub-object (.ai, .reconciled, .human.relevance) and every other override,
+// then resync the mirror. patch === null CLEARS that entry; empty sub-objects are pruned.
+export async function setAnalysisOverride(
+  id: string,
+  kind: 'key_fact' | 'capability',
+  key: string,
+  patch: Record<string, unknown> | null
+): Promise<{ ok: boolean; human?: unknown; error?: string }> {
+  if (!isOnline()) return OFFLINE
+  const bucket = kind === 'key_fact' ? 'key_facts' : kind === 'capability' ? 'capabilities' : null
+  if (!bucket) return { ok: false, error: `Unknown override kind: ${String(kind)}` }
+  const k = (key ?? '').toString().trim()
+  if (!k) return { ok: false, error: 'Override key is required.' }
+
+  const r = await readCloudAnalysis(id)
+  if (!r.ok) return { ok: false, error: r.error }
+  const analysis = r.analysis!
+
+  // Walk down to the target bucket, coercing any non-object rung to {} without dropping siblings.
+  const human = (analysis.human && typeof analysis.human === 'object') ? analysis.human as Record<string, unknown> : {}
+  const overrides = (human.overrides && typeof human.overrides === 'object') ? human.overrides as Record<string, unknown> : {}
+  const entries = (overrides[bucket] && typeof overrides[bucket] === 'object') ? overrides[bucket] as Record<string, unknown> : {}
+
+  if (patch === null) {
+    delete entries[k]
+  } else {
+    // Field-merge onto any prior override for this key, so a partial patch preserves earlier edits.
+    const prior = (entries[k] && typeof entries[k] === 'object') ? entries[k] as Record<string, unknown> : {}
+    entries[k] = { ...prior, ...patch, edited_at: nowIso() }
+  }
+
+  // Prune empties upward so a cleared override leaves no dangling {} rungs.
+  if (Object.keys(entries).length) overrides[bucket] = entries
+  else delete overrides[bucket]
+  if (Object.keys(overrides).length) human.overrides = overrides
+  else delete human.overrides
+  if (Object.keys(human).length) analysis.human = human
+  else delete analysis.human
+
+  const { error } = await cloud.from('intelligence_sources').update({ analysis_json: JSON.stringify(analysis) }).eq('id', id)
+  if (error) return { ok: false, error: `setAnalysisOverride failed: ${error.message}` }
+  await resyncRow(id)
+  return { ok: true, human: analysis.human ?? null }
+}
+
 export async function saveAiAnalysis(id: string, ai: {
   relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]
 }): Promise<{ ok: boolean; ai?: unknown; error?: string }> {

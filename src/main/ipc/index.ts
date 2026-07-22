@@ -3249,6 +3249,13 @@ function registerIntelligenceHandlers(): void {
   ipcMain.handle('intelligence:setHumanRelevance', (_e, id: string, value: string | null) =>
     intelCloud.setHumanRelevance(id, value))
 
+  // Human overrides for the AI's extracted KEY FACTS / SYSTEMS. Stored under
+  // analysis_json.human.overrides (OUTSIDE .ai) so re-analysis cannot clobber them.
+  // patch === null clears that entry. RMW → cloud-only. Offline → { ok:false }.
+  ipcMain.handle('intelligence:setAnalysisOverride', (_e,
+    id: string, kind: 'key_fact' | 'capability', key: string, patch: Record<string, unknown> | null
+  ) => intelCloud.setAnalysisOverride(id, kind, key, patch))
+
   // 2b (human-first): store the on-demand "Analyze with AI" read UNDER
   // analysis_json.ai (separate box from the researcher's notes). Re-running
   // replaces .ai only. RMW → cloud-only. Offline → { ok:false }.

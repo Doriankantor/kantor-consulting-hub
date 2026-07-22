@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useConnection } from '../../contexts/ConnectionContext'
@@ -6,6 +7,7 @@ import RichTextEditor from '../../components/RichTextEditor'
 import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
 import { actorTypeClass } from './actorTypeClass'
+import { resolveFacts, resolveCaps, type ResolvedFact, type ResolvedCap } from './resolveAnalysis'
 
 const CONFIDENCE_COLORS = {
   high:   { bg: 'bg-green-100 dark:bg-green-900/30',   text: 'text-green-700 dark:text-green-400',   dot: 'bg-green-500' },
@@ -150,6 +152,12 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const [newsSaving, setNewsSaving] = useState(false)
   // News hand-add: briefly ring the card a "jump to existing" action scrolls to.
   const [highlightId, setHighlightId] = useState<string | null>(null)
+  // KEY FACTS / SYSTEMS in-place editing: which cell is open, its draft, last write error.
+  // Cell id: `${sourceId}|fact|${label}` or `${sourceId}|cap|${key}|${field}`.
+  const [editCell, setEditCell]   = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState('')
+  const [editError, setEditError] = useState<string | null>(null)
+  const skipBlur = useRef(false)   // set when Esc closes the input, so the ensuing blur doesn't commit
 
   // Autosave researcher notes to intel_notes (existing row → safe). Save-if-changed.
   async function saveNote(id: string) {
@@ -260,6 +268,114 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
         return { ...s, analysis_json: JSON.stringify(a) }
       }))
     } catch (e) { console.warn('[NewsTab] setHumanRelevance failed:', e) }
+  }
+
+  // --- KEY FACTS / SYSTEMS in-place editing (analysis_json.human.overrides) ---------------
+  // Overrides live OUTSIDE analysis.ai (Part A), so re-analysis never clobbers an edit.
+  function startEdit(cellId: string, seed: string) { skipBlur.current = false; setEditCell(cellId); setEditDraft(seed ?? ''); setEditError(null) }
+
+  // Write one override, then optimistically patch the row's analysis from the returned
+  // { human } — same pattern handleHumanRelevance uses. patch === null clears the override.
+  // Returns false (and surfaces the error inline) on a non-ok/thrown result.
+  async function saveOverride(id: string, kind: 'key_fact' | 'capability', key: string, patch: Record<string, unknown> | null): Promise<boolean> {
+    try {
+      const res = await window.api.intelligence.setAnalysisOverride(id, kind, key, patch)
+      if (!res.ok) { setEditError(res.error || 'Save failed'); return false }
+      setSources(prev => prev.map(s => {
+        if (s.id !== id) return s
+        let a: Record<string, unknown> = {}
+        try { a = s.analysis_json ? JSON.parse(s.analysis_json) : {} } catch { a = {} }
+        if (res.human) a.human = res.human; else delete a.human
+        return { ...s, analysis_json: JSON.stringify(a) }
+      }))
+      setEditError(null)
+      return true
+    } catch (e) { console.warn('[NewsTab] setAnalysisOverride failed:', e); setEditError('Save failed'); return false }
+  }
+
+  // Commit a KEY FACT value. No-op when unchanged; clears the override when back to the AI value.
+  async function commitFact(id: string, f: ResolvedFact) {
+    const trimmed = editDraft.trim()
+    setEditCell(null)   // return to display immediately; the optimistic patch lands on success
+    if (trimmed === (f.value ?? '')) return                              // unchanged → no write
+    const aiOriginal = f.edited ? (f.aiValue ?? '') : f.value
+    if (trimmed === aiOriginal) { await saveOverride(id, 'key_fact', f.label, null); return }  // back to AI → clear
+    await saveOverride(id, 'key_fact', f.label, { value: trimmed })
+  }
+
+  // Commit one SYSTEMS cell. Sends only the changed field; clears the whole entry if the cap
+  // now matches the AI on every field (the merger can only clear a whole entry, not one field).
+  const CAP_FIELDS = ['system', 'actor', 'actor_type', 'cost', 'category'] as const
+  async function commitCap(id: string, c: ResolvedCap, field: typeof CAP_FIELDS[number], rawVal: string) {
+    const val = (rawVal ?? '').toString().trim()
+    setEditCell(null)
+    const cur = ((c as Record<string, any>)[field] ?? '').toString()
+    if (val === cur) return                                             // unchanged → no write
+    const aiCap = (c.ai ?? c) as Record<string, any>
+    const prospectiveEqualsAi = CAP_FIELDS.every(fld => {
+      const next = (fld === field ? val : ((c as Record<string, any>)[fld] ?? '')).toString()
+      return next === (aiCap[fld] ?? '').toString()
+    })
+    if (prospectiveEqualsAi) { await saveOverride(id, 'capability', c.key, null); return }   // fully back to AI → clear
+    await saveOverride(id, 'capability', c.key, { [field]: val })
+  }
+
+  // Shared click-to-edit text cell. Enter/blur commit, Esc cancels (skipBlur guards the
+  // unmount blur). `display` overrides the shown label when not editing.
+  function editableText(cellId: string, current: string, onCommit: (v: string) => void, opts?: { display?: ReactNode; className?: string; inputClassName?: string }): ReactNode {
+    if (editCell === cellId) {
+      return (
+        <input
+          autoFocus
+          value={editDraft}
+          onChange={e => setEditDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLInputElement).blur() }
+            else if (e.key === 'Escape') { e.preventDefault(); skipBlur.current = true; (e.currentTarget as HTMLInputElement).blur() }
+          }}
+          onBlur={() => { if (skipBlur.current) { skipBlur.current = false; setEditCell(null); return } onCommit(editDraft) }}
+          className={`px-1 py-0.5 rounded border border-indigo-300 dark:border-indigo-500/40 bg-white dark:bg-gray-800 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-400 ${opts?.inputClassName || 'w-full'}`}
+        />
+      )
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => startEdit(cellId, current)}
+        className={`text-left hover:underline decoration-dotted decoration-gray-400 underline-offset-2 ${opts?.className || ''}`}
+        title="Click to edit"
+      >
+        {opts?.display ?? (current || <span className="italic text-gray-300 dark:text-white/25">add</span>)}
+      </button>
+    )
+  }
+
+  // actor_type is constrained to the card's existing vocabulary; edit via a native select.
+  function editableActorType(cellId: string, c: ResolvedCap, onCommit: (v: string) => void): ReactNode {
+    if (editCell === cellId) {
+      return (
+        <select
+          autoFocus
+          value={editDraft}
+          onChange={e => { setEditDraft(e.target.value); onCommit(e.target.value) }}
+          onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); skipBlur.current = true; (e.currentTarget as HTMLSelectElement).blur() } }}
+          onBlur={() => { if (skipBlur.current) { skipBlur.current = false; setEditCell(null) } }}
+          className="px-1 py-0.5 rounded border border-indigo-300 dark:border-indigo-500/40 bg-white dark:bg-gray-800 text-[9px] uppercase font-medium text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        >
+          {['', 'VNSA', 'state', 'commercial', 'unknown'].map(v => <option key={v || 'blank'} value={v}>{v || '—'}</option>)}
+        </select>
+      )
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => startEdit(cellId, c.actor_type || '')}
+        className={`px-1 py-0.5 rounded text-[9px] font-medium uppercase ${c.actor_type ? actorTypeClass(c.actor_type) : 'bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/30'}`}
+        title="Click to edit"
+      >
+        {c.actor_type || 'type'}
+      </button>
+    )
   }
 
   const refreshImportedCount = useCallback(async () => {
@@ -985,8 +1101,9 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           const reconciledBlock = srcAnalysis.reconciled as Record<string, any> | undefined
           // B2: structured identifiers from the AI block (B1 extraction). Graceful-degrade.
           const articleType = aiBlock?.article_type as string | undefined
-          const caps: Array<Record<string, any>> = Array.isArray(aiBlock?.capabilities) ? aiBlock!.capabilities : []
-          const facts: Array<Record<string, any>> = Array.isArray(aiBlock?.key_facts) ? aiBlock!.key_facts : []
+          // B2 + Part B: AI-extracted systems/facts with human overrides layered on (edited ?? ai).
+          const caps: ResolvedCap[] = resolveCaps(srcAnalysis)
+          const facts: ResolvedFact[] = resolveFacts(srcAnalysis)
           const reconciledDraft = reconciledDrafts[source.id] ?? (source.reconciled_notes || '')
           const showReconciled = notesText(reconciledDraft).trim() !== '' || !!reconciledBlock
           const notesFilledForReconcile = notesText(noteDrafts[source.id] ?? (source.intel_notes || '')).length > 0
@@ -1448,37 +1565,74 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                               ))}
                             </div>
                           )}
-                          {/* B2: SYSTEMS — capabilities table (verbatim named systems + actor/cost). */}
+                          {/* B2 + Part B: SYSTEMS — each cell click-to-edit; overrides shadow the AI cap. */}
                           {caps.length > 0 && (
                             <div>
                               <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30 mb-1">Systems</p>
                               <div className="space-y-1">
-                                {caps.map((c, i) => (
-                                  <div key={`${c.system}-${i}`} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                                    <span className="font-semibold text-gray-800 dark:text-white/80">{c.system}</span>
-                                    {c.actor && <span className="text-gray-500 dark:text-white/50">· {c.actor}</span>}
-                                    {c.actor_type && <span className={`px-1 py-0.5 rounded text-[9px] font-medium uppercase ${actorTypeClass(c.actor_type)}`}>{c.actor_type}</span>}
-                                    {c.cost && <span className="px-1 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[9px] font-medium">{c.cost}</span>}
-                                    {c.category && <span className="px-1 py-0.5 rounded bg-indigo-100/70 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 text-[9px] font-medium">{c.category}</span>}
-                                  </div>
-                                ))}
+                                {caps.map(c => {
+                                  const base = `${source.id}|cap|${c.key}`
+                                  return (
+                                    <div key={c.key} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                      {editableText(`${base}|system`, c.system, v => commitCap(source.id, c, 'system', v), { className: 'font-semibold text-gray-800 dark:text-white/80' })}
+                                      <span className="text-gray-400 dark:text-white/30">·</span>
+                                      {editableText(`${base}|actor`, c.actor || '', v => commitCap(source.id, c, 'actor', v), { className: 'text-gray-500 dark:text-white/50' })}
+                                      {editableActorType(`${base}|actor_type`, c, v => commitCap(source.id, c, 'actor_type', v))}
+                                      {editableText(`${base}|cost`, c.cost || '', v => commitCap(source.id, c, 'cost', v), { display: c.cost
+                                        ? <span className="px-1 py-0.5 rounded bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[9px] font-medium">{c.cost}</span>
+                                        : <span className="text-[9px] text-gray-300 dark:text-white/25 italic">cost</span> })}
+                                      {editableText(`${base}|category`, c.category || '', v => commitCap(source.id, c, 'category', v), { display: c.category
+                                        ? <span className="px-1 py-0.5 rounded bg-indigo-100/70 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 text-[9px] font-medium">{c.category}</span>
+                                        : <span className="text-[9px] text-gray-300 dark:text-white/25 italic">category</span> })}
+                                      {c.edited && (
+                                        <>
+                                          <span className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[8px] font-semibold uppercase tracking-wide">edited</span>
+                                          <button type="button" onClick={() => saveOverride(source.id, 'capability', c.key, null)} title="Revert to AI values" className="text-gray-400 hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70 text-[11px] leading-none">↺</button>
+                                        </>
+                                      )}
+                                      {c.edited && c.ai && (
+                                        <span className="basis-full text-[10px] text-gray-400 dark:text-white/30">
+                                          AI said: {[c.ai.system, c.ai.actor, c.ai.actor_type, c.ai.cost, c.ai.category].filter(Boolean).join(' · ') || '—'}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )
+                                })}
                               </div>
                             </div>
                           )}
-                          {/* B2: KEY FACTS — label/value rows for type-specific specifics. */}
+                          {/* B2 + Part B: KEY FACTS — value click-to-edit; override shadows the AI value. */}
                           {facts.length > 0 && (
                             <div>
                               <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30 mb-1">Key facts</p>
                               <div className="space-y-1">
-                                {facts.map((f, i) => (
-                                  <div key={`${f.label}-${i}`} className="grid grid-cols-[128px_1fr] gap-x-2">
-                                    <span className="text-gray-400 dark:text-white/35 break-words">{f.label}</span>
-                                    <span className="text-gray-700 dark:text-white/70 break-words">{f.value}</span>
-                                  </div>
-                                ))}
+                                {facts.map(f => {
+                                  const cellId = `${source.id}|fact|${f.label}`
+                                  const editing = editCell === cellId
+                                  return (
+                                    <div key={f.label} className="grid grid-cols-[128px_1fr] gap-x-2">
+                                      <span className="text-gray-400 dark:text-white/35 break-words">{f.label}</span>
+                                      <span className="text-gray-700 dark:text-white/70 break-words">
+                                        <span className="inline-flex flex-wrap items-baseline gap-1">
+                                          {editableText(cellId, f.value, () => commitFact(source.id, f), { className: 'text-gray-700 dark:text-white/70 break-words' })}
+                                          {f.edited && !editing && (
+                                            <>
+                                              <span className="px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[8px] font-semibold uppercase tracking-wide">edited</span>
+                                              <button type="button" onClick={() => saveOverride(source.id, 'key_fact', f.label, null)} title="Revert to AI value" className="text-gray-400 hover:text-gray-700 dark:text-white/30 dark:hover:text-white/70 text-[11px] leading-none">↺</button>
+                                            </>
+                                          )}
+                                        </span>
+                                        {f.edited && !editing && f.aiValue !== undefined && (
+                                          <span className="block text-[10px] text-gray-400 dark:text-white/30 mt-0.5">AI said: {f.aiValue || '—'}</span>
+                                        )}
+                                      </span>
+                                    </div>
+                                  )
+                                })}
                               </div>
                             </div>
                           )}
+                          {editError && <p className="text-[10px] text-red-500 dark:text-red-400">{editError}</p>}
                           {aiBlock.analyzed_at && <p className="text-[10px] text-indigo-500/60 dark:text-indigo-400/40">Analyzed {formatDate(aiBlock.analyzed_at)}</p>}
                         </div>
                       ) : (

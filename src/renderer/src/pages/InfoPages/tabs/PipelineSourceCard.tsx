@@ -1,5 +1,6 @@
 import { ReactNode } from 'react'
 import { actorTypeClass } from '../../Intelligence/actorTypeClass'
+import { resolveFacts, resolveCaps } from '../../Intelligence/resolveAnalysis'
 
 // Shared read-only source card for the Info Page source pipeline tabs
 // (New Sources / Pre-Commit Review / All Sources). All metadata shown here was
@@ -60,8 +61,9 @@ export default function PipelineSourceCard({ row, checked, onCheck, action, show
   const hasAnalysis = !!(analysis.ai || analysis.human || analysis.reconciled)
   // B3: structured identifiers from the AI block (B1 extraction; travels via the live JOIN).
   const articleType = analysis.ai?.article_type as string | undefined
-  const caps: Array<Record<string, any>> = Array.isArray(analysis.ai?.capabilities) ? analysis.ai.capabilities : []
-  const facts: Array<Record<string, any>> = Array.isArray(analysis.ai?.key_facts) ? analysis.ai.key_facts : []
+  // Part B: resolved (edited ?? ai) values ONLY — no provenance/edit UI downstream.
+  const caps = resolveCaps(analysis)
+  const facts = resolveFacts(analysis)
   const notes = stripHtml(row.intel_notes)
 
   return (
