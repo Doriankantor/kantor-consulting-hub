@@ -911,6 +911,8 @@ interface Window {
       getUnreviewedCount:   ()                                 => Promise<number>
       updateStatus:         (id: string, status: string, notes?: string, byId?: string, byName?: string) => Promise<{ ok: boolean; addedToPages?: string[]; projectBoardId?: string | null; url?: string | null; error?: string }>
       markDuplicate:        (id: string, duplicateOf: string | null) => Promise<{ ok: boolean }>
+      // News undo: flip a 'saved' article back to 'unreviewed' (clears the review stamp; no verdict/routing).
+      revertToUnreviewed:   (id: string) => Promise<{ ok: boolean; error?: string }>
       updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean }>
       updateGeography:      (id: string, geography: string)    => Promise<{ ok: boolean }>
       setProject:           (id: string, boardId: string | null) => Promise<{ ok: boolean }>   // 3a: board-id project association

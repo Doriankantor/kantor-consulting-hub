@@ -579,7 +579,12 @@ export async function markRouted(id: string): Promise<{ ok: boolean; error?: str
 // delete + info_page_changes log stay LOCAL in the ipc handler).
 export async function revertToUnreviewed(id: string): Promise<{ ok: boolean; error?: string }> {
   if (!isOnline()) return OFFLINE
-  const { error } = await cloud.from('intelligence_sources').update({ status: 'unreviewed' }).eq('id', id)
+  // Clear the review stamp alongside the status flip: an unreviewed article must not claim a
+  // reviewer. No verdict push, no decision log, no routing — this is a pure undo. (Correct for
+  // both callers: moveBackToIntel's back-out and the News "Make unreviewed" action.)
+  const { error } = await cloud.from('intelligence_sources')
+    .update({ status: 'unreviewed', reviewed_by_id: null, reviewed_by_name: null, reviewed_at: null })
+    .eq('id', id)
   if (error) return { ok: false, error: `revertToUnreviewed failed: ${error.message}` }
   await resyncRow(id)
   return { ok: true }

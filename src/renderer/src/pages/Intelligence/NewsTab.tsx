@@ -710,6 +710,35 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     }
   }
 
+  // "Make unreviewed" — undo a Save, flipping a 'saved' article back to the queue. Deliberately
+  // NOT routed through handleStatus (which would stamp a reviewer, log a decision, and push an
+  // 'unreviewed' verdict to Supabase). Pure status flip; surfaces failures like the other actions.
+  async function handleMakeUnreviewed(id: string) {
+    if (!online) return
+    setPendingStatus(p => ({ ...p, [id]: true }))
+    try {
+      const res = await window.api.intelligence.revertToUnreviewed(id)
+      if (!res.ok) {
+        setStatusError(prev => ({ ...prev, [id]: res.error || 'Could not update.' }))
+        return
+      }
+      setStatusError(prev => { const n = { ...prev }; delete n[id]; return n })
+      setSources(prev => prev.map(s => s.id === id ? { ...s, status: 'unreviewed' as any } : s))
+      // 'saved' is in no badge → nothing to decrement; the pending queue gains one.
+      setStatusCounts(prev => ({ ...prev, unreviewed: prev.unreviewed + 1 }))
+      // Mirror handleStatus's fade: drop the card from the current view when it no longer matches.
+      if (statusFilter && statusFilter !== 'unreviewed') {
+        setFadingIds(f => new Set([...f, id]))
+        setTimeout(() => {
+          setSources(curr => curr.filter(s => s.id !== id))
+          setFadingIds(f => { const n = new Set(f); n.delete(id); return n })
+        }, 350)
+      }
+    } finally {
+      setPendingStatus(p => ({ ...p, [id]: false }))
+    }
+  }
+
   async function handleConfidence(id: string, confidence: string) {
     await window.api.intelligence.updateConfidence(id, confidence)
     setSources(prev => prev.map(s => s.id === id ? { ...s, confidence: confidence as any, confidence_override: 1 } : s))
@@ -1536,6 +1565,18 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                   >
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v5M3 4l2 2 2-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M1 7.5v1a.5.5 0 0 0 .5.5h7a.5.5 0 0 0 .5-.5v-1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                     Save
+                  </button>
+                )}
+                {/* Make unreviewed — quiet undo; only for the Saved basket (inverse of Save's guard) */}
+                {source.status === 'saved' && (
+                  <button
+                    onClick={() => handleMakeUnreviewed(source.id)}
+                    disabled={isPending || !online}
+                    title={!online ? 'Unavailable while offline' : 'Return this article to the review queue'}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-gray-300 dark:border-white/[0.15] text-gray-600 dark:text-white/60 text-xs font-medium transition hover:bg-gray-50 dark:hover:bg-white/[0.04] disabled:opacity-50"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3.5 2L1.5 4l2 2M1.5 4H6a2.5 2.5 0 0 1 0 5H4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    Make unreviewed
                   </button>
                 )}
                 {/* Reject — ungated */}

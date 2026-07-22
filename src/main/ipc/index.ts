@@ -3078,6 +3078,12 @@ function registerIntelligenceHandlers(): void {
   ipcMain.handle('intelligence:markDuplicate', (_e, id: string, duplicateOf: string | null) =>
     intelCloud.markDuplicate(id, duplicateOf))
 
+  // "Make unreviewed" (News undo for a saved article): pure status flip back to the queue.
+  // Deliberately NOT via updateStatus — no verdict push, no routing, no decision log, and it
+  // clears the review stamp. Cloud-only. Offline → { ok:false }.
+  ipcMain.handle('intelligence:revertToUnreviewed', (_e, id: string) =>
+    intelCloud.revertToUnreviewed(id))
+
   // RMW → cloud-only. The cloud write derives queue_section from categories_json
   // read from CLOUD; routing (local info_page_sources) and the cs_articles verdict
   // write-back stay HERE. On the approve path, intel.updateStatus returns the
