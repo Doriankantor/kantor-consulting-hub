@@ -138,6 +138,9 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const [dupResults, setDupResults]   = useState<Array<{ id: string; title: string; source_name?: string; published_at?: string }>>([])
   const [dupChosen, setDupChosen]     = useState<{ id: string; title: string } | null>(null)
   const [dupSearching, setDupSearching] = useState(false)
+  // Duplicate auto-suggest: likely originals seeded from the article's title on modal open.
+  const [dupSuggestions, setDupSuggestions] = useState<Array<{ id: string; title: string; source_name?: string; published_at?: string }>>([])
+  const [dupSuggesting, setDupSuggesting]   = useState(false)
   // News hand-add: the "Add article" panel + its form (author = localUser?.name).
   const [showAddPanel, setShowAddPanel] = useState(false)
   const [newsForm, setNewsForm] = useState({ ...NEWS_EMPTY_FORM })
@@ -545,8 +548,55 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   // Duplicate slice: mark as duplicate. NO learning signal — does NOT go through
   // updateStatus/handleStatus (no logDecision, no pushVerdictToSupabase). Drops the
   // card from the queue optimistically, exactly like reject's fade at handleStatus.
-  function openDupModal(id: string) { setDupModalFor(id); setDupSearch(''); setDupResults([]); setDupChosen(null) }
-  function closeDupModal() { setDupModalFor(null); setDupSearch(''); setDupResults([]); setDupChosen(null) }
+  // Auto-suggest tokenizer: lowercase, strip punctuation, drop stopwords + <4-char tokens.
+  // The signal-carrying tokens (usually proper nouns) are what make a good duplicate seed.
+  const DUP_STOPWORDS = new Set(['a','an','the','of','in','on','for','to','and','with','as','at','by','from','after','says','said','new','over','amid','its','is','are','be'])
+  function dupTitleTokens(title: string): string[] {
+    return (title || '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .split(/\s+/)
+      .filter(t => t.length >= 4 && !DUP_STOPWORDS.has(t))
+  }
+  function openDupModal(id: string) {
+    setDupModalFor(id); setDupSearch(''); setDupResults([]); setDupChosen(null); setDupSuggestions([])
+    // Seed likely originals from the article's TITLE (not source_name — a duplicate is the
+    // same story from a DIFFERENT outlet, so same-outlet rows are the least likely matches).
+    const srcTokens = dupTitleTokens(sources.find(s => s.id === id)?.title || '')
+    if (srcTokens.length === 0) { setDupSuggesting(false); return }  // no usable token → no suggestions
+    const seeds = [...srcTokens].sort((a, b) => b.length - a.length).slice(0, 2)  // 2 longest = most distinctive
+    const srcTokenSet = new Set(srcTokens)
+    setDupSuggesting(true)
+    void (async () => {
+      try {
+        // One query per seed token (LIKE rarely hits on a multi-word phrase); merge, dedupe by id.
+        const merged = new Map<string, any>()
+        for (const token of seeds) {
+          const rows: any[] = await window.api.intelligence.getSources({ type: 'article', search: token })
+          for (const r of rows) {
+            if (r.id === id) continue                 // exclude self
+            if (r.status === 'duplicate') continue    // exclude rows already marked duplicate
+            if (!merged.has(r.id)) merged.set(r.id, r)
+          }
+        }
+        // Rank by shared-title-token overlap desc, tie-break published_at desc; keep top 5.
+        const ranked = [...merged.values()]
+          .map(r => ({ r, overlap: dupTitleTokens(r.title || '').filter(t => srcTokenSet.has(t)).length }))
+          .sort((a, b) => b.overlap - a.overlap
+            || String(b.r.published_at || '').localeCompare(String(a.r.published_at || '')))
+          .slice(0, 5)
+          .map(x => x.r)
+        setDupSuggestions(ranked)
+      } catch (e) {
+        // Surface (don't swallow): drop the suggestions, typed search still works.
+        console.warn('[NewsTab] dup auto-suggest failed:', e)
+        setDupSuggestions([])
+      } finally {
+        setDupSuggesting(false)
+      }
+    })()
+  }
+  function closeDupModal() { setDupModalFor(null); setDupSearch(''); setDupResults([]); setDupChosen(null); setDupSuggestions([]); setDupSuggesting(false) }
   async function markDuplicate(id: string, originalId: string | null) {
     if (!online) return   // read-only offline (Duplicate — creates a row)
     try {
@@ -1534,6 +1584,31 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
             <p className="text-xs text-gray-500 dark:text-white/50 mt-1">
               This removes the article from review without affecting AI learning. Optionally link the original it duplicates.
             </p>
+            {/* Auto-suggested originals — shown only before the user starts typing. Once
+                dupSearch has 2+ chars the typed-search list below takes over unchanged. */}
+            {dupSearch.trim().length === 0 && (dupSuggesting || dupSuggestions.length > 0) && (
+              <div className="mt-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/35 mb-1">Suggested originals</p>
+                <div className="max-h-40 overflow-auto rounded-lg border border-gray-100 dark:border-white/[0.06] divide-y divide-gray-100 dark:divide-white/[0.06]">
+                  {dupSuggesting ? (
+                    <p className="px-3 py-3 text-xs text-gray-400 dark:text-white/30">Searching…</p>
+                  ) : (
+                    dupSuggestions.map(r => (
+                      <button
+                        key={r.id}
+                        onClick={() => setDupChosen({ id: r.id, title: r.title })}
+                        className={`w-full text-left px-3 py-2 transition ${dupChosen?.id === r.id ? 'bg-indigo-50 dark:bg-indigo-500/15' : 'hover:bg-gray-50 dark:hover:bg-white/[0.04]'}`}
+                      >
+                        <p className="text-xs font-medium text-gray-800 dark:text-white/80 line-clamp-2">{r.title}</p>
+                        <p className="text-[10px] text-gray-400 dark:text-white/35 mt-0.5">
+                          {[r.source_name, formatDate(r.published_at || null)].filter(Boolean).join(' · ')}
+                        </p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
             <input
               autoFocus
               type="text"
