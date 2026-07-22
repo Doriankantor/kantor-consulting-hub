@@ -1490,14 +1490,18 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
               <div className="mt-2 pt-2 border-t border-gray-100 dark:border-white/[0.06]">
                 <button
                   onClick={() => setOpenFooter(prev => ({ ...prev, [source.id]: !footerOpen }))}
-                  className="w-full flex items-center gap-2 text-left"
+                  className={`w-full flex items-center gap-2 text-left px-3 py-2.5 rounded-lg border transition-colors ${
+                    footerFilled
+                      ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-500/15'
+                      : 'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-500/25 text-indigo-800 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-500/15'
+                  }`}
                 >
-                  <span className={`text-xs ${footerFilled ? 'text-emerald-500' : 'text-gray-400 dark:text-white/30'}`}>{footerFilled ? '●' : '✎'}</span>
-                  <span className="text-[11px] font-medium text-gray-500 dark:text-white/45">
-                    {footerFilled ? 'Notes' : 'Add notes'}
+                  <span className={`text-sm ${footerFilled ? 'text-emerald-500 dark:text-emerald-400' : 'text-gray-400 dark:text-white/30'}`}>{footerFilled ? '●' : '✎'}</span>
+                  <span className="text-[13px] font-medium">
+                    Review and annotate
                   </span>
                   <span className="flex-1" />
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={`text-gray-400 dark:text-white/40 transition-transform ${footerOpen ? 'rotate-180' : ''}`}>
+                  <svg width="18" height="18" viewBox="0 0 12 12" fill="none" className={`transition-transform ${footerOpen ? 'rotate-180' : ''}`}>
                     <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </button>
