@@ -50,6 +50,11 @@ function readTags(raw: string | null): string[] {
 // Paging page size (see NewsTab). getSources' own limit ?? 100 default is untouched.
 const PAGE_SIZE = 50
 
+// Persist per-card collapse across route unmounts (leaving Intelligence). Only ids the
+// user EXPLICITLY toggled are stored; untouched cards still derive open/closed from the
+// substance fallback in the render, so this never freezes today's content state.
+const OPENCARDS_KEY = 'intel-opencards-documents'
+
 export default function DocumentsTab({ onApprove, project = null }: Props) {
   const { localUser, isRoot, can } = useAuth()
   const { online } = useConnection()
@@ -75,7 +80,29 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
   // T3: the selected project's thematic tag vocabulary (project-scoped, from T1).
   const [knownThematic, setKnownThematic] = useState<string[]>([])
   // Slice 4: per-card collapse state (id → open). Absent = fall back to default-open.
-  const [openCards, setOpenCards] = useState<Record<string, boolean>>({})
+  // Persisted (option b): lazy-init from localStorage so an explicit collapse survives
+  // leaving Intelligence; corrupt/missing value falls back to {} without crashing.
+  const [openCards, setOpenCards] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem(OPENCARDS_KEY) || '{}') || {} } catch { return {} }
+  })
+  // Persist on every change (only user-toggled entries are ever written).
+  useEffect(() => {
+    try { localStorage.setItem(OPENCARDS_KEY, JSON.stringify(openCards)) } catch { /* ignore quota/serialize */ }
+  }, [openCards])
+  // Prune stale ids once the list has loaded, so the store can't grow unbounded. Guarded
+  // on a non-empty list (documents is [] before load — pruning then would wipe the store)
+  // and no-ops (same ref) when nothing is stale, so it never clobbers present entries.
+  useEffect(() => {
+    if (documents.length === 0) return
+    setOpenCards(prev => {
+      const ids = new Set(documents.map(d => d.id))
+      const kept = Object.keys(prev).filter(k => ids.has(k))
+      if (kept.length === Object.keys(prev).length) return prev
+      const next: Record<string, boolean> = {}
+      for (const k of kept) next[k] = prev[k]
+      return next
+    })
+  }, [documents])
 
   const load = useCallback(async (opts?: { background?: boolean; append?: boolean }) => {
     // fresh/append/background modes — see SocialTab. routed excluded at the QUERY so
