@@ -253,26 +253,54 @@ export async function getSourcesCount(opts: GetSourcesOpts = {}, actingUserId?: 
 
 // Count reads: cloud-first (head+count), fall back to the mirror on offline/error.
 // No mirror sync — the count is derived; row syncing is getSources' job.
-export async function getUnreviewedCount(actingUserId?: string): Promise<number> {
+// "Pending" is TYPE-CONDITIONAL. An ARTICLE is pending only while status='unreviewed'
+// (a saved/approved/rejected article is a deliberate post-review decision). A non-article
+// (social/document/interview) has NO approve/reject path — its only forward move is
+// "Send to New sources" (status→'routed') — so it is pending until routed, i.e.
+// status<>'routed'. The two halves are DISJOINT by type, so summing two head counts
+// equals the OR-of-ANDs with no row double-counted. project (via normalizeProject) is an
+// optional view filter on TOP of the membership gate; the header scopes to the dropdown,
+// the sidebar passes none (all projects).
+const NON_ARTICLE_TYPES = ['social', 'document', 'interview']
+export async function getUnreviewedCount(actingUserId?: string, project?: string): Promise<number> {
   const gate = await visibleBoardIdsFor(actingUserId)
   if (!gate.isRoot && gate.ids.size === 0) return 0
+  const proj = normalizeProject(project)
   const inClause = gate.isRoot ? '' : ` AND project_board_id IN (${[...gate.ids].map(() => '?').join(',')})`
-  const localSql = `SELECT COUNT(*) as c FROM intelligence_sources WHERE status='unreviewed'${inClause}`
-  const localArgs = gate.isRoot ? [] : [...gate.ids]
+  const projClause = proj ? ' AND project_board_id=?' : ''
+  // Mirror: one query, the predicate expressed directly (identical result to the cloud sum).
+  const localSql =
+    `SELECT COUNT(*) as c FROM intelligence_sources WHERE (` +
+    `(type='article' AND status='unreviewed') OR ` +
+    `(type IN ('social','document','interview') AND status<>'routed'))` +
+    `${inClause}${projClause}`
+  const localArgs = [...(gate.isRoot ? [] : [...gate.ids]), ...(proj ? [proj] : [])]
   if (!isOnline()) return localScalar(localSql, ...localArgs)
-  let q = cloud.from('intelligence_sources').select('id', { count: 'exact', head: true }).eq('status', 'unreviewed')
-  if (!gate.isRoot) q = q.in('project_board_id', [...gate.ids])
-  const { count, error } = await q
-  reportCloudResult(!error)
-  if (error) { console.warn('[intel] cloud getUnreviewedCount failed, serving mirror:', error.message); return localScalar(localSql, ...localArgs) }
-  return count ?? 0
+  // Cloud: two disjoint head counts, summed. Gate + project apply to BOTH halves.
+  const base = () => {
+    let q = cloud.from('intelligence_sources').select('id', { count: 'exact', head: true })
+    if (!gate.isRoot) q = q.in('project_board_id', [...gate.ids])
+    if (proj) q = q.eq('project_board_id', proj)
+    return q
+  }
+  const [artRes, nonRes] = await Promise.all([
+    base().eq('type', 'article').eq('status', 'unreviewed'),
+    base().in('type', NON_ARTICLE_TYPES).neq('status', 'routed'),
+  ])
+  const ok = !artRes.error && !nonRes.error
+  reportCloudResult(ok)
+  if (!ok) {
+    console.warn('[intel] cloud getUnreviewedCount failed, serving mirror:', (artRes.error || nonRes.error)?.message)
+    return localScalar(localSql, ...localArgs)
+  }
+  return (artRes.count ?? 0) + (nonRes.count ?? 0)
 }
 
 // intel portion of getPipelineStats.pending (status='unreviewed'). The other half
 // (sentToPages, from info_page_items) stays LOCAL in the ipc handler. Threads the
 // actor through rather than gating twice.
-export async function getPipelinePending(actingUserId?: string): Promise<number> {
-  return getUnreviewedCount(actingUserId)
+export async function getPipelinePending(actingUserId?: string, project?: string): Promise<number> {
+  return getUnreviewedCount(actingUserId, project)
 }
 
 export async function getStatusCounts(actingUserId?: string, project?: string): Promise<{ unreviewed: number; approved: number; rejected: number }> {

@@ -3116,8 +3116,8 @@ function registerIntelligenceHandlers(): void {
 
   // Pipeline counters. `pending` (intel) is cloud-first; `sentToPages` reads the
   // LOCAL info_page_items table (not migrated) and stays local.
-  ipcMain.handle('intelligence:getPipelineStats', async () => {
-    const pending = await intelCloud.getPipelinePending(currentActingUserId)
+  ipcMain.handle('intelligence:getPipelineStats', async (_e, project?: string) => {
+    const pending = await intelCloud.getPipelinePending(currentActingUserId, project)
     const sentToPages = (db().prepare("SELECT COUNT(DISTINCT origin_source_id) as c FROM info_page_items WHERE sub_type='intelligence_source' AND origin_source_id IS NOT NULL").get() as { c: number }).c
     return { pending, sentToPages }
   })

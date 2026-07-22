@@ -67,12 +67,16 @@ export default function Intelligence() {
   const [rescoring, setRescoring] = useState(false)
   const [rescoreResult, setRescoreResult] = useState<string | null>(null)
 
+  // Header "PENDING REVIEW" is project-scoped to the dropdown. selectedProjectId in the
+  // deps is what makes the stat refetch on project switch (the old [] deps were why it
+  // used to stay on the previous project's number). 'all' → normalizeProject drops it
+  // main-side, so the header shows the all-projects total.
   const refreshStats = useCallback(async () => {
     try {
-      const s = await window.api.intelligence.getPipelineStats()
+      const s = await window.api.intelligence.getPipelineStats(selectedProjectId)
       setStats(s)
     } catch {}
-  }, [])
+  }, [selectedProjectId])
 
   const refreshUnscoredCount = useCallback(async () => {
     try {
@@ -97,7 +101,9 @@ export default function Intelligence() {
     handleApproved()
     const interval = setInterval(() => { refreshStats(); refreshUnscoredCount() }, 20000)
     return () => clearInterval(interval)
-  }, [handleApproved, refreshStats, refreshUnscoredCount])
+    // selectedProjectId listed explicitly: switching projects must refetch the header stat.
+    // (It already cascades via refreshStats' identity, but the dep makes the intent clear.)
+  }, [handleApproved, refreshStats, refreshUnscoredCount, selectedProjectId])
 
   async function handleRescore() {
     if (!online) return   // read-only offline
