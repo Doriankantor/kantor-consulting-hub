@@ -3,7 +3,7 @@ import { createReadStream, createWriteStream, existsSync, mkdirSync, statSync } 
 import { join, extname, basename } from 'path'
 import { app, dialog, shell, BrowserWindow } from 'electron'
 import { pipeline } from 'stream/promises'
-import { cloud, CLOUD_ADMIN_EMAIL_EMAIL } from './client'
+import { cloud, CLOUD_ADMIN_EMAIL } from './client'
 import { getDatabase } from '../db'
 import { resolveActor, resolveIdentity, isBoardVisible, boardIdOfTask } from './boards'
 
