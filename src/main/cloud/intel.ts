@@ -296,9 +296,8 @@ export async function getUnreviewedCount(actingUserId?: string, project?: string
   return (artRes.count ?? 0) + (nonRes.count ?? 0)
 }
 
-// intel portion of getPipelineStats.pending (status='unreviewed'). The other half
-// (sentToPages, from info_page_items) stays LOCAL in the ipc handler. Threads the
-// actor through rather than gating twice.
+// getPipelineStats.pending — the intel review-queue count (see getUnreviewedCount for the
+// type-conditional predicate). Threads the actor through rather than gating twice.
 export async function getPipelinePending(actingUserId?: string, project?: string): Promise<number> {
   return getUnreviewedCount(actingUserId, project)
 }

@@ -21,7 +21,7 @@ const TABS = [
 
 export default function Intelligence() {
   const [activeTab, setActiveTab] = useState<'news' | 'social' | 'documents' | 'interviews'>('news')
-  const [stats, setStats] = useState<{ pending: number; sentToPages: number }>({ pending: 0, sentToPages: 0 })
+  const [stats, setStats] = useState<{ pending: number }>({ pending: 0 })
   // Slice 1: project scope selector + read-only framework panel. The 4 projects
   // are the cloud info-page boards (same source as InfoPages/index.tsx). Selecting
   // a project sets context + drives the framework panel ONLY — per decision A it
@@ -177,25 +177,6 @@ export default function Intelligence() {
               <p className="text-base font-bold text-amber-700 dark:text-amber-400 leading-none">{stats.pending}</p>
               <p className="text-[9px] text-amber-600/70 dark:text-amber-400/60 uppercase tracking-wider mt-0.5">pending review</p>
             </div>
-            {/* Phase 7: Push to Info Page affordance (replaces "Push to Contested Skies").
-                Approving an article auto-pushes it to the linked Info Page's New Sources;
-                this button explains/surfaces that routing. */}
-            <button
-              onClick={() => {
-                setToast('Approve an article to push it to the Info Page → New Sources')
-                setTimeout(() => setToast(null), 3200)
-              }}
-              title="Approving an article pushes it to the linked Info Page's New Sources, where it can be reviewed and committed."
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/25 hover:bg-indigo-100 dark:hover:bg-indigo-500/15 transition text-center"
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-indigo-600 dark:text-indigo-400 shrink-0">
-                <path d="M7 9.5V2.5M7 2.5L4 5.5M7 2.5l3 3M2.5 10.5h9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <span className="leading-none">
-                <span className="block text-base font-bold text-indigo-700 dark:text-indigo-400">{stats.sentToPages}</span>
-                <span className="block text-[9px] text-indigo-600/70 dark:text-indigo-400/60 uppercase tracking-wider mt-0.5">push to info page</span>
-              </span>
-            </button>
           </div>
         </div>
         {/* Slice 1: project scope selector + read-only data-gathering framework panel.

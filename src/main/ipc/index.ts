@@ -3114,12 +3114,10 @@ function registerIntelligenceHandlers(): void {
     return { ok: true }
   })
 
-  // Pipeline counters. `pending` (intel) is cloud-first; `sentToPages` reads the
-  // LOCAL info_page_items table (not migrated) and stays local.
+  // Pipeline counter for the header PENDING REVIEW chip. `pending` (intel) is cloud-first.
   ipcMain.handle('intelligence:getPipelineStats', async (_e, project?: string) => {
     const pending = await intelCloud.getPipelinePending(currentActingUserId, project)
-    const sentToPages = (db().prepare("SELECT COUNT(DISTINCT origin_source_id) as c FROM info_page_items WHERE sub_type='intelligence_source' AND origin_source_id IS NOT NULL").get() as { c: number }).c
-    return { pending, sentToPages }
+    return { pending }
   })
 
   // Phase 3: live queue counts for the News Articles filter bar. Cloud-first.
