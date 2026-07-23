@@ -11,6 +11,95 @@ process complete by end of July, publishing in August.** The stage order is LOCK
 → Analysis & design → Publish → Latest update notes → Sources**, with Claude PROPOSING placements
 and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not jump to code.
 
+**LATEST (2026-07-23, later) — INTEL COUNTER + CARD CLEANUP RUN. Four slices
+shipped after `00940cc`, each diagnosed read-only, tested in-app, committed
+separately.**
+
+- **`6208649` — PENDING COUNTER REDEFINED + PROJECT-SCOPED.** `getUnreviewedCount`
+  now counts `(type='article' AND status='unreviewed') OR (non-article AND
+  status <> 'routed')`. Rationale: social/documents/interviews have NO
+  approve/reject path — their only actions are delete and route — so a SAVED
+  non-article is still awaiting review, while a saved ARTICLE is a post-review
+  parking decision. Same status string, opposite meaning by type; the predicate
+  must branch on type (tension with locked decision #1 — the STATUS model is not
+  unified — flagged, not relitigated). Optional `project` param via the existing
+  `normalizeProject`, applied in BOTH cloud (two disjoint head-counts summed —
+  type partitions cleanly, no double-count) and mirror (equivalent OR) branches.
+  **ROOT CAUSE of the header not moving on project switch: `refreshStats` had
+  EMPTY DEPS `[]`, freezing it on the first project.** Sidebar stays all-projects
+  and adopts the new definition automatically. Both callers moved intentionally;
+  no strays.
+- **`481c62c` — PER-CARD COLLAPSE PERSISTED.** Social/Documents/Interviews stored
+  `openCards` in local state, so the Intelligence route unmounting discarded every
+  explicit collapse and substantive cards re-derived to open. Now persisted to
+  localStorage per tab (`intel-opencards-{social,documents,interviews}`) with lazy
+  try/catch init, write-on-change, and a list-keyed prune guarded against wiping
+  the store before first load. **The default-open-for-substance fallback is
+  byte-unchanged** — only user-toggled entries are stored, so untouched cards with
+  notes/AI still auto-open. NewsTab untouched (its compose is a default-closed
+  top-level panel).
+- **`63e089e` — SIX MUTATIONS NOW REFRESH THE HEADER STAT.** The header refreshes
+  only when a tab calls the `onApprove` prop (= `handleApproved` → `refreshStats`).
+  SIX pending-changing mutations never did, leaving the counter stale until a full
+  remount: the three compose deletes, News make-unreviewed (+1), News hand-add
+  (+1), News mark-duplicate (−1). Each now calls no-arg `onApprove()` on its
+  success path (no-arg ⇒ no push toast). Compose Save was pending-NEUTRAL and
+  already refreshed harmlessly.
+- **`2927df7` — NO-OP SAVE REMOVED FROM COMPOSE TABS + UN-REJECT.** See the commit
+  message. Two things worth carrying forward: `handleStatus` and its
+  `pendingStatus`/`statusError` machinery were removed as unreachable; and the
+  gate widening alone was NOT sufficient — the optimistic counter needed a
+  conditional `rejected −1`, since a rejected row has a live chip where `saved`
+  does not.
+
+**★ LOGGED FINDINGS — DO NOT DROP:**
+
+- **UN-REJECT LEAVES THE LEARNING SIGNAL STALE (attach to the relevance-feedback
+  slice).** Rejecting fires `pushVerdictToSupabase(url,'rejected',reviewer)` →
+  `cs_articles.status='rejected'`, matched by URL, fire-and-forget — the training
+  signal for the Contested Skies relevance gate. `revertToUnreviewed` touches ONLY
+  `intelligence_sources` and there is **no un-push path**. The hub NEVER reads
+  `cs_articles.status` back (verified: zero selects on it; the only cs_articles
+  read is the importer filtering `imported_to_hub=false`), so nothing breaks
+  in-app — but the external pipeline keeps learning "irrelevant" from an article
+  the researcher un-rejected, **which is exactly the case the un-reject button
+  exists for**. NOT fixed because the correct reset value (`'new'`? null?) is
+  unconfirmed against the pipeline. **This belongs with the queued "human
+  relevance override → feedback loop into GDELT/Haiku culling" slice** — confirm
+  the reset value there, then add the un-push. Note the pre-existing saved→
+  unreviewed path never had this problem (`verdictToCsStatus('saved')` → null).
+- **"PUSH TO INFO PAGE" (15) IS A DEAD, MISLEADING STAT — READY TO REMOVE.** Fully
+  diagnosed. The onClick does nothing but show a toast. The number is
+  `stats.sentToPages` = `COUNT(DISTINCT origin_source_id) FROM info_page_items
+  WHERE sub_type='intelligence_source'` — the **RETIRED** table (the old
+  `addApprovedSourceToInfoPages` fan-out is "kept defined but no longer called",
+  ipc:3025). Current routing writes `info_page_sources` (stage='new'), so **the
+  number will not move when you route via "Send to New sources"**. 15 matches
+  nothing in the current model (info_page_sources=23, pushed=20, approved=27).
+  `sentToPages` has no other reader. **Decision pending: remove entirely
+  (recommended) vs repurpose to count `info_page_sources`** — the latter is a
+  product decision about what belongs in the intel header vs the Info Pages side,
+  and arguably restructure territory.
+- **OPTION B — cross-device header freshness (DEFERRED into/after the
+  restructure).** `intel:sourcesInvalidate` fires on INSERT/UPDATE/DELETE and the
+  tabs listen, but **index.tsx subscribes to nothing**, so another user's mutation
+  doesn't refresh this user's header until the 20s interval. Subscribing index.tsx
+  is NOT drop-in: the preload bridge tears down with
+  `removeAllListeners('intel:sourcesInvalidate')`, so the first tab unmount on any
+  tab-switch would kill index.tsx's listener too. **Requires per-callback listener
+  removal first.** Cosmetic + 20s-self-healing; the blast radius on shared realtime
+  plumbing is not worth it before the restructure reworks this anyway.
+- **ARTICLE / NON-ARTICLE ROUTING ASYMMETRY.** Approved articles keep
+  `status='approved'` and get an `info_page_sources` pointer but **never call
+  `markRouted`**; non-articles go straight to `status='routed'`. Two types reach
+  Info Pages by different status transitions. Doesn't affect the pending counter
+  (approved is excluded either way), but the restructure will hit it.
+- **MIRROR CARRIES A PHANTOM +1 UNREVIEWED ARTICLE** (mirror 103 vs cloud 102),
+  from the make-unreviewed/reject churn during testing. Offline-only, off by one,
+  self-heals on next full sync. Cosmetic — logged, not chased.
+
+---
+
 **LATEST (2026-07-23) — INTEL LIST SCOPING + PAGING SHIPPED. HEAD `ad6469a`,
 tree clean.**
 
