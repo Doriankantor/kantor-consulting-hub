@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import PipelineSourceCard from './PipelineSourceCard'
+import { notifyIntelChanged } from '../../../utils/intelEvents'
 
 interface Props {
   pageId: string
@@ -47,6 +48,7 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
     await window.api.infoPages.moveBackToIntel(pageId, articleId)
     await load()
     onMoved?.()
+    notifyIntelChanged()   // intel row reverts to 'unreviewed' (+1 pending) — refresh the Sidebar badge now
   }
 
   if (loading) return <div className="flex items-center justify-center py-16"><div className="w-5 h-5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"/></div>

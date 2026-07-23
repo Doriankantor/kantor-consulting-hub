@@ -5,6 +5,7 @@ import RichTextEditor from '../../components/RichTextEditor'
 import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
 import CondensedSummary from './CondensedSummary'
+import { notifyIntelChanged } from '../../utils/intelEvents'
 
 // 2b: the selected project's config, threaded from the Intelligence container so
 // the reconcile call is project-aware. null when "All sources" is selected.
@@ -222,6 +223,7 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
     // Deleting a non-article drops it from the pending set — refresh the header stat.
     // onApprove() = handleApproved; no args → refreshStats + refreshUnscoredCount, no toast.
     onApprove()
+    notifyIntelChanged()   // nudge the Sidebar badge to refetch now, not on its 60s tick
   }
 
   // 3d: persist the reliable board-id project association (picker change).
@@ -238,6 +240,7 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
     if (res?.ok) {
       setDocuments(prev => prev.filter(d => d.id !== id))
       onApprove(res.pageName ? [res.pageName] : [])
+      notifyIntelChanged()   // routed item leaves the pending set — refresh the Sidebar badge now
     } else if (res?.error) {
       console.warn('[3d] send failed:', res.error)
     }

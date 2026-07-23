@@ -20,6 +20,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { INTEL_CHANGED_EVENT } from '../utils/intelEvents'
 import { useUpdate } from '../contexts/UpdateContext'
 import type { ViewMode, Board } from '../types'
 
@@ -424,8 +425,14 @@ export default function Sidebar() {
       } catch {}
     }
     load()
+    // 60s poll is the cross-device backstop; the intelChanged event (same-renderer only)
+    // kills the local lag by refetching the instant an Intelligence mutation lands.
     const interval = setInterval(load, 60000)
-    return () => clearInterval(interval)
+    window.addEventListener(INTEL_CHANGED_EVENT, load)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener(INTEL_CHANGED_EVENT, load)
+    }
   }, [])
 
   // Nav items excluding workspace (rendered separately)

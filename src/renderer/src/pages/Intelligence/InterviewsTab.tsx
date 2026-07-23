@@ -5,6 +5,7 @@ import RichTextEditor from '../../components/RichTextEditor'
 import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
 import CondensedSummary from './CondensedSummary'
+import { notifyIntelChanged } from '../../utils/intelEvents'
 
 // 2c: Intelligence "Interviews" tab — human-first, mirroring the Documents (2b)
 // compose flow. type='interview' rows on intelligence_sources; the transcript is
@@ -213,6 +214,7 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
     // Deleting a non-article drops it from the pending set — refresh the header stat.
     // onApprove() = handleApproved; no args → refreshStats + refreshUnscoredCount, no toast.
     onApprove()
+    notifyIntelChanged()   // nudge the Sidebar badge to refetch now, not on its 60s tick
   }
 
   // 3d: persist the reliable board-id project association (picker change).
@@ -229,6 +231,7 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
     if (res?.ok) {
       setInterviews(prev => prev.filter(iv => iv.id !== id))
       onApprove(res.pageName ? [res.pageName] : [])
+      notifyIntelChanged()   // routed item leaves the pending set — refresh the Sidebar badge now
     } else if (res?.error) {
       console.warn('[3d] send failed:', res.error)
     }

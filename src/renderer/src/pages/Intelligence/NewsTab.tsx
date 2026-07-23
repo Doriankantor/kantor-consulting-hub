@@ -9,6 +9,7 @@ import SuggestedTagChip from './SuggestedTagChip'
 import { actorTypeClass } from './actorTypeClass'
 import { resolveFacts, resolveCaps, type ResolvedFact, type ResolvedCap } from './resolveAnalysis'
 import { parseConfig } from './frameworkConfig'
+import { notifyIntelChanged } from '../../utils/intelEvents'
 
 const CONFIDENCE_COLORS = {
   high:   { bg: 'bg-green-100 dark:bg-green-900/30',   text: 'text-green-700 dark:text-green-400',   dot: 'bg-green-500' },
@@ -639,6 +640,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
         // A hand-added article is born unreviewed (+1 pending) — refresh the header stat.
         // onApprove() = handleApproved; no args → refreshStats + refreshUnscoredCount, no toast.
         onApprove()
+        notifyIntelChanged()   // +1 pending — refresh the Sidebar badge now, not on its 60s tick
         return
       }
       if (res.duplicate) {
@@ -678,6 +680,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       })
       await load()
       onApprove(res?.addedToPages)
+      notifyIntelChanged()   // bulk accept empties the pending set — refresh the Sidebar badge now
     } finally {
       setConfirmingImported(false)
     }
@@ -750,6 +753,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       // is undefined when the write failed). Do NOT move this into the else.
       if (status === 'approved') onApprove(res?.addedToPages)
       else onApprove()
+      notifyIntelChanged()   // approve/reject changes the pending set — refresh the Sidebar badge now
     } finally {
       setPendingStatus(p => ({ ...p, [id]: false }))
     }
@@ -789,6 +793,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       // saved→unreviewed re-enters the pending set (+1) — refresh the header stat.
       // onApprove() = handleApproved; no args → refreshStats + refreshUnscoredCount, no toast.
       onApprove()
+      notifyIntelChanged()   // +1 pending — refresh the Sidebar badge now, not on its 60s tick
     } finally {
       setPendingStatus(p => ({ ...p, [id]: false }))
     }
@@ -866,6 +871,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       // unreviewed→duplicate leaves the pending set (-1) — refresh the header stat.
       // onApprove() = handleApproved; no args → refreshStats + refreshUnscoredCount, no toast.
       onApprove()
+      notifyIntelChanged()   // -1 pending — refresh the Sidebar badge now, not on its 60s tick
     } catch (e) { console.warn('[NewsTab] markDuplicate failed:', e) }
     closeDupModal()
   }
