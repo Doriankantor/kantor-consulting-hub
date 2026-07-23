@@ -11,6 +11,137 @@ process complete by end of July, publishing in August.** The stage order is LOCK
 → Analysis & design → Publish → Latest update notes → Sources**, with Claude PROPOSING placements
 and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not jump to code.
 
+**LATEST (2026-07-23, evening) — INTEL CORRECTNESS RUN + v2.4.0 RELEASED (and
+BLOCKED on macOS). Everything below shipped after `00940cc`, each diagnosed
+read-only, tested in-app, committed separately.**
+
+**SLICES:**
+- **`6208649` — PENDING COUNTER REDEFINED + PROJECT-SCOPED.** `getUnreviewedCount`
+  now counts `(type='article' AND status='unreviewed') OR (non-article AND status <>
+  'routed')`. Non-articles have NO approve/reject path — only delete and route —
+  so a SAVED non-article is still awaiting review, while a saved ARTICLE is a
+  post-review parking decision. Same status string, opposite meaning by type, so
+  the predicate MUST branch on type (tension with locked decision #1: the status
+  model is not unified — flagged, not relitigated). Optional `project` param via
+  the existing `normalizeProject`, applied in BOTH cloud (two disjoint
+  head-counts summed — type partitions cleanly) and mirror (equivalent OR).
+  **ROOT CAUSE of the header not moving on project switch: `refreshStats` had
+  EMPTY DEPS `[]`.**
+- **`481c62c` — PER-CARD COLLAPSE PERSISTED.** localStorage per tab
+  (`intel-opencards-{social,documents,interviews}`), lazy try/catch init,
+  write-on-change, list-keyed prune guarded against wiping before first load.
+  Default-open-for-substance fallback byte-unchanged — only user-toggled entries
+  are stored.
+- **`63e089e` — SIX MUTATIONS NOW REFRESH THE HEADER STAT.** The header refreshes only when a
+  tab calls `onApprove` (= `handleApproved` → `refreshStats`). Six
+  pending-changing mutations never did: the three compose deletes, News
+  make-unreviewed (+1), News hand-add (+1), News mark-duplicate (−1).
+- **`2927df7` — NO-OP SAVE REMOVED FROM COMPOSE TABS + UN-REJECT.** Save on
+  Social/Documents/Interviews wrote ONLY `status='saved'` (notes arg
+  `undefined`), which means nothing under the counter model. Verified safe:
+  all panel content persists independently (notes/reconcile on blur, AI on
+  demand, tags and social top-form via their own handlers) and "Send to New
+  sources" has NO status precondition. Removed with the unreachable
+  `handleStatus`. **News keeps its Save.** "Make unreviewed" now also renders on
+  REJECTED articles. **The gate widening alone was NOT enough** — the optimistic
+  counter only did `unreviewed +1`, correct for `saved` (no chip) but leaving the
+  REJECTED chip over-counted; now conditionally decrements on the pre-flip
+  status.
+- **`2927df7` — ORPHANED-STATE CASCADE.** `pendingStatus`/`statusError`/`isPending` and the
+  `{statusError…}` block formed a closed dead chain once `handleStatus` went.
+  **Compiled clean only because `noUnusedLocals` is off** — nothing would ever
+  have flagged it. (Same commit as the Save removal above.)
+- **`80032f4` — DEAD "PUSH TO INFO PAGE" STAT REMOVED.** The button's onClick only showed a
+  toast. Its number counted `info_page_items` — the RETIRED table whose fan-out
+  is "kept defined but no longer called" — so it never moved when routing via
+  "Send to New sources". No replacement added: whether the intel header should
+  carry a routing indicator belongs to the restructure.
+- **`e05e8a2` — SIDEBAR BADGE REFRESHES ON LOCAL MUTATIONS.** The Sidebar renders OUTSIDE
+  `<Outlet />` so it never remounts on navigation; its badge effect had empty
+  deps and only a 60s interval. Twelve sites now dispatch an `intelChanged`
+  window event (the 11 that call `onApprove`, plus Info Pages
+  `handleMoveBack` in NewSourcesTab, which reverts an article to unreviewed).
+  New `utils/intelEvents.ts` leaf module holds the event name. `sendToReview`,
+  `backSourceToNew` and `commitSources` are stage-only and deliberately excluded.
+- **`9bf124c` — RELEVANCE/DATE SORT TOGGLE ON NEWS.** Display-order only; persists via
+  `intel-news-sort`.
+
+**★ v2.4.0 RELEASED — AND UNINSTALLABLE ON macOS.**
+Version-bump `97846c3`, tag `v2.4.0`, PROJECT_SUMMARY updated `6970fe6`.
+**A fresh install is deleted by macOS on launch** ("Malware entfernt und in den
+Papierkorb gelegt"). `spctl -a -vvv` returns **"notarization indicates this code
+has been revoked"**. Diagnosed:
+- Quarantine is NOT involved — `xattr -l` shows only `com.apple.provenance`.
+- Ad-hoc signing did NOT apply: every `codesign`/`xattr` write returned
+  `Operation not permitted` because **App Management blocks Terminal from
+  modifying `/Applications`**. The signature is still `linker-signed`,
+  `Info.plist=not bound`, `Sealed Resources=none`.
+- `appId` is already correct (`com.kantorconsulting.hub`); `Identifier=Electron`
+  in the codesign output is a SYMPTOM of never being signed, not a config error.
+- The build is unsigned by config: `notarize: false`, `hardenedRuntime: false`.
+**RESOLUTION DEFERRED TO LAUNCH (Dorian's call):** Apple Developer Program
+($99/yr) + Developer ID Application cert + `hardenedRuntime: true` +
+`notarize: true`. Windows deferred too — Azure Artifact Signing ~$10/month,
+EU-eligible, no hardware token; unsigned Windows still RUNS (SmartScreen warning
+only), so macOS is the harder block.
+
+**★ CORRECTION TO A LONG-STANDING FRAMING:** earlier HANDOFF entries said
+"researchers are running old code" / "~40 commits unreleased". **Nobody is using
+the app yet** — Dorian is building toward a stable, comprehensive first release.
+Releases are version history until launch. No user-facing urgency from
+unreleased work.
+
+**★ REQUESTED — INTEL TAB STATE SHOULD SURVIVE NAVIGATION (session-scoped).**
+Leaving Intelligence and returning resets to the default tab; it should reopen
+on the last-used tab. EXPLICITLY session-scoped — persist across navigation but
+NOT across app restart, so sessionStorage or a module-level variable, NOT the
+localStorage pattern used by `intel-selected-project`/`intel-opencards-*`.
+Mechanics: index.tsx sits INSIDE `<Outlet />` so the whole page unmounts on route
+change; tab mounting is MIXED (News/Documents/Interviews conditionally mounted,
+Social kept mounted-but-hidden). OPEN: does "where you were" include scroll
+position and PAGING DEPTH (returning resets to page 1 — a meaningfully bigger
+ask), filter state, and does this apply beyond Intelligence?
+
+**★ FINDINGS — DO NOT DROP:**
+- **PAGING "BUG" WAS A FALSE ALARM — do not re-investigate.** Reported as "100
+  counted, only 52 reachable". Proven NOT a bug across four hypotheses:
+  `loadedCount` increments by RAW `data.length` so offsets stay DB-aligned;
+  `getSources` and `getSourcesCount` have byte-identical predicates; there are
+  ZERO `Kantor Framework` rows; ordering ties are negligible (99 distinct
+  `(added_at, published_at)` pairs of 101 rows). **The count line read "Showing
+  100 of 101" the whole time.** The actual cause: fetch order (`added_at DESC`)
+  differed from display order (`relevance_score DESC`), so appended rows
+  scattered INTO the list rather than landing at the bottom — 50 rows arrived,
+  only the lowest-relevance couple appeared below the scroll position. The sort
+  toggle addresses this. **LESSON: read the count line before theorising.**
+- **`id DESC` TIEBREAKER — worth adding, not urgent.** 4 of 101 rows share a full
+  `(added_at, published_at)` key, so OFFSET paging is not fully deterministic.
+  One line in `getSources`, `getSourcesCount` and the mirror path.
+- **UN-REJECT LEAVES THE LEARNING SIGNAL STALE** (attach to the
+  relevance-feedback slice). Rejecting fires
+  `pushVerdictToSupabase(url,'rejected',reviewer)` → `cs_articles.status`, the
+  training signal for the relevance gate. `revertToUnreviewed` touches ONLY
+  `intelligence_sources` and there is **no un-push path**. The hub never reads
+  `cs_articles.status` back (verified), so nothing breaks in-app — but the
+  external pipeline keeps learning "irrelevant" from an article the researcher
+  un-rejected, **which is exactly what the button is for**. Not fixed: the
+  correct reset value (`'new'`? null?) is unconfirmed against the pipeline.
+- **CROSS-DEVICE FRESHNESS (option B) — still deferred.** A `window` event is
+  same-renderer only, so both the header and the sidebar still wait on their
+  polls for another device's mutation. Subscribing to `intel:sourcesInvalidate`
+  is blocked: the preload bridge tears down with `removeAllListeners`, so the
+  first tab unmount would kill any other subscriber's listener. **Requires
+  per-callback listener removal first.** Fold into the restructure's realtime
+  work.
+- **ARTICLE / NON-ARTICLE ROUTING ASYMMETRY.** Approved articles keep
+  `status='approved'` and get an `info_page_sources` pointer but never call
+  `markRouted`; non-articles go straight to `status='routed'`. The restructure
+  will hit this.
+- **MIRROR PHANTOM +1** unreviewed article (mirror 103 vs cloud 102 at the time).
+  Offline-only, self-heals on sync. Cosmetic.
+- **PROJECT_SUMMARY nits:** the trailing "NEXT STEP: 0b" line is stale (0b
+  shipped in v2.2.0), and there is still no v2.3.0 changelog entry.
+
 **LATEST (2026-07-23, later) — INTEL COUNTER + CARD CLEANUP RUN. Five slices
 shipped after `00940cc`, each diagnosed read-only, tested in-app, committed
 separately.**
