@@ -11,6 +11,138 @@ process complete by end of July, publishing in August.** The stage order is LOCK
 → Analysis & design → Publish → Latest update notes → Sources**, with Claude PROPOSING placements
 and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not jump to code.
 
+**LATEST (2026-07-23, night) — SORT TOGGLE SHIPPED · TEAM CONSOLE DESIGN LOCKED ·
+PRIORITIES REORDERED · CLOUD JUNK CLEARED.**
+
+**SHIPPED:**
+- **`9bf124c` — RELEVANCE/DATE SORT TOGGLE ON NEWS.** Display-order only — the
+  server query still orders by `added_at DESC`, so paging, `loadedCount`,
+  `hasMore` and the count line are untouched. Persists via localStorage
+  `intel-news-sort`, defaults to relevance. Built because fetch order and display
+  order differed, which made appended rows scatter into the list and "Load more"
+  look broken. _(Hash predates the last docs commit `859b2cf` — it shipped in the
+  prior batch and was already logged in the evening entry below; re-stated here as
+  part of tonight's summary. `git log 859b2cf..HEAD` is EMPTY: no new code commits
+  this session — the cloud cleanup was a data operation with no code committed.)_
+
+**★ PRIORITY REORDER (Dorian's call — supersedes the previous ordering).** The
+people/permissions layer now comes BEFORE the Intelligence + Info Pages
+restructure, because heads can't be assigned without it and publication depends
+on heads. New order:
+  1. `notifications` → cloud — the shared prerequisite. Unblocks To-Do slice 5
+     (intel directive loop) AND the off-work notification-drop stub.
+  2. To-Do collaboration: **2.5** (off-card assignment entity — unblocks the
+     empty "Assigned to me"/"Assigned by me" tabs) → **2.6** (invited
+     collaboration) → **4** (head roles + card permission tiers) → **5** (intel
+     directives).
+  3. Team console build.
+  4. Intelligence + Info Pages restructure.
+Accepted consequence: the restructure's design conversation starts later than
+planned.
+
+**★ TEAM CONSOLE — DESIGN LOCKED. Mockup: `Team console/TeamConsole_mockup.html`**
+(note the space in the folder name — quote the path). Seeded with the REAL roster
+and REAL board ids. Interactive: switch the viewer between root and any of the 8
+members and the whole page re-gates, including the sidebar nav.
+
+LOCKED DECISIONS:
+1. **Root is not in the roster.** `doriankantor@gmail.com` / `local-admin` has no
+   profile row, no board rows, no drawer, and appears in no people list. All the
+   root-row special-casing from mockup 1 is deleted.
+2. **`dk@kantor-consulting.com` is an ORDINARY MEMBER WITH ALL PERMISSIONS.**
+   Verified in code: root is a hardcoded email comparison (`boards.ts:46-63`,
+   `constants.ts:5`), `role='admin'` is COSMETIC (`Settings.tsx:1358`), and dk has
+   no special-casing anywhere. **IMPLEMENTATION RULE: no `if (email === dk)`
+   anywhere.** His power comes from `member_permissions` rows + board memberships
+   + heads — the same mechanism available to anyone. There are exactly TWO
+   identity tiers, root and member; no third tier exists or is wanted.
+3. **ONE TIER SYSTEM FOR EVERY BOARD: Member and Head.** A head hands out work; on
+   an info page a head ALSO moves sources to analysis and publishes. HEAD IMPLIES
+   MEMBER on every board type. **`can_assign` turned out not to exist** — not in
+   the cloud schema, not anywhere in `src/` (HANDOFF already marked it
+   SUPERSEDED) — so this merge costs nothing and affects zero people.
+4. **Team gets three sub-pages:** Team members / Board access & permissions / What
+   members can see (third is root-only and hidden from members entirely). Board
+   access ABSORBS today's Settings → Board Access.
+5. **Per-person VISIBILITY model (greenfield — nothing like it exists).** A
+   default plus per-person overrides, governing what one member sees ABOUT
+   another. Keys: `intelProjects`, `completion`, `overdue`, `boardAccess`
+   (boolean) + `activity` (hidden|summary|full). Overrides are PER-KEY and
+   sparse, so an unset key still tracks the default.
+   - **Always visible:** name, email, role, assigned boards, active tasks.
+     Rationale: coordination data must be public or every question routes through
+     root.
+   - **Gated:** completion and overdue (management metrics — peer-visible they
+     turn the page into a scoreboard; same class of data, so open both or
+     neither), plus activity detail.
+   - **Everyone always sees their own data in full.**
+6. **Starting state: everyone at zero, dk@ with everything.**
+
+**★ FINDINGS THAT SHAPE THE BUILD:**
+- **VISIBILITY CANNOT BE ENFORCED IN THE RENDERER.** Done-this-week, Active tasks
+  and Overdue are computed CLIENT-SIDE from the full task list already in
+  `WorkspaceContext` (`TeamMemberProfilePanel.tsx:87-95`), and Latest Activity
+  filters `activity.getFeed()` in the browser. Hiding a number means the server
+  must not send it. **Main-process work, not UI.**
+- **HEAD-IMPLIES-MEMBER IS ENFORCED IN THE RENDERER ONLY** —
+  `Settings.tsx:345-364`. A direct `infoPages:addOwner` IPC call bypasses it
+  (`boards.ts:973-984` writes only the owner row). When heads generalize to all
+  boards, the invariant must move into the cloud function.
+- **THERE ARE THREE PERMISSION STORES, NOT TWO** — `board_members` (membership,
+  email-keyed, NO can_assign, NO role), `info_page_owners` (heads, email-keyed,
+  info-pages only), `member_permissions` (capability keys). Settings and Team
+  write DISJOINT tables — consolidating them is a MOVE, not a merge.
+- **THE ROSTER TABLE IS `team_members`, NOT `profiles`** (`profiles` does not
+  exist). Eight rows: dk, Daniel Lozano, Elisabeth Weber, Istiak Ahmed, Juan Diego
+  Cubillos, Leonardo Carreño, Maria Antonia Mejia, Maria Carolina Giraldo.
+- **★ `local_users` AND CLOUD `team_members` NEVER RECONCILE.** The Dashboard TEAM
+  panel reads the LOCAL `local_users` account table (`Dashboard.tsx:303-331` →
+  `team:list` → `ipc/index.ts:558`), not the cloud roster. `teamRoster.ts:10-14`
+  states the sync DELIBERATELY does not touch `local_users`; rows are created by
+  invite/first-login and removed only by an explicit per-device `team:remove`. So
+  the Dashboard shows who has logged in ON THIS MACHINE, not who is on the team,
+  and stale rows persist with no auto-removal. Two surfaces, two sources, no
+  reconciliation — worth a decision before the Team console ships.
+- **`info_page_owners`, `info_page_sources` and `intelligence_sources` HAVE NO FK
+  DEFINITIONS IN THE REPO'S SQL.** Their cascade behaviour on hard delete lives
+  only in cloud Postgres and is unverifiable from source. Irrelevant for empty
+  boards — **do not hard-delete a POPULATED board on that assumption.**
+
+**★ CLOUD CLEANUP EXECUTED (data operation, no code committed).** Run via a
+throwaway script outside the repo, dry-run first, then `--commit`; script deleted
+afterwards.
+- **Phase 1 — additive.** dk@ added to `board_members` for **Immigration Undone,
+  Hollow Border and The Stated Order**, which had **NO member rows at all**.
+  **This was a real bug, found by accident:** dk@ is an ordinary member and does
+  NOT get root's membership bypass, so logging in as dk@ would have shown three
+  EMPTY info pages. Invisible until now only because Dorian works as root.
+- **Phase 2 — 8 empty boards hard-deleted:** the DUPLICATE "Subscription model"
+  (`387e609d…`, 2 placeholder columns, 0 tasks), "LATAM drone monitor"
+  (`3c4671de…`), "Visual Info Pages" (`20fad57c…`, `board_type='standard'` despite
+  the name), plus 5 `blahblah`-class test boards. The keeper
+  **`board-subscription`** (10 real columns, 1 archived task) was asserted intact
+  before any delete.
+- **2 boards SKIPPED by the safety gate and left as `deleted=1` shells** —
+  `74293cef…` "blahblah 3" (holds a task) and `04e21f10…` "blabla" (holds an
+  `info_page_owners` row). Invisible in-app. An earlier plan force-deleted these;
+  it was reverted because destroying a board with content to clear an unrelated
+  row is the wrong tool.
+- **Phase 2b — Baez cleared surgically.** Maria Jose Baez has left the team. Her
+  ONLY trace anywhere (cloud or local) was a single `board_members` row on the
+  deleted board "blahblah 3"; that row was deleted directly, board untouched.
+  Sweep now returns **ZERO** across all variant spellings.
+- **End state: 7 live boards** — Think Tank, Subscription Model, Drone Database +
+  the 4 info pages. `board_members` holds dk@ on all seven (plus one stray row on
+  the skipped `blabla` shell). Nobody but dk@ is on any board.
+
+**★ OPEN — the real prerequisite for the console.** `board_members` still holds
+only dk@. **Nothing can enforce membership-scoped visibility until the other 7
+people are attached to boards.** Also blocks board-scoped mentions. Additive and
+reversible. Dorian's decision: memberships are NOT being seeded by hand — they
+get assigned through the console once built, and **no heads are assigned yet**
+(`info_page_owners` = dk@ on Contested Skies only). Drone Database is
+deliberately left with no members beyond dk@.
+
 **LATEST (2026-07-23, evening) — INTEL CORRECTNESS RUN + v2.4.0 RELEASED (and
 BLOCKED on macOS). Everything below shipped after `00940cc`, each diagnosed
 read-only, tested in-app, committed separately.**
