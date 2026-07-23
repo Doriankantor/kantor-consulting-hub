@@ -723,6 +723,9 @@ interface Window {
       get:                   () => Promise<boolean>
       onChange:              (cb: (online: boolean) => void) => void
       removeChangeListeners: () => void
+      /** N-2a: transient app-wide notice pushed from main, rendered by OfflineBanner. */
+      onNotice:              (cb: (message: string) => void) => void
+      removeNoticeListeners: () => void
     }
     // 0b-0: read-only realtime health snapshot (debug surface, observation only)
     realtime: {

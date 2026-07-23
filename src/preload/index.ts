@@ -416,6 +416,11 @@ const api = {
     get:         ()                              => ipcRenderer.invoke('connection:get'),
     onChange:    (cb: (online: boolean) => void) => ipcRenderer.on('connection:changed', (_e, d) => cb(d.online)),
     removeChangeListeners: ()                     => ipcRenderer.removeAllListeners('connection:changed'),
+    // N-2a: transient app-wide notice pushed from main (e.g. a notification that
+    // reached the local mirror but not the cloud). Rendered by the SAME banner as
+    // the offline state — main-process side effects have no IPC call to return through.
+    onNotice:    (cb: (message: string) => void) => ipcRenderer.on('app:notice', (_e, d) => cb(d.message)),
+    removeNoticeListeners: ()                     => ipcRenderer.removeAllListeners('app:notice'),
   },
   // 0b-0: read-only realtime health snapshot (debug). window.api.realtime.health()
   realtime: {

@@ -28,6 +28,8 @@ import { listTodos } from '../todos'
 import { nextOccurrence } from '../todos/nextOccurrence'
 import { startMissedSchedule, stopMissedSchedule } from '../todos/missedEvaluator'
 import * as intelCloud from '../cloud/intel'
+import * as notificationsCloud from '../cloud/notificationsCloud'
+import { pushNotice } from '../cloud/connection'
 import { isOnline } from '../cloud/connection'
 import { getKnownTags as cloudGetKnownTags, createTag as cloudCreateTag, deleteTag as cloudDeleteTag } from '../cloud/tags'
 import { seedBoardsToCloud } from '../cloud/boardsSeed'
@@ -309,33 +311,70 @@ function toRecipientEmail(raw: string): string | null {
   return email || null
 }
 
-// THE SINGLE CHOKE POINT (N-1). This is the ONLY INSERT INTO notifications in
-// src/. `user_id` is the RAW recipient in any shape — it is normalized to an
-// email here, so callers may pass an email, a local_users.id or 'local-admin'.
+// THE SINGLE CHOKE POINT (N-1, extended to cloud in N-2a). This is the ONLY place
+// that CREATES a notification — all 9 writers route through it. `user_id` is the
+// RAW recipient in any shape; it is normalized to an email here, so callers may
+// pass an email, a local_users.id or 'local-admin'.
+//
+// NOTE for future greps: `INSERT INTO notifications` now matches TWICE in src/.
+// This one CREATES a notification. The other (cloud/notificationsCloud.ts
+// syncMirror) does NOT — it is an idempotent UPSERT BY ID that materializes rows
+// the cloud already has into the local mirror. The invariant is "one creator",
+// not "one INSERT statement"; do not merge them.
 function createNotification(n: {
   user_id: string; type: string; title: string; body?: string;
   task_id?: string; task_title?: string; actor_name?: string
 }) {
-  // TODO(off-work): identity is now unified — every recipient is an EMAIL (N-1),
-  // so the email-keyed off_work lookup this needs is NOW POSSIBLE. Still not
-  // implemented because the cross-member CLOUD send does not exist yet: rows are
-  // local/per-device, so there is still no cross-member send to suppress. When
-  // notifications move to cloud, DROP notifications to a member whose off_work
-  // window contains today — look up off_work by the recipient's email and skip.
+  // TODO(off-work): identity is unified (N-1: every recipient is an EMAIL) AND the
+  // cross-member CLOUD send now EXISTS (N-2a), so the drop is finally implementable:
+  // look up off_work by the recipient's email and skip the send when today falls
+  // inside their window. NOT implemented here — that is N-4.
   const recipient = toRecipientEmail(n.user_id)
   if (!recipient) {
     console.warn(`[notifications] unresolved recipient "${n.user_id}" (type "${n.type}") — refusing to write a row no inbox could read`)
     return
   }
+
+  // ONE id for both tiers, so the cloud row and the mirror row are the same row
+  // and re-syncing is idempotent (mirror upsert is keyed on id).
+  const id = uuid()
+
+  // STAYS SYNCHRONOUS. Called from both sync and async contexts across 9 sites;
+  // making it async would change their control flow. The mirror write is the
+  // synchronous part and happens FIRST — D2(a) requires the row to exist locally
+  // regardless of the cloud outcome — and the cloud insert is dispatched
+  // fire-and-forget below.
   try {
     getDatabase().prepare(`INSERT INTO notifications (id,user_email,type,title,body,task_id,task_title,actor_name)
       VALUES (?,?,?,?,?,?,?,?)`)
-      .run(uuid(), recipient, n.type, n.title, n.body ?? null, n.task_id ?? null, n.task_title ?? null, n.actor_name ?? null)
+      .run(id, recipient, n.type, n.title, n.body ?? null, n.task_id ?? null, n.task_title ?? null, n.actor_name ?? null)
   } catch (e) {
     // Never THROW — a notification is a side effect of another action and must
     // not fail the parent. But never SILENT either (the recurring bug class).
-    console.error(`[notifications] insert failed for ${recipient} (${n.type}):`, (e as Error)?.message)
+    console.error(`[notifications] mirror insert failed for ${recipient} (${n.type}):`, (e as Error)?.message)
   }
+
+  // Cloud insert: fire-and-forget so this function keeps its synchronous
+  // signature. createNotificationCloud never throws and never reports to the
+  // connection tier; the .catch is belt-and-braces so an unhandled rejection can
+  // never escape into the parent action.
+  void notificationsCloud.createNotificationCloud({
+    id, user_email: recipient, type: n.type, title: n.title,
+    body: n.body ?? null, task_id: n.task_id ?? null,
+    task_title: n.task_title ?? null, actor_name: n.actor_name ?? null,
+    read: 0, created_at: '',
+  })
+    .then(res => {
+      if (res.ok) return
+      // D2(a): the row IS in the local mirror, but it did not reach the recipient's
+      // other devices. Surface it through the app-wide banner — three of the nine
+      // writers run on a 60s timer with no renderer call to return through.
+      console.warn(`[notifications] cloud delivery failed for ${recipient} (${n.type}): ${res.error}`)
+      pushNotice(`A notification to ${recipient} could not be delivered — it is saved locally only.`)
+    })
+    .catch(e => {
+      console.warn(`[notifications] cloud delivery threw for ${recipient} (${n.type}):`, (e as Error)?.message)
+    })
 }
 
 function registerCommentHandlers() {
@@ -988,26 +1027,25 @@ function registerNotificationHandlers() {
   // Channel names are UNCHANGED; only the TS param name and the column moved to
   // email (N-1). Recipients are normalized here too, so a renderer that still
   // passes an id resolves to the same row the writer produced.
+  // N-2a: cloud is the source of truth, the local table is an offline mirror.
+  // Channel names and renderer signatures are UNCHANGED; only the implementation
+  // moved. Recipients are still normalized here, so a renderer that passes an id
+  // resolves to the same key the writer produced.
   ipcMain.handle('notifications:get', (_e, userEmail: string) => {
     const key = toRecipientEmail(userEmail)
     if (!key) return []
-    return getDatabase().prepare('SELECT * FROM notifications WHERE user_email=? ORDER BY created_at DESC LIMIT 100').all(key)
+    return notificationsCloud.getNotifications(key)
   })
   ipcMain.handle('notifications:unreadCount', (_e, userEmail: string) => {
     const key = toRecipientEmail(userEmail)
     if (!key) return 0
-    const row = getDatabase().prepare('SELECT COUNT(*) as c FROM notifications WHERE user_email=? AND read=0').get(key) as { c: number }
-    return row.c
+    return notificationsCloud.getUnreadCount(key)
   })
-  ipcMain.handle('notifications:markRead', (_e, id: string) => {
-    getDatabase().prepare('UPDATE notifications SET read=1 WHERE id=?').run(id)
-    return { ok: true }
-  })
+  ipcMain.handle('notifications:markRead', (_e, id: string) => notificationsCloud.markRead(id))
   ipcMain.handle('notifications:markAllRead', (_e, userEmail: string) => {
     const key = toRecipientEmail(userEmail)
     if (!key) return { ok: false }
-    getDatabase().prepare('UPDATE notifications SET read=1 WHERE user_email=?').run(key)
-    return { ok: true }
+    return notificationsCloud.markAllRead(key)
   })
   // Routed through the choke point (N-1) — no INSERT of its own.
   ipcMain.handle('notifications:create', (_e, n: {

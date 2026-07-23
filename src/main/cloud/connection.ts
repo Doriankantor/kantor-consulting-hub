@@ -43,6 +43,19 @@ function broadcast(): void {
   try { getWindow()?.webContents.send('connection:changed', { online }) } catch { /* window gone */ }
 }
 
+// ── Transient app-wide notice (N-2a) ─────────────────────────────────────────
+// A one-line message pushed to the renderer and rendered by the SAME app-wide
+// banner as the offline state (OfflineBanner). It exists because some failures
+// have no in-flight IPC call to return through: three of the nine notification
+// writers run on a 60s timer with NO renderer involvement, so a return value
+// cannot carry the failure. Deliberately reuses this module's window getter —
+// same `webContents.send` shape as `broadcast()`, no extra wiring in index.ts,
+// and NOT an eighth ad-hoc per-page toast.
+export function pushNotice(message: string): void {
+  if (!message) return
+  try { getWindow()?.webContents.send('app:notice', { message }) } catch { /* window gone */ }
+}
+
 function goOffline(): void {
   if (!online) return
   online = false
