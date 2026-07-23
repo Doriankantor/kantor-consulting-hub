@@ -1241,10 +1241,15 @@ export function initDatabase(): void {
         }
       })
       tx(stale)
-      console.log(
-        `[N-1] notifications backfill: ${stale.length} unread row(s) matched — ` +
-        `${viaUsers} resolved via local_users, ${viaAdmin} resolved as local-admin, ${unresolved} left unresolved.`
-      )
+      // Log only when something actually moved. The scan is idempotent but not
+      // self-terminating: rows whose local_users row is gone match forever, and a
+      // recurring no-op line trains you to ignore [N-1] warnings that do matter.
+      if (viaUsers + viaAdmin > 0) {
+        console.log(
+          `[N-1] notifications backfill: ${stale.length} unread row(s) matched — ` +
+          `${viaUsers} resolved via local_users, ${viaAdmin} resolved as local-admin, ${unresolved} left unresolved.`
+        )
+      }
     }
   } catch (e) { console.warn('[N-1] notifications backfill failed:', (e as Error)?.message) }
 
