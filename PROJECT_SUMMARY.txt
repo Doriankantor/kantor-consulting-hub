@@ -1322,6 +1322,27 @@ DESIGN PRINCIPLES / CONVENTIONS
 ───────────────────────────────────────────────────────────────────────────────
 9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-07-23)
 ───────────────────────────────────────────────────────────────────────────────
+  UNRELEASED (post-v2.4.0, 2026-07-23) -- TEAM PAGE + CLOUD HOUSEKEEPING
+    * BOARD ACCESS RELOCATED TO THE TEAM PAGE (c2e7543) -- the Settings/Team
+      permissions split is CLOSED. Team now has two in-page tabs (Team members /
+      Board access & permissions); the relocated Board Access matrix and the
+      existing Member Permissions matrix live together on the second tab, both
+      root-gated (tab button AND content, since Team gates per-section). Pure
+      renderer move — five handlers (loadMatrix/toggleBoardAccess/toggleHead/
+      grantAllBoards/revokeAllBoards) relocated VERBATIM; the renderer-side
+      head-implies-member invariant and info-page-only heads preserved exactly;
+      the matrix now loads LAZILY on first tab open (flag set only on success, so
+      a failed fetch retries). Settings' Team Management collapses to its members
+      list and drops the now-unused ADMIN_EMAIL import. No data model / IPC / cloud
+      change. Step 1 of 4 toward the locked Team console design.
+    * CLOUD JUNK CLEARED (data op, no code committed) -- dk@ added to board_members
+      for the 3 info pages that had ZERO members (Immigration Undone, Hollow Border,
+      The Stated Order — dk@ is an ordinary member and does not get root's bypass);
+      8 empty/junk boards hard-deleted (the duplicate "Subscription model", "LATAM
+      drone monitor", "Visual Info Pages", + 5 blahblah-class test boards); the
+      departed Maria Jose Baez's lone board_members row removed (sweep now ZERO).
+      7 live boards remain. Two deleted=1 shells with residual content left as-is.
+
   v2.4.0 (Jul 23) -- MINOR: TO-DO RECURRENCE + LEAVE WINDOWS, INTEL CARD UX, and
   INTEL COUNTER/LIST CORRECTNESS — the whole post-v2.3.0 batch
     * TO-DO OVERHAUL: recurrence end to end — completion-anchored spawn-on-complete

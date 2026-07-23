@@ -24,6 +24,38 @@ PRIORITIES REORDERED · CLOUD JUNK CLEARED.**
   prior batch and was already logged in the evening entry below; re-stated here as
   part of tonight's summary. `git log 859b2cf..HEAD` is EMPTY: no new code commits
   this session — the cloud cleanup was a data operation with no code committed.)_
+- **BOARD ACCESS RELOCATED TO THE TEAM PAGE** (`c2e7543`). **The Settings/Team
+  permissions split is CLOSED.** Team now has two in-page tabs — *Team members*
+  and *Board access & permissions* — with the relocated Board Access matrix and
+  the existing Member Permissions matrix together on the second. Both the tab
+  BUTTON and its content are `{isRoot && …}`-gated, because Team gates
+  per-section, not whole-page.
+  Pure renderer relocation — no data model, IPC or cloud change. The five
+  handlers (`loadMatrix`, `toggleBoardAccess`, `toggleHead`, `grantAllBoards`,
+  `revokeAllBoards`) moved VERBATIM, preserving the renderer-side
+  head-implies-member invariant and info-page-only heads exactly as they were.
+  The matrix now loads LAZILY on first activation of the tab instead of from
+  Settings' shared mount effect; the loaded flag is set only in the success
+  branch, so a failed fetch retries on the next click. Settings' Team Management
+  collapses to its members content and drops the now-unused `ADMIN_EMAIL` import.
+  This is step 1 of 4 toward the locked Team console design.
+
+  **STILL DEFERRED from the console (each its own slice):**
+  (a) the per-person **visibility model** — greenfield, and it MUST be enforced
+      server-side because the drawer's stats are computed in the renderer;
+  (b) **generalizing heads to workspace boards** (today `info_page_owners` covers
+      info pages only);
+  (c) **moving head-implies-member into the cloud function** — it stays
+      renderer-only, so a direct `infoPages:addOwner` IPC call still bypasses it;
+  (d) **rehoming the off-work card** — blocked on the shared `onLeaveEmails`
+      state that the member-list "On leave" pill also reads;
+  (e) **Sidebar nested sub-nav** — no primitive exists; only Workspace expands,
+      hand-coded.
+
+  **CARRIED FORWARD:** the matrix reads its roster from `team.list()` = the local
+  `local_users` table, NOT the cloud `team_members` roster. So it shows who has
+  logged in ON THIS DEVICE. Correct for a like-for-like move; a real decision when
+  the console's own roster page lands.
 
 **★ PRIORITY REORDER (Dorian's call — supersedes the previous ordering).** The
 people/permissions layer now comes BEFORE the Intelligence + Info Pages
