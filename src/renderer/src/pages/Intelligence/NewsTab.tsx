@@ -120,6 +120,12 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const [confidenceFilter, setConfidenceFilter] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [minRelevance, setMinRelevance] = useState(0)
+  // Display-order toggle (client-only; does NOT touch the server query's added_at DESC
+  // paging order). 'relevance' = current behaviour; 'date' = published_at DESC. Persisted
+  // like intel-selected-project: lazy init + try/catch, any non-'date' value → 'relevance'.
+  const [newsSort, setNewsSort] = useState<'relevance' | 'date'>(() => {
+    try { return localStorage.getItem('intel-news-sort') === 'date' ? 'date' : 'relevance' } catch { return 'relevance' }
+  })
   const [search, setSearch] = useState('')
   const [geoEdit, setGeoEdit] = useState<{ id: string; value: string } | null>(null)
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
@@ -953,13 +959,28 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   // 3b: scope by the top dropdown's selected project (board id). "all"/unset → no scope.
   const projectScoped = !!selectedProjectId && selectedProjectId !== 'all'
 
+  // Persist the display-sort choice (mirrors intel-selected-project's write-on-change).
+  useEffect(() => {
+    try { localStorage.setItem('intel-news-sort', newsSort) } catch { /* ignore */ }
+  }, [newsSort])
+
   // Client-side filters (combine with the server-side status/search filters already
-  // applied in load()): minimum-relevance AND selected project. Then sort:
-  // relevance_score DESC (NULL last), then published_at DESC.
+  // applied in load()): minimum-relevance AND selected project. Then sort by the display
+  // toggle — 'relevance': relevance_score DESC (NULL last), then published_at DESC;
+  // 'date': published_at DESC only (NULL last). Neither touches the server paging order.
   const visible = useMemo(() => {
     let filtered = sources
     if (minRelevance > 0) filtered = filtered.filter(s => (s.relevance_score ?? -1) >= minRelevance)
     if (projectScoped) filtered = filtered.filter(s => s.project_board_id === selectedProjectId)
+    if (newsSort === 'date') {
+      return [...filtered].sort((a, b) => {
+        // published_at DESC. NULL → 0, which sorts LAST in DESC — the exact nulls-last
+        // treatment the relevance branch's date tiebreak already uses (see below).
+        const ta = a.published_at ? new Date(a.published_at).getTime() : 0
+        const tb = b.published_at ? new Date(b.published_at).getTime() : 0
+        return tb - ta
+      })
+    }
     return [...filtered].sort((a, b) => {
       const sa = a.relevance_score, sb = b.relevance_score
       if (sa == null && sb != null) return 1
@@ -969,7 +990,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       const tb = b.published_at ? new Date(b.published_at).getTime() : 0
       return tb - ta
     })
-  }, [sources, minRelevance, projectScoped, selectedProjectId])
+  }, [sources, minRelevance, projectScoped, selectedProjectId, newsSort])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -1021,6 +1042,15 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           <option value={0}>Any relevance</option>
           <option value={4}>Relevance ≥ 4</option>
           <option value={7}>Relevance ≥ 7</option>
+        </select>
+        <select
+          value={newsSort}
+          onChange={e => setNewsSort(e.target.value === 'date' ? 'date' : 'relevance')}
+          className="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-transparent text-sm text-gray-700 dark:text-white/80 focus:outline-none"
+          title="Sort the list by relevance or by publish date"
+        >
+          <option value="relevance">Sort: Relevance</option>
+          <option value="date">Sort: Date</option>
         </select>
 
         {/* Phase 3: three live count badges — Pending / Approved / Rejected. */}
