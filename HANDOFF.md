@@ -56,6 +56,72 @@ PRIORITIES REORDERED · CLOUD JUNK CLEARED.**
   `local_users` table, NOT the cloud `team_members` roster. So it shows who has
   logged in ON THIS DEVICE. Correct for a like-for-like move; a real decision when
   the console's own roster page lands.
+- **★ HEAD-IMPLIES-MEMBER NOW ENFORCED IN THE DATABASE + permission writes no
+  longer lie on failure** (`782b779`, plus hand-run DDL).
+
+  **DDL (run by Dorian in the Supabase SQL editor — NOT in repo SQL):**
+
+```sql
+  ALTER TABLE info_page_owners
+    ADD CONSTRAINT info_page_owners_membership_fk
+    FOREIGN KEY (page_id, user_email)
+    REFERENCES board_members (board_id, user_email)
+    ON DELETE CASCADE;
+```
+
+  Verified in the catalog: `confdeltype='c'` (CASCADE), both column pairs mapped
+  (`page_id→board_id`, `user_email→user_email`). Zero orphans existed beforehand,
+  so no backfill was needed. **An owner row can no longer exist without a
+  membership row, and deleting membership removes the owner in the same
+  statement.**
+
+  **What this actually fixes:** the invariant was previously enforced ONLY in the
+  renderer handlers, so (a) a direct `infoPages:addOwner` IPC call could write an
+  owner with no membership, and (b) `toggleBoardAccess` revoked membership FIRST
+  then the owner — a failed second call left a head without a member. Both are
+  now impossible. **Note the UI grant path was already correct** — `toggleHead`
+  adds membership itself before granting, so it could never produce the bad state
+  through the app. The FK guards the IPC path and half-applied revokes.
+
+  **`toggleHead`'s "add membership before addOwner" ordering is now LOAD-BEARING,
+  not belt-and-braces** — under the FK, `addOwner` fails with 23503 without it.
+  Do not "simplify" it.
+
+  **The `.ok` slice (renderer-only, Team.tsx):** the cloud fns return
+  `{ ok, error }` and NEVER THROW on logical failure, so `try/catch` never caught
+  them — all five matrix handlers ignored the return value and updated their
+  optimistic Sets regardless. The FK made this worse by turning silent data
+  problems into silent *failures*. Now every handler captures the result, skips
+  the optimistic update on failure, and surfaces the error through the existing
+  matrix banner via a shared helper. `toggleHead` stops before `addOwner` if the
+  membership add fails. `grantAllBoards`/`revokeAllBoards` no longer swallow with
+  `.catch(() => {})` — they collect failures and name the boards. Verified by
+  toggling with Wi-Fi off: the banner appears and the toggle does not flip.
+
+  **CARRIED FORWARD:**
+  - `boardMembers.remove` returns `{ ok }` with NO error string (unlike the other
+    three), so its failures get a generic message.
+  - `revokeAllBoards` treats a no-op head removal as SUCCESS when membership was
+    removed — the FK cascade already deleted the owner row, so reporting it as a
+    failure would be a false alarm.
+  - The renderer's head-removal-on-revoke in
+    `toggleBoardAccess`/`revokeAllBoards` is now REDUNDANT for integrity (the
+    cascade handles it) but KEPT as optimistic UI so checkboxes flip without
+    waiting for a refetch.
+  - **`pg_catalog`/`information_schema` are NOT reachable with the service-role
+    key** (PostgREST data plane only — `PGRST106`). Catalog checks (constraint
+    names, delete rules, FK definitions) must be run by hand in the Supabase SQL
+    editor. Claude Code can prove an FK's existence behaviourally via a PostgREST
+    relationship embed, but not its delete rule.
+  - `info_page_owners` still has no `CREATE TABLE` in the repo's SQL — this
+    constraint lives only in cloud Postgres. Worth capturing in `sql/` eventually
+    so the schema is reproducible.
+
+  **Team console progress: steps 1 and 2 of 4 done** (Board Access relocated;
+  invariant hardened). Still deferred: the per-person visibility model
+  (greenfield, must be server-side), generalizing heads to workspace boards,
+  rehoming the off-work card (blocked on shared `onLeaveEmails`), and Sidebar
+  sub-nav (no primitive exists).
 
 **★ PRIORITY REORDER (Dorian's call — supersedes the previous ordering).** The
 people/permissions layer now comes BEFORE the Intelligence + Info Pages
