@@ -11,7 +11,7 @@ process complete by end of July, publishing in August.** The stage order is LOCK
 → Analysis & design → Publish → Latest update notes → Sources**, with Claude PROPOSING placements
 and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not jump to code.
 
-**LATEST (2026-07-23, later) — INTEL COUNTER + CARD CLEANUP RUN. Four slices
+**LATEST (2026-07-23, later) — INTEL COUNTER + CARD CLEANUP RUN. Five slices
 shipped after `00940cc`, each diagnosed read-only, tested in-app, committed
 separately.**
 
@@ -45,12 +45,28 @@ separately.**
   (+1), News mark-duplicate (−1). Each now calls no-arg `onApprove()` on its
   success path (no-arg ⇒ no push toast). Compose Save was pending-NEUTRAL and
   already refreshed harmlessly.
-- **`2927df7` — NO-OP SAVE REMOVED FROM COMPOSE TABS + UN-REJECT.** See the commit
-  message. Two things worth carrying forward: `handleStatus` and its
-  `pendingStatus`/`statusError` machinery were removed as unreachable; and the
-  gate widening alone was NOT sufficient — the optimistic counter needed a
-  conditional `rejected −1`, since a rejected row has a live chip where `saved`
-  does not.
+- **`2927df7` — NO-OP SAVE REMOVED FROM COMPOSE TABS + UN-REJECT.** Save on
+  Social/Documents/Interviews wrote ONLY `status='saved'` (the notes arg was
+  `undefined`), which means nothing under the counter model. Verified safe before
+  removal: all panel content persists independently (notes/reconcile on blur, AI
+  on demand, tags and the social top-form via their own handlers), and "Send to
+  New sources" has NO status precondition — an unreviewed item routes fine.
+  Removed with the now-unreachable `handleStatus`. Existing `saved` rows left
+  untouched: they keep the amber badge and keep counting as pending. **News keeps
+  its Save** — parking an article after review is a real decision there.
+  "Make unreviewed" now also renders on REJECTED articles (Reject hides on a
+  rejected row, so the two controls stay mutually exclusive). **The gate widening
+  alone was NOT sufficient:** the optimistic counter only did `unreviewed +1`,
+  correct for `saved` (no chip) but leaving the REJECTED chip over-counted when
+  pulling a rejected row back — now conditionally decrements `rejected` based on
+  the pre-flip status.
+- **Orphaned-state cascade (folded into `2927df7`, same commit).**
+  `pendingStatus`/`setPendingStatus`, `statusError`/`setStatusError`, the
+  `isPending` derivation and the `{statusError…}` render block formed a fully
+  closed dead chain in all three tabs once `handleStatus` went — grep-confirmed
+  zero readers/writers per tab before removal. **It compiled clean only because
+  `noUnusedLocals` is off**, so nothing would ever have flagged it. `fadingIds`
+  left in place (live consumers elsewhere).
 
 **★ LOGGED FINDINGS — DO NOT DROP:**
 
