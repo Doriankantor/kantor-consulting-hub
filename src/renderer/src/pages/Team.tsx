@@ -227,6 +227,15 @@ export default function Team() {
   }
 
   // ── Board Access handlers (relocated verbatim from Settings; behaviour preserved) ──
+  // Surface a permission-write failure in the existing matrixMsg banner. The cloud
+  // fns return { ok, error } and never throw on logical failure, so callers must
+  // inspect .ok — a rejected write (e.g. addOwner hitting the info_page_owners FK
+  // with SQLSTATE 23503 when no board_members row exists) must not render as success.
+  function flashMatrixErr(text: string) {
+    setMatrixMsg({ type: 'err', text })
+    setTimeout(() => setMatrixMsg(null), 4000)
+  }
+
   async function loadMatrix() {
     setMatrixLoading(true)
     try {
@@ -253,8 +262,7 @@ export default function Team() {
       setHeads(h)
       setMatrixLoaded(true) // guard flips only on a successful load, so a failed first open retries on next click
     } catch {
-      setMatrixMsg({ type: 'err', text: 'Failed to load board access data.' })
-      setTimeout(() => setMatrixMsg(null), 3000)
+      flashMatrixErr('Failed to load board access data.')
     }
     setMatrixLoading(false)
   }
@@ -266,7 +274,8 @@ export default function Team() {
     const key = member.email.toLowerCase()   // local Set is email-keyed; IPC stays m.id (server resolves id→email)
     try {
       if (hasAccess) {
-        await window.api.boardMembers.remove(boardId, userId)
+        const res = await window.api.boardMembers.remove(boardId, userId)
+        if (!res.ok) { flashMatrixErr('Failed to remove board access.'); return }   // remove returns { ok } only, no error string
         setMatrix(prev => {
           const next = { ...prev }
           next[boardId] = new Set(prev[boardId])
@@ -274,8 +283,11 @@ export default function Team() {
           return next
         })
         // Invariant: a head must be a member — removing membership removes head too.
+        // Under the FK the membership delete already CASCADEs the owner row; this
+        // removeOwner is now a no-op backstop that also keeps the head Set truthful.
         if (board.board_type === 'info-page' && heads[boardId]?.has(key)) {
-          await window.api.infoPages.removeOwner(boardId, userId)
+          const ro = await window.api.infoPages.removeOwner(boardId, userId)
+          if (!ro.ok) { flashMatrixErr(ro.error || 'Failed to remove project head.'); return }
           setHeads(prev => {
             const next = { ...prev }
             next[boardId] = new Set(prev[boardId])
@@ -285,7 +297,8 @@ export default function Team() {
         }
       } else {
         const adderName = localUser?.name ?? 'Admin'
-        await window.api.boardMembers.add(boardId, userId, adderName)
+        const res = await window.api.boardMembers.add(boardId, userId, adderName)
+        if (!res.ok) { flashMatrixErr(res.error || 'Failed to add board access.'); return }
         setMatrix(prev => {
           const next = { ...prev }
           next[boardId] = new Set(prev[boardId])
@@ -294,8 +307,7 @@ export default function Team() {
         })
       }
     } catch {
-      setMatrixMsg({ type: 'err', text: 'Failed to update access.' })
-      setTimeout(() => setMatrixMsg(null), 3000)
+      flashMatrixErr('Failed to update access.')
     }
   }
 
@@ -308,12 +320,17 @@ export default function Team() {
     try {
       if (isHead) {
         // Turning head OFF — membership is left untouched.
-        await window.api.infoPages.removeOwner(boardId, member.id)
+        const ro = await window.api.infoPages.removeOwner(boardId, member.id)
+        if (!ro.ok) { flashMatrixErr(ro.error || 'Failed to remove project head.'); return }
       } else {
         // Turning head ON — a head must be a member: add membership first if missing.
+        // This ordering is LOAD-BEARING under the FK: addOwner fails with SQLSTATE
+        // 23503 if the board_members row is absent, so a failed membership add must
+        // stop us here — proceeding to addOwner would just fail anyway.
         if (!matrix[boardId]?.has(key)) {
           const adderName = localUser?.name ?? 'Admin'
-          await window.api.boardMembers.add(boardId, member.id, adderName)
+          const am = await window.api.boardMembers.add(boardId, member.id, adderName)
+          if (!am.ok) { flashMatrixErr(am.error || 'Failed to add board membership.'); return }
           setMatrix(prev => {
             const next = { ...prev }
             next[boardId] = new Set(prev[boardId])
@@ -321,13 +338,14 @@ export default function Team() {
             return next
           })
         }
-        await window.api.infoPages.addOwner(boardId, member.id)
+        const ao = await window.api.infoPages.addOwner(boardId, member.id)
+        if (!ao.ok) { flashMatrixErr(ao.error || 'Failed to assign project head.'); return }
       }
+      // Refetch this board's heads (truth, not an optimistic flip). Only reached on success.
       const owners = await window.api.infoPages.getOwners(boardId)
       setHeads(prev => ({ ...prev, [boardId]: new Set(owners.map(o => o.user_email.toLowerCase())) }))
     } catch {
-      setMatrixMsg({ type: 'err', text: 'Failed to update project head.' })
-      setTimeout(() => setMatrixMsg(null), 3000)
+      flashMatrixErr('Failed to update project head.')
     }
   }
 
@@ -336,17 +354,22 @@ export default function Team() {
     const member = matrixMembers.find(m => m.id === userId)
     if (!member) return
     const key = member.email.toLowerCase()   // local Set is email-keyed; IPC stays m.id
+    const failures: string[] = []
     for (const b of matrixBoards) {
       if (!matrix[b.id]?.has(key)) {
-        await window.api.boardMembers.add(b.id, userId, adderName).catch(() => {})
-        setMatrix(prev => {
-          const next = { ...prev }
-          next[b.id] = new Set(prev[b.id])
-          next[b.id].add(key)
-          return next
-        })
+        try {
+          const res = await window.api.boardMembers.add(b.id, userId, adderName)
+          if (!res.ok) { failures.push(b.name); continue }   // don't flip the Set on a rejected write
+          setMatrix(prev => {
+            const next = { ...prev }
+            next[b.id] = new Set(prev[b.id])
+            next[b.id].add(key)
+            return next
+          })
+        } catch { failures.push(b.name) }
       }
     }
+    if (failures.length) flashMatrixErr(`Could not grant access on ${failures.length} board(s): ${failures.join(', ')}`)
   }
 
   async function revokeAllBoards(userId: string, memberName: string) {
@@ -356,28 +379,50 @@ export default function Team() {
     // Don't remove root (root has no board_members rows and sees all via isRoot)
     if (member.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) return
     const key = member.email.toLowerCase()   // local Set is email-keyed; IPC stays m.id
+    const failures: string[] = []
     for (const b of matrixBoards) {
+      const isHead   = b.board_type === 'info-page' && heads[b.id]?.has(key)
+      const isMember = matrix[b.id]?.has(key)
       // Invariant: revoking membership also revokes head (info-page boards). Remove
-      // head first so we never briefly leave a head without membership.
-      if (b.board_type === 'info-page' && heads[b.id]?.has(key)) {
-        await window.api.infoPages.removeOwner(b.id, userId).catch(() => {})
-        setHeads(prev => {
-          const next = { ...prev }
-          next[b.id] = new Set(prev[b.id])
-          next[b.id].delete(key)
-          return next
-        })
+      // head first so we never briefly leave a head without membership. Under the FK
+      // the membership delete CASCADEs the owner, so this is a no-op backstop + optimistic UI.
+      if (isHead) {
+        const ro = await window.api.infoPages.removeOwner(b.id, userId).catch(() => ({ ok: false as const, error: 'IPC error' }))
+        if (ro.ok) {
+          setHeads(prev => {
+            const next = { ...prev }
+            next[b.id] = new Set(prev[b.id])
+            next[b.id].delete(key)
+            return next
+          })
+        } else if (!isMember) {
+          // No membership delete to cascade the head away — this really failed.
+          failures.push(`${b.name} (head)`)
+        }
       }
-      if (matrix[b.id]?.has(key)) {
-        await window.api.boardMembers.remove(b.id, userId).catch(() => {})
-        setMatrix(prev => {
-          const next = { ...prev }
-          next[b.id] = new Set(prev[b.id])
-          next[b.id].delete(key)
-          return next
-        })
+      if (isMember) {
+        const rm = await window.api.boardMembers.remove(b.id, userId).catch(() => ({ ok: false as const }))
+        if (rm.ok) {
+          setMatrix(prev => {
+            const next = { ...prev }
+            next[b.id] = new Set(prev[b.id])
+            next[b.id].delete(key)
+            return next
+          })
+          // The membership delete cascaded any owner row — keep the head Set truthful.
+          setHeads(prev => {
+            if (!prev[b.id]?.has(key)) return prev
+            const next = { ...prev }
+            next[b.id] = new Set(prev[b.id])
+            next[b.id].delete(key)
+            return next
+          })
+        } else {
+          failures.push(b.name)
+        }
       }
     }
+    if (failures.length) flashMatrixErr(`Could not revoke on ${failures.length} board(s): ${failures.join(', ')}`)
   }
 
   async function handleMarkActive(member: LocalTeamMember) {
