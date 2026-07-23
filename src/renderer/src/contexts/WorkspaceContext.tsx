@@ -226,9 +226,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       const localUserRaw = localStorage.getItem('kantor-local-user')
       if (!localUserRaw) return
       const localUser = JSON.parse(localUserRaw) as { id: string; name: string; email?: string }
-      const userId = localUser.id
-      // Assignee matching is email-keyed (1c-2b-①); userId stays for notification
-      // rows and the dedup keys, which are still id-shaped.
+      // Assignee matching is email-keyed (1c-2b-①), and as of N-1 the notification
+      // recipient is email-keyed too — so the local id is no longer needed here.
       const userEmail = localUser.email ?? ''
       const now = Date.now()
       const oneDayMs  = 86400000
@@ -258,7 +257,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
         const label = type === 'overdue' ? 'is overdue' : type === '1d' ? 'is due tomorrow' : 'is due in 3 days'
         await window.api.notifications.create({
-          user_id: userId, type: 'deadline',
+          user_id: userEmail, type: 'deadline',
           title: `"${t.title}" ${label}`,
           body: t.client ? `Client: ${t.client}` : undefined,
           task_id: t.id, task_title: t.title,

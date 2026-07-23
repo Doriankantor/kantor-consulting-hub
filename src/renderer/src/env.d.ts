@@ -81,7 +81,8 @@ interface TaskAttachment {
 
 interface AppNotification {
   id: string
-  user_id: string
+  /** N-1: renamed from user_id — the recipient is an email. */
+  user_email: string
   type: 'comment' | 'mention' | 'assignment' | 'deadline' | 'stage_change' | 'attachment'
   title: string
   body: string | null
@@ -625,10 +626,11 @@ interface Window {
       seedToCloud: (requestEmail: string)                                     => Promise<{ ok: boolean; seeded?: number; skippedMissing?: number; skippedNoPath?: number; missingFiles?: string[]; reason?: string }>
     }
     notifications: {
-      get:         (userId: string) => Promise<AppNotification[]>
-      unreadCount: (userId: string) => Promise<number>
-      markRead:    (id: string)     => Promise<{ ok?: boolean }>
-      markAllRead: (userId: string) => Promise<{ ok?: boolean }>
+      /** N-1: recipient key is an EMAIL (any shape is normalized in main). */
+      get:         (userEmail: string) => Promise<AppNotification[]>
+      unreadCount: (userEmail: string) => Promise<number>
+      markRead:    (id: string)        => Promise<{ ok?: boolean }>
+      markAllRead: (userEmail: string) => Promise<{ ok?: boolean }>
       create:      (n: { user_id: string; type: string; title: string; body?: string; task_id?: string; task_title?: string; actor_name?: string }) => Promise<{ ok?: boolean; id?: string }>
     }
     chat: {

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { ADMIN_EMAIL } from '../supabase/client'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -68,7 +69,9 @@ export default function Inbox() {
   const { localUser } = useAuth()
   const { openTask } = useWorkspace()
   const navigate = useNavigate()
-  const userId = localUser?.id ?? 'local-admin'
+  // N-1: notifications are keyed by EMAIL. Root falls back to the admin email so
+  // the break-glass 'local-admin' session still resolves to a real inbox.
+  const userEmail = (localUser?.email ?? ADMIN_EMAIL).toLowerCase()
 
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [filter, setFilter] = useState<Filter>('all')
@@ -76,14 +79,14 @@ export default function Inbox() {
 
   const load = useCallback(async () => {
     try {
-      const data = await window.api.notifications.get(userId)
+      const data = await window.api.notifications.get(userEmail)
       setNotifications(data)
     } catch {
       setNotifications([])
     } finally {
       setLoading(false)
     }
-  }, [userId])
+  }, [userEmail])
 
   useEffect(() => {
     load()
@@ -113,7 +116,7 @@ export default function Inbox() {
   }
 
   async function handleMarkAllRead() {
-    await window.api.notifications.markAllRead(userId)
+    await window.api.notifications.markAllRead(userEmail)
     setNotifications(prev => prev.map(n => ({ ...n, read: 1 })))
     notifyRead()
   }

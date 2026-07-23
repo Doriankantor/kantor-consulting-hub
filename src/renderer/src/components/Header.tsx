@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
+import { ADMIN_EMAIL } from '../supabase/client'
 import { useNavigate } from 'react-router-dom'
 
 function SunIcon() {
@@ -35,14 +36,15 @@ export default function Header() {
   const navigate = useNavigate()
   const [inboxUnread, setInboxUnread] = useState(0)
 
-  const userId = localUser?.id ?? 'local-admin'
+  // N-1: notifications are keyed by EMAIL; root falls back to the admin email.
+  const userEmail = (localUser?.email ?? ADMIN_EMAIL).toLowerCase()
 
   const refreshUnread = useCallback(async () => {
     try {
-      const count = await window.api.notifications.unreadCount(userId)
+      const count = await window.api.notifications.unreadCount(userEmail)
       setInboxUnread(count)
     } catch {}
-  }, [userId])
+  }, [userEmail])
 
   useEffect(() => {
     refreshUnread()

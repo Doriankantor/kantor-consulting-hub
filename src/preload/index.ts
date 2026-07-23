@@ -126,10 +126,11 @@ const api = {
     seedToCloud: (requestEmail: string)                                        => ipcRenderer.invoke('attachments:seedToCloud', requestEmail),
   },
   notifications: {
-    get:         (userId: string)  => ipcRenderer.invoke('notifications:get', userId),
-    unreadCount: (userId: string)  => ipcRenderer.invoke('notifications:unreadCount', userId),
-    markRead:    (id: string)      => ipcRenderer.invoke('notifications:markRead', id),
-    markAllRead: (userId: string)  => ipcRenderer.invoke('notifications:markAllRead', userId),
+    // N-1: recipient key is an EMAIL. Channel names are unchanged.
+    get:         (userEmail: string) => ipcRenderer.invoke('notifications:get', userEmail),
+    unreadCount: (userEmail: string) => ipcRenderer.invoke('notifications:unreadCount', userEmail),
+    markRead:    (id: string)        => ipcRenderer.invoke('notifications:markRead', id),
+    markAllRead: (userEmail: string) => ipcRenderer.invoke('notifications:markAllRead', userEmail),
     create:      (n: { user_id: string; type: string; title: string; body?: string; task_id?: string; task_title?: string; actor_name?: string }) => ipcRenderer.invoke('notifications:create', n),
   },
   chat: {

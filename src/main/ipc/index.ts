@@ -295,20 +295,47 @@ function registerTaskHandlers() {
 
 // ── Comments ───────────────────────────────────────────────────────────────
 
+// N-1: resolve ANY recipient shape to the canonical EMAIL key. REUSES
+// resolveIdentity (cloud/boards.ts) rather than introducing a second admin
+// constant — it already does the three-shape resolution: contains '@' →
+// lowercased; 'local-admin' → CLOUD_ADMIN_EMAIL; otherwise a local_users.id
+// lookup. Returns null when nothing resolves.
+function toRecipientEmail(raw: string): string | null {
+  const trimmed = (raw ?? '').trim()
+  // Guard: resolveIdentity falls back to the AMBIENT acting user on an empty
+  // value, which would misdeliver the notification to whoever is signed in.
+  if (!trimmed) return null
+  const email = resolveIdentity(trimmed).email.trim().toLowerCase()
+  return email || null
+}
+
+// THE SINGLE CHOKE POINT (N-1). This is the ONLY INSERT INTO notifications in
+// src/. `user_id` is the RAW recipient in any shape — it is normalized to an
+// email here, so callers may pass an email, a local_users.id or 'local-admin'.
 function createNotification(n: {
   user_id: string; type: string; title: string; body?: string;
   task_id?: string; task_title?: string; actor_name?: string
 }) {
-  // TODO(off-work): when notifications move to cloud (the cross-member sender that
-  // slice 5 also needs), DROP notifications to a member whose off_work window
-  // contains today — look up off_work by the recipient's email and skip the send.
-  // No-op today: notifications are local/per-device (this row targets THIS device's
-  // own user_id), so there is no cross-member send to suppress yet.
+  // TODO(off-work): identity is now unified — every recipient is an EMAIL (N-1),
+  // so the email-keyed off_work lookup this needs is NOW POSSIBLE. Still not
+  // implemented because the cross-member CLOUD send does not exist yet: rows are
+  // local/per-device, so there is still no cross-member send to suppress. When
+  // notifications move to cloud, DROP notifications to a member whose off_work
+  // window contains today — look up off_work by the recipient's email and skip.
+  const recipient = toRecipientEmail(n.user_id)
+  if (!recipient) {
+    console.warn(`[notifications] unresolved recipient "${n.user_id}" (type "${n.type}") — refusing to write a row no inbox could read`)
+    return
+  }
   try {
-    getDatabase().prepare(`INSERT INTO notifications (id,user_id,type,title,body,task_id,task_title,actor_name)
+    getDatabase().prepare(`INSERT INTO notifications (id,user_email,type,title,body,task_id,task_title,actor_name)
       VALUES (?,?,?,?,?,?,?,?)`)
-      .run(uuid(), n.user_id, n.type, n.title, n.body ?? null, n.task_id ?? null, n.task_title ?? null, n.actor_name ?? null)
-  } catch {}
+      .run(uuid(), recipient, n.type, n.title, n.body ?? null, n.task_id ?? null, n.task_title ?? null, n.actor_name ?? null)
+  } catch (e) {
+    // Never THROW — a notification is a side effect of another action and must
+    // not fail the parent. But never SILENT either (the recurring bug class).
+    console.error(`[notifications] insert failed for ${recipient} (${n.type}):`, (e as Error)?.message)
+  }
 }
 
 function registerCommentHandlers() {
@@ -343,13 +370,14 @@ function registerCommentHandlers() {
     const mentionedNames = new Set<string>()
     while ((m = mentionRe.exec(c.content)) !== null) mentionedNames.add(m[1].toLowerCase().trim())
     if (mentionedNames.size > 0) {
-      const users = getDatabase().prepare('SELECT id,full_name FROM local_users WHERE status != ?').all('inactive') as { id: string; full_name: string | null }[]
+      // N-1: select the EMAIL too — the recipient key is an email, not a local id.
+      const users = getDatabase().prepare('SELECT id,full_name,email FROM local_users WHERE status != ?').all('inactive') as { id: string; full_name: string | null; email: string | null }[]
       for (const u of users) {
         if (u.id === c.author_id) continue
         const name = (u.full_name ?? '').toLowerCase().trim()
         if (name && mentionedNames.has(name)) {
           createNotification({
-            user_id: u.id, type: 'mention',
+            user_id: u.email ?? u.id, type: 'mention',
             title: `${c.author_name} mentioned you in "${task_title ?? 'a task'}"`,
             body: c.content.slice(0, 120),
             task_id: c.task_id, task_title, actor_name: c.author_name,
@@ -957,30 +985,37 @@ function registerAttachmentHandlers() {
 // ── Notifications ──────────────────────────────────────────────────────────
 
 function registerNotificationHandlers() {
-  ipcMain.handle('notifications:get', (_e, userId: string) =>
-    getDatabase().prepare('SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100').all(userId)
-  )
-  ipcMain.handle('notifications:unreadCount', (_e, userId: string) => {
-    const row = getDatabase().prepare('SELECT COUNT(*) as c FROM notifications WHERE user_id=? AND read=0').get(userId) as { c: number }
+  // Channel names are UNCHANGED; only the TS param name and the column moved to
+  // email (N-1). Recipients are normalized here too, so a renderer that still
+  // passes an id resolves to the same row the writer produced.
+  ipcMain.handle('notifications:get', (_e, userEmail: string) => {
+    const key = toRecipientEmail(userEmail)
+    if (!key) return []
+    return getDatabase().prepare('SELECT * FROM notifications WHERE user_email=? ORDER BY created_at DESC LIMIT 100').all(key)
+  })
+  ipcMain.handle('notifications:unreadCount', (_e, userEmail: string) => {
+    const key = toRecipientEmail(userEmail)
+    if (!key) return 0
+    const row = getDatabase().prepare('SELECT COUNT(*) as c FROM notifications WHERE user_email=? AND read=0').get(key) as { c: number }
     return row.c
   })
   ipcMain.handle('notifications:markRead', (_e, id: string) => {
     getDatabase().prepare('UPDATE notifications SET read=1 WHERE id=?').run(id)
     return { ok: true }
   })
-  ipcMain.handle('notifications:markAllRead', (_e, userId: string) => {
-    getDatabase().prepare('UPDATE notifications SET read=1 WHERE user_id=?').run(userId)
+  ipcMain.handle('notifications:markAllRead', (_e, userEmail: string) => {
+    const key = toRecipientEmail(userEmail)
+    if (!key) return { ok: false }
+    getDatabase().prepare('UPDATE notifications SET read=1 WHERE user_email=?').run(key)
     return { ok: true }
   })
+  // Routed through the choke point (N-1) — no INSERT of its own.
   ipcMain.handle('notifications:create', (_e, n: {
     user_id: string; type: string; title: string; body?: string;
     task_id?: string; task_title?: string; actor_name?: string
   }) => {
-    const id = uuid()
-    getDatabase().prepare(`INSERT INTO notifications (id,user_id,type,title,body,task_id,task_title,actor_name)
-      VALUES (?,?,?,?,?,?,?,?)`)
-      .run(id, n.user_id, n.type, n.title, n.body ?? null, n.task_id ?? null, n.task_title ?? null, n.actor_name ?? null)
-    return { ok: true, id }
+    createNotification(n)
+    return { ok: true }
   })
 }
 
@@ -1489,10 +1524,12 @@ function registerCalendarHandlers() {
       })
 
       // Send in-app notifications to internal attendees
+      // attendees_json stays ID-KEYED by design (out of scope) — resolve the id to
+      // an email HERE so the recipient reaching the choke point is a person (N-1).
       for (const attendee of attendeeObjs) {
         if ((attendee as any).id) {
           createNotification({
-            user_id: (attendee as any).id,
+            user_id: resolveIdentity((attendee as any).id as string).email,
             type: 'calendar_invite',
             title: `You've been invited to "${data.title}"`,
             body: `${data.start_date ? new Date(data.start_date as string).toLocaleString() : ''}`,
@@ -1656,14 +1693,13 @@ function registerTodoHandlers() {
     db.prepare('INSERT INTO task_activity (id,task_id,actor_name,action,created_at) VALUES (?,?,?,?,?)')
       .run(crypto.randomUUID(), taskId, userName, `marked this task as complete`, completedAt)
 
-    // Notify admin (local-admin)
-    try {
-      db.prepare(`INSERT INTO notifications (id,user_id,type,title,body,task_id,task_title,actor_name)
-        VALUES (?,?,?,?,?,?,?,?)`)
-        .run(crypto.randomUUID(), 'local-admin', 'stage_change',
-          `${userName} completed: ${task.title}`,
-          null, taskId, task.title, userName)
-    } catch {}
+    // Notify admin — routed through the single choke point (N-1), which resolves
+    // 'local-admin' to the admin email and owns the INSERT + error logging.
+    createNotification({
+      user_id: 'local-admin', type: 'stage_change',
+      title: `${userName} completed: ${task.title}`,
+      task_id: taskId, task_title: task.title, actor_name: userName,
+    })
 
     return { ok: true }
   })
@@ -1717,9 +1753,11 @@ function registerBoardMembersHandlers() {
       const boardName = await boardsCloud.getBoardName(boardId)
       const userRow = db().prepare('SELECT email, full_name FROM local_users WHERE id=?').get(userId) as { email: string; full_name: string | null } | undefined
 
-      // In-app notification (local; targets this device's local user id if present)
+      // In-app notification — recipient is the member's EMAIL (N-1); userRow is
+      // already loaded above, so no extra lookup. Falls back to the raw id, which
+      // the choke point resolves the same way.
       createNotification({
-        user_id: userId, type: 'board_added',
+        user_id: userRow?.email ?? userId, type: 'board_added',
         title: `You've been added to ${boardName}`,
         body: `You now have access to ${boardName} on Kantor Consulting Hub`,
         actor_name: addedByName,
@@ -2219,7 +2257,11 @@ async function checkAndSendReminders() {
 
           const attendeesRaw = db.prepare('SELECT attendees_json FROM calendar_events WHERE id=?').get(ev.id) as { attendees_json:string } | undefined
           const attendeeIds: string[] = (() => { try { return (JSON.parse(attendeesRaw?.attendees_json ?? '[]') as {id:string}[]).map((a: {id:string}) => a.id) } catch { return [] } })()
-          const notifyUsers = attendeeIds.length > 0 ? attendeeIds : [user.id]
+          // attendees_json remains id-keyed (out of scope); resolve to emails HERE
+          // so every recipient reaching the choke point is a person (N-1).
+          const notifyUsers = (attendeeIds.length > 0 ? attendeeIds : [user.id])
+            .map(id => resolveIdentity(id).email)
+            .filter(Boolean)
 
           for (const uid of notifyUsers) {
             createNotification({ user_id: uid, type: 'deadline', title: `Reminder: ${ev.title} in ${body}`, body: `Calendar event at ${ev.start_date.slice(11,16)}` })
@@ -2246,11 +2288,10 @@ async function checkAndSendReminders() {
           sentReminders.add(key)
 
           const body = `Due ${mins >= 60 ? `${mins/60}h` : `${mins}min`} from now`
-          // Assignees are EMAILS as of 1c-2b-①, so notifications.user_id now holds
-          // emails on this path while older rows still hold device ids — the table
-          // is MIXED-FORMAT and stays that way until it moves to cloud (a slice-5
-          // prerequisite, since a directive notification currently never leaves the
-          // assigner's machine). The 'local-admin' fallback is unchanged.
+          // Assignees are EMAILS as of 1c-2b-①. As of N-1 the column itself is
+          // user_email and EVERY recipient is normalized at the choke point, so the
+          // table is no longer mixed-format. The unassigned fallback resolves
+          // 'local-admin' to the admin email there.
           const assigneeEmails = parseAssignees(t.assignees_json)
           const notifyUsers = assigneeEmails.length > 0 ? assigneeEmails : ['local-admin']
 
@@ -2280,7 +2321,8 @@ async function checkAndSendReminders() {
           sentReminders.add(key)
 
           const body = `${mins >= 60 ? `${mins/60}h` : `${mins}min`} from now`
-          createNotification({ user_id: user.id, type: 'deadline', title: `Reminder: ${item.title}`, body })
+          // Personal to-do reminder to the user themselves — email-keyed (N-1).
+          createNotification({ user_id: user.email ?? user.id, type: 'deadline', title: `Reminder: ${item.title}`, body })
           fireSystemNotification(`Personal To-Do: ${item.title}`, `Due in ${body}`)
         }
       }

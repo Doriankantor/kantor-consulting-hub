@@ -250,10 +250,11 @@ export function initDatabase(): void {
       created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Notifications (per-user inbox)
+    -- Notifications (per-user inbox). Recipient is an EMAIL (N-1): the single
+    -- canonical key, resolved through createNotification's toRecipientEmail.
     CREATE TABLE IF NOT EXISTS notifications (
       id          TEXT PRIMARY KEY,
-      user_id     TEXT NOT NULL,
+      user_email  TEXT NOT NULL,
       type        TEXT NOT NULL,
       title       TEXT NOT NULL,
       body        TEXT,
@@ -1200,6 +1201,59 @@ export function initDatabase(): void {
     ).run()
     if (r.changes > 0) console.log(`[3a] Seeded project_board_id=board-info-latam on ${r.changes} article(s).`)
   } catch (e) { console.warn('[3a] project_board_id seed failed:', (e as Error)?.message) }
+
+  // ── N-1: notifications recipient becomes an EMAIL ────────────────────────────
+  // The column was MIXED-FORMAT (device uuids, the literal 'local-admin', and a
+  // few emails) while every read filtered by a device id — so email-keyed rows
+  // were structurally unreadable. Rename user_id → user_email, then backfill the
+  // UNREAD rows only. Guarded on PRAGMA so the rename runs at most once.
+  try {
+    const nCols = db.prepare("PRAGMA table_info(notifications)").all() as { name: string }[]
+    const hasEmail = nCols.some(c => c.name === 'user_email')
+    const hasOldId = nCols.some(c => c.name === 'user_id')
+    if (!hasEmail && hasOldId) {
+      db.exec("ALTER TABLE notifications RENAME COLUMN user_id TO user_email")
+      console.log('[N-1] notifications.user_id renamed to user_email.')
+    }
+  } catch (e) { console.warn('[N-1] notifications column rename failed:', (e as Error)?.message) }
+
+  // Backfill UNREAD rows only. read=1 rows (~432) are deliberately left orphaned.
+  // NOTHING IS EVER DELETED HERE. The predicate (read=0 AND NOT LIKE '%@%') is
+  // self-limiting, so re-running is a no-op — no migration marker needed.
+  try {
+    const stale = db.prepare(
+      "SELECT id, user_email FROM notifications WHERE read = 0 AND user_email NOT LIKE '%@%'"
+    ).all() as { id: string; user_email: string }[]
+    if (stale.length > 0) {
+      const emailById = new Map<string, string>()
+      for (const u of db.prepare('SELECT id, email FROM local_users').all() as { id: string; email: string | null }[]) {
+        if (u.email) emailById.set(u.id, u.email.toLowerCase())
+      }
+      const upd = db.prepare('UPDATE notifications SET user_email=? WHERE id=?')
+      let viaAdmin = 0, viaUsers = 0, unresolved = 0
+      const tx = db.transaction((rows: { id: string; user_email: string }[]) => {
+        for (const r of rows) {
+          const raw = (r.user_email ?? '').trim()
+          if (raw === 'local-admin') { upd.run(CLOUD_ADMIN_EMAIL, r.id); viaAdmin++; continue }
+          const mapped = emailById.get(raw)
+          if (mapped) { upd.run(mapped, r.id); viaUsers++; continue }
+          unresolved++   // left UNTOUCHED — never deleted, never guessed
+        }
+      })
+      tx(stale)
+      console.log(
+        `[N-1] notifications backfill: ${stale.length} unread row(s) matched — ` +
+        `${viaUsers} resolved via local_users, ${viaAdmin} resolved as local-admin, ${unresolved} left unresolved.`
+      )
+    }
+  } catch (e) { console.warn('[N-1] notifications backfill failed:', (e as Error)?.message) }
+
+  // Every read filters by (user_email, read) and orders by created_at DESC; the
+  // table had no index at all despite that.
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created
+      ON notifications (user_email, read, created_at DESC)`)
+  } catch (e) { console.warn('[N-1] notifications index failed:', (e as Error)?.message) }
 
   // ── Seed the Contested Skies Source Archive into Source Intelligence ──────────
   // The sources the live Contested Skies page is built on. FRAMEWORK references

@@ -19,6 +19,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useAuth } from '../contexts/AuthContext'
+import { ADMIN_EMAIL } from '../supabase/client'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { INTEL_CHANGED_EVENT } from '../utils/intelEvents'
 import { useUpdate } from '../contexts/UpdateContext'
@@ -368,6 +369,9 @@ export default function Sidebar() {
   const [newBoardModal, setNewBoardModal] = useState(false)
 
   const userId = localUser?.id ?? 'local-admin'
+  // N-1: notifications are keyed by EMAIL, but `userId` above stays an ID —
+  // boardMembers.listForUser is id-keyed and must not be repurposed.
+  const userEmail = (localUser?.email ?? ADMIN_EMAIL).toLowerCase()
 
   // Load board membership for non-admin users
   useEffect(() => {
@@ -401,10 +405,10 @@ export default function Sidebar() {
 
   const refreshInboxCount = useCallback(async () => {
     try {
-      const count = await window.api.notifications.unreadCount(userId)
+      const count = await window.api.notifications.unreadCount(userEmail)
       setInboxUnread(count)
     } catch {}
-  }, [userId])
+  }, [userEmail])
 
   useEffect(() => {
     refreshInboxCount()
