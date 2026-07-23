@@ -72,11 +72,6 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
   const [title, setTitle] = useState('')
   const [transcript, setTranscript] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
-  const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
-  // Per-CARD status-write error (keyed by id, like NewsTab's aiErr). Distinct from the
-  // form-level `formError` — a status click targets ONE card, so the failure must show
-  // on that card, not in the add-form footer.
-  const [statusError, setStatusError] = useState<Record<string, string>>({})
   // 3d: the info-page projects (for the per-item project picker + Send target).
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
   // T3: the selected project's thematic tag vocabulary (project-scoped, from T1).
@@ -208,30 +203,6 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
       setFormError((e as Error)?.message || 'Could not save the interview.')
     } finally {
       setSaving(false)
-    }
-  }
-
-  async function handleStatus(id: string, status: string) {
-    if (!online) return   // read-only offline (Save)
-    setPendingStatus(p => ({ ...p, [id]: true }))
-    try {
-      const res = await window.api.intelligence.updateStatus(id, status, undefined, localUser?.id, localUser?.name)
-      // GATE THE BADGE ON THE WRITE RESULT. updateStatus now returns {ok:false,error} for a
-      // row that no longer exists (the phantom-row guard); flipping the badge anyway would
-      // report success for a write that never landed.
-      if (!res.ok) {
-        setStatusError(prev => ({ ...prev, [id]: res.error || 'Could not update.' }))
-      } else {
-        setStatusError(prev => { const n = { ...prev }; delete n[id]; return n })
-        setInterviews(prev => prev.map(iv => iv.id === id ? { ...iv, status: status as any } : iv))
-      }
-      // onApprove fires on FAILURE TOO — deliberately. It refreshes the stats/unscored
-      // counts, which is exactly what a stale-or-phantom card needs. The toast self-guards
-      // (addedToPages is undefined when the write failed). Do NOT move this into the else.
-      if (status === 'approved') onApprove(res?.addedToPages)
-      else onApprove()
-    } finally {
-      setPendingStatus(p => ({ ...p, [id]: false }))
     }
   }
 
@@ -367,7 +338,6 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
         )}
 
         {!loading && visible.map(iv => {
-          const isPending = pendingStatus[iv.id]
           // 3d: picker default — the interview's project, else the top-dropdown selected project.
           const projectBoardSel = iv.project_board_id || (project?.id ?? '')
           // T3: this item's topic tags (project-scoped write target = projectBoardSel).
@@ -467,11 +437,6 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
                 ) : (
                   <span className="text-[10px] text-gray-400 dark:text-white/30 italic">Select a project to tag</span>
                 )}
-                {iv.status !== 'saved' && (
-                  <button onClick={() => handleStatus(iv.id, 'saved')} disabled={isPending || !online}
-                    title={!online ? 'Unavailable while offline' : undefined}
-                    className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition disabled:opacity-50">Save</button>
-                )}
                 {/* 3d: Send to New sources — routes into the selected project's pipeline */}
                 <button
                   onClick={() => handleSend(iv.id, projectBoardSel)}
@@ -482,7 +447,6 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
                   ➤ Send to New sources
                 </button>
               </div>
-              {statusError[iv.id] && <p className="text-xs text-red-500 dark:text-red-400 mt-2">{statusError[iv.id]}</p>}
             </div>
           )
         })}

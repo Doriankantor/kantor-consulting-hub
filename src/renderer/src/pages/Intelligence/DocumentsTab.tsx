@@ -70,10 +70,6 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
   // Upload-bar error. The DocumentCompose-internal `error` state is per-card and unreachable
   // from here, so the bar needs its own surface for a failed/partial upload.
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
-  // Per-CARD status-write error (keyed by id, like NewsTab's aiErr). The DocumentCompose
-  // sub-component's own `error` state is unreachable from here, so the list needs its own.
-  const [statusError, setStatusError] = useState<Record<string, string>>({})
   const [fadingIds, setFadingIds] = useState<Set<string>>(new Set())
   // 3d: the info-page projects (for the per-item project picker + Send target).
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
@@ -216,31 +212,6 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
       setUploadError((e as Error)?.message || 'Upload failed.')
     } finally {
       setUploading(false)
-    }
-  }
-
-  async function handleStatus(id: string, status: string) {
-    if (!online) return   // read-only offline (Save)
-    setPendingStatus(p => ({ ...p, [id]: true }))
-    try {
-      const res = await window.api.intelligence.updateStatus(id, status, undefined, localUser?.id, localUser?.name)
-      // GATE THE BADGE ON THE WRITE RESULT. updateStatus now returns {ok:false,error} for a
-      // row that no longer exists (the phantom-row guard); flipping the badge anyway would
-      // report success for a write that never landed.
-      if (!res.ok) {
-        setStatusError(prev => ({ ...prev, [id]: res.error || 'Could not update.' }))
-      } else {
-        setStatusError(prev => { const n = { ...prev }; delete n[id]; return n })
-        // Update badge in-place — preserves scroll position
-        setDocuments(prev => prev.map(d => d.id === id ? { ...d, status: status as any } : d))
-      }
-      // onApprove fires on FAILURE TOO — deliberately. It refreshes the stats/unscored
-      // counts, which is exactly what a stale-or-phantom card needs. The toast self-guards
-      // (addedToPages is undefined when the write failed). Do NOT move this into the else.
-      if (status === 'approved') onApprove(res?.addedToPages)
-      else onApprove()
-    } finally {
-      setPendingStatus(p => ({ ...p, [id]: false }))
     }
   }
 
@@ -409,7 +380,6 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
           const conf = doc.confidence || 'low'
           const confStyle = CONFIDENCE_COLORS[conf as keyof typeof CONFIDENCE_COLORS] || CONFIDENCE_COLORS.low
           const cats: string[] = (() => { try { return JSON.parse(doc.categories_json || '[]') } catch { return [] } })()
-          const isPending = pendingStatus[doc.id]
           // 3d: picker default — the doc's project, else the top-dropdown selected project.
           const projectBoardSel = doc.project_board_id || (project?.id ?? '')
           // T3: this item's topic tags (project-scoped write target = projectBoardSel).
@@ -536,16 +506,6 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
                   <span className="text-[10px] text-gray-400 dark:text-white/30 italic">Select a project to tag</span>
                 )}
                 <div className="flex-1" />
-                {doc.status !== 'saved' && (
-                  <button
-                    onClick={() => handleStatus(doc.id, 'saved')}
-                    disabled={isPending || !online}
-                    title={!online ? 'Unavailable while offline' : undefined}
-                    className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition disabled:opacity-50"
-                  >
-                    Save
-                  </button>
-                )}
                 {/* 3d: Send to New sources — routes into the selected project's pipeline */}
                 <button
                   onClick={() => handleSend(doc.id, projectBoardSel)}
@@ -556,7 +516,6 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
                   ➤ Send to New sources
                 </button>
               </div>
-              {statusError[doc.id] && <p className="text-xs text-red-500 dark:text-red-400 mt-2">{statusError[doc.id]}</p>}
             </div>
           )
         })}

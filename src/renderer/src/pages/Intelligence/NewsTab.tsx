@@ -768,9 +768,16 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
         return
       }
       setStatusError(prev => { const n = { ...prev }; delete n[id]; return n })
+      // Capture the pre-flip status BEFORE we overwrite it: 'saved' is in no chip, but 'rejected'
+      // IS a chip ({statusCounts.rejected} rejected), so pulling a rejected row back must decrement it.
+      const wasRejected = sources.find(s => s.id === id)?.status === 'rejected'
       setSources(prev => prev.map(s => s.id === id ? { ...s, status: 'unreviewed' as any } : s))
-      // 'saved' is in no badge → nothing to decrement; the pending queue gains one.
-      setStatusCounts(prev => ({ ...prev, unreviewed: prev.unreviewed + 1 }))
+      // The pending queue always gains one; the rejected chip drops one only when the row was rejected.
+      setStatusCounts(prev => ({
+        ...prev,
+        unreviewed: prev.unreviewed + 1,
+        rejected: wasRejected ? Math.max(0, prev.rejected - 1) : prev.rejected,
+      }))
       // Mirror handleStatus's fade: drop the card from the current view when it no longer matches.
       if (statusFilter && statusFilter !== 'unreviewed') {
         setFadingIds(f => new Set([...f, id]))
@@ -1618,8 +1625,8 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                     Save
                   </button>
                 )}
-                {/* Make unreviewed — quiet undo; only for the Saved basket (inverse of Save's guard) */}
-                {source.status === 'saved' && (
+                {/* Make unreviewed — quiet undo; for the Saved basket and to un-reject a rejected article */}
+                {(source.status === 'saved' || source.status === 'rejected') && (
                   <button
                     onClick={() => handleMakeUnreviewed(source.id)}
                     disabled={isPending || !online}
