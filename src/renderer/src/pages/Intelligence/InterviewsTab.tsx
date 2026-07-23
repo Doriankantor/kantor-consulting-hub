@@ -239,6 +239,9 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
     if (!confirm('Delete this interview?')) return
     await window.api.intelligence.deleteSource(id)
     setInterviews(prev => prev.filter(iv => iv.id !== id))
+    // Deleting a non-article drops it from the pending set — refresh the header stat.
+    // onApprove() = handleApproved; no args → refreshStats + refreshUnscoredCount, no toast.
+    onApprove()
   }
 
   // 3d: persist the reliable board-id project association (picker change).

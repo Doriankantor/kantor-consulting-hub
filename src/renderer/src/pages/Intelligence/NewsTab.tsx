@@ -636,6 +636,9 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
         setNewsFetchNote(null)
         setShowAddPanel(false)
         await load()
+        // A hand-added article is born unreviewed (+1 pending) — refresh the header stat.
+        // onApprove() = handleApproved; no args → refreshStats + refreshUnscoredCount, no toast.
+        onApprove()
         return
       }
       if (res.duplicate) {
@@ -776,6 +779,9 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           setFadingIds(f => { const n = new Set(f); n.delete(id); return n })
         }, 350)
       }
+      // saved→unreviewed re-enters the pending set (+1) — refresh the header stat.
+      // onApprove() = handleApproved; no args → refreshStats + refreshUnscoredCount, no toast.
+      onApprove()
     } finally {
       setPendingStatus(p => ({ ...p, [id]: false }))
     }
@@ -850,6 +856,9 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       }, 350)
       // statusCounts shape is { unreviewed, approved, rejected } — mirror reject's decrement.
       setStatusCounts(prev => ({ ...prev, unreviewed: Math.max(0, prev.unreviewed - 1) }))
+      // unreviewed→duplicate leaves the pending set (-1) — refresh the header stat.
+      // onApprove() = handleApproved; no args → refreshStats + refreshUnscoredCount, no toast.
+      onApprove()
     } catch (e) { console.warn('[NewsTab] markDuplicate failed:', e) }
     closeDupModal()
   }

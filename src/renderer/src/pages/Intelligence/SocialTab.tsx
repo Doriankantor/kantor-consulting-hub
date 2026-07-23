@@ -414,6 +414,9 @@ export default function SocialTab({ onApprove, project = null }: Props) {
     if (!confirm('Delete this post?')) return
     await window.api.intelligence.deleteSource(id)
     setPosts(prev => prev.filter(p => p.id !== id))
+    // Deleting a non-article drops it from the pending set — refresh the header stat.
+    // onApprove() = handleApproved; no args → refreshStats + refreshUnscoredCount, no toast.
+    onApprove()
   }
 
   // 3d: persist the reliable board-id project association (picker change).
