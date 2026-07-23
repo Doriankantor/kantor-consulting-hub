@@ -11,6 +11,60 @@ process complete by end of July, publishing in August.** The stage order is LOCK
 → Analysis & design → Publish → Latest update notes → Sources**, with Claude PROPOSING placements
 and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not jump to code.
 
+**LATEST (2026-07-23, late) — NOTIFICATIONS IDENTITY UNIFIED (N-1) + TWO SMALL FIXES.**
+
+- **`720dbb8` — N-1: notifications single choke point + email identity (LOCAL).**
+  Email is now the **CANONICAL RECIPIENT KEY**. Previously `notifications.user_id`
+  held three incompatible formats at once (device UUIDs 300, literal
+  `'local-admin'` 240, emails 6) written by 11 sites via 3 paths, and read by a
+  device-id-only path — so email-keyed rows were **structurally unreadable** and
+  cross-member notifications never arrived.
+  · All 9 writers now route through `createNotification`, which holds the **ONLY**
+    `INSERT INTO notifications` in `src/`. The direct INSERT (task-complete) and
+    the `notifications:create` IPC both previously bypassed it.
+  · Recipients normalized via the **EXISTING** `resolveIdentity` (`boards.ts:46`) —
+    no second admin constant. Unresolvable recipients are logged and **NOT
+    written**: a row nobody can read is worse than no row.
+  · `createNotification`'s bare `catch {}` now logs. **Still never throws** —
+    notifications are side effects and must not fail the parent action.
+  · Column renamed `user_id` -> `user_email` (PRAGMA-guarded, idempotent).
+    **IPC CHANNEL NAMES UNCHANGED.**
+  · Read sites (Inbox/Header/Sidebar) switched to
+    `(localUser?.email ?? ADMIN_EMAIL).toLowerCase()`. **VERIFIED:**
+    `CLOUD_ADMIN_EMAIL` (main, `constants.ts:5`) and `ADMIN_EMAIL` (renderer,
+    `supabase/client.ts:38`) are **BYTE-IDENTICAL** (`'doriankantor@gmail.com'`),
+    so root's fallback resolves across the process boundary.
+  · Added `idx_notifications_user_read_created (user_email, read,
+    created_at DESC)` — the table previously had **NO index** on its filter column.
+  · Backfill (**UNREAD ONLY**): 108 matched, 86 resolved, 0 as local-admin, 22 left
+    untouched. **546 rows before and after — NOTHING DELETED.** Live DB matched the
+    dry-run simulation exactly.
+
+- **★ CARRIED FORWARD — 22 PERMANENTLY UNRESOLVABLE ROWS (deliberate).** Device
+  UUIDs whose `local_users` row no longer exists, plus one legacy `'user-dorian'`.
+  They are **INERT**: match nobody, inflate no badge, appear in no inbox. **NOT
+  deleted.** The backfill still scans them every startup so they **SELF-HEAL** if a
+  user's `local_users` row is ever recreated on this machine.
+
+- **★ CARRIED FORWARD — THE 240 `'local-admin'` ROWS ARE ALL `read=1`**, so the
+  backfill's local-admin branch resolved **ZERO** rows. The branch is correct for
+  future writes but inert today. **ROOT'S INBOX SHOWING 0 UNREAD IS EXPECTED, NOT
+  A BUG.** The unread rows now belong to Leonardo (30), Juan Diego (24), dk@ (20),
+  Daniel (15) + 4 singletons — people who cannot log in yet.
+
+- **★ CARRIED FORWARD — Sidebar keeps a SEPARATE `userId`** for
+  `boardMembers.listForUser` (`Sidebar.tsx:380`), which is **id-keyed and unrelated
+  to notifications**. Converting it in place would have silently broken the board
+  list. **Do not "simplify" these into one variable.**
+
+- **`607ef70`** — fix: corrected `CLOUD_ADMIN_EMAIL` import in attachmentsCloud.
+  Node tsc baseline **8 -> 5**.
+- **`2773ba2`** — chore: N-1 backfill logs only when it resolves something.
+  Predicate and scan **UNCHANGED** (self-healing preserved); logging only.
+
+- **★ NEXT: N-2 (cloud `notifications` table + two-tier read/write).** Then **N-3**
+  (user-scoped realtime axis), **N-4** (off-work notification drop), then **To-Do 2.5**.
+
 **LATEST (2026-07-23, night) — SORT TOGGLE SHIPPED · TEAM CONSOLE DESIGN LOCKED ·
 PRIORITIES REORDERED · CLOUD JUNK CLEARED.**
 
@@ -669,7 +723,8 @@ remain in `personal_todos` (local + cloud), all `completed=1`, `recurrence=daily
   unblocks the empty Assigned-to-me / Assigned-by-me tabs), then **2.6 / 4 / 5** (invited
   collaboration, head roles + card-permission tiers, the intel-directive assignment loop), with
   **`notifications`→cloud as a shared prerequisite** that ALSO unblocks the deferred off-work
-  notification-drop.
+  notification-drop. _(PARTIALLY SUPERSEDED by N-1 `720dbb8`: identity is now
+  EMAIL-canonical; the CLOUD half is still outstanding — N-2.)_
 - **(B) JUMP to the Intelligence + Info Pages restructure** — the PRIMARY goal, with a HARD
   deadline (complete the intel process by end of July / publish in August). This is the same
   "Path 2" reprioritization Dorian made once before. **The August deadline argues for starting
@@ -681,7 +736,8 @@ sections).** Whichever fork is chosen, these remain queued:
 - **Deferred off-work NOTIFICATION-DROP** — the "no notifications to a member on leave" half of
   off-work is a documented stub (`createNotification`), BLOCKED on **notifications→cloud**
   (notifications are still local/per-device, `db.ts:253`). Wire it when notifications→cloud ships
-  (that same prerequisite sits under fork A).
+  (that same prerequisite sits under fork A). _(PARTIALLY SUPERSEDED by N-1 `720dbb8`:
+  identity is now EMAIL-canonical; the CLOUD half is still outstanding — N-2.)_
 - **To-Do write-through — CORE ALREADY FIXED (`cc6aedf`).** `todo:complete`/`uncomplete` now route
   through cloud (`updateTask`) so completions survive re-sync — see the ✅ slice under the To-Do
   overhaul. **Do NOT re-diagnose the revert.** Two follow-ups it LEFT open: the **offline
@@ -2054,6 +2110,45 @@ state — but **any future focusable or animated control added inside `Row` will
 again**, and the next person will not know why. The full hoist means threading `areas`,
 `completing`, `expanded`, `openTask`, `navigate` and ~8 handlers through props.
 
+## ⚠ Lesson — NEVER FIND/REPLACE A SYMBOL THAT IS A PREFIX OF ANOTHER SYMBOL
+
+Commit `a1c30a5` (2026-06-05) renamed a local alias `CLOUD_ADMIN` ->
+`CLOUD_ADMIN_EMAIL` by find/replace in `attachmentsCloud.ts`. Because
+`CLOUD_ADMIN` is a **PREFIX SUBSTRING** of `CLOUD_ADMIN_EMAIL`, the replace **ALSO
+fired inside the import specifier**, producing `CLOUD_ADMIN_EMAIL_EMAIL` — a
+symbol nothing exports. It survived ~7 weeks inside the "accepted" 8-error tsc
+baseline.
+
+**SECOND DATA POINT** in the same family as the `cal-toggles-${userId}` clobber
+(1c-2), but a **DISTINCT MECHANISM**: that one was a rename hitting an unrelated
+string; this one was a rename hitting **ITS OWN LONGER FORM**.
+
+**RULE: before any symbol rename, check whether the old name is a substring of the
+new name (or of any other symbol in scope). If so, edit sites individually.**
+
+**COROLLARY: A TOLERATED ERROR COUNT IS WHERE REAL BUGS HIDE.** esbuild does not
+typecheck, so this shipped. Nobody re-reads a number that never changes. **When the
+baseline count is stable, the errors inside it stop being read at all.**
+
+## ⚠ Lesson — AN ERROR PATH THAT MISATTRIBUTES IS AS BAD AS ONE THAT SWALLOWS
+
+`seedAttachmentsToCloud` threw `ReferenceError`, which propagated through
+`ipcRenderer.invoke` into Settings' catch (`Settings.tsx:121`) and rendered
+**"Couldn't reach the server:"** — presenting a **code defect as a NETWORK fault**.
+
+Same family as the bare-`catch` cluster, but the **inverse failure**: it does not
+swallow a true signal, it **FORWARDS A FALSE ONE**, which is worse — it sends the
+reader to diagnose the **wrong subsystem**. **LOGGED, NOT FIXED.** When touching
+that Settings maintenance panel, make the catch **distinguish transport failures
+from handler exceptions**.
+
+**ALSO RECORD: reading an UNDECLARED identifier throws `ReferenceError` — it does
+NOT evaluate to `undefined`.** A gate comparing against a missing import therefore
+**FAILS CLOSED BY EXCEPTION** (neither branch taken), not by falsy comparison. This
+was initially reasoned about incorrectly; it was settled by reading the **SHIPPED
+BUNDLE** (`out/main/index.js`), not the source. **VERIFY RUNTIME BEHAVIOUR IN THE
+BUNDLE, NOT BY REASONING ABOUT THE SOURCE.**
+
 ## Release status at a glance
 
 - **v2.3.0 — RELEASED** (published 2026-07-17; version-bump commit `a4b161e`, tag `v2.3.0`
@@ -2317,7 +2412,8 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   earlier; **slice 5 of the To-Do overhaul (the intel culling directive) is its on-ramp** —
   that directive drives the cull→approve→Push→Info Pages flow the redesign is about.
   **Shared prerequisite with slice 5: `notifications` → cloud** (local-only + `user_id`-keyed
-  today, so a directive never reaches the assignee's machine).
+  today, so a directive never reaches the assignee's machine). _(PARTIALLY SUPERSEDED by
+  N-1 `720dbb8`: identity is now EMAIL-canonical; the CLOUD half is still outstanding — N-2.)_
 - **TWO GAPS FOUND DURING To-Do 1b (2026-07-19) — logged, both out of scope so far:**
   - **Dismissals are PERMANENT — there is no un-dismiss path anywhere.** Verified: zero
     `DELETE FROM todo_dismissed`, zero undismiss handler, no UI affordance. `todo:dismiss`
@@ -2347,7 +2443,8 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
     → sync on reconnect**, and if the assigner unassigned you meanwhile, reconcile with
     **HIGHER-ORDER-ACTION-WINS (unassign trumps complete)** and notify the assignee *"your
     assignment was removed."* That is a **net-new conflict-resolution system**; it **pairs with
-    `notifications` → cloud**. Its own slice.
+    `notifications` → cloud**. Its own slice. _(PARTIALLY SUPERSEDED by N-1 `720dbb8`:
+    identity is now EMAIL-canonical; the CLOUD half is still outstanding — N-2.)_
   - **CET-ANCHORED CLOCK (slice-3 note).** Urgency (past-due / today / tomorrow) must **NOT
     rely on the local machine clock** — use a constant time source **bound to CET** so a
     deadline means the same instant for everyone regardless of timezone or a wrong system
@@ -2699,6 +2796,8 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
        - **⚠ PREREQUISITE OVERLAP — `notifications` → cloud.** 2.5's notification is subject to
          the **same prerequisite already recorded for slice 5**: notifications are local-only
          and `user_id`-keyed, so cross-device delivery does not work until they move to cloud.
+         _(PARTIALLY SUPERSEDED by N-1 `720dbb8`: identity is now EMAIL-canonical; the CLOUD
+         half is still outstanding — N-2.)_
        - **★ SCOPE GREW (2026-07-20) — 2.5 IS NO LONGER JUST "a record + a notification".**
          Three additions, decided after seeing 3a's two empty tabs in the app:
          - **ASSIGNER VISIBILITY — the assigner sees the assignee's progress, VIEW-ONLY.**
@@ -2933,6 +3032,8 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
          laptop writes a row into the assigner's OWN local DB — **it never reaches the
          assignee's machine.** The deep-link machinery works; the delivery does not. The spec
          does not mention this. Migrate notifications before, or slice 5 ships broken.
+         _(PARTIALLY SUPERSEDED by N-1 `720dbb8`: identity is now EMAIL-canonical; the CLOUD
+         half is still outstanding — N-2.)_
   - **✅ SLICE 2 SHIPPED — the `listTodos` aggregation layer (`065f6ce`, 2026-07-20,
     UNRELEASED).** Two sources assembled in MAIN — **personal** (local `personal_todos`,
     `user_id`-keyed, because 1a deliberately kept the local table id-keyed and translates only
@@ -3513,7 +3614,8 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
     - **`notifications.user_id` is now MIXED-FORMAT** — emails on the assignee-driven paths,
       device ids on older rows and the `local-admin` fallback. Acceptable here, and it
       **re-confirms `notifications` → cloud as a slice-5 prerequisite**: a directive notification
-      still never leaves the assigner's machine.
+      still never leaves the assigner's machine. _(PARTIALLY SUPERSEDED by N-1 `720dbb8`:
+      identity is now EMAIL-canonical; the CLOUD half is still outstanding — N-2.)_
 - **COMPOSE-SURFACE WRITES AND FEEDBACK (silent-failure cluster).** Four related issues in
   the Intelligence compose surface, found 2026-07-18. **All four compose paths
   (News/Social/Documents/Interviews) write through the SAME `insertSource`
