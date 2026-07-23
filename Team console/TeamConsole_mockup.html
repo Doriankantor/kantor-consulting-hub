@@ -1,0 +1,748 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Team — Kantor Consulting Hub (mockup — real data)</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --ink:#1c2230; --muted:#6b7280; --faint:#9aa1ac;
+    --line:#e7e9ee; --line2:#eef0f4;
+    --accent:#3b5bdb; --accent-050:#eef1fd; --accent-100:#dee5fb;
+    --head:#b4530a; --head-050:#fbf1e8; --head-100:#f6e2cf;
+    --ok:#137a4b; --ok-050:#e8f5ee;
+    --danger:#c0392b; --danger-050:#fbeceb;
+    --root:#5b4bd0; --root-050:#efedfb; --root-100:#e0dcf7;
+    --radius:11px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"Segoe UI",system-ui,sans-serif;font-size:14px;line-height:1.45;}
+  button{font:inherit;}
+
+  /* ---------- mock chrome ---------- */
+  .mockbar{position:sticky;top:0;z-index:60;background:#141824;color:#fff;padding:9px 18px;
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .mockbar .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8b93a7;font-weight:700;}
+  .seg{display:inline-flex;background:#232838;border-radius:9px;padding:3px;gap:2px;}
+  .seg button{border:0;background:transparent;color:#aab2c5;font-size:12.5px;font-weight:600;
+    padding:6px 13px;border-radius:7px;cursor:pointer;}
+  .seg button.on{background:#fff;color:#141824;}
+  .mockbar select{background:#232838;color:#fff;border:1px solid #333a4d;border-radius:8px;
+    padding:7px 11px;font-size:12.5px;font-weight:600;outline:0;cursor:pointer;min-width:300px;}
+  .mockbar .who{font-size:12px;color:#8b93a7;margin-left:auto;}
+  .mockbar .who b{color:#fff;font-weight:600;}
+
+  /* ---------- app shell ---------- */
+  .app{display:flex;min-height:calc(100vh - 41px);}
+  .nav{width:216px;flex:none;background:#fff;border-right:1px solid var(--line);padding:16px 10px;}
+  .navnote{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);
+    font-weight:700;padding:0 8px 9px;}
+  .navitem{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;
+    font-size:13.5px;color:var(--muted);cursor:default;}
+  .navitem.dim{opacity:.45;}
+  .navitem.on{background:var(--accent-050);color:var(--accent);font-weight:650;}
+  .navsub{margin:2px 0 2px 14px;padding-left:12px;border-left:1px solid var(--line);}
+  .navsub .navitem{font-size:13px;padding:6px 10px;cursor:pointer;}
+  .navsub .navitem.on{background:var(--accent-050);}
+  .navsub .navitem.locked{opacity:.4;cursor:not-allowed;}
+
+  .main{flex:1;min-width:0;padding:24px 26px 70px;}
+  .wrap{max-width:1080px;}
+
+  .head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
+  h1{font-size:23px;margin:0;font-weight:680;letter-spacing:-.01em;}
+  .sub{color:var(--muted);font-size:13px;margin-top:3px;}
+  .rootpill{display:inline-flex;align-items:center;gap:6px;background:var(--root-050);color:var(--root);
+    font-size:12px;font-weight:600;padding:5px 11px;border-radius:20px;white-space:nowrap;}
+  .rootpill .dot{width:6px;height:6px;border-radius:50%;background:var(--root);}
+  .memberpill{background:var(--line2);color:var(--muted);}
+  .memberpill .dot{background:var(--muted);}
+
+  .hint{font-size:12px;color:var(--muted);background:var(--accent-050);border:1px solid var(--accent-100);
+    border-radius:9px;padding:10px 13px;margin:18px 0 16px;display:flex;gap:8px;align-items:flex-start;}
+  .hint b{color:var(--ink);font-weight:660;}
+  .hint.root{background:var(--root-050);border-color:var(--root-100);color:#4a3fb0;}
+  .hint.root b{color:#3a3193;}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);}
+  .card-h{padding:14px 16px;border-bottom:1px solid var(--line2);display:flex;align-items:center;
+    justify-content:space-between;gap:10px;}
+  .card-h .t{font-weight:660;font-size:14.5px;}
+  .card-h .d{font-size:12px;color:var(--muted);}
+
+  .rostmeta{display:flex;gap:20px;padding:2px 2px 14px;color:var(--muted);font-size:12.5px;}
+  .rostmeta b{color:var(--ink);}
+
+  /* person rows */
+  .prow{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line2);}
+  .prow:last-child{border-bottom:0;}
+  .prow.click{cursor:pointer;}
+  .prow.click:hover{background:#fafbfc;}
+  .prow.sel{background:var(--accent-050);}
+  .av{width:30px;height:30px;border-radius:50%;flex:none;display:grid;place-items:center;
+    font-size:12px;font-weight:700;color:#fff;}
+  .pn{min-width:0;}
+  .pn .nm{font-weight:600;font-size:13.5px;}
+  .pn .em{font-size:11.5px;color:var(--faint);}
+  .grow{flex:1;min-width:0;}
+  .ctrls{display:flex;align-items:center;gap:14px;flex:none;}
+  .colhdr{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);
+    width:92px;text-align:center;}
+
+  .badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;
+    border-radius:5px;}
+  .badge.head{background:var(--head);color:#fff;}
+  .badge.mem{background:var(--line2);color:var(--muted);}
+  .badge.na{background:var(--line2);color:var(--faint);}
+
+  /* toggle */
+  .tg{display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none;}
+  .tg .sw{width:34px;height:20px;border-radius:20px;background:#d3d7de;position:relative;transition:.15s;flex:none;}
+  .tg .sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:.15s;}
+  .tg.on .sw{background:var(--accent);}
+  .tg.on.head .sw{background:var(--head);}
+  .tg.on .sw::after{transform:translateX(14px);}
+  .tg .lb{font-size:12px;font-weight:600;color:var(--muted);}
+  .tg.on .lb{color:var(--ink);}
+  .tg.disabled{opacity:.35;cursor:not-allowed;}
+  .tg.locked .sw{background:var(--ok);}
+
+  .btn{border:1px solid var(--line);background:#fff;font-size:12.5px;font-weight:600;
+    color:var(--ink);padding:7px 13px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+  .btn:hover{background:#fafbfc;}
+  .btn.pri{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .btn.ghost-danger{color:var(--danger);border-color:transparent;background:transparent;padding:6px 8px;}
+  .btn.ghost-danger:hover{background:var(--danger-050);}
+
+  .addrow{display:flex;gap:9px;padding:14px 16px;border-top:1px solid var(--line2);background:#fbfbfc;
+    border-radius:0 0 var(--radius) var(--radius);align-items:center;}
+  .addrow input{border:1px solid var(--line);border-radius:8px;padding:8px 11px;font:inherit;font-size:13px;outline:0;}
+  .addrow input:focus{border-color:var(--accent);}
+  .addrow .nmi{width:170px;} .addrow .emi{flex:1;}
+
+  /* board access */
+  .panelrow{display:flex;gap:18px;align-items:flex-start;}
+  .master{width:238px;flex:none;}
+  .mitem{display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer;border-bottom:1px solid var(--line2);}
+  .mitem:last-child{border-bottom:0;}
+  .mitem:hover{background:#fafbfc;}
+  .mitem.on{background:var(--accent-050);}
+  .mitem .nm{font-weight:600;font-size:13.5px;}
+  .mitem .mt{font-size:11.5px;color:var(--faint);margin-top:1px;}
+  .mitem.on .nm{color:var(--accent);}
+  .btype{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+    padding:2px 6px;border-radius:5px;margin-left:auto;flex:none;}
+  .btype.ws{background:var(--line2);color:var(--muted);}
+  .btype.ip{background:var(--head-050);color:var(--head);}
+  .detail{flex:1;min-width:0;}
+  .detail-h{padding:15px 16px;border-bottom:1px solid var(--line2);}
+  .detail-h .t{font-weight:680;font-size:16px;display:flex;align-items:center;gap:9px;}
+  .detail-h .d{font-size:12.5px;color:var(--muted);margin-top:3px;}
+  .invariant{font-size:12px;color:var(--head);background:var(--head-050);border:1px solid var(--head-100);
+    border-radius:9px;padding:9px 13px;margin:13px 16px 2px;}
+
+  /* visibility pane */
+  .vrow{display:flex;align-items:flex-start;gap:14px;padding:14px 16px;border-bottom:1px solid var(--line2);}
+  .vrow:last-child{border-bottom:0;}
+  .vrow .vt{font-weight:640;font-size:13.5px;}
+  .vrow .vd{font-size:12px;color:var(--muted);margin-top:2px;}
+  .vrow .vc{flex:none;padding-top:2px;}
+  .tier{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+    padding:2px 7px;border-radius:5px;margin-left:8px;}
+  .tier.always{background:var(--ok-050);color:var(--ok);}
+  .tier.gated{background:var(--head-050);color:var(--head);}
+  .seg3{display:inline-flex;background:var(--line2);border-radius:8px;padding:3px;gap:2px;}
+  .seg3 button{border:0;background:transparent;color:var(--muted);font-size:12px;font-weight:600;
+    padding:5px 11px;border-radius:6px;cursor:pointer;}
+  .seg3 button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08);}
+
+  /* member drawer */
+  .scrim{position:fixed;inset:0;background:rgba(20,24,36,.28);opacity:0;pointer-events:none;
+    transition:.18s;z-index:70;}
+  .scrim.on{opacity:1;pointer-events:auto;}
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:390px;max-width:92vw;background:#fff;z-index:80;
+    box-shadow:-8px 0 30px rgba(20,24,36,.16);transform:translateX(100%);transition:.2s cubic-bezier(.3,.7,.3,1);
+    overflow-y:auto;}
+  .drawer.on{transform:none;}
+  .dh{padding:20px 20px 16px;border-bottom:1px solid var(--line2);}
+  .dh-top{display:flex;align-items:flex-start;gap:13px;}
+  .dh .nm{font-size:19px;font-weight:680;letter-spacing:-.01em;}
+  .dh .em{font-size:12.5px;color:var(--faint);margin-top:1px;}
+  .dh .meta{display:flex;align-items:center;gap:9px;margin-top:8px;}
+  .dh .last{font-size:12px;color:var(--faint);}
+  .x{margin-left:auto;border:0;background:transparent;font-size:20px;color:var(--faint);cursor:pointer;
+    line-height:1;padding:2px 4px;}
+  .x:hover{color:var(--ink);}
+  .dacts{display:flex;gap:9px;padding:14px 20px;border-bottom:1px solid var(--line2);}
+  .dacts .btn{flex:1;justify-content:center;}
+
+  .stats{display:flex;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line2);}
+  .stat{flex:1;background:#fafbfc;border:1px solid var(--line2);border-radius:9px;padding:12px 8px;text-align:center;}
+  .stat .n{font-size:21px;font-weight:700;letter-spacing:-.02em;}
+  .stat .l{font-size:11px;color:var(--muted);margin-top:1px;}
+  .stat.danger .n{color:var(--danger);}
+  .stat.hidden-note{background:repeating-linear-gradient(135deg,#fafbfc,#fafbfc 6px,#f2f4f7 6px,#f2f4f7 12px);}
+
+  .dsec{padding:16px 20px;border-bottom:1px solid var(--line2);}
+  .dsec:last-child{border-bottom:0;}
+  .dsec .sh{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
+    color:var(--faint);margin-bottom:11px;display:flex;align-items:center;gap:8px;}
+  .lrow{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13.5px;}
+  .lrow .r{margin-left:auto;font-size:12px;color:var(--faint);flex:none;}
+  .dot-ip{width:7px;height:7px;border-radius:50%;background:var(--head);flex:none;}
+  .dot-ws{width:7px;height:7px;border-radius:50%;background:var(--muted);flex:none;}
+  .task{padding:8px 0;}
+  .task .tt{font-size:13.5px;font-weight:560;}
+  .task .td{font-size:12px;color:var(--faint);margin-top:1px;}
+  .task .td.late{color:var(--danger);}
+  .task .col{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--faint);margin-bottom:3px;}
+  .act{display:flex;gap:9px;padding:7px 0;font-size:13px;}
+  .act .ai{flex:none;opacity:.6;}
+  .act .aw{min-width:0;}
+  .act .at{font-size:11.5px;color:var(--faint);margin-top:1px;}
+  .locked-note{font-size:12.5px;color:var(--muted);background:#fafbfc;border:1px dashed var(--line);
+    border-radius:9px;padding:12px 13px;display:flex;gap:9px;align-items:flex-start;}
+  .locked-note b{color:var(--ink);font-weight:640;}
+
+  .gridwrap{overflow-x:auto;}
+  table.vgrid{border-collapse:collapse;width:100%;min-width:660px;}
+  table.vgrid th,table.vgrid td{border-bottom:1px solid var(--line2);padding:0;text-align:center;}
+  table.vgrid thead th{padding:11px 8px;font-size:11px;font-weight:700;color:var(--muted);
+    border-bottom:1px solid var(--line);white-space:nowrap;}
+  table.vgrid thead th.pcol{text-align:left;padding-left:16px;}
+  table.vgrid td.pcell{text-align:left;padding:9px 16px;}
+  table.vgrid td.pcell .nm{font-weight:600;font-size:13px;display:flex;align-items:center;gap:7px;}
+  table.vgrid td.pcell .em{font-size:11px;color:var(--faint);}
+  table.vgrid tr.defrow{background:var(--root-050);}
+  table.vgrid tr.defrow td{border-bottom:1px solid var(--root-100);}
+  table.vgrid tr.over td.pcell .nm::after{content:"overridden";font-size:9px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.04em;background:var(--head-050);color:var(--head);
+    padding:2px 6px;border-radius:5px;}
+  .vcell{width:36px;height:32px;border-radius:8px;margin:0 auto;display:grid;place-items:center;cursor:pointer;
+    font-size:14px;font-weight:700;transition:.12s;}
+  .vcell.off{color:var(--faint);background:transparent;border:1px solid var(--line);}
+  .vcell.off:hover{background:#f4f6f8;}
+  .vcell.on{color:#fff;background:var(--accent);}
+  .acell{min-width:74px;height:32px;border-radius:8px;margin:0 auto;display:grid;place-items:center;cursor:pointer;
+    font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:0 9px;transition:.12s;}
+  .acell.hidden{color:var(--faint);background:transparent;border:1px solid var(--line);}
+  .acell.summary{color:#fff;background:var(--accent);}
+  .acell.full{color:#fff;background:var(--head);}
+  .grow-note{font-size:11.5px;color:var(--faint);padding:12px 16px 14px;}
+  .resetbtn{border:0;background:transparent;color:var(--faint);font-size:11px;font-weight:600;cursor:pointer;padding:2px 6px;}
+  .resetbtn:hover{color:var(--danger);}
+  .foot{margin-top:28px;font-size:12px;color:var(--faint);}
+  .empty{padding:30px 16px;text-align:center;color:var(--faint);font-size:13px;}
+</style>
+</head>
+<body>
+
+<div class="mockbar">
+  <span class="lbl">Mockup — viewing as</span>
+  <select id="viewsel"></select>
+  <span class="who" id="whonote"></span>
+</div>
+
+<div class="app">
+  <!-- sidebar -->
+  <nav class="nav">
+    <div class="navnote">Sidebar</div>
+    <div class="navitem dim">Inbox</div>
+    <div class="navitem dim">To-Do</div>
+    <div class="navitem dim">Workspace</div>
+    <div class="navitem dim">Intelligence</div>
+    <div class="navitem dim">Info Pages</div>
+    <div class="navitem on" style="margin-top:4px;">Team</div>
+    <div class="navsub" id="teamnav">
+      <div class="navitem on" data-tab="roster">Team members</div>
+      <div class="navitem" data-tab="access">Board access &amp; permissions</div>
+      <div class="navitem" data-tab="visible">What members can see</div>
+    </div>
+    <div class="navitem dim" style="margin-top:4px;">Settings</div>
+  </nav>
+
+  <!-- main -->
+  <main class="main"><div class="wrap">
+    <div class="head">
+      <div>
+        <h1 id="pgtitle">Team members</h1>
+        <div class="sub" id="pgsub">Everyone in the firm.</div>
+      </div>
+      <div class="rootpill" id="viewpill"><span class="dot"></span> <span id="viewpilltext"></span></div>
+    </div>
+
+    <!-- ROSTER -->
+    <section class="pane" data-pane="roster">
+      <div class="hint" id="roster-hint"></div>
+      <div class="rostmeta" id="rostmeta"></div>
+      <div class="card">
+        <div class="card-h"><div class="t">Firm members</div><div class="d">Click anyone to open their profile</div></div>
+        <div id="roster-list"></div>
+        <div class="addrow" id="addrow">
+          <input class="nmi" id="add-name" placeholder="Full name" />
+          <input class="emi" id="add-email" placeholder="name@kantor-consulting.com" />
+          <button class="btn pri" onclick="addMember()">Add member</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- BOARD ACCESS + PERMISSIONS (merged) -->
+    <section class="pane" data-pane="access" style="display:none;">
+      <div class="hint">
+        <span>🗂️</span>
+        <div><b>One board, two tiers.</b> <b>Members</b> do the work. <b>Heads</b> run the board — they hand out tasks, and on an info page they also move sources to analysis and publish. Same structure for workspace boards and info pages, which is why they share one list.</div>
+      </div>
+      <div class="panelrow">
+        <div class="card master" id="board-master"></div>
+        <div class="card detail">
+          <div class="detail-h">
+            <div class="t" id="bd-title">—</div>
+            <div class="d" id="bd-sub">—</div>
+          </div>
+          <div id="bd-invariant"></div>
+          <div class="prow" style="background:#fbfbfc;">
+            <div style="width:30px;flex:none;"></div>
+            <div class="grow" style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);">Roster member</div>
+            <div class="ctrls" id="bd-colhdrs"></div>
+          </div>
+          <div id="board-members"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VISIBILITY -->
+    <section class="pane" data-pane="visible" style="display:none;">
+      <div class="hint root">
+        <span>👁️</span>
+        <div><b>You decide how much of each other people see — person by person.</b> Identity and current work are always visible; that's what makes the page worth opening. Everything else starts from a default you set once, and you override it for anyone who needs more. Switch the viewer in the bar above to see any of this from their side.</div>
+      </div>
+
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-h"><div class="t">Always visible to everyone</div><div class="d">Not configurable</div></div>
+        <div class="vrow"><div class="grow"><div class="vt">Name, email and role<span class="tier always">Always</span></div><div class="vd">Who's in the firm, and how to reach them.</div></div></div>
+        <div class="vrow"><div class="grow"><div class="vt">Assigned boards<span class="tier always">Always</span></div><div class="vd">Which workspace boards someone works on.</div></div></div>
+        <div class="vrow"><div class="grow"><div class="vt">Active tasks<span class="tier always">Always</span></div><div class="vd">What someone is working on right now, so nobody duplicates it.</div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <div><div class="t">Who can see what</div><div class="d">Rows are people · click a cell to change what that person can see about everyone else</div></div>
+          <button class="btn" onclick="resetAllVis()">Reset everyone to default</button>
+        </div>
+        <div class="gridwrap"><table class="vgrid" id="vis-grid"></table></div>
+        <div class="grow-note">Activity cycles: <b>Hidden</b> → <b>Summary</b> (recent work, no timestamps) → <b>Full</b> (every action, timestamped — an audit log). Everyone always sees their own numbers in full.</div>
+      </div>
+
+      <div class="foot" style="margin-top:16px;">Head roles, card permission tiers and intel directives read from the board grants, not from here — this table is only about what people can <i>see</i> of each other.</div>
+    </section>
+
+    <div class="foot" id="pagefoot"></div>
+  </div></main>
+</div>
+
+<div class="scrim" id="scrim" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer"></aside>
+
+<script>
+/* ---------------- identities ---------------- */
+const ROOT = { email:"doriankantor@gmail.com", name:"Root admin", color:"#5b4bd0" };
+
+const AVCOLORS = ["#3b5bdb","#0b7285","#2b8a3e","#b4530a","#862e9c","#c2255c","#5f3dc4","#087f5b"];
+const people = [   // cloud table: team_members (8 rows)
+  { email:"dk@kantor-consulting.com",               name:"Dorian Kantor",          assignable:true, last:"2h ago" },
+  { email:"daniel.lozano@kantor-consulting.com",    name:"Daniel Lozano",          assignable:true, last:"20m ago" },
+  { email:"elisabeth.weber@kantor-consulting.com",  name:"Elisabeth Weber",        assignable:true, last:"1h ago" },
+  { email:"istiak.ahmed@kantor-consulting.com",     name:"Istiak Ahmed",           assignable:true, last:"yesterday" },
+  { email:"jd.cubillos@kantor-consulting.com",      name:"Juan Diego Cubillos",    assignable:true, last:"5m ago" },
+  { email:"leonardo.carreno@kantor-consulting.com", name:"Leonardo Carre\u00f1o",      assignable:true, last:"just now" },
+  { email:"ma.mejia@kantor-consulting.com",         name:"Maria Antonia Mejia",    assignable:true, last:"3h ago" },
+  { email:"mc.giraldo@kantor-consulting.com",       name:"Maria Carolina Giraldo", assignable:true, last:"1d ago" },
+];
+people.forEach((p,i)=>p.color = AVCOLORS[i % AVCOLORS.length]);
+const initials = n => n.split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
+const person = e => people.find(p=>p.email===e);
+
+const boards = [   // cloud: workspace_boards where deleted=0
+  { id:"board-main",                 name:"Think Tank",         type:"ws" },
+  { id:"board-subscription",         name:"Subscription Model", type:"ws" },
+  { id:"fa1715ae-...",               name:"Drone Database",     type:"ws" },
+  { id:"board-info-latam",           name:"Contested Skies",    type:"ip" },
+  { id:"board-info-trump",           name:"Immigration Undone", type:"ip" },
+  { id:"board-info-hollowborder",    name:"Hollow Border",      type:"ip" },
+  { id:"board-info-statedorder",     name:"The Stated Order",   type:"ip" },
+];
+const board = id => boards.find(b=>b.id===id);
+
+const membership = {}, heads = {};
+boards.forEach(b=>{ membership[b.id]=new Set(); heads[b.id]=new Set(); });
+const DK="dk@kantor-consulting.com";
+
+// STARTING STATE, as requested: nobody has anything except dk@, who has everything.
+// This also happens to mirror the live cloud today — board_members holds only dk@.
+boards.forEach(b=>{ membership[b.id].add(DK); heads[b.id].add(DK); });
+
+/* per-person work, for the drawer */
+const work = {   // illustrative only — real task data comes from WorkspaceContext
+  "dk@kantor-consulting.com":{done:0,tasks:[
+      {t:"Venezuela\u2013Colombia border paper",b:"Think Tank",col:"Scoping",due:"Jun 5",late:true},
+      {t:"Dual-Use Technology Policy Brief",b:"Think Tank",col:"Drafting",due:"Aug 2"}],
+    act:[["published","The Stated Order","3d ago"],["commented on","Immigration Undone","3d ago"],["approved 4 articles","Contested Skies","Jun 20"]]},
+  "daniel.lozano@kantor-consulting.com":{done:6,tasks:[
+      {t:"Europe Security Autonomy Research Report",b:"Think Tank",col:"Review",due:"Jul 28"}],
+    act:[["approved 12 articles","Contested Skies","1h ago"],["moved a source to analysis","Contested Skies","yesterday"]]},
+  "elisabeth.weber@kantor-consulting.com":{done:3,tasks:[
+      {t:"Hollow Border \u2014 publication pass",b:"Think Tank",col:"Analysis",due:"Jul 30"}],
+    act:[["added 3 sources","Hollow Border","yesterday"]]},
+  "istiak.ahmed@kantor-consulting.com":{done:2,tasks:[
+      {t:"Policy timeline build",b:"Think Tank",col:"Scoping",due:"Aug 4"}],
+    act:[["added 5 sources","Immigration Undone","yesterday"]]},
+  "jd.cubillos@kantor-consulting.com":{done:9,tasks:[
+      {t:"Counter-UAS procurement review",b:"Drone Database",col:"In progress",due:"Jul 24"},
+      {t:"Colombia 2026 Electoral Risk Brief",b:"Think Tank",col:"Review",due:"Jun 22",late:true}],
+    act:[["reviewed 22 articles","Contested Skies","5m ago"],["rejected 8 articles","Contested Skies","today"]]},
+  "leonardo.carreno@kantor-consulting.com":{done:11,tasks:[
+      {t:"Contested Skies \u2014 July update",b:"Subscription Model",col:"Analysis",due:"Jul 26"}],
+    act:[["published","Contested Skies","just now"],["issued a review directive","Contested Skies","today"]]},
+  "ma.mejia@kantor-consulting.com":{done:4,tasks:[
+      {t:"The Stated Order \u2014 source sweep",b:"Think Tank",col:"Scoping",due:"Aug 1"}],
+    act:[["published","The Stated Order","3h ago"]]},
+  "mc.giraldo@kantor-consulting.com":{done:5,tasks:[
+      {t:"Immigration Undone \u2014 framing note",b:"Think Tank",col:"Analysis",due:"Jul 29"},
+      {t:"Interview: border NGO",b:"Think Tank",col:"Review",due:"Jul 22",late:true}],
+    act:[["published","Immigration Undone","1d ago"],["approved 7 articles","Immigration Undone","1d ago"]]},
+};
+const overdueOf = e => (work[e]?.tasks||[]).filter(t=>t.late).length;
+
+/* ---------------- view + visibility state ---------------- */
+let viewAs = "root";      // 'root' | a member email
+let tab = "roster";
+let curBoard = "board-main";
+let selected = null;
+
+/* what a member is allowed to see ABOUT other people.
+   one default, plus per-person overrides. */
+const visDefaults = { intelProjects:false, completion:false, overdue:false, activity:"hidden", boardAccess:false };
+const visOverrides = {     // email -> partial
+  "dk@kantor-consulting.com":{ intelProjects:true, completion:true, overdue:true, activity:"full", boardAccess:true },
+};
+const VKEYS = ["intelProjects","completion","overdue","boardAccess"];
+
+function effVis(email){ return Object.assign({}, visDefaults, visOverrides[email]||{}); }
+const isRoot = () => viewAs === "root";
+const viewer = () => isRoot() ? null : effVis(viewAs);
+const can = k => isRoot() ? true : !!viewer()[k];
+const actLevel = () => isRoot() ? "full" : viewer().activity;
+
+function cycleVis(email,key){
+  const cur = effVis(email);
+  const o = visOverrides[email] = visOverrides[email] || {};
+  if(key==="activity"){
+    o.activity = cur.activity==="hidden" ? "summary" : cur.activity==="summary" ? "full" : "hidden";
+  } else o[key] = !cur[key];
+  if(email==="__default__"){} // unused
+  renderAll();
+}
+function cycleDefault(key){
+  if(key==="activity"){
+    visDefaults.activity = visDefaults.activity==="hidden" ? "summary" : visDefaults.activity==="summary" ? "full" : "hidden";
+  } else visDefaults[key] = !visDefaults[key];
+  renderAll();
+}
+function resetPerson(email){ delete visOverrides[email]; renderAll(); }
+function resetAllVis(){ Object.keys(visOverrides).forEach(k=>delete visOverrides[k]); renderAll(); }
+const isOverridden = e => !!visOverrides[e] && Object.keys(visOverrides[e]).length>0;
+
+/* ---------------- chrome ---------------- */
+document.getElementById("viewsel").addEventListener("change", e=>{
+  viewAs = e.target.value;
+  if(!isRoot() && (tab==="visible" || (tab==="access" && !can("boardAccess")))) tab="roster";
+  renderAll();
+});
+document.getElementById("teamnav").addEventListener("click", e=>{
+  const t=e.target.closest(".navitem"); if(!t||t.classList.contains("locked")) return;
+  tab=t.dataset.tab; renderAll();
+});
+
+/* ---------------- renderers ---------------- */
+function av(p,sz){ return `<div class="av" style="background:${p.color};${sz?`width:${sz}px;height:${sz}px;font-size:${sz*.38}px;`:''}">${initials(p.name)}</div>`; }
+const intelOf = e => boards.filter(b=>b.type==="ip" && membership[b.id].has(e));
+const wsOf    = e => boards.filter(b=>b.type==="ws" && membership[b.id].has(e));
+
+function renderChrome(){
+  const rootView = isRoot();
+
+  const sel=document.getElementById("viewsel");
+  if(sel.options.length !== people.length+1){
+    sel.innerHTML = `<option value="root">Root · doriankantor@gmail.com</option>` +
+      people.map(p=>`<option value="${p.email}">${p.name} · ${p.email}</option>`).join("");
+  }
+  sel.value = viewAs;
+
+  const hd = rootView ? [] : boards.filter(b=>heads[b.id].has(viewAs));
+  document.getElementById("whonote").innerHTML = rootView
+    ? `Root is <b>not</b> in the roster — no board rows, no profile.`
+    : `${hd.length?`Head of <b>${hd.length}</b> info page${hd.length===1?'':'s'} · `:``}sees only what you've opened up.`;
+
+  const pill=document.getElementById("viewpill");
+  pill.className = "rootpill" + (rootView?"":" memberpill");
+  document.getElementById("viewpilltext").textContent = rootView ? "Root view — only you see this" : "Member view";
+
+  document.querySelectorAll("#teamnav .navitem").forEach(n=>{
+    const t=n.dataset.tab;
+    const locked = !rootView && t==="access" && !can("boardAccess");
+    n.classList.toggle("locked", locked);
+    n.classList.toggle("on", t===tab);
+    n.style.display = (!rootView && t==="visible") ? "none" : "";
+  });
+
+  const titles = {
+    roster:["Team members","Everyone in the firm."],
+    access:["Board access & permissions", rootView?"Who's on each board, who hands out work, who publishes.":"Who's on each board. Read-only."],
+    visible:["What members can see","Set a default, then open it up for whoever needs more."]
+  };
+  document.getElementById("pgtitle").textContent = titles[tab][0];
+  document.getElementById("pgsub").textContent   = titles[tab][1];
+  document.querySelectorAll(".pane").forEach(p=>p.style.display = p.dataset.pane===tab ? "" : "none");
+
+  document.getElementById("pagefoot").textContent = rootView
+    ? "Mockup · per-person visibility — set it here, then switch the viewer to check it."
+    : `Mockup · this is ${person(viewAs)?person(viewAs).name.split(" ")[0]:"a member"}'s view. Switch back to root to change it.`;
+}
+
+function renderRoster(){
+  const rootView=isRoot();
+  document.getElementById("roster-hint").innerHTML = rootView
+    ? `<span>👥</span><div><b>The roster is the firm.</b> Everyone here can be put on boards and info pages, and appears in every “assign to” list. Removing someone here removes them everywhere. Sign-in identity is the <b>@kantor-consulting.com</b> email.</div>`
+    : `<span>👥</span><div><b>Everyone in the firm.</b> Click a name to see what they're working on.</div>`;
+
+  document.getElementById("rostmeta").innerHTML =
+    `<span><b>${people.length}</b> members</span><span><b>${people.filter(p=>p.assignable).length}</b> assignable</span>` +
+    (rootView?`<span><b>${boards.filter(b=>b.type==='ip').length}</b> info pages</span>`:``);
+
+  document.getElementById("addrow").style.display = rootView ? "" : "none";
+
+  document.getElementById("roster-list").innerHTML = people.map(p=>{
+    const hd = boards.filter(b=>heads[b.id].has(p.email));
+    const badges = hd.length ? `<span class="badge head" title="${hd.map(b=>b.name).join(', ')}">Head ×${hd.length}</span>` : `<span class="badge mem">Member</span>`;
+    return `<div class="prow click ${selected===p.email?'sel':''}" onclick="openDrawer('${p.email}')">
+      ${av(p)}
+      <div class="pn grow"><div class="nm">${p.name} ${badges}</div><div class="em">${p.email}</div></div>
+      <div class="ctrls" onclick="event.stopPropagation()">
+        ${rootView ? `<div class="tg ${p.assignable?'on':''}" onclick="toggleAssignable('${p.email}')" title="Can be assigned tasks"><span class="sw"></span><span class="lb">Assignable</span></div>
+                      <button class="btn ghost-danger" onclick="removeMember('${p.email}')">Remove</button>`
+                   : `<span class="last" style="font-size:12px;color:var(--faint);">Active ${p.last}</span>`}
+      </div>
+    </div>`;
+  }).join("");
+}
+function toggleAssignable(email){ const p=person(email); p.assignable=!p.assignable; renderAll(); }
+function removeMember(email){
+  const i=people.findIndex(p=>p.email===email); if(i<0) return;
+  people.splice(i,1);
+  boards.forEach(b=>{ membership[b.id].delete(email); heads[b.id].delete(email); });
+  if(selected===email) closeDrawer();
+  renderAll();
+}
+function addMember(){
+  const name=document.getElementById("add-name").value.trim();
+  const email=document.getElementById("add-email").value.trim().toLowerCase();
+  if(!name||!email) return;
+  if(person(email)){ alert("That email is already in the roster."); return; }
+  people.push({ email,name,assignable:true,last:"never",color:AVCOLORS[people.length%AVCOLORS.length] });
+  work[email]={done:0,tasks:[],act:[]};
+  document.getElementById("add-name").value=""; document.getElementById("add-email").value="";
+  renderAll();
+}
+
+/* ---------- merged board access ---------- */
+function renderBoardMaster(){
+  document.getElementById("board-master").innerHTML =
+    `<div class="card-h"><div class="t">Boards</div></div>` +
+    boards.map(b=>{
+      const h=heads[b.id].size;
+      return `<div class="mitem ${b.id===curBoard?'on':''}" onclick="selectBoard('${b.id}')">
+        <div><div class="nm">${b.name}</div><div class="mt">${h} head${h===1?'':'s'} · ${membership[b.id].size} members</div></div>
+        <span class="btype ${b.type}">${b.type==='ip'?'Info page':'Workspace'}</span>
+      </div>`;
+    }).join("");
+}
+function selectBoard(id){ curBoard=id; renderAll(); }
+
+function renderBoardDetail(){
+  const b=board(curBoard), ip=b.type==="ip", rootView=isRoot();
+  document.getElementById("bd-title").innerHTML =
+    `${b.name} <span class="btype ${b.type}" style="margin-left:0;">${ip?'Info page':'Workspace'}</span>`;
+  document.getElementById("bd-sub").textContent =
+    `${membership[b.id].size} of ${people.length} roster members · ${heads[b.id].size} head(s)`;
+
+  document.getElementById("bd-invariant").innerHTML =
+    `<div class="invariant">🔒 A head is always a member. On this ${ip?'info page a head hands out work <b>and</b> runs publication — moving sources to analysis and publishing':'workspace board a head hands out work to others'}.</div>`;
+
+  document.getElementById("bd-colhdrs").innerHTML =
+    `<div class="colhdr">Member</div><div class="colhdr">Head</div>`;
+
+  document.getElementById("board-members").innerHTML = people.map(p=>{
+    const isMem=membership[b.id].has(p.email), isHead=heads[b.id].has(p.email);
+    const cell = html => `<div style="width:92px;display:flex;justify-content:center;">${html}</div>`;
+    let memberCtrl, headCtrl;
+    if(rootView){
+      memberCtrl = `<div class="tg ${isMem?'on':''} ${isHead?'locked':''}" onclick="${isHead?`bump()`:`toggleMember('${b.id}','${p.email}')`}" title="${isHead?'Remove the head role first':'On this board'}"><span class="sw"></span></div>`;
+      headCtrl   = `<div class="tg head ${isHead?'on':''}" onclick="toggleHead('${b.id}','${p.email}')" title="${ip?'Hands out work and publishes':'Hands out work here'}"><span class="sw"></span></div>`;
+    } else {
+      const ro = (on,cls) => on ? `<span class="badge" style="background:${cls==='head'?'var(--head)':'var(--accent)'};color:#fff;">Yes</span>` : `<span style="color:var(--faint);">·</span>`;
+      memberCtrl = ro(isMem); headCtrl = ro(isHead,"head");
+    }
+    return `<div class="prow">
+      ${av(p)}
+      <div class="pn grow"><div class="nm">${p.name}${isHead?' <span class="badge head">Head</span>':''}</div><div class="em">${p.email}</div></div>
+      <div class="ctrls">${cell(memberCtrl)}${cell(headCtrl)}</div>
+    </div>`;
+  }).join("");
+}
+function toggleMember(bid,email){
+  const s=membership[bid];
+  if(s.has(email)){ s.delete(email); heads[bid].delete(email); } else s.add(email);
+  renderAll();
+}
+function toggleHead(bid,email){
+  const h=heads[bid];
+  if(h.has(email)) h.delete(email); else { h.add(email); membership[bid].add(email); }
+  renderAll();
+}
+let bumpT=null;
+function bump(){
+  const inv=document.querySelector("#bd-invariant .invariant"); if(!inv) return;
+  inv.style.transition="none"; inv.style.background="#f6d9bf";
+  clearTimeout(bumpT); bumpT=setTimeout(()=>{ inv.style.transition=".4s"; inv.style.background=""; },60);
+}
+
+/* ---------- visibility grid ---------- */
+const VCOLS = [
+  ["intelProjects","Intel projects"],
+  ["completion","Completed"],
+  ["overdue","Overdue"],
+  ["boardAccess","Access tab"],
+];
+function vcell(on,onclick){ return `<td><div class="vcell ${on?'on':'off'}" onclick="${onclick}">${on?'\u2713':''}</div></td>`; }
+function acell(level,onclick){ return `<td><div class="acell ${level}" onclick="${onclick}">${level}</div></td>`; }
+
+function renderVisibility(){
+  const g=document.getElementById("vis-grid"); if(!g) return;
+  const headCells = VCOLS.map(c=>`<th>${c[1]}</th>`).join("") + `<th>Activity</th>`;
+  const defRow = `<tr class="defrow">
+      <td class="pcell"><div class="nm">Default — everyone</div><div class="em">Applies unless overridden below</div></td>
+      ${VCOLS.map(c=>vcell(visDefaults[c[0]],`cycleDefault('${c[0]}')`)).join("")}
+      ${acell(visDefaults.activity,`cycleDefault('activity')`)}
+      <td></td>
+    </tr>`;
+  const rows = people.map(p=>{
+    const v=effVis(p.email), over=isOverridden(p.email);
+    const hd=boards.filter(b=>heads[b.id].has(p.email));
+    return `<tr class="${over?'over':''}">
+      <td class="pcell">
+        <div class="nm">${p.name}${hd.length?' <span class="badge head">Head</span>':''}</div>
+        <div class="em">${p.email}</div>
+      </td>
+      ${VCOLS.map(c=>vcell(v[c[0]],`cycleVis('${p.email}','${c[0]}')`)).join("")}
+      ${acell(v.activity,`cycleVis('${p.email}','activity')`)}
+      <td>${over?`<button class="resetbtn" onclick="resetPerson('${p.email}')" title="Back to the default">reset</button>`:''}</td>
+    </tr>`;
+  }).join("");
+  g.innerHTML = `<thead><tr><th class="pcol">Person can see…</th>${headCells}<th></th></tr></thead><tbody>${defRow}${rows}</tbody>`;
+}
+
+/* ---------- member drawer ---------- */
+function openDrawer(email){ selected=email; renderAll(); document.getElementById("drawer").classList.add("on"); document.getElementById("scrim").classList.add("on"); }
+function closeDrawer(){ selected=null; document.getElementById("drawer").classList.remove("on"); document.getElementById("scrim").classList.remove("on"); renderRoster(); }
+
+function renderDrawer(){
+  const d=document.getElementById("drawer");
+  if(!selected){ d.innerHTML=""; return; }
+  const p=person(selected); if(!p){ d.innerHTML=""; return; }
+  const w=work[p.email]||{done:0,tasks:[],act:[]};
+  const self = !isRoot() && p.email===viewAs;
+  const showDone = can("completion") || self;
+  const showOver = can("overdue") || self;
+  const showIntel= can("intelProjects") || self;
+  const lvl = self ? "full" : actLevel();
+  const hd = boards.filter(b=>heads[b.id].has(p.email));
+  const ov = overdueOf(p.email);
+
+  const statHidden = `<div class="stat hidden-note"><div class="n" style="color:var(--faint);">—</div><div class="l">Hidden</div></div>`;
+
+  d.innerHTML = `
+    <div class="dh">
+      <div class="dh-top">
+        ${av(p,52)}
+        <div class="grow" style="min-width:0;">
+          <div class="nm">${p.name}</div>
+          <div class="em">${p.email}</div>
+          <div class="meta">
+            ${hd.length?`<span class="badge head">Head ×${hd.length}</span>`:`<span class="badge mem">Member</span>`}
+            <span class="last">Active ${p.last}</span>
+          </div>
+        </div>
+        <button class="x" onclick="closeDrawer()">×</button>
+      </div>
+    </div>
+    <div class="dacts">
+      <button class="btn">View on Team page</button>
+      <button class="btn pri">Send message</button>
+    </div>
+
+    <div class="stats">
+      ${showDone?`<div class="stat"><div class="n">${w.done}</div><div class="l">Done this week</div></div>`:statHidden}
+      <div class="stat"><div class="n">${w.tasks.length}</div><div class="l">Active tasks</div></div>
+      ${showOver?`<div class="stat ${ov?'danger':''}"><div class="n">${ov}</div><div class="l">Overdue</div></div>`:statHidden}
+    </div>
+
+    <div class="dsec">
+      <div class="sh">Assigned boards</div>
+      ${wsOf(p.email).length ? wsOf(p.email).map(b=>`<div class="lrow"><span class="dot-ws"></span>${b.name}<span class="r">${(w.tasks.filter(t=>t.b===b.name).length)||0} task(s)</span></div>`).join("")
+        : `<div style="color:var(--faint);font-size:13px;">None</div>`}
+    </div>
+
+    <div class="dsec">
+      <div class="sh">Assigned intelligence projects</div>
+      ${showIntel
+        ? (intelOf(p.email).length
+            ? intelOf(p.email).map(b=>`<div class="lrow"><span class="dot-ip"></span>${b.name}${heads[b.id].has(p.email)?' <span class="badge head" style="margin-left:6px;">Head</span>':''}<span class="r">${heads[b.id].has(p.email)?'publishes':'member'}</span></div>`).join("")
+            : `<div style="color:var(--faint);font-size:13px;">None</div>`)
+        : `<div class="locked-note"><span>🔒</span><div><b>Not shown to members.</b> Turn on “Assigned intelligence projects” to open this up.</div></div>`}
+    </div>
+
+    <div class="dsec">
+      <div class="sh">Active tasks</div>
+      ${w.tasks.length ? w.tasks.map(t=>`
+        <div class="task">
+          <div class="col">${t.col} · ${t.b}</div>
+          <div class="tt">${t.t}</div>
+          <div class="td ${t.late&&showOver?'late':''}">${t.late&&!showOver?'Due date hidden':'Due '+t.due}</div>
+        </div>`).join("") : `<div style="color:var(--faint);font-size:13px;">Nothing active</div>`}
+    </div>
+
+    <div class="dsec">
+      <div class="sh">Latest activity</div>
+      ${lvl==="hidden"
+        ? `<div class="locked-note"><span>🔒</span><div><b>Not shown to members.</b> Set activity to Summary or Full to open this up.</div></div>`
+        : (w.act.length ? w.act.slice(0, lvl==="summary"?2:w.act.length).map(a=>`
+            <div class="act"><span class="ai">◆</span><div class="aw">
+              <div>${a[0]} <b style="font-weight:640;">${a[1]}</b></div>
+              ${lvl==="full"?`<div class="at">${a[2]}</div>`:``}
+            </div></div>`).join("")
+          + (lvl==="summary"?`<div style="font-size:11.5px;color:var(--faint);margin-top:8px;">Summary — recent work only, no timestamps.</div>`:``)
+          : `<div style="color:var(--faint);font-size:13px;">No recent activity</div>`)}
+    </div>`;
+}
+
+/* ---------------- init ---------------- */
+function renderAll(){
+  renderChrome(); renderRoster(); renderBoardMaster(); renderBoardDetail(); renderVisibility(); renderDrawer();
+}
+renderAll();
+</script>
+</body>
+</html>

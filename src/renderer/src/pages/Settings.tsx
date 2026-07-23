@@ -1,6 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { ADMIN_EMAIL } from '../supabase/client'
 import { useTheme, GRADIENT_PRESETS, LIGHT_THEME_PRESETS } from '../contexts/ThemeContext'
 import ConnectClaude from '../components/ConnectClaude'
 import { useWorkspace } from '../contexts/WorkspaceContext'
@@ -255,170 +254,6 @@ export default function Settings() {
   const [editName,    setEditName]    = useState('')
   const [editRole,    setEditRole]    = useState('')
 
-  // ── Team tabs ──────────────────────────────────────────────────────────────
-  const [teamTab, setTeamTab] = useState<'members'|'board-access'>('members')
-
-  // ── Board Access matrix ────────────────────────────────────────────────────
-  type BoardRow = { id: string; name: string; board_type?: string }
-  const [matrixBoards,  setMatrixBoards]  = useState<BoardRow[]>([])
-  const [matrixMembers, setMatrixMembers] = useState<LocalTeamMember[]>([])
-  const [matrix, setMatrix] = useState<Record<string, Set<string>>>({}) // boardId → Set<userId> (members)
-  const [heads, setHeads]   = useState<Record<string, Set<string>>>({}) // info-page boardId → Set<user_email> (project heads)
-  const [matrixLoading, setMatrixLoading] = useState(false)
-  const [matrixMsg,     setMatrixMsg]     = useState<{type:'ok'|'err';text:string}|null>(null)
-
-  async function loadMatrix() {
-    setMatrixLoading(true)
-    try {
-      const [bs, ms] = await Promise.all([window.api.boards.list(false), window.api.team.list()])
-      setMatrixBoards(bs.map(b => ({ id: b.id, name: b.name, board_type: b.board_type })))
-      setMatrixMembers(ms)
-      const m: Record<string, Set<string>> = {}
-      const h: Record<string, Set<string>> = {}
-      for (const b of bs) {
-        const bMembers = await window.api.boardMembers.list(b.id)
-        // Key the member Set by lowercased EMAIL (listMembers sets email/user_id both
-        // to the cloud user_email) — matching the render + toggles below, and mirroring
-        // how heads are keyed. Fixes checkmarks vanishing on reload.
-        m[b.id] = new Set(bMembers.map(bm => (bm.email || bm.user_id || '').toLowerCase()))
-        // Project heads (info-page boards only) — email-keyed cloud info_page_owners.
-        if (b.board_type === 'info-page') {
-          try {
-            const owners = await window.api.infoPages.getOwners(b.id)
-            h[b.id] = new Set(owners.map(o => o.user_email.toLowerCase()))
-          } catch { h[b.id] = new Set() }
-        }
-      }
-      setMatrix(m)
-      setHeads(h)
-    } catch {
-      setMatrixMsg({ type: 'err', text: 'Failed to load board access data.' })
-      setTimeout(() => setMatrixMsg(null), 3000)
-    }
-    setMatrixLoading(false)
-  }
-
-  async function toggleBoardAccess(boardId: string, userId: string, hasAccess: boolean) {
-    const member = matrixMembers.find(m => m.id === userId)
-    const board  = matrixBoards.find(b => b.id === boardId)
-    if (!member || !board) return
-    const key = member.email.toLowerCase()   // local Set is email-keyed; IPC stays m.id (server resolves id→email)
-    try {
-      if (hasAccess) {
-        await window.api.boardMembers.remove(boardId, userId)
-        setMatrix(prev => {
-          const next = { ...prev }
-          next[boardId] = new Set(prev[boardId])
-          next[boardId].delete(key)
-          return next
-        })
-        // Invariant: a head must be a member — removing membership removes head too.
-        if (board.board_type === 'info-page' && heads[boardId]?.has(key)) {
-          await window.api.infoPages.removeOwner(boardId, userId)
-          setHeads(prev => {
-            const next = { ...prev }
-            next[boardId] = new Set(prev[boardId])
-            next[boardId].delete(key)
-            return next
-          })
-        }
-      } else {
-        const adderName = localUser?.name ?? 'Admin'
-        await window.api.boardMembers.add(boardId, userId, adderName)
-        setMatrix(prev => {
-          const next = { ...prev }
-          next[boardId] = new Set(prev[boardId])
-          next[boardId].add(key)
-          return next
-        })
-      }
-    } catch {
-      setMatrixMsg({ type: 'err', text: 'Failed to update access.' })
-      setTimeout(() => setMatrixMsg(null), 3000)
-    }
-  }
-
-  // Toggle a member as a project HEAD for an info-page board (root-only). Writes/removes
-  // an email-keyed cloud info_page_owners row, then REFETCHES that board's heads (truth,
-  // not an optimistic flip). Invariant: a head must be a member — turning head ON first
-  // ensures board membership.
-  async function toggleHead(boardId: string, member: LocalTeamMember, isHead: boolean) {
-    const key = member.email.toLowerCase()   // local Sets are email-keyed; IPC stays member.id
-    try {
-      if (isHead) {
-        // Turning head OFF — membership is left untouched.
-        await window.api.infoPages.removeOwner(boardId, member.id)
-      } else {
-        // Turning head ON — a head must be a member: add membership first if missing.
-        if (!matrix[boardId]?.has(key)) {
-          const adderName = localUser?.name ?? 'Admin'
-          await window.api.boardMembers.add(boardId, member.id, adderName)
-          setMatrix(prev => {
-            const next = { ...prev }
-            next[boardId] = new Set(prev[boardId])
-            next[boardId].add(key)   // green member check now appears alongside Head
-            return next
-          })
-        }
-        await window.api.infoPages.addOwner(boardId, member.id)
-      }
-      const owners = await window.api.infoPages.getOwners(boardId)
-      setHeads(prev => ({ ...prev, [boardId]: new Set(owners.map(o => o.user_email.toLowerCase())) }))
-    } catch {
-      setMatrixMsg({ type: 'err', text: 'Failed to update project head.' })
-      setTimeout(() => setMatrixMsg(null), 3000)
-    }
-  }
-
-  async function grantAllBoards(userId: string) {
-    const adderName = localUser?.name ?? 'Admin'
-    const member = matrixMembers.find(m => m.id === userId)
-    if (!member) return
-    const key = member.email.toLowerCase()   // local Set is email-keyed; IPC stays m.id
-    for (const b of matrixBoards) {
-      if (!matrix[b.id]?.has(key)) {
-        await window.api.boardMembers.add(b.id, userId, adderName).catch(() => {})
-        setMatrix(prev => {
-          const next = { ...prev }
-          next[b.id] = new Set(prev[b.id])
-          next[b.id].add(key)
-          return next
-        })
-      }
-    }
-  }
-
-  async function revokeAllBoards(userId: string, memberName: string) {
-    if (!confirm(`Remove ${memberName} from all non-admin boards? They will lose access immediately.`)) return
-    const member = matrixMembers.find(m => m.id === userId)
-    if (!member) return
-    // Don't remove root (root has no board_members rows and sees all via isRoot)
-    if (member.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) return
-    const key = member.email.toLowerCase()   // local Set is email-keyed; IPC stays m.id
-    for (const b of matrixBoards) {
-      // Invariant: revoking membership also revokes head (info-page boards). Remove
-      // head first so we never briefly leave a head without membership.
-      if (b.board_type === 'info-page' && heads[b.id]?.has(key)) {
-        await window.api.infoPages.removeOwner(b.id, userId).catch(() => {})
-        setHeads(prev => {
-          const next = { ...prev }
-          next[b.id] = new Set(prev[b.id])
-          next[b.id].delete(key)
-          return next
-        })
-      }
-      if (matrix[b.id]?.has(key)) {
-        await window.api.boardMembers.remove(b.id, userId).catch(() => {})
-        setMatrix(prev => {
-          const next = { ...prev }
-          next[b.id] = new Set(prev[b.id])
-          next[b.id].delete(key)
-          return next
-        })
-      }
-    }
-  }
-
   // ── Templates ─────────────────────────────────────────────────────────────
   const [templates,      setTemplates]      = useState<TaskTemplate[]>([])
   const [templateLoading,setTemplateLoading]= useState(false)
@@ -478,7 +313,7 @@ export default function Settings() {
         })
       }).catch(() => {})
     }
-    if (isRoot) { loadAreas(); loadTeam(); loadTemplates(); loadMatrix() }
+    if (isRoot) { loadAreas(); loadTeam(); loadTemplates() }
     async function loadArchived() {
       setArchivedLoading(true)
       try {
@@ -1207,23 +1042,6 @@ export default function Settings() {
         {/* Team Management (admin only) */}
         {isRoot && (
           <Section title="Team Management">
-            {/* Tabs */}
-            <div className="flex border-b border-gray-100 dark:border-white/[0.06]">
-              <button
-                onClick={() => setTeamTab('members')}
-                className={`titlebar-no-drag px-5 py-3 text-xs font-semibold transition border-b-2 ${teamTab === 'members' ? 'border-hub-gold text-hub-gold' : 'border-transparent text-gray-400 dark:text-white/50 hover:text-gray-600 dark:hover:text-white/70'}`}
-              >
-                Members
-              </button>
-              <button
-                onClick={() => { setTeamTab('board-access'); if (matrixBoards.length === 0) loadMatrix() }}
-                className={`titlebar-no-drag px-5 py-3 text-xs font-semibold transition border-b-2 ${teamTab === 'board-access' ? 'border-hub-gold text-hub-gold' : 'border-transparent text-gray-400 dark:text-white/50 hover:text-gray-600 dark:hover:text-white/70'}`}
-              >
-                Board Access
-              </button>
-            </div>
-
-            {teamTab === 'members' && (
             <div className="px-5 py-4">
               <div className="flex items-center justify-between mb-4">
                 <p className="text-xs text-gray-400 dark:text-white/65">{members.length} member{members.length !== 1 ? 's' : ''}</p>
@@ -1318,124 +1136,6 @@ export default function Settings() {
                 </div>
               )}
             </div>
-            )}
-
-            {/* Board Access tab */}
-            {teamTab === 'board-access' && (
-              <div className="px-5 py-4">
-                {matrixMsg && (
-                  <div className={`mb-3 p-2.5 rounded-xl text-xs ${matrixMsg.type === 'ok' ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
-                    {matrixMsg.text}
-                  </div>
-                )}
-                {matrixLoading ? (
-                  <p className="text-sm text-gray-400 dark:text-white/50 py-4 text-center">Loading…</p>
-                ) : matrixBoards.length === 0 ? (
-                  <p className="text-sm text-gray-400 dark:text-white/50 py-4 text-center">No boards yet.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    {isRoot && matrixBoards.some(b => b.board_type === 'info-page') && (
-                      <p className="mb-2 text-[10px] text-gray-400 dark:text-white/45">
-                        Green checkbox = board <strong>member</strong>. On info-page projects, the amber
-                        <span className="text-amber-600 dark:text-amber-400"> Head</span> toggle assigns a
-                        <strong> project head</strong> — can move sources to analysis and publish.
-                      </p>
-                    )}
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr>
-                          <th className="text-left py-2 pr-3 text-gray-400 dark:text-white/50 font-semibold uppercase tracking-wider text-[10px]">Member</th>
-                          {matrixBoards.map(b => (
-                            <th key={b.id} className="py-2 px-2 text-gray-400 dark:text-white/50 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap max-w-[80px] truncate" title={b.name}>
-                              <span className="block truncate max-w-[72px]">{b.name}</span>
-                            </th>
-                          ))}
-                          <th className="py-2 pl-3 text-right text-gray-400 dark:text-white/50 font-semibold uppercase tracking-wider text-[10px]">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                        {matrixMembers.map(m => {
-                          // Only ROOT implicitly has all-board access; role==='admin' is cosmetic now.
-                          const isRootMember = m.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()
-                          const name = m.full_name || m.email
-                          return (
-                            <tr key={m.id} className="group hover:bg-gray-50 dark:hover:bg-white/[0.02] transition">
-                              <td className="py-2.5 pr-3 min-w-[120px]">
-                                <div>
-                                  <p className="font-medium text-gray-700 dark:text-white/80 truncate max-w-[140px]">{name}</p>
-                                  <p className="text-[10px] text-gray-400 dark:text-white/45 truncate max-w-[140px]">{m.email}</p>
-                                </div>
-                              </td>
-                              {matrixBoards.map(b => {
-                                const hasAccess = isRootMember || !!(matrix[b.id]?.has(m.email.toLowerCase()))
-                                const isInfoPage = b.board_type === 'info-page'
-                                const isHead = !!(heads[b.id]?.has(m.email.toLowerCase()))
-                                return (
-                                  <td key={b.id} className="py-2.5 px-2 text-center align-top">
-                                    <input
-                                      type="checkbox"
-                                      checked={hasAccess}
-                                      disabled={isRootMember}
-                                      onChange={() => toggleBoardAccess(b.id, m.id, hasAccess)}
-                                      className={`titlebar-no-drag w-4 h-4 rounded cursor-pointer disabled:cursor-not-allowed ${hasAccess ? 'accent-green-500' : ''}`}
-                                      title={hasAccess ? 'Member — has access' : 'Not a member'}
-                                    />
-                                    {isRoot && isInfoPage && (
-                                      <label
-                                        className="mt-1 flex items-center justify-center gap-0.5 cursor-pointer"
-                                        title="Project head — can move sources to analysis and publish"
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={isHead}
-                                          onChange={() => toggleHead(b.id, m, isHead)}
-                                          className="titlebar-no-drag w-3 h-3 rounded accent-amber-500 cursor-pointer"
-                                        />
-                                        <span className="text-[8px] uppercase tracking-wide text-amber-600 dark:text-amber-400">Head</span>
-                                      </label>
-                                    )}
-                                  </td>
-                                )
-                              })}
-                              <td className="py-2.5 pl-3">
-                                <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition">
-                                  {!isRootMember && (
-                                    <>
-                                      <button
-                                        onClick={() => grantAllBoards(m.id)}
-                                        className="titlebar-no-drag px-2 py-1 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-600 dark:text-green-400 text-[10px] font-medium transition whitespace-nowrap"
-                                      >
-                                        Grant all
-                                      </button>
-                                      <button
-                                        onClick={() => revokeAllBoards(m.id, name)}
-                                        className="titlebar-no-drag px-2 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 text-[10px] font-medium transition whitespace-nowrap"
-                                      >
-                                        Revoke all
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                        {/* Summary row */}
-                        <tr className="border-t-2 border-gray-200 dark:border-white/[0.1]">
-                          <td className="py-2 pr-3 text-[10px] text-gray-400 dark:text-white/50 font-semibold uppercase tracking-wider">Total members</td>
-                          {matrixBoards.map(b => (
-                            <td key={b.id} className="py-2 px-2 text-center text-[11px] font-bold text-gray-600 dark:text-white/65">
-                              {matrix[b.id]?.size ?? 0}
-                            </td>
-                          ))}
-                          <td />
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
           </Section>
         )}
 
