@@ -1,8 +1,24 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
   Generated: 2026-07-23
-  Current version: v2.4.0 (releasing 2026-07-23 from v2.3.0 — bump/tag follow this commit).
-                   SHIPS IN v2.4.0 — the post-v2.3.0 batch: 2d76b9a (visibleBoardIds
+  Current version: v2.4.0 — RELEASED 2026-07-23 (tag v2.4.0, version-bump 97846c3).
+                   ⚠ UNINSTALLABLE ON macOS: a fresh install is deleted on launch
+                   ("Malware entfernt"); spctl reports "notarization indicates this
+                   code has been revoked". The build is unsigned by config
+                   (notarize: false, hardenedRuntime: false) — SIGNING IS DEFERRED TO
+                   LAUNCH (Apple Developer Program $99/yr + Developer ID cert +
+                   hardenedRuntime + notarize). Windows deferred too but still RUNS
+                   (SmartScreen warning only), so macOS is the harder block.
+                   UNRELEASED since v2.4.0 (13 commits, NOT in the installed app):
+                   80032f4 (dead PUSH-TO-INFO-PAGE stat removed), e05e8a2 (sidebar
+                   badge refresh), 9bf124c (Relevance/Date sort toggle), c2e7543
+                   (Board Access relocated to the Team page), 782b779 (permission
+                   writes surface failures instead of assuming success), 720dbb8
+                   (N-1 — notifications identity unified: EMAIL is now the canonical
+                   recipient key), 607ef70 (attachmentsCloud CLOUD_ADMIN_EMAIL import
+                   fix — node tsc baseline 8 -> 5), 2773ba2 (N-1 backfill log guard),
+                   plus docs 859b2cf / 3d0acc3 / 4bb7ca1 / 72a82d7 / eda60e2.
+                   SHIPPED IN v2.4.0 — the post-v2.3.0 batch: 2d76b9a (visibleBoardIds
                    non-root no-join fix), b211638 (slice 0b-0 — realtime channel-health
                    instrumentation), the COMPOSE SILENT-FAILURE CLUSTER, now CLOSED:
                    c60c9c2 (Social form-loss), ae067da (updateStatus phantom-row guard),
@@ -57,19 +73,22 @@
                    kills the recurrence-without-due zombie state at the source.
                    NOTE: A-2's commit subject says "editable title" but title is
                    READ-ONLY (no setTitle handler exists).
-                   Installed app is still 2.3.0 until this release publishes. v2.4.0 also
+                   v2.4.0 also
                    ships the intel counter/list-correctness batch (6208649, 481c62c,
                    63e089e, 2927df7) — see the CHANGELOG entry below for the grouped summary.
                    Shipped in v2.3.0: 8eae348 (0a-1), 2e22178 (0a-1b), 923f334
                    (scroll-jump fix), a5d4b20 (0a-2 — intel read gate), 8662b68 (docs
                    0a-2), 46be18e (0a-3 — info_page_* read gate), f80b17d (docs 0a-3),
                    26ee18c (0a-4 — info_page_* WRITE gate, M/A/R), 49b44fd (docs 0a-4).
-                   HEAD 47f40e4   |   381 commits   |   ~43,000 lines of TS/TSX
+                   HEAD eda60e2   |   396 commits   |   ~43,100 lines of TS/TSX
                    8 assets on GitHub Releases incl. BOTH auto-update manifests
                    (latest-mac.yml + latest.yml) — installed builds self-update.
                    ACCESS-CONTROL GAP (finding 1) CLOSED END-TO-END — reads + writes —
                    AND ITS FOUNDATION (the non-root no-join) NOW CLOSED TOO (2d76b9a).
-                   NEXT STEP: 0b (realtime health) — now with direct field evidence.
+                   NEXT STEP: N-2 (cloud notifications table + two-tier read/write),
+                   then N-3 (user-scoped realtime), N-4 (off-work notification drop),
+                   then To-Do 2.5. (0b shipped in v2.2.0 — the old "NEXT STEP: 0b"
+                   line here was stale and has been removed.)
   Repo: github.com/Doriankantor/kantor-consulting-hub
   PRIOR RELEASE — v2.1.0 (published 2026-07-15; mac universal DMG/zip + win NSIS x64,
   auto-update manifests live). A MINOR bump shipping the whole post-v2.0.22 batch: the
@@ -1322,7 +1341,44 @@ DESIGN PRINCIPLES / CONVENTIONS
 ───────────────────────────────────────────────────────────────────────────────
 9. VERSION HISTORY / CHANGELOG (highlights, 2026-05-25 → 2026-07-23)
 ───────────────────────────────────────────────────────────────────────────────
-  UNRELEASED (post-v2.4.0, 2026-07-23) -- TEAM PAGE + CLOUD HOUSEKEEPING
+  UNRELEASED (post-v2.4.0, 2026-07-23) -- TEAM PAGE + NOTIFICATIONS IDENTITY
+    * N-1: NOTIFICATIONS SINGLE CHOKE POINT + EMAIL IDENTITY (720dbb8, LOCAL only)
+      -- EMAIL is now the CANONICAL RECIPIENT KEY. notifications.user_id had held
+      three incompatible formats at once (device UUIDs 300, literal 'local-admin'
+      240, emails 6), written by 11 sites via 3 paths and read by a device-id-only
+      path, so email-keyed rows were STRUCTURALLY UNREADABLE and cross-member
+      notifications never arrived. All 9 writers now route through
+      createNotification, which holds the ONLY INSERT INTO notifications in src/
+      (the direct task-complete INSERT and the notifications:create IPC both used
+      to bypass it). Recipients normalized through the EXISTING resolveIdentity
+      (boards.ts) rather than a second admin constant; unresolvable recipients are
+      logged and NOT written — a row nobody can read is worse than no row.
+      createNotification's bare catch {} now logs but still never throws
+      (notifications are side effects and must not fail the parent action). Column
+      renamed user_id -> user_email (PRAGMA-guarded, idempotent); IPC CHANNEL NAMES
+      UNCHANGED. Read sites (Inbox/Header/Sidebar) switched to
+      (localUser?.email ?? ADMIN_EMAIL).toLowerCase() — CLOUD_ADMIN_EMAIL (main)
+      and ADMIN_EMAIL (renderer) verified BYTE-IDENTICAL. Added
+      idx_notifications_user_read_created (user_email, read, created_at DESC); the
+      table previously had NO index on its filter column. Backfill (UNREAD ONLY):
+      108 matched, 86 resolved, 0 as local-admin, 22 left untouched — 546 rows
+      before and after, NOTHING DELETED. The 22 unresolvable rows are INERT and
+      SELF-HEAL if those local_users rows are ever recreated. The 240 'local-admin'
+      rows are all read=1, so root's inbox showing 0 unread is EXPECTED, not a bug.
+      CLOUD half is N-2.
+    * FIX: attachmentsCloud CLOUD_ADMIN_EMAIL import (607ef70) -- the specifier read
+      CLOUD_ADMIN_EMAIL_EMAIL, which ./client does not export, so the name was never
+      bound. Reading an undeclared identifier throws ReferenceError (it does NOT
+      evaluate to undefined), so seedAttachmentsToCloud rejected for EVERY caller
+      including the admin — fails closed, a broken feature, not a security hole.
+      Root cause: commit a1c30a5 renamed the alias CLOUD_ADMIN -> CLOUD_ADMIN_EMAIL
+      by find/replace, and CLOUD_ADMIN is a PREFIX SUBSTRING of the new name, so the
+      replace also fired inside the import. Survived ~7 weeks inside the accepted
+      8-error tsc baseline. Node tsc baseline 8 -> 5.
+    * CHORE: N-1 backfill logs only when it resolves something (2773ba2) -- the
+      unread backfill is idempotent but not self-terminating, so it logged a
+      "22 left unresolved" line every startup. Logging change only; the predicate
+      and the scan are UNCHANGED, preserving self-healing. No rows modified.
     * BOARD ACCESS RELOCATED TO THE TEAM PAGE (c2e7543) -- the Settings/Team
       permissions split is CLOSED. Team now has two in-page tabs (Team members /
       Board access & permissions); the relocated Board Access matrix and the
@@ -1345,6 +1401,19 @@ DESIGN PRINCIPLES / CONVENTIONS
 
   v2.4.0 (Jul 23) -- MINOR: TO-DO RECURRENCE + LEAVE WINDOWS, INTEL CARD UX, and
   INTEL COUNTER/LIST CORRECTNESS — the whole post-v2.3.0 batch
+    * ⚠ RELEASED BUT UNINSTALLABLE ON macOS. A fresh install is deleted on launch
+      ("Malware entfernt und in den Papierkorb gelegt"); spctl -a -vvv returns
+      "notarization indicates this code has been revoked". Quarantine is NOT
+      involved (only com.apple.provenance). Ad-hoc signing could not be applied
+      because App Management blocks Terminal from modifying /Applications, so the
+      signature is still linker-signed with Info.plist not bound. appId is already
+      correct — Identifier=Electron in the codesign output is a SYMPTOM of never
+      being signed, not a config error. The build is unsigned by config
+      (notarize: false, hardenedRuntime: false). RESOLUTION DEFERRED TO LAUNCH:
+      Apple Developer Program ($99/yr) + Developer ID Application cert +
+      hardenedRuntime: true + notarize: true. Windows deferred too (Azure Artifact
+      Signing ~$10/month, EU-eligible, no hardware token) but unsigned Windows
+      still RUNS with only a SmartScreen warning, so macOS is the harder block.
     * TO-DO OVERHAUL: recurrence end to end — completion-anchored spawn-on-complete
       (nextOccurrence string date math), the recurrence picker UI + card repeat chip,
       and missed-occurrence tracking (launch/CET-midnight evaluator, roll-forward +
@@ -1372,8 +1441,30 @@ DESIGN PRINCIPLES / CONVENTIONS
       six mutations that left the header stale now refresh it; per-card collapse persisted
       across navigation; the no-op Save removed from the three compose tabs; and
       un-rejecting a News article (widened gate + a conditional rejected-chip decrement).
-    * Releasing 2026-07-23 from v2.3.0; tag + version-bump follow this summary commit,
-      then 8 assets incl. latest-mac.yml/latest.yml so installed builds self-update.
+    * RELEASED 2026-07-23 from v2.3.0 (tag v2.4.0, version-bump 97846c3), 8 assets
+      incl. latest-mac.yml/latest.yml so installed builds self-update — but see the
+      macOS signing block above: a FRESH install will not run on macOS.
+
+  v2.3.0 (Jul 17) -- MINOR: THE COMPLETE ACCESS-CONTROL TIER (reads AND writes)
+    * Shipped the whole post-v2.2.0 access-control batch and CLOSED finding 1
+      end-to-end: 8eae348 (0a-1 — compose stamps project_board_id), 2e22178 (0a-1b —
+      the pipeline writer stamps it too), a5d4b20 (0a-2 — the intel READ gate),
+      46be18e (0a-3 — the info_page_* READ tier, plus the infoPages:list deleted=0
+      fix), 26ee18c (0a-4 — the info_page_* WRITE surface: ~20 mutation handlers
+      gated across three axes, M=membership / A=canApprove / R=root), 923f334
+      (aba6b91 scroll-jump regression fix) + docs 8662b68 / f80b17d / 49b44fd.
+      Reads AND writes became membership-scoped, moving authorization out of the
+      renderer and into the server tier.
+    * A MINOR bump (version-bump a4b161e, tag v2.3.0 pushed BEFORE the build — no
+      tag race), 8 assets: mac universal DMG/zip + blockmaps, win NSIS x64 exe +
+      blockmap, and BOTH auto-update manifests, so researchers self-update off
+      2.2.0 — which also unblocked 0b's field verification.
+    * METHODOLOGY LESSON FROM THIS CYCLE — THE PHANTOM TEST: the first attempt to
+      verify the access-control fix produced a false PASS that everyone believed,
+      over-determined by three stacked silent failures (the document never
+      persisted, the soft-delete never landed, and the fix was already compiled
+      into the running build). For a SECURITY test, confirm EVERY precondition in
+      the authoritative store BEFORE trusting the observed result.
 
   v2.2.0 (Jul 16) -- MINOR: INTEL GOES CLOUD — intelligence_sources migration,
   realtime, and the offline arc (full detail in the header block above)
