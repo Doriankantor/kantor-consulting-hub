@@ -138,6 +138,23 @@ function readMirrorUnreadCount(userEmail: string): number {
 // header note). One transaction so a partial write cannot leave a torn set.
 // Best-effort: the read is already satisfied from cloud, so a mirror failure
 // must NOT fail it.
+//
+// ★ THE `WHERE notifications.pending_sync = 0` GUARD IS LOAD-BEARING (N-2c-2).
+// Without it this function is a DATA-LOSS PATH, not a cache refresh. A row marked
+// read offline is mirror read=1 / pending_sync=1 while cloud still says read=false.
+// `read = excluded.read` would flip the mirror back to 0 — and pending_sync is NOT
+// in the SET list, so the row stays marked and the sweep then pushes read=false to
+// cloud, destroying the flag permanently. Worse, getNotifications calls this at :219
+// and mergePending at :220, so the clobber lands BEFORE the merge in the SAME call —
+// mergePending cannot save the row.
+//
+// This is the write-side statement of the rule mergePending already states on the
+// read side (see :175): a row that is still marked pending is by definition the
+// version cloud does not have, so the mirror wins. Skipping the whole update (rather
+// than a CASE on `read` alone) costs nothing — cloud never mutates title/body/
+// task_title/actor_name on this table, only `read`.
+//
+// Fresh INSERTs are unaffected: no conflict means the WHERE is never evaluated.
 function syncMirror(rows: NotificationRow[]): void {
   if (!rows.length) return
   try {
@@ -150,7 +167,8 @@ function syncMirror(rows: NotificationRow[]): void {
         title      = excluded.title,
         body       = excluded.body,
         task_title = excluded.task_title,
-        actor_name = excluded.actor_name`)
+        actor_name = excluded.actor_name
+      WHERE notifications.pending_sync = 0`)
     const tx = db.transaction((list: NotificationRow[]) => {
       for (const r of list) {
         ins.run(r.id, r.user_email, r.type, r.title, r.body, r.task_id, r.task_title, r.actor_name, toSqliteRead(r.read), r.created_at)
@@ -224,18 +242,61 @@ export async function getNotifications(userEmail: string): Promise<NotificationR
   }
 }
 
-// Unread badge count. Cloud count when online, mirror when offline or on error.
-// NOTE: head:true is fine HERE — this counts rows in a table we know exists. It
-// must NEVER be used as an existence check: against a missing table it returns
-// { count: null, error: null }, i.e. it reports success for a table that is not
-// there.
+// Fold pending mirror state into a cloud unread count (N-2c-2).
+//
+// ⚠ THE ARITHMETIC IS SIGNED — this is NOT mergePending's union-with-override. There
+// the cloud rows are in hand and a pending row simply replaces its twin. Here the
+// answer is a NUMBER, and a pending row can move it in either direction:
+//   • pending, cloud counts it as unread, mirror says read  → SUBTRACT (read offline)
+//   • pending, cloud does not count it, mirror says unread  → ADD (created offline)
+//   • pending, cloud does not count it, mirror says read    → no change
+// Which is why the caller fetches cloud's unread IDS rather than its scalar count:
+// |C| alone cannot tell you whether a given pending id is inside C.
+//
+// Mirror is authoritative for every pending id — the same rule mergePending and
+// syncMirror's guard state, applied to a count.
+function mergePendingUnreadCount(userEmail: string, cloudUnread: Set<string>): number {
+  let pending: { id: string; read: number }[]
+  try {
+    pending = getDatabase()
+      .prepare('SELECT id, read FROM notifications WHERE user_email=? AND pending_sync=1')
+      .all(userEmail) as { id: string; read: number }[]
+  } catch (e) {
+    // The cloud read already succeeded — never fail it over the merge.
+    console.warn('[notifications] pending unread merge failed (serving cloud count only):', (e as Error)?.message)
+    return cloudUnread.size
+  }
+  let n = cloudUnread.size
+  for (const p of pending) {
+    const mirrorUnread = toSqliteRead(p.read) === 0
+    const countedByCloud = cloudUnread.has(p.id)
+    if (countedByCloud && !mirrorUnread) n--
+    else if (!countedByCloud && mirrorUnread) n++
+  }
+  // A negative count is impossible by construction (every subtraction is matched by
+  // a distinct member of C), but the badge must never render one if that changes.
+  return n < 0 ? 0 : n
+}
+
+// Unread badge count. Cloud when online, mirror when offline or on error.
+//
+// N-2c-2: this fetches unread IDS, not a head:true count. A row marked read offline
+// is still read=false in cloud, so cloud's scalar count would keep counting it and
+// the badge would contradict the Inbox list (which mergePending already corrects)
+// until the sweep ran. The merge needs set membership, and a count cannot provide it.
+//
+// NOTE: dropping head:true here does NOT weaken the old warning above it — that
+// warning is about using head:true as an EXISTENCE check, since against a missing
+// table it returns { count: null, error: null } and so reports success for a table
+// that is not there. This call was never an existence check; it is a real read of a
+// table we know exists, and it still is.
 export async function getUnreadCount(userEmail: string): Promise<number> {
   if (!userEmail) return 0
   if (!isOnline()) return readMirrorUnreadCount(userEmail)
   try {
-    const { count, error } = await cloud
+    const { data, error } = await cloud
       .from('notifications')
-      .select('id', { count: 'exact', head: true })
+      .select('id')
       .eq('user_email', userEmail)
       .eq('read', false)
     reportCloudResult(!error)
@@ -243,7 +304,8 @@ export async function getUnreadCount(userEmail: string): Promise<number> {
       console.warn('[notifications] cloud unread count failed, serving local mirror:', error.message)
       return readMirrorUnreadCount(userEmail)
     }
-    return count ?? 0
+    const cloudUnread = new Set(((data ?? []) as { id: string }[]).map(r => r.id))
+    return mergePendingUnreadCount(userEmail, cloudUnread)
   } catch (e) {
     console.warn('[notifications] cloud unread count threw, serving local mirror:', (e as Error)?.message)
     return readMirrorUnreadCount(userEmail)
@@ -314,7 +376,50 @@ export async function createNotificationCloud(row: NotificationRow): Promise<{ o
 // delete path). The user_email LIKE '%@%' clause is belt-and-braces: N-1
 // deliberately left ~21 unread uuid-keyed rows unresolved, and without it the first
 // thing to mark one pending would ship it to cloud under a garbage key.
+//
+// ★ TWO KINDS OF PENDING ROW SINCE N-2c-2, and the difference decides one field:
+//   • CREATED pending  — cloud has never seen this row. The mirror IS the origin.
+//   • READ-FLIPPED pending — cloud HAS the row; only the local `read` flag is newer.
+// The upsert handles both identically EXCEPT for created_at (see the R2 note on
+// splitCreatedAt below). Everything else about the payload is origin-independent,
+// which is why this stayed one sweep instead of growing a second one.
 let sweeping = false
+
+// Cap the ids written into one log line so a permanently-wedged sweep cannot emit an
+// unbounded line on every reconnect. The COUNT is always exact; only the list is cut.
+const LOG_ID_CAP = 10
+function formatIds(ids: string[]): string {
+  if (!ids.length) return 'none'
+  if (ids.length <= LOG_ID_CAP) return ids.join(', ')
+  return `${ids.slice(0, LOG_ID_CAP).join(', ')} … (+${ids.length - LOG_ID_CAP} more)`
+}
+
+// ── Which of these ids does cloud ALREADY have? (N-2c-2, R2) ─────────────────
+// `.in()` compiles to a query-string filter, so the id list rides in the URL. A full
+// SWEEP_CHUNK of 200 uuids is ~7.4 KB of request line — past where proxies start
+// rejecting it — so the probe batches SMALLER than the upsert (which POSTs a body).
+//
+// Returns null if ANY batch failed. A partial answer is worse than none: "absent"
+// would become indistinguishable from "never asked", and we would then stamp a
+// truncated created_at over a row cloud already holds at full precision.
+//
+// ⚠ Deliberately NOT reportCloudResult'd — the sweep is a WRITE path, and N-2a's
+// rule is that a notification write must never move the connection verdict.
+const PROBE_CHUNK = 50
+
+async function fetchExistingCloudIds(ids: string[]): Promise<Set<string> | null> {
+  const found = new Set<string>()
+  for (let i = 0; i < ids.length; i += PROBE_CHUNK) {
+    const batch = ids.slice(i, i + PROBE_CHUNK)
+    const { data, error } = await cloud.from('notifications').select('id').in('id', batch)
+    if (error) {
+      console.warn('[notifications] sweep existence probe failed:', error.message)
+      return null
+    }
+    for (const r of (data ?? []) as { id: string }[]) found.add(r.id)
+  }
+  return found
+}
 
 export async function sweepPendingNotifications(trigger = 'manual'): Promise<void> {
   // In-flight guard: the launch sweep and a reconnect sweep can otherwise overlap
@@ -332,47 +437,89 @@ export async function sweepPendingNotifications(trigger = 'manual'): Promise<voi
     if (!rows.length) return
 
     const clear = db.prepare('UPDATE notifications SET pending_sync = 0 WHERE id = ?')
+    const tx = db.transaction((ids: string[]) => { for (const id of ids) clear.run(id) })
     let sent = 0
 
     for (let i = 0; i < rows.length; i += SWEEP_CHUNK) {
       const chunk = rows.slice(i, i + SWEEP_CHUNK)
-      const payload = chunk.map(r => ({
-        id: r.id,
-        user_email: r.user_email,
-        type: r.type,
-        title: r.title,
-        body: r.body,
-        task_id: r.task_id,
-        task_title: r.task_title,
-        actor_name: r.actor_name,
-        read: toSqliteRead(r.read) === 1,        // INTEGER → BOOLEAN
-        created_at: toCloudTimestamp(r.created_at), // preserves the ORIGINAL time
-      }))
+      const chunkIds = chunk.map(r => r.id)
       try {
-        // .select('id') is REQUIRED: it is the only confirmation of what actually
-        // landed. Clearing the marker blind would silently drop the remainder of a
-        // partially-applied chunk.
-        const { data, error } = await cloud
-          .from('notifications')
-          .upsert(payload, { onConflict: 'id', ignoreDuplicates: false })
-          .select('id')
-        if (error) {
-          // Leave this chunk marked and keep going — one bad chunk must not strand
-          // the rest, and the next sweep retries it.
-          console.warn(`[notifications] sweep chunk failed (${chunk.length} row(s) left pending):`, error.message)
+        // ── R2: created_at may only be sent for rows cloud does NOT have ───────
+        // The mirror stores created_at at SECOND precision — CURRENT_TIMESTAMP
+        // (created-offline rows) and toLocalTimestamp's .slice(0,19) (rows
+        // materialized from cloud) both produce 'YYYY-MM-DD HH:MM:SS'. Cloud, by
+        // contrast, holds what createNotificationCloud sent: an ISO string with
+        // MILLISECONDS. So re-sending the mirror's copy over a row cloud already has
+        // truncates .123 → .000 and silently reorders same-second rows for every
+        // viewer (ORDER BY created_at is a string compare). Real data already
+        // contains same-second pairs, so this is not hypothetical.
+        //
+        // Omitting it wholesale is equally wrong: a created-offline row NEEDS it on
+        // first insert or the column defaults to now() and the original time is gone
+        // — the exact failure toCloudTimestamp exists to prevent.
+        const inCloud = await fetchExistingCloudIds(chunkIds)
+        if (!inCloud) {
+          // Cannot tell the groups apart, and BOTH guesses corrupt data. Leave the
+          // chunk marked; the next sweep retries it.
+          console.warn(`[notifications] sweep chunk skipped — existence probe failed (${chunk.length} row(s) left pending) — ids: ${formatIds(chunkIds)}`)
           continue
         }
-        const confirmed = ((data ?? []) as { id: string }[]).map(r => r.id)
-        const tx = db.transaction((ids: string[]) => { for (const id of ids) clear.run(id) })
+
+        // PostgREST requires every object in one upsert array to carry the SAME key
+        // set, so the two groups cannot share a request. Two calls, each skipped when
+        // empty — in practice only one group is ever non-empty.
+        const groups: { rows: NotificationRow[]; withCreatedAt: boolean; label: string }[] = [
+          { rows: chunk.filter(r => !inCloud.has(r.id)), withCreatedAt: true,  label: 'insert' },
+          { rows: chunk.filter(r =>  inCloud.has(r.id)), withCreatedAt: false, label: 'update' },
+        ]
+
+        const confirmed: string[] = []
+        for (const g of groups) {
+          if (!g.rows.length) continue
+          const payload = g.rows.map(r => ({
+            id: r.id,
+            user_email: r.user_email,
+            type: r.type,
+            title: r.title,
+            body: r.body,
+            task_id: r.task_id,
+            task_title: r.task_title,
+            actor_name: r.actor_name,
+            read: toSqliteRead(r.read) === 1,   // INTEGER → BOOLEAN
+            // ONLY for rows cloud has never seen — see the R2 note above.
+            ...(g.withCreatedAt ? { created_at: toCloudTimestamp(r.created_at) } : {}),
+          }))
+          // .select('id') is REQUIRED: it is the only confirmation of what actually
+          // landed. Clearing the marker blind would silently drop the remainder of a
+          // partially-applied chunk.
+          const { data, error } = await cloud
+            .from('notifications')
+            .upsert(payload, { onConflict: 'id', ignoreDuplicates: false })
+            .select('id')
+          if (error) {
+            // Leave this group marked and keep going — one bad group must not strand
+            // the rest, and the next sweep retries it.
+            console.warn(`[notifications] sweep ${g.label} group failed (${g.rows.length} row(s) left pending): ${error.message} — ids: ${formatIds(g.rows.map(r => r.id))}`)
+            continue
+          }
+          confirmed.push(...((data ?? []) as { id: string }[]).map(r => r.id))
+        }
         tx(confirmed)
         sent += confirmed.length
       } catch (e) {
-        console.warn(`[notifications] sweep chunk threw (${chunk.length} row(s) left pending):`, (e as Error)?.message)
+        console.warn(`[notifications] sweep chunk threw (${chunk.length} row(s) left pending): ${(e as Error)?.message} — ids: ${formatIds(chunkIds)}`)
       }
     }
 
-    const remaining = (db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE pending_sync = 1').get() as { n: number }).n
-    console.log(`[notifications] sweep: ${sent} sent, ${remaining} remaining (${trigger})`)
+    // ★ NAME THE STUCK ROWS (N-2c-2, R3). Since Part 1's guard makes syncMirror skip
+    // any pending row, a row the sweep can never deliver (a permanent RLS/constraint
+    // rejection) is now frozen: it will never be refreshed from cloud again. A bare
+    // count made that invisible. Logging only — retry behaviour is unchanged.
+    const stuck = (db.prepare('SELECT id FROM notifications WHERE pending_sync = 1').all() as { id: string }[]).map(r => r.id)
+    console.log(
+      `[notifications] sweep: ${sent} sent, ${stuck.length} remaining (${trigger})` +
+      (stuck.length ? ` — still pending: ${formatIds(stuck)}` : '')
+    )
   } catch (e) {
     console.warn('[notifications] sweep aborted:', (e as Error)?.message)
   } finally {
@@ -380,14 +527,34 @@ export async function sweepPendingNotifications(trigger = 'manual'): Promise<voi
   }
 }
 
-// Mark ONE notification read. ONLINE-REQUIRED: a local-only read flag would be
-// silently reverted by the next cloud read, which is worse than not applying it.
-// Offline mark-read needs a sync queue — that is N-2b.
+// Mark ONE notification read. WORKS OFFLINE (N-2c-2).
+//
+// The old rule was ONLINE-REQUIRED, because a local-only read flag would be silently
+// reverted by the next cloud read. That reversion is now impossible: syncMirror will
+// not touch a row with pending_sync=1 (see its guard), so the flag survives until the
+// sweep delivers it.
+//
+// NO QUEUE AND NO SECOND SWEEP. A read-flipped row is just "local state cloud does
+// not have yet", which is precisely what the N-2c-1 sweep already carries — its
+// full-payload upsert is source-type-agnostic, so this row rides the same path as a
+// created-offline one. The only thing that differs is created_at handling (see the
+// R2 note in sweepPendingNotifications).
 export async function markRead(id: string): Promise<{ ok: boolean; error?: string }> {
   if (!id) return { ok: false, error: 'missing id' }
   if (!isOnline()) {
-    console.warn('[notifications] markRead skipped — offline (no optimistic mirror write; N-2b adds the queue)')
-    return { ok: false, error: 'offline' }
+    // Offline: write the flag AND mark the row for the sweep. pending_sync=1 is what
+    // makes this durable — it both protects the row from syncMirror and enrolls it in
+    // the next reconnect/launch sweep.
+    try {
+      getDatabase().prepare('UPDATE notifications SET read=1, pending_sync=1 WHERE id=?').run(id)
+    } catch (e) {
+      // N-2b-1's rule: never report success we did not achieve. If the mirror write
+      // failed, nothing was recorded anywhere and the Inbox must not show it read.
+      console.warn('[notifications] offline markRead mirror write failed:', (e as Error)?.message)
+      return { ok: false, error: (e as Error)?.message ?? 'mirror write failed' }
+    }
+    console.log(`[notifications] markRead applied offline for ${id} — marked pending, will sweep on reconnect`)
+    return { ok: true }
   }
   try {
     const { error } = await cloud.from('notifications').update({ read: true }).eq('id', id)
@@ -397,6 +564,11 @@ export async function markRead(id: string): Promise<{ ok: boolean; error?: strin
       return { ok: false, error: error.message }
     }
     try {
+      // ⚠ NEARLY the offline statement, minus `, pending_sync=1` — and that
+      // difference is the whole point, so do NOT extract a shared statement. Cloud
+      // has just confirmed the flag, so there is nothing for the sweep to carry;
+      // marking it pending here would enrol a row that is already in sync and hand
+      // the sweep a needless (if idempotent) round trip.
       getDatabase().prepare('UPDATE notifications SET read=1 WHERE id=?').run(id)
     } catch (e) {
       console.warn('[notifications] mirror markRead failed (cloud already updated):', (e as Error)?.message)
@@ -408,12 +580,20 @@ export async function markRead(id: string): Promise<{ ok: boolean; error?: strin
   }
 }
 
-// Mark every unread notification for one recipient read. Same online-required
-// rule as markRead.
+// Mark every unread notification for one recipient read.
+//
+// ⚠ STILL ONLINE-REQUIRED — deliberately NOT changed alongside markRead (N-2c-2).
+// Offline markAllRead is N-2c-3 and needs its own design, because this predicate is
+// UNBOUNDED: `WHERE user_email=? AND read=0` would flip every matching row to
+// pending_sync=1 in one click. On a real DB that includes the pre-N-2c-1 legacy rows
+// (ADD COLUMN DEFAULT 0, deliberately never backfilled) which D8 excluded from cloud
+// — and the sweep's `user_email LIKE '%@%'` filter does NOT stop them, because N-1
+// already rewrote the local-admin ones to a real address. The sweep would ship
+// hundreds of them into a cloud table with NO DELETE PATH. Unrecoverable.
 export async function markAllRead(userEmail: string): Promise<{ ok: boolean; error?: string }> {
   if (!userEmail) return { ok: false, error: 'no recipient' }
   if (!isOnline()) {
-    console.warn('[notifications] markAllRead skipped — offline (no optimistic mirror write; N-2b adds the queue)')
+    console.warn('[notifications] markAllRead skipped — offline (single-row markRead works offline; bulk is N-2c-3)')
     return { ok: false, error: 'offline' }
   }
   try {

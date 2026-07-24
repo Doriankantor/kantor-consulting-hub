@@ -351,7 +351,15 @@ function createNotification(n: {
   // rejecting. Marking on failure instead would leave a row unmarked and unswept
   // whenever the app quits or crashes in between — silent permanent loss. Marking
   // up front and clearing on confirmation costs at worst one redundant idempotent
-  // upsert. This INSERT is the ONLY place in the codebase that sets pending_sync=1.
+  // upsert.
+  //
+  // WHO MAY SET pending_sync=1 (updated N-2c-2 — it is no longer only this INSERT):
+  //   1. this INSERT — a notification cloud has never seen, and
+  //   2. markRead's OFFLINE branch — a row cloud HAS, whose read flag is newer here.
+  // Both mean the same thing to the sweep ("local state cloud does not have yet"),
+  // which is why they share one delivery path. Nothing else may set it: a third
+  // writer that marks rows the sweep cannot justify would ship them to a cloud table
+  // with no delete path. See the D8 note in db.ts.
   try {
     getDatabase().prepare(`INSERT INTO notifications (id,user_email,type,title,body,task_id,task_title,actor_name,pending_sync)
       VALUES (?,?,?,?,?,?,?,?,1)`)

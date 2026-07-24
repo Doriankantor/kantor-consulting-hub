@@ -1234,7 +1234,13 @@ export function initDatabase(): void {
   // table HAS NO DELETE PATH — once there they cannot be removed from the app.
   // ADD COLUMN ... DEFAULT 0 leaves every existing row correctly unmarked. There is
   // deliberately NO `UPDATE ... SET pending_sync=1` here, and there must never be
-  // one: nothing outside createNotification's INSERT may set this to 1.
+  // one.
+  // Exactly TWO writers may set this to 1 (updated N-2c-2): createNotification's
+  // INSERT (a row cloud has never seen) and markRead's OFFLINE branch (a row cloud
+  // has, whose read flag is newer locally). Both are single-row and user/system
+  // originated. No bulk or migration writer may ever set it — that is what would
+  // sweep these D8-excluded rows into a cloud table with no delete path. It is also
+  // why offline markAllRead is deferred to N-2c-3: its predicate is unbounded.
   // PRAGMA-guarded rather than the bare `try { ALTER } catch {}` form used
   // elsewhere, because that form re-runs any follow-up statement on every launch.
   try {

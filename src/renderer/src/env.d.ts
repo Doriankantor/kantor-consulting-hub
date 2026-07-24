@@ -629,8 +629,8 @@ interface Window {
       /** N-1: recipient key is an EMAIL (any shape is normalized in main). */
       get:         (userEmail: string) => Promise<AppNotification[]>
       unreadCount: (userEmail: string) => Promise<number>
-      markRead:    (id: string)        => Promise<{ ok?: boolean }>
-      markAllRead: (userEmail: string) => Promise<{ ok?: boolean }>
+      markRead:    (id: string)        => Promise<{ ok: boolean; error?: string }>
+      markAllRead: (userEmail: string) => Promise<{ ok: boolean; error?: string }>
       create:      (n: { user_id: string; type: string; title: string; body?: string; task_id?: string; task_title?: string; actor_name?: string }) => Promise<{ ok?: boolean; id?: string }>
     }
     chat: {
