@@ -344,9 +344,17 @@ function createNotification(n: {
   // synchronous part and happens FIRST — D2(a) requires the row to exist locally
   // regardless of the cloud outcome — and the cloud insert is dispatched
   // fire-and-forget below.
+  //
+  // N-2c-1: pending_sync = 1 UNCONDITIONALLY. ⚠ THE ORDER HERE IS A CRASH-SAFETY
+  // DECISION, NOT A STYLE ONE. This INSERT is synchronous; the cloud .then resolves
+  // later, and a cloud insert during a network drop can hang a long time before
+  // rejecting. Marking on failure instead would leave a row unmarked and unswept
+  // whenever the app quits or crashes in between — silent permanent loss. Marking
+  // up front and clearing on confirmation costs at worst one redundant idempotent
+  // upsert. This INSERT is the ONLY place in the codebase that sets pending_sync=1.
   try {
-    getDatabase().prepare(`INSERT INTO notifications (id,user_email,type,title,body,task_id,task_title,actor_name)
-      VALUES (?,?,?,?,?,?,?,?)`)
+    getDatabase().prepare(`INSERT INTO notifications (id,user_email,type,title,body,task_id,task_title,actor_name,pending_sync)
+      VALUES (?,?,?,?,?,?,?,?,1)`)
       .run(id, recipient, n.type, n.title, n.body ?? null, n.task_id ?? null, n.task_title ?? null, n.actor_name ?? null)
   } catch (e) {
     // Never THROW — a notification is a side effect of another action and must
@@ -365,12 +373,27 @@ function createNotification(n: {
     read: 0, created_at: '',
   })
     .then(res => {
-      if (res.ok) return
-      // D2(a): the row IS in the local mirror, but it did not reach the recipient's
-      // other devices. Surface it through the app-wide banner — three of the nine
-      // writers run on a 60s timer with no renderer call to return through.
-      console.warn(`[notifications] cloud delivery failed for ${recipient} (${n.type}): ${res.error}`)
-      pushNotice(`A notification to ${recipient} could not be delivered — it is saved locally only.`)
+      if (res.ok) {
+        // Delivered — drop the marker so the sweep skips it.
+        try {
+          getDatabase().prepare('UPDATE notifications SET pending_sync = 0 WHERE id = ?').run(id)
+        } catch (e) {
+          // Worst case the sweep re-sends it; the upsert is idempotent. Never throw.
+          console.warn(`[notifications] could not clear pending_sync for ${id}:`, (e as Error)?.message)
+        }
+        return
+      }
+      // The row IS in the local mirror and is now MARKED, so the reconnect/launch
+      // sweep will deliver it. Nothing here is actionable by the user.
+      console.warn(`[notifications] cloud delivery failed for ${recipient} (${n.type}): ${res.error} — marked for sweep`)
+      // D2(a) banner, but ONLY for failures the sweep cannot be expected to fix on
+      // its own. Offline and transport failures are normalized to the 'offline'
+      // token in createNotificationCloud and are the common case — firing the banner
+      // for each one made it flash repeatedly through an entire offline session, and
+      // its old wording ("saved locally only") is now simply untrue.
+      if (res.error !== 'offline') {
+        pushNotice(`A notification to ${recipient} could not be delivered — it will retry when the connection recovers.`)
+      }
     })
     .catch(e => {
       console.warn(`[notifications] cloud delivery threw for ${recipient} (${n.type}):`, (e as Error)?.message)

@@ -86,6 +86,61 @@ export function reportCloudResult(ok: boolean): void {
   if (consecutiveFailures >= FAILURE_THRESHOLD) goOffline()
 }
 
+// ── Transport-failure classifier (N-2c-1) ────────────────────────────────────
+// FAILURE_THRESHOLD is 2, so the FIRST cloud call after the network drops is
+// attempted for real while isOnline() still says true — undici rejects with a raw
+// `TypeError: fetch failed` and that string leaked all the way to the user.
+//
+// This distinguishes a REJECTED promise (the request never completed — nothing to
+// act on, retry later) from a RESOLVED { data, error } (PostgREST answered; that
+// is a real server error the user should see verbatim). Only main can tell them
+// apart: the renderer receives a flattened { ok, error } string over IPC and has
+// lost the distinction, so classifying there would mean string-matching "fetch
+// failed", which breaks whenever undici changes its wording.
+//
+// ⚠ CLASSIFICATION ONLY — it deliberately does NOT call reportCloudResult. N-2a's
+// rule stands: a fire-and-forget notification write must never be able to flip the
+// whole app offline. The connection verdict keeps coming from the reads.
+// ★ THE PRIMARY SIGNAL, and it is STRUCTURAL — no message matching.
+// postgrest-js (2.106.1) does NOT reject on a network failure: shouldThrowOnError
+// is false everywhere in this codebase, so PostgrestBuilder catches the fetch
+// rejection and RESOLVES with { error: { message: 'TypeError: fetch failed', ... },
+// data: null, status: 0, statusText: '' }. `status: 0` is assigned in exactly ONE
+// place — that catch handler. Every other status on a resolved response comes from
+// a real HTTP Response (or postgrest-js's own 200/204/406 overrides), and the Fetch
+// spec reserves 0 for network errors, so a genuine PostgREST answer can never carry
+// it. That makes this an exact test for "the request never completed".
+//
+// ⚠ Classification only — like isTransportError below, it must NOT call
+// reportCloudResult (N-2a: a fire-and-forget notification write must never be able
+// to flip the whole app offline).
+export function isTransportStatus(status: number | undefined): boolean {
+  return status === 0
+}
+
+const TRANSPORT_CODES = new Set([
+  'ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH', 'EAI_AGAIN', 'EHOSTUNREACH',
+])
+
+export function isTransportError(e: unknown): boolean {
+  // Walk the .cause chain iteratively — undici nests the real reason (ENOTFOUND,
+  // ECONNREFUSED) under a bare TypeError. Depth-bounded so a self-referential or
+  // cyclic cause can never spin.
+  let cur: unknown = e
+  for (let depth = 0; depth < 5; depth++) {
+    if (!cur || typeof cur !== 'object') return false
+    const err = cur as { name?: string; code?: string; cause?: unknown }
+    // AbortError / TimeoutError: the request was cut off before an answer arrived.
+    if (err.name === 'AbortError' || err.name === 'TimeoutError') return true
+    // undici surfaces every network failure as a bare TypeError from fetch.
+    if (err.name === 'TypeError') return true
+    if (typeof err.code === 'string' && TRANSPORT_CODES.has(err.code)) return true
+    if (!err.cause || err.cause === cur) return false
+    cur = err.cause
+  }
+  return false
+}
+
 function startProbe(): void {
   if (probeTimer) return
   probeTimer = setInterval(async () => {

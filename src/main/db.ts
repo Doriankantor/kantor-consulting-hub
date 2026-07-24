@@ -252,17 +252,21 @@ export function initDatabase(): void {
 
     -- Notifications (per-user inbox). Recipient is an EMAIL (N-1): the single
     -- canonical key, resolved through createNotification's toRecipientEmail.
+    -- pending_sync (N-2c-1): 1 = this row exists locally but not in cloud. Set on
+    -- INSERT, cleared when the cloud insert confirms, swept on reconnect/launch.
+    -- DEFAULT 0 is load-bearing on the migration path — see the N-1 block below.
     CREATE TABLE IF NOT EXISTS notifications (
-      id          TEXT PRIMARY KEY,
-      user_email  TEXT NOT NULL,
-      type        TEXT NOT NULL,
-      title       TEXT NOT NULL,
-      body        TEXT,
-      task_id     TEXT,
-      task_title  TEXT,
-      actor_name  TEXT,
-      read        INTEGER DEFAULT 0,
-      created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+      id            TEXT PRIMARY KEY,
+      user_email    TEXT NOT NULL,
+      type          TEXT NOT NULL,
+      title         TEXT NOT NULL,
+      body          TEXT,
+      task_id       TEXT,
+      task_title    TEXT,
+      actor_name    TEXT,
+      read          INTEGER DEFAULT 0,
+      created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+      pending_sync  INTEGER NOT NULL DEFAULT 0
     );
 
     -- Chat messages (team-wide)
@@ -1217,6 +1221,30 @@ export function initDatabase(): void {
     }
   } catch (e) { console.warn('[N-1] notifications column rename failed:', (e as Error)?.message) }
 
+  // ── N-2c-1: pending-sync marker ──────────────────────────────────────────────
+  // 1 = the row exists in the local mirror but NOT in cloud. createNotification
+  // INSERTs with 1 and clears it when the cloud insert confirms; the reconnect /
+  // launch sweep (notificationsCloud.sweepPendingNotifications) delivers whatever
+  // is still marked.
+  //
+  // ⚠⚠ DEFAULT 0 AND NO BACKFILL — THIS IS UNRECOVERABLE IF GOT WRONG. 454 of the
+  // 557 existing rows have a user_email with NO '@' (240 literal 'local-admin',
+  // the rest device uuids) and 434 are read=1 orphans. They were deliberately
+  // excluded from cloud (D8: no seed), they are addressed to nobody, and the cloud
+  // table HAS NO DELETE PATH — once there they cannot be removed from the app.
+  // ADD COLUMN ... DEFAULT 0 leaves every existing row correctly unmarked. There is
+  // deliberately NO `UPDATE ... SET pending_sync=1` here, and there must never be
+  // one: nothing outside createNotification's INSERT may set this to 1.
+  // PRAGMA-guarded rather than the bare `try { ALTER } catch {}` form used
+  // elsewhere, because that form re-runs any follow-up statement on every launch.
+  try {
+    const nCols2 = db.prepare('PRAGMA table_info(notifications)').all() as { name: string }[]
+    if (!nCols2.some(c => c.name === 'pending_sync')) {
+      db.exec('ALTER TABLE notifications ADD COLUMN pending_sync INTEGER NOT NULL DEFAULT 0')
+      console.log('[N-2c] notifications.pending_sync added (all existing rows default 0 — not swept).')
+    }
+  } catch (e) { console.warn('[N-2c] notifications.pending_sync add failed:', (e as Error)?.message) }
+
   // Backfill UNREAD rows only. read=1 rows (~432) are deliberately left orphaned.
   // NOTHING IS EVER DELETED HERE. The predicate (read=0 AND NOT LIKE '%@%') is
   // self-limiting, so re-running is a no-op — no migration marker needed.
@@ -1259,6 +1287,14 @@ export function initDatabase(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_notifications_user_read_created
       ON notifications (user_email, read, created_at DESC)`)
   } catch (e) { console.warn('[N-1] notifications index failed:', (e as Error)?.message) }
+
+  // N-2c-1: the sweep runs on every reconnect AND every launch against a table
+  // that only grows. PARTIAL index — it covers only the marked rows, so it stays
+  // tiny (normally empty) instead of indexing all 557+ rows to find none.
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_notifications_pending
+      ON notifications (pending_sync) WHERE pending_sync = 1`)
+  } catch (e) { console.warn('[N-2c] notifications pending index failed:', (e as Error)?.message) }
 
   // ── Seed the Contested Skies Source Archive into Source Intelligence ──────────
   // The sources the live Contested Skies page is built on. FRAMEWORK references

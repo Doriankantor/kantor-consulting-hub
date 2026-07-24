@@ -15,6 +15,7 @@ import { initConnection, isOnline, onReconnect } from './cloud/connection'
 import { runCompletedProjectsSweep } from './cloud/completedSweep'
 import { runPersonalTodosBackfill } from './cloud/personalTodosSeed'
 import { runPersonalSyncDrain } from './cloud/personalSync'
+import { sweepPendingNotifications } from './cloud/notificationsCloud'
 import { stopMissedSchedule } from './todos/missedEvaluator'
 import { runAssigneesEmailMigration, runCloudAssigneesMigration } from './cloud/assigneesEmailMigration'
 
@@ -108,6 +109,14 @@ app.whenReady().then(() => {
   // overlapping with the launch drain below is safe.
   onReconnect(() => { runPersonalSyncDrain('reconnect') })
 
+  // N-2c-1: deliver notifications whose cloud insert never landed (created offline,
+  // or created inside the 2-failure hysteresis window). Hooks the SAME false→true
+  // recovery event as the two callbacks above rather than adding a third detector,
+  // and is registered LAST so the realtime channels are already resubscribed when
+  // its upserts start echoing back. The sweep has its own in-flight guard, so
+  // overlapping with the launch sweep below is safe.
+  onReconnect(() => { void sweepPendingNotifications('reconnect') })
+
   // ── Intelligence: start auto-refresh and trigger initial fetch ─────────
   startIntelligenceAutoRefresh()
   setTimeout(() => triggerInitialNewsFetch(), 5000)
@@ -132,6 +141,11 @@ app.whenReady().then(() => {
   // unless the cloud backup table covers every task it would rewrite, so a missing
   // backup fails loudly instead of quietly making the rewrite irreversible.
   setTimeout(() => { runCloudAssigneesMigration() }, 10000)
+  // N-2c-1: deliver notifications marked pending before a previous quit. LAST in the
+  // chain at 11s — deliberately NOT 10s, which belongs to the commit-once cloud
+  // assignees migration. Same in-flight guard as the reconnect sweep above, so the
+  // two can never send the same row twice.
+  setTimeout(() => { void sweepPendingNotifications('launch') }, 11000)
 
   // ── Auto-updater (production only) ──────────────────────────────────────
   function saveLastChecked() {
