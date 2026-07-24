@@ -23,6 +23,22 @@ function notifyRead() {
   window.dispatchEvent(new CustomEvent('notificationsChanged'))
 }
 
+// N-2b-1: mark-read is ONLINE-REQUIRED (N-2a). Offline, main returns
+// { ok:false, error:'offline' } having written NOTHING — not cloud, not the
+// mirror. env.d.ts still types the result as { ok?: boolean }; main has returned
+// the wider shape since N-2a. Narrowed here rather than widening the shared type,
+// which would be a preload/env.d.ts change and is outside this slice.
+type MarkResult = { ok?: boolean; error?: string }
+
+// One wording rule for both paths. 'offline' is the common case and is
+// self-explanatory, so it gets the actionable sentence; anything else reports the
+// underlying reason so a real failure is not disguised as a connectivity blip.
+function markFailureMessage(kind: 'one' | 'all', error?: string): string {
+  const what = kind === 'all' ? "Couldn't mark all as read" : "Couldn't mark as read"
+  if (error === 'offline') return `${what} — you're offline. Try again when you reconnect.`
+  return error ? `${what} — ${error}` : `${what} — the request failed.`
+}
+
 type NotifType = AppNotification['type']
 type Filter = 'all' | 'unread' | 'mention' | 'deadline'
 
@@ -76,6 +92,10 @@ export default function Inbox() {
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [filter, setFilter] = useState<Filter>('all')
   const [loading, setLoading] = useState(true)
+  // The ONE error surface for this page. Inline, not a timed toast — there are
+  // already seven ad-hoc useState+setTimeout toasts in this codebase. Cleared by
+  // the next mark-read that succeeds, never by a timer.
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -94,29 +114,59 @@ export default function Inbox() {
     return () => clearInterval(interval)
   }, [load])
 
-  // Mark a single notification as read — updates local state + counter immediately
-  function markOneRead(id: string) {
-    window.api.notifications.markRead(id).catch(() => {})
+  // Mark a single notification as read. AWAIT THE RESULT FIRST, then update state
+  // only if it succeeded. Not optimistic-then-rollback: rolling back would make
+  // the row flip to read and back, which is the flicker this replaces. The old
+  // code applied the update unconditionally, so offline the row went read and then
+  // silently reverted up to 30s later when the poll re-read the mirror.
+  async function markOneRead(id: string) {
+    let res: MarkResult
+    try {
+      res = (await window.api.notifications.markRead(id)) as MarkResult
+    } catch (e) {
+      // A genuine throw — the IPC call itself failed, distinct from a returned
+      // { ok:false }. Same handling: no state change, error surfaced.
+      setActionError(markFailureMessage('one', (e as Error)?.message))
+      return
+    }
+    if (!res?.ok) {
+      setActionError(markFailureMessage('one', res?.error))
+      return
+    }
+    setActionError(null)
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: 1 } : n))
     notifyRead()
   }
 
   // Click on the row body → mark as read in place (no navigation)
   function handleRowClick(n: AppNotification) {
-    if (!n.read) markOneRead(n.id)
+    if (!n.read) void markOneRead(n.id)
   }
 
-  // Click "Go to card" → mark as read + navigate to task
+  // Click "Go to card" → mark as read + navigate to task. Navigation is NOT
+  // gated on the mark-read result: opening the card is what the user asked for
+  // and it works offline.
   function handleGoToCard(n: AppNotification, e: React.MouseEvent) {
     e.stopPropagation()
-    if (!n.read) markOneRead(n.id)
+    if (!n.read) void markOneRead(n.id)
     if (!n.task_id) return
     openTask(n.task_id, SECTION_FOR_TYPE[n.type])
     navigate('/workspace')
   }
 
   async function handleMarkAllRead() {
-    await window.api.notifications.markAllRead(userEmail)
+    let res: MarkResult
+    try {
+      res = (await window.api.notifications.markAllRead(userEmail)) as MarkResult
+    } catch (e) {
+      setActionError(markFailureMessage('all', (e as Error)?.message))
+      return
+    }
+    if (!res?.ok) {
+      setActionError(markFailureMessage('all', res?.error))
+      return
+    }
+    setActionError(null)
     setNotifications(prev => prev.map(n => ({ ...n, read: 1 })))
     notifyRead()
   }
@@ -178,6 +228,18 @@ export default function Inbox() {
           </button>
         ))}
       </div>
+
+      {/* Action error — inline, persists until the next successful mark-read.
+          Deliberately NOT the app:notice / connection banner: that channel is for
+          main-process side effects with no in-flight call to return through. This
+          is a renderer-initiated action with a return value, so it reports through
+          its own return path. */}
+      {actionError && (
+        <div className="shrink-0 flex items-center gap-2 px-6 py-2 bg-rose-500/10 border-b border-rose-500/25 text-rose-700 dark:text-rose-300 text-xs font-medium">
+          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+          {actionError}
+        </div>
+      )}
 
       {/* List */}
       <div className="flex-1 overflow-y-auto">
