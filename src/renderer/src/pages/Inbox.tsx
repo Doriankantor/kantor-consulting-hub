@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
+import { useConnection } from '../contexts/ConnectionContext'
 import { ADMIN_EMAIL } from '../supabase/client'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ const BORDER_COLOR: Record<NotifType, string> = {
 export default function Inbox() {
   const { localUser } = useAuth()
   const { openTask } = useWorkspace()
+  const { online } = useConnection()
   const navigate = useNavigate()
   // N-1: notifications are keyed by EMAIL. Root falls back to the admin email so
   // the break-glass 'local-admin' session still resolves to a real inbox.
@@ -200,9 +202,21 @@ export default function Inbox() {
           )}
         </div>
         {unreadCount > 0 && (
+          // N-2c-3: "Mark all as read" is INTENTIONALLY online-required. Its cloud
+          // update is unbounded (WHERE user_email=? AND read=0); offline the mirror
+          // cannot prove which unread rows are in cloud (pending_sync is overloaded;
+          // N-1 rewrote unread legacy rows to email keys), so a blind bulk mark would
+          // seed D8-excluded rows into a delete-less cloud table. The DISABLE is the
+          // PRIMARY signal (known-offline). handleMarkAllRead's {ok:false} rose strip
+          // stays as the BACKSTOP for the hysteresis window — a click in the first
+          // ~2 failures after a drop, before `online` flips false, still attempts the
+          // call and fails cleanly. Single-row markRead works offline (N-2c-2) and is
+          // NOT gated here.
           <button
             onClick={handleMarkAllRead}
-            className="text-xs text-gray-400 dark:text-white/65 hover:text-hub-gold dark:hover:text-hub-gold transition font-medium"
+            disabled={!online}
+            title={!online ? 'Unavailable while offline' : undefined}
+            className="text-xs text-gray-400 dark:text-white/65 hover:text-hub-gold dark:hover:text-hub-gold transition font-medium disabled:opacity-50"
           >
             Mark all as read
           </button>
