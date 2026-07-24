@@ -1,6 +1,6 @@
 # Handoff — Kantor Consulting Hub
 
-_Last updated: 2026-07-23 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `1ea04a7`, `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: TWENTY-EIGHT code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale), `065f6ce` (slice 2 — the `listTodos` aggregation layer), `d43445d` (slice 3a — the visible To-Do tab), `4c240bd` (slice 3b — the personal Step Rail), `7d5a38a` (slice A-1 — detail-panel color/starred columns + setters), `f1fb6df` (slice A-2 — the personal detail panel UI), `9c049e3` (slice A-3 — drag-to-reorder personal steps), `4bc236d` (slice B — personal-to-do notes), `1795418` (slice C-recurring-1 — completion-anchored recurrence backend), `76bafb0` (slice C-recurring-2 — recurrence picker UI + row chip), `a6f82d7` (slice C-recurring-3 — missed-occurrence tracking), `9376ba7` (chore — remove orphaned personalTodo:list channel) and `f918e42` (OFF-WORK / leave-window — per-member future-only leave window in a new cloud `off_work` table + local mirror; the missed-evaluator reads the acting user's window and skips stamping misses for boundaries inside it; Team page "on leave" pill + self-service picker + "End leave"; notification-drop DEFERRED) and `1ea04a7` (DATE-PICKER — native picker fixes + native unification + recurrence-due-date gate). The installed app is 2.3.0 and contains NONE of them.** ★ **DATE-PICKER SLICE — SHIPPED (`1ea04a7`).** Three bundled fixes plus a unification: native `<input type=date/time>` now open on clicking the field body via `onClick→showPicker()` + `[color-scheme:dark]` for glyph visibility (root cause was Chromium only opening the picker from the tiny edge glyph, a behavior quirk not a bug); the To-Do panel's one-off custom `DatePopover` was REPLACED with a native `<input type=date>` so ALL date entry is native (its calendar-grid helpers deleted; `usePopoverDismiss`/`PILL_CLASS`/`TimePopover` kept — still used by the recurrence + time controls); native OS positioning auto-flips so the off-work-at-bottom picker never clips (no custom overflow logic); and RECURRENCE is now GATED ON A DUE DATE (the panel `RecurrencePopover` is disabled+greyed with a "set a due date first" hint when the to-do has no `due_date`), preventing the recurrence-without-due zombie state at the source (the one entry point — the quick-add row has no recurrence control). ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: TWENTY-EIGHT code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.** ★ **HEADER BROUGHT CURRENT 2026-07-23 (late) — this line's "v2.3.0 RELEASED / UNRELEASED since v2.3.0" framing above is SUPERSEDED: v2.4.0 IS RELEASED (published 2026-07-23, tag `v2.4.0`, version-bump `97846c3`) but is UNINSTALLABLE ON macOS — a fresh install is deleted on launch, `spctl` reports "notarization indicates this code has been revoked"; the build is unsigned by config (`notarize: false`, `hardenedRuntime: false`) and SIGNING IS DEFERRED TO LAUNCH (Apple Developer Program $99/yr + Developer ID cert). Windows deferred too but still RUNS (SmartScreen warning only). **UNRELEASED since v2.4.0: THIRTEEN commits** — `80032f4` (dead PUSH-TO-INFO-PAGE stat removed), `e05e8a2` (sidebar badge refresh), `9bf124c` (Relevance/Date sort toggle), `c2e7543` (Board Access relocated to Team), `782b779` (permission writes surface failures), **`720dbb8` (N-1 — notifications identity unified: email is now the canonical recipient key)**, **`607ef70` (attachmentsCloud `CLOUD_ADMIN_EMAIL` import fix — node tsc baseline 8 -> 5)**, **`2773ba2` (N-1 backfill log guard — predicate unchanged)**, plus docs `859b2cf`/`3d0acc3`/`4bb7ca1`/`72a82d7`/**`eda60e2`**. The installed app is 2.4.0 (where it installs at all) and contains NONE of them.**_
+_Last updated: 2026-07-25 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.3.0`, version-bump commit `a4b161e`). **Code HEAD `1ea04a7`, `origin/main` up to date, tree clean. UNRELEASED since v2.3.0: TWENTY-EIGHT code commits — `2d76b9a`, `b211638`, the compose cluster (`c60c9c2`, `ae067da`, `7782116`, `bd8f07c`, `edd7bd0`), `cc6aedf`, and the To-Do/team arc: `a46345b` (1a), `4001652` (1b), `4b9c0b3` (1c-1 — cloud team roster), `fa5c9cd` (@mention dropdown fix), `d16b071` (1c-2a — reversible half), `74150c7` (1c-2b-① — cloud rewrite, commit-once), `863e5be` (1c-2b-② — the finale), `065f6ce` (slice 2 — the `listTodos` aggregation layer), `d43445d` (slice 3a — the visible To-Do tab), `4c240bd` (slice 3b — the personal Step Rail), `7d5a38a` (slice A-1 — detail-panel color/starred columns + setters), `f1fb6df` (slice A-2 — the personal detail panel UI), `9c049e3` (slice A-3 — drag-to-reorder personal steps), `4bc236d` (slice B — personal-to-do notes), `1795418` (slice C-recurring-1 — completion-anchored recurrence backend), `76bafb0` (slice C-recurring-2 — recurrence picker UI + row chip), `a6f82d7` (slice C-recurring-3 — missed-occurrence tracking), `9376ba7` (chore — remove orphaned personalTodo:list channel) and `f918e42` (OFF-WORK / leave-window — per-member future-only leave window in a new cloud `off_work` table + local mirror; the missed-evaluator reads the acting user's window and skips stamping misses for boundaries inside it; Team page "on leave" pill + self-service picker + "End leave"; notification-drop DEFERRED) and `1ea04a7` (DATE-PICKER — native picker fixes + native unification + recurrence-due-date gate). The installed app is 2.3.0 and contains NONE of them.** ★ **DATE-PICKER SLICE — SHIPPED (`1ea04a7`).** Three bundled fixes plus a unification: native `<input type=date/time>` now open on clicking the field body via `onClick→showPicker()` + `[color-scheme:dark]` for glyph visibility (root cause was Chromium only opening the picker from the tiny edge glyph, a behavior quirk not a bug); the To-Do panel's one-off custom `DatePopover` was REPLACED with a native `<input type=date>` so ALL date entry is native (its calendar-grid helpers deleted; `usePopoverDismiss`/`PILL_CLASS`/`TimePopover` kept — still used by the recurrence + time controls); native OS positioning auto-flips so the off-work-at-bottom picker never clips (no custom overflow logic); and RECURRENCE is now GATED ON A DUE DATE (the panel `RecurrencePopover` is disabled+greyed with a "set a due date first" hint when the to-do has no `due_date`), preventing the recurrence-without-due zombie state at the source (the one entry point — the quick-add row has no recurrence control). ★ **SLICE 1c IS COMPLETE — CROSS-DEVICE ASSIGNMENT WORKS FOR THE FIRST TIME (2026-07-20).** `assignees_json` held device-local `local_users.id` UUIDs that resolved on exactly one machine; it now holds stable work emails, and every read, write and notification site matches on email. See the **1c-2 ARC** entry under the To-Do overhaul for the four commits and the five hard-won findings. ★ **IDENTITY MODEL CORRECTED THIS SESSION — `dk@kantor-consulting.com` is a TEAM MEMBER, NOT root; ROOT is `doriankantor@gmail.com`/`local-admin`. Older entries below that call dk@ "full-admin" predate this and are superseded — see the IDENTITY MODEL block under Known issues.** (Historical — **code HEAD was `2d76b9a` on 2026-07-18 — the `visibleBoardIds` NON-ROOT NO-JOIN is now FIXED (2026-07-18), closing the FOUNDATION the whole access-control tier rests on: the non-root path read `board_members` by email with no join to `workspace_boards`, and `board_members` rows SURVIVE a soft-delete, so a since-deleted board's id stayed visible forever and the 0a-2/0a-3/0a-4 gates (which trust that set DIRECTLY) kept serving and mutating its content. `2d76b9a` is UNRELEASED — the first commit of the next release; the installed app is 2.3.0 and does NOT contain it.**) ★ **METHODOLOGY LESSON OF THE SESSION — THE PHANTOM TEST: the first attempt to verify this fix produced a false PASS that everyone believed, over-determined by THREE stacked silent failures (the document never persisted, the soft-delete never landed, and the fix was already compiled into the running build). For a SECURITY test, confirm EVERY precondition in the authoritative store BEFORE trusting the observed result — a result that matches expectation proves nothing if the preconditions were never verified. See the dedicated lesson section.** **The ENTIRE ACCESS-CONTROL GAP (finding 1) IS CLOSED END-TO-END AND SHIPPED: 0a-1 (`8eae348`, compose stamps a project), 0a-1b (`2e22178`, pipeline writer stamps a project), 0a-2 (`a5d4b20`, the intel READ gate), 0a-3 (`46be18e`, the `info_page_*` READ tier), and 0a-4 (`26ee18c`, the `info_page_*` WRITE surface — ~20 mutation handlers gated across three axes: M=membership, A=canApprove, R=root) are all DONE. Reads AND writes are now membership-scoped. v2.3.0 IS NOW RELEASED — the whole tier ships to researchers (they self-update off the ungated 2.2.0); the next step is 0b (realtime health). Also shipped: a pipeline NULL-writer bug fix (part of `2e22178`), the aba6b91 scroll-jump regression fix (`923f334`), and the `infoPages:list` `deleted=0` bug fix (part of `46be18e`).** `origin/main` up to date, tree clean. **The unreleased-since-v2.2.0 list is now EMPTY** — `8eae348`/`2e22178`/`923f334`/`a5d4b20`/`8662b68`/`46be18e`/`f80b17d`/`26ee18c`/`49b44fd` all SHIPPED in v2.3.0 (installed builds self-update from 2.2.0). **UNRELEASED since v2.3.0: TWENTY-EIGHT code commits** (listed at the top of this block) — installed app is 2.3.0 and does NOT contain them. **8 assets on GitHub Releases** — mac universal DMG/zip, win NSIS x64 exe, blockmaps, and BOTH auto-update manifests (`latest-mac.yml`/`latest.yml`), so installed builds self-update. (v2.2.0 was published 2026-07-16, tag `v2.2.0`.) v2.2.0 ships the whole post-v2.1.0 batch: the **cosmetic sweep** (`7f36605`/`ff2bd9a`/`0425f19`), the **`known_tags` cloud migration** (`0865948`, the template), the **OFFLINE ARC** (`504bf1f` mirror + `23de14d` connection state/banner/lockout/reconnect), the **`intelligence_sources` cloud migration** (`cfdd4b1` — the big one, 242 rows byte-verified), and **realtime on `intelligence_sources` + resubscribe-on-reconnect** (`aba6b91`). **Same-day cross-device test + follow-up diagnostics surfaced an ACCESS-CONTROL GAP in the intel reads (+4 more findings) — finding 1 is now CLOSED end-to-end (reads via 0a-2/0a-3, writes via 0a-4); still open from the original five: finding 3 = 0b (realtime health), finding 4 (downstream of 3), finding 5 (updater unconditional-success print) — see the ⛔ block below.** **Milestone (locked): complete intel process by end of July; publishing moves to August.** ★ **HEADER BROUGHT CURRENT 2026-07-23 (late) — this line's "v2.3.0 RELEASED / UNRELEASED since v2.3.0" framing above is SUPERSEDED: v2.4.0 IS RELEASED (published 2026-07-23, tag `v2.4.0`, version-bump `97846c3`) but is UNINSTALLABLE ON macOS — a fresh install is deleted on launch, `spctl` reports "notarization indicates this code has been revoked"; the build is unsigned by config (`notarize: false`, `hardenedRuntime: false`) and SIGNING IS DEFERRED TO LAUNCH (Apple Developer Program $99/yr + Developer ID cert). Windows deferred too but still RUNS (SmartScreen warning only). **UNRELEASED since v2.4.0: THIRTEEN commits** — `80032f4` (dead PUSH-TO-INFO-PAGE stat removed), `e05e8a2` (sidebar badge refresh), `9bf124c` (Relevance/Date sort toggle), `c2e7543` (Board Access relocated to Team), `782b779` (permission writes surface failures), **`720dbb8` (N-1 — notifications identity unified: email is now the canonical recipient key)**, **`607ef70` (attachmentsCloud `CLOUD_ADMIN_EMAIL` import fix — node tsc baseline 8 -> 5)**, **`2773ba2` (N-1 backfill log guard — predicate unchanged)**, plus docs `859b2cf`/`3d0acc3`/`4bb7ca1`/`72a82d7`/**`eda60e2`**. The installed app is 2.4.0 (where it installs at all) and contains NONE of them.**_
 
 ## ▶ Start here — resume point for the next session
 
@@ -10,6 +10,40 @@ two large components, **(3)** the last cloud migration (`info_page_sources`). **
 process complete by end of July, publishing in August.** The stage order is LOCKED: **New sources
 → Analysis & design → Publish → Latest update notes → Sources**, with Claude PROPOSING placements
 and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not jump to code.
+
+**LATEST (2026-07-25) — N-2c-2 SHIPPED; notifications cloud arc COMPLETE except
+the deliberately-deferred bulk path.**
+
+- **`3ea4021` — N-2c-2: offline single-row `markRead` reaches cloud via the N-2c-1
+  sweep.** Offline `markRead` writes `read=1, pending_sync=1` and returns `ok`; the
+  sweep delivers it. A **FAILED** mirror write returns `ok:false` (N-2b-1 rule —
+  never report success we did not achieve). **Load-bearing guard:** `syncMirror`'s
+  `ON CONFLICT DO UPDATE` now carries **`WHERE notifications.pending_sync=0`**, so an
+  interim online poll (`getNotifications → syncMirror`, same call as `mergePending`)
+  can't overwrite a locally-read row back to unread before the sweep runs. The sweep
+  **SPLITS its upsert by cloud membership** — created-offline rows send `created_at`
+  (they're the origin), read-flipped rows **OMIT** it so cloud's ms-precision
+  original is never truncated to the mirror's second-precision copy. `getUnreadCount`
+  online branch does **signed pending-merge arithmetic** (a read-flipped-but-unread-
+  in-cloud row SUBTRACTS). Sweep failures now log stuck ids. `env.d.ts` widened to
+  `{ok, error?}`.
+  **VERIFIED LIVE on a real network transition:** the marked row reached cloud
+  `read=true`, its `created_at` stayed byte-identical (`.708`, not truncated), its
+  same-second twin kept ordering, `pending_sync` cleared, **zero leak**, unread
+  counts agreed cloud−1 / local−1.
+- **`606d00e` — chore: electron 31.7.7 → 33.4.11** (see the reset note below).
+
+**★ NEXT: N-2c-3** — offline `markAllRead`. **HELD OUT of N-2c-2 for a REAL
+reason:** its predicate is unbounded (`WHERE user_email=? AND read=0`), and on a
+production DB the N-1 backfill already rewrote ~240 `local-admin` rows to
+`CLOUD_ADMIN_EMAIL`, so they're email-keyed and the sweep's `LIKE '%@%'` guard does
+**NOT** exclude them. One offline "mark all read" would flip **hundreds** of
+D8-excluded legacy rows to `pending_sync=1` and the next sweep would ship every one
+into a cloud table **WITH NO DELETE PATH** — the "no seed" decision undone by one
+click, unrecoverably. N-2c-3 must first answer: the mirror cannot distinguish "in
+cloud, unread" from "never in cloud, unread", so bulk mark-read must mark **ONLY
+provably-in-cloud rows**. Needs its own diagnose. Then **N-3** (user-scoped
+realtime), then **To-Do 2.5**.
 
 **LATEST (2026-07-24) — NOTIFICATIONS CLOUD ARC: N-2a, N-2b-1, N-2c-1 SHIPPED.**
 
@@ -29,11 +63,7 @@ and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not
   accumulates. Expected, not a bug.
 - **`64df164` — N-2b-1: Inbox no longer lies when mark-read fails.** Both handlers
   await the result and update state **only on `ok`**; new inline error surface.
-- **N-2c-1 — offline-created notifications reach cloud via a pending-sync sweep.**
-  ⚠ **UNCOMMITTED AS OF THIS DOCS COMMIT** — built, tsc-clean and verified end to
-  end in the running app, but still sitting in the working tree across five files
-  (`db.ts`, `ipc/index.ts`, `cloud/notificationsCloud.ts`, `cloud/connection.ts`,
-  `index.ts`). **Commit it and replace this line with the hash.**
+- **`87483b2` — N-2c-1: offline-created notifications reach cloud via a pending-sync sweep.**
   `pending_sync` marker set on INSERT, cleared on cloud confirmation; sweep on
   **reconnect + launch+11s**; upsert-by-id with `.select()` confirmation.
   ⚠ **`DEFAULT 0`, NO BACKFILL, and predicate `AND user_email LIKE '%@%'`** — this
@@ -2241,6 +2271,30 @@ in postgrest-js (that catch handler); every other status comes from a real HTTP
 0 for network errors. **Do NOT match message text.** `error.code === ''` is **NOT**
 exclusive (the `{message: body}` fallback also produces it).
 
+## ⚠ Lesson — the mirror is SECOND-PRECISION; cloud is MILLISECOND
+
+Both `createNotification` (SQLite `CURRENT_TIMESTAMP`, 19 chars) and `syncMirror`
+(`toLocalTimestamp` `.slice(0,19)`) store `created_at` at **SECOND** precision. Cloud
+stores **ms** (`new Date().toISOString()`). So re-sending a mirror timestamp back to
+cloud **TRUNCATES** it. Harmless for a row whose **ORIGIN is the mirror**
+(created-offline — there is no fuller value), **CORRUPTING** for a row whose origin
+is cloud (read-flipped — you'd overwrite the ms original and silently reorder
+same-second rows for every viewer, since ordering is a `created_at DESC` **string**
+compare). N-2c-2 fixes it by **splitting the sweep upsert**: send `created_at` only
+for rows NOT already in cloud. **Lesson: a value that round-trips through two stores
+with different precision is a silent-corruption source; check precision at every
+boundary.**
+
+## ⚠ Lesson — an ON CONFLICT DO UPDATE needs a WHERE when the local row can hold state cloud lacks
+
+Once the mirror can carry a pending local edit (`read` flipped offline),
+`syncMirror`'s blind `read = excluded.read` will **clobber it back** on the next
+cloud read — **before** the sweep delivers it — and the sweep then ships the
+clobbered value, making the loss **permanent**. Guard:
+**`WHERE notifications.pending_sync = 0`**, so cloud only refreshes rows with no
+unsynced local state. This is the **write-side statement** of the same rule
+`mergePending` states on the read side.
+
 ## Release status at a glance
 
 - **v2.3.0 — RELEASED** (published 2026-07-17; version-bump commit `a4b161e`, tag `v2.3.0`
@@ -2489,6 +2543,42 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
 
 ## Known issues / open threads
 
+### Machine reset recovery (2026-07-24/25)
+
+- Full macOS reset wiped `~/newsroom-pm`, the local SQLite, and all uncommitted
+  work. **NOTHING was lost that mattered:** all commits were on `origin/main`, cloud
+  Supabase state was untouched. Recovery = fresh clone + rebuild environment.
+- **Toolchain rebuilt from scratch:** Xcode CLT, Homebrew, node@22 (ABI 130),
+  `npm install`, `npm run rebuild`.
+- **★ Tahoe (macOS 26) XProtect FALSE-POSITIVE:** it quarantined and **MOVED TO
+  TRASH** the unsigned electron 31.7.7 dist on every `npm run dev`. `xattr -dr
+  com.apple.quarantine` was blocked (Operation not permitted); ad-hoc `codesign`
+  verified but was still Trashed; no "Open Anyway" appeared (the Trash-move consumes
+  the approvable event). **FIX: bump electron 31→33 (`606d00e`).** 33.4.11 is signed
+  acceptably and launches clean. If this recurs on a future Electron, bump to the
+  next major; **don't fight the binary.**
+- **`.env` is gitignored and was lost.** Rebuilt from a Claude Code diagnose of every
+  `process.env`/`import.meta.env` read. ★ **KEY CORRECTION: main-process vars are
+  UNPREFIXED (`SUPABASE_URL`), NOT `MAIN_VITE_`** as older docs implied —
+  `electron.vite.config.ts` `loadEnv('')` + `define()` injects them. Renderer vars
+  use plain `VITE_`. The full var list: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+  `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `GOOGLE_CLIENT_ID`/`SECRET`,
+  `GH_TOKEN`, `ANTHROPIC_API_KEY` (scripts only — the **APP** reads its key from
+  SQLite settings), `NEWSAPI_KEY`, `USE_NEWSAPI`.
+- **★ Use the SAME service-role key as before** — it seeds the invite-code HMAC; a
+  different key silently breaks every already-issued invite code.
+- **Use LEGACY (JWT, `eyJ`-prefixed) Supabase keys, not the new `sb_publishable_`/
+  `sb_secret_` format** — the code expects JWTs and the HMAC seeding depends on it.
+- **Still BLANK in `.env`, restore before next use:** `GH_TOKEN` (regenerate —
+  GitHub never re-shows it; needed for info-page publish + `npm run release`) and
+  `GOOGLE_CLIENT_ID`/`SECRET` (retrievable from console.cloud.google.com; needed for
+  Drive sync). Both are **BUILD-TIME baked via `define()`**, so adding them needs a
+  rebuild, not just a dev restart.
+- **Git auth** now via `gh` (GitHub CLI, browser login, Keychain) — no more PAT
+  prompts. Username is `Doriankantor`.
+- **Username path changed: `/Users/doriankantor` → `/Users/dorian`.** Any absolute
+  path in older docs is stale.
+
 ### Found during the notifications cloud arc (2026-07-24) — logged, not fixed
 
 - **`addComment` HAS NO `isOnline()` GUARD** (`boards.ts:1080`), unlike `getComments`
@@ -2510,9 +2600,12 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   so **left as is, logged**.
 - **`personalSync.attempts` is WRITTEN BUT NEVER READ.** No retry cap, no surfacing;
   a permanently-poisoned op retries on **every reconnect and launch, forever**.
-- **`getUnreadCount` is NOT pending-merged** (N-2c-1 merged `getNotifications`
+- ~~**`getUnreadCount` is NOT pending-merged** (N-2c-1 merged `getNotifications`
   only), so the Inbox list and the Header/Sidebar badges **disagree** in the
-  hysteresis case. Folds into **N-2c-2**.
+  hysteresis case. Folds into **N-2c-2**.~~ ✅ **RESOLVED in `3ea4021` (N-2c-2)** —
+  the online branch now does signed pending-merge arithmetic. *(markAllRead offline
+  is N-2c-3 — deferred for the unbounded-predicate mass-seed risk; single-row
+  markRead shipped in N-2c-2.)*
 - **`env.d.ts:634` types `notifications.create` as returning `{ok?, id?}`** but the
   handler returns a bare `{ok:true}` and **NEVER returns an id**.
 - **Stale `~/Library/Application Support/Electron/` DB** — empty, two months old,
