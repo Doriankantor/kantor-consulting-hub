@@ -11,6 +11,55 @@ process complete by end of July, publishing in August.** The stage order is LOCK
 → Analysis & design → Publish → Latest update notes → Sources**, with Claude PROPOSING placements
 and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not jump to code.
 
+**LATEST (2026-07-24) — NOTIFICATIONS CLOUD ARC: N-2a, N-2b-1, N-2c-1 SHIPPED.**
+
+- **`8851499` — N-2a: cloud `notifications` table + two-tier read/write.** Cloud is
+  the source of truth, local SQLite is the **offline mirror**. Reads are
+  cloud-first with mirror fallback. The choke point writes the mirror
+  **SYNCHRONOUSLY** then dispatches the cloud insert **fire-and-forget**, so a
+  failed delivery never fails the parent action. Delivery failures surface through
+  the **EXISTING** connection banner via a new `app:notice` push channel —
+  deliberately **NOT** an eighth ad-hoc toast. `reportCloudResult` on **READS
+  ONLY**: a timer-driven fanout write must never be able to flip the whole app
+  offline. Mirror sync is **UPSERT-BY-ID ONLY** — the mirror holds 545+ rows that
+  will never exist in cloud, so delete-then-insert (the `known_tags` pattern) would
+  destroy local history. **NO SEED (D8):** cloud starts empty and fills from real
+  usage.
+  ⚠ **CONSEQUENCE:** the Inbox shows **FEWER** rows online than offline until cloud
+  accumulates. Expected, not a bug.
+- **`64df164` — N-2b-1: Inbox no longer lies when mark-read fails.** Both handlers
+  await the result and update state **only on `ok`**; new inline error surface.
+- **N-2c-1 — offline-created notifications reach cloud via a pending-sync sweep.**
+  ⚠ **UNCOMMITTED AS OF THIS DOCS COMMIT** — built, tsc-clean and verified end to
+  end in the running app, but still sitting in the working tree across five files
+  (`db.ts`, `ipc/index.ts`, `cloud/notificationsCloud.ts`, `cloud/connection.ts`,
+  `index.ts`). **Commit it and replace this line with the hash.**
+  `pending_sync` marker set on INSERT, cleared on cloud confirmation; sweep on
+  **reconnect + launch+11s**; upsert-by-id with `.select()` confirmation.
+  ⚠ **`DEFAULT 0`, NO BACKFILL, and predicate `AND user_email LIKE '%@%'`** — this
+  is the line where a typo would push 555 orphaned rows into a cloud table **WITH
+  NO DELETE PATH**. Never add a statement that sets `pending_sync=1` outside
+  `createNotification`'s INSERT.
+  **VERIFIED END TO END:** 10/10 rows reconcile local↔cloud, **six delivered BY THE
+  SWEEP** (provable: `createNotificationCloud` stamps sub-second `toISOString()`,
+  `toCloudTimestamp` derives from SQLite's second-truncated string — so a
+  whole-second cloud timestamp means the sweep wrote it), timestamp delta **exactly
+  0s** on every swept row.
+
+**★ NEXT: N-2c-2** (offline mark-read + the `syncMirror` guard + zero-row-match
+`.select()` + `env.d.ts` widening + `getUnreadCount` pending-merge). Then **N-3**
+(user-scoped realtime axis), **N-4** (off-work notification drop), then **To-Do 2.5**.
+
+**★ DECIDED — OFFLINE-FIRST FOR SHARED DATA IS NOT BEING BUILT (revisit
+post-launch).** Queue+reconcile stays limited to data where **CONFLICT IS
+IMPOSSIBLE**: personal to-dos (`personalSync`, single-owner) and notifications
+(`read` is monotonic 0→1, created rows immutable). **Shared data stays
+online-required.** Rationale: the queue is small, the **RECONCILIATION** is a
+net-new conflict-resolution system needing a per-surface rule (the documented
+higher-order-action-wins case is one of many), nobody uses the app yet so there is
+no data on how often researchers are offline, and the intel deadline dominates.
+Revisit once real usage shows which actions actually hurt to lose.
+
 **LATEST (2026-07-23, late) — NOTIFICATIONS IDENTITY UNIFIED (N-1) + TWO SMALL FIXES.**
 
 - **`720dbb8` — N-1: notifications single choke point + email identity (LOCAL).**
@@ -183,6 +232,9 @@ restructure, because heads can't be assigned without it and publication depends
 on heads. New order:
   1. `notifications` → cloud — the shared prerequisite. Unblocks To-Do slice 5
      (intel directive loop) AND the off-work notification-drop stub.
+     _(SUPERSEDED: notifications are CLOUD-BACKED as of N-2a/N-2c-1. The
+     prerequisite for To-Do 2.5/2.6/5 and the off-work notification-drop is now
+     MET.)_
   2. To-Do collaboration: **2.5** (off-card assignment entity — unblocks the
      empty "Assigned to me"/"Assigned by me" tabs) → **2.6** (invited
      collaboration) → **4** (head roles + card permission tiers) → **5** (intel
@@ -692,7 +744,9 @@ forward — suppression only gates the STAMP). Team page: an **"on leave" pill**
 within a window, a **self-service leave picker**, an **"End leave"** action (deletes the row =
 you're back; forward-only, so nothing already suppressed is retroactively un-suppressed) and an
 **Update** path. **Notification-drop is DEFERRED** (blocked on notifications→cloud) with a
-documented stub. IPC: `offWork` get/set/list/clear. Cloud DDL: `sql/2026-07-21_off_work.sql`.
+documented stub. _(SUPERSEDED: notifications are CLOUD-BACKED as of N-2a/N-2c-1. The
+prerequisite for To-Do 2.5/2.6/5 and the off-work notification-drop is now MET.)_
+IPC: `offWork` get/set/list/clear. Cloud DDL: `sql/2026-07-21_off_work.sql`.
 Suppression was verified both directions via a local-seed test.
 
 **DATE-PICKER SLICE — SHIPPED (`1ea04a7`).** Three bundled fixes plus a unification: **(a)** the
@@ -738,6 +792,8 @@ sections).** Whichever fork is chosen, these remain queued:
   (notifications are still local/per-device, `db.ts:253`). Wire it when notifications→cloud ships
   (that same prerequisite sits under fork A). _(PARTIALLY SUPERSEDED by N-1 `720dbb8`:
   identity is now EMAIL-canonical; the CLOUD half is still outstanding — N-2.)_
+  _(SUPERSEDED: notifications are CLOUD-BACKED as of N-2a/N-2c-1. The prerequisite for
+  To-Do 2.5/2.6/5 and the off-work notification-drop is now MET.)_
 - **To-Do write-through — CORE ALREADY FIXED (`cc6aedf`).** `todo:complete`/`uncomplete` now route
   through cloud (`updateTask`) so completions survive re-sync — see the ✅ slice under the To-Do
   overhaul. **Do NOT re-diagnose the revert.** Two follow-ups it LEFT open: the **offline
@@ -2149,6 +2205,42 @@ was initially reasoned about incorrectly; it was settled by reading the **SHIPPE
 BUNDLE** (`out/main/index.js`), not the source. **VERIFY RUNTIME BEHAVIOUR IN THE
 BUNDLE, NOT BY REASONING ABOUT THE SOURCE.**
 
+## ⚠ Lesson — immutable=1 SKIPS WAL RECOVERY (every count is a lie)
+
+Reading the live SQLite with `?immutable=1` **while the app is RUNNING** returns the
+last **CHECKPOINT**, not current state — the flag tells SQLite the file never
+changes, so `-wal` is **skipped entirely**.
+
+This produced a **full false diagnosis**: cloud had 9 rows, local "had" 546, and
+**cloud-succeeded-local-failed is IMPOSSIBLE by construction** (the mirror write is
+synchronous and first). The mirror had all 9; they were sitting in a **2.4 MB
+uncheckpointed `-wal`**. Same family as the **PHANTOM TEST**: a measurement that
+fails **silently** and returns a **PLAUSIBLE** answer.
+
+**CORRECT METHOD: copy `.sqlite` + `-wal` + `-shm` to scratch, open the copy
+WITHOUT `immutable=1`.** `immutable=1` is only safe with the app **QUIT**.
+
+**ALSO:** plain `node -e` cannot open this DB (`NODE_MODULE_VERSION` 125 vs 127 —
+the module is built for Electron's ABI) — use the **`sqlite3` CLI**.
+
+## ⚠ Lesson — postgrest-js DOES NOT REJECT ON NETWORK FAILURE
+
+`shouldThrowOnError` is false everywhere (`throwOnError` appears **nowhere** in
+`src/`), so `PostgrestBuilder` **CATCHES** the fetch rejection and **RESOLVES** with
+`{ data: null, error: { message: 'TypeError: fetch failed' }, status: 0,
+statusText: '' }`.
+
+★ **CONSEQUENCE, CODEBASE-WIDE: every `catch` block written to handle a Supabase
+network failure is DEAD CODE.** The failure arrives as a **RESOLVED `{error}`**, not
+a throw. This is why `"TypeError: fetch failed"` reached the UI as an error
+**STRING**.
+
+**CLASSIFY STRUCTURALLY ON `status === 0`** — it is assigned in **exactly ONE place**
+in postgrest-js (that catch handler); every other status comes from a real HTTP
+`Response` or postgrest-js's own 200/204/406 overrides, and the Fetch spec reserves
+0 for network errors. **Do NOT match message text.** `error.code === ''` is **NOT**
+exclusive (the `{message: body}` fallback also produces it).
+
 ## Release status at a glance
 
 - **v2.3.0 — RELEASED** (published 2026-07-17; version-bump commit `a4b161e`, tag `v2.3.0`
@@ -2397,6 +2489,35 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
 
 ## Known issues / open threads
 
+### Found during the notifications cloud arc (2026-07-24) — logged, not fixed
+
+- **`addComment` HAS NO `isOnline()` GUARD** (`boards.ts:1080`), unlike `getComments`
+  directly above it. Offline it **THROWS**, `handleAddComment`'s uncaught `await`
+  aborts, and the **Post button does NOTHING with NO error shown**. The block is
+  **ACCIDENTAL** (an exception, not a policy). Also means the comment/mention
+  notification writers are **unreachable offline**. `TaskDetailPanel` has **ZERO**
+  connection awareness — `grep online` returns nothing.
+- **Workspace task-panel DUE DATE has no picker.** The DATE-PICKER slice (`1ea04a7`)
+  covered the To-Do panel and off-work only. Needs the same
+  `onClick→showPicker()` + `[color-scheme:dark]` treatment as Start date.
+- **A task due TODAY displays "Overdue."** Should read **"Due today"**. Boundary bug
+  in the urgency computation — relevant to the **CET-anchored-clock** work, which
+  assumed urgency states were computed correctly.
+- **`isTransportError` matches ANY `TypeError`**, so a genuine coding bug inside the
+  `try` would be misclassified as `'offline'` (banner suppressed, row marked,
+  failure invisible). **Self-heals via the sweep.** Narrowing risks missing real
+  transport errors — undici genuinely surfaces everything as a bare `TypeError` —
+  so **left as is, logged**.
+- **`personalSync.attempts` is WRITTEN BUT NEVER READ.** No retry cap, no surfacing;
+  a permanently-poisoned op retries on **every reconnect and launch, forever**.
+- **`getUnreadCount` is NOT pending-merged** (N-2c-1 merged `getNotifications`
+  only), so the Inbox list and the Header/Sidebar badges **disagree** in the
+  hysteresis case. Folds into **N-2c-2**.
+- **`env.d.ts:634` types `notifications.create` as returning `{ok?, id?}`** but the
+  handler returns a bare `{ok:true}` and **NEVER returns an id**.
+- **Stale `~/Library/Application Support/Electron/` DB** — empty, two months old,
+  from before the app name was set. Inert but a **diagnostic trap**; worth deleting.
+
 ### On the horizon — deferred / next up (priority order)
 
 - **0. PUBLICATION / INFO PAGES REDESIGN — BEGINS WITH AN INTERACTIVE MOCKUP.** When this
@@ -2414,6 +2535,8 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   **Shared prerequisite with slice 5: `notifications` → cloud** (local-only + `user_id`-keyed
   today, so a directive never reaches the assignee's machine). _(PARTIALLY SUPERSEDED by
   N-1 `720dbb8`: identity is now EMAIL-canonical; the CLOUD half is still outstanding — N-2.)_
+  _(SUPERSEDED: notifications are CLOUD-BACKED as of N-2a/N-2c-1. The prerequisite for
+  To-Do 2.5/2.6/5 and the off-work notification-drop is now MET.)_
 - **TWO GAPS FOUND DURING To-Do 1b (2026-07-19) — logged, both out of scope so far:**
   - **Dismissals are PERMANENT — there is no un-dismiss path anywhere.** Verified: zero
     `DELETE FROM todo_dismissed`, zero undismiss handler, no UI affordance. `todo:dismiss`
@@ -2445,6 +2568,8 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
     assignment was removed."* That is a **net-new conflict-resolution system**; it **pairs with
     `notifications` → cloud**. Its own slice. _(PARTIALLY SUPERSEDED by N-1 `720dbb8`:
     identity is now EMAIL-canonical; the CLOUD half is still outstanding — N-2.)_
+    _(SUPERSEDED: notifications are CLOUD-BACKED as of N-2a/N-2c-1. The prerequisite for
+    To-Do 2.5/2.6/5 and the off-work notification-drop is now MET.)_
   - **CET-ANCHORED CLOCK (slice-3 note).** Urgency (past-due / today / tomorrow) must **NOT
     rely on the local machine clock** — use a constant time source **bound to CET** so a
     deadline means the same instant for everyone regardless of timezone or a wrong system
@@ -2797,7 +2922,9 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
          the **same prerequisite already recorded for slice 5**: notifications are local-only
          and `user_id`-keyed, so cross-device delivery does not work until they move to cloud.
          _(PARTIALLY SUPERSEDED by N-1 `720dbb8`: identity is now EMAIL-canonical; the CLOUD
-         half is still outstanding — N-2.)_
+         half is still outstanding — N-2.)_ _(SUPERSEDED: notifications are CLOUD-BACKED as
+         of N-2a/N-2c-1. The prerequisite for To-Do 2.5/2.6/5 and the off-work
+         notification-drop is now MET.)_
        - **★ SCOPE GREW (2026-07-20) — 2.5 IS NO LONGER JUST "a record + a notification".**
          Three additions, decided after seeing 3a's two empty tabs in the app:
          - **ASSIGNER VISIBILITY — the assigner sees the assignee's progress, VIEW-ONLY.**
@@ -2827,6 +2954,8 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
          would put an acceptance state machine inside an entity that has none, and would let
          peer invitations inherit head-only gating.
        - **Shares the `notifications` → cloud prerequisite** with 2.5 and 5.
+         _(SUPERSEDED: notifications are CLOUD-BACKED as of N-2a/N-2c-1. The prerequisite
+         for To-Do 2.5/2.6/5 and the off-work notification-drop is now MET.)_
     ★ **THE THREE To-Do COLLABORATION CONCEPTS — KEEP THEM SEPARATE (decided 2026-07-20).**
        Recorded because they are easy to conflate and expensive to un-conflate later:
        - **a. ASSIGNED (off-card)** — a **HEAD** assigns to one or multiple members (**incl.
@@ -2966,7 +3095,9 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
            placement) rather than Settings: an **"on leave" pill**, a **self-service picker**, an
            **"End leave"** action (deletes the row = you're back; forward-only) and an **Update** path.
            IPC `offWork` get/set/list/clear; cloud DDL `sql/2026-07-21_off_work.sql`. **Notification-drop
-           DEFERRED** (blocked on notifications→cloud) with a documented stub. Verified both directions
+           DEFERRED** (blocked on notifications→cloud) with a documented stub. _(SUPERSEDED:
+           notifications are CLOUD-BACKED as of N-2a/N-2c-1. The prerequisite for To-Do
+           2.5/2.6/5 and the off-work notification-drop is now MET.)_ Verified both directions
            via a local-seed test.
        - **★ DATE-PICKER SLICE — ✅ SHIPPED (`1ea04a7`, 2026-07-21).** Not on the original queue;
          surfaced while using off-work. Three bundled fixes across `Team.tsx` + `Todo.tsx`: (a) native
@@ -3033,7 +3164,9 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
          assignee's machine.** The deep-link machinery works; the delivery does not. The spec
          does not mention this. Migrate notifications before, or slice 5 ships broken.
          _(PARTIALLY SUPERSEDED by N-1 `720dbb8`: identity is now EMAIL-canonical; the CLOUD
-         half is still outstanding — N-2.)_
+         half is still outstanding — N-2.)_ _(SUPERSEDED: notifications are CLOUD-BACKED as
+         of N-2a/N-2c-1. The prerequisite for To-Do 2.5/2.6/5 and the off-work
+         notification-drop is now MET.)_
   - **✅ SLICE 2 SHIPPED — the `listTodos` aggregation layer (`065f6ce`, 2026-07-20,
     UNRELEASED).** Two sources assembled in MAIN — **personal** (local `personal_todos`,
     `user_id`-keyed, because 1a deliberately kept the local table id-keyed and translates only
@@ -3140,7 +3273,9 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
     Team page (provisional placement): "on leave" pill, self-service picker, End-leave/Update. IPC
     `offWork` get/set/list/clear. **Notification-drop DEFERRED** (notifications are still
     local/per-device — `db.ts:253`; the drop half is blocked on notifications→cloud, left as a
-    documented stub at `createNotification`).
+    documented stub at `createNotification`). _(SUPERSEDED: notifications are CLOUD-BACKED as
+    of N-2a/N-2c-1. The prerequisite for To-Do 2.5/2.6/5 and the off-work notification-drop is
+    now MET.)_
   - **✅ SLICE DATE-PICKER SHIPPED (`1ea04a7`, 2026-07-21, UNRELEASED).** Three bundled fixes + a
     native unification in `Team.tsx` (off-work start/end) + `Todo.tsx` (new-todo date/time + panel
     due-date + recurrence). ★ **THREE REUSABLE LEARNINGS:**
@@ -3616,6 +3751,8 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
       **re-confirms `notifications` → cloud as a slice-5 prerequisite**: a directive notification
       still never leaves the assigner's machine. _(PARTIALLY SUPERSEDED by N-1 `720dbb8`:
       identity is now EMAIL-canonical; the CLOUD half is still outstanding — N-2.)_
+      _(SUPERSEDED: notifications are CLOUD-BACKED as of N-2a/N-2c-1. The prerequisite for
+      To-Do 2.5/2.6/5 and the off-work notification-drop is now MET.)_
 - **COMPOSE-SURFACE WRITES AND FEEDBACK (silent-failure cluster).** Four related issues in
   the Intelligence compose surface, found 2026-07-18. **All four compose paths
   (News/Social/Documents/Interviews) write through the SAME `insertSource`
