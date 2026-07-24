@@ -11,6 +11,41 @@ process complete by end of July, publishing in August.** The stage order is LOCK
 → Analysis & design → Publish → Latest update notes → Sources**, with Claude PROPOSING placements
 and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not jump to code.
 
+**LATEST (2026-07-25) — N-2c-3 SHIPPED. NOTIFICATIONS CLOUD ARC COMPLETE.**
+
+- **`bea5a02` — N-2c-3: offline `markAllRead` stays online-required, shown as a
+  disabled control.** **DECISION, not a ledger:** there is **NO purely-local signal
+  that proves a row is in cloud** (`pending_sync` is overloaded — "synced" vs
+  "legacy never-synced"; the `@`-filter fails because N-1 rewrote unread legacy rows
+  to email keys). A blind offline mark-all would seed D8-excluded rows into a
+  delete-less cloud table. So offline `markAllRead` is **INTENTIONALLY
+  online-required** — no `cloud_confirmed` column, no schema change. **UX only:** the
+  "Mark all as read" button is disabled+dimmed offline with an "Unavailable while
+  offline" tooltip (matches the Intel-tab lockout pattern), so a blocked-by-design
+  action reads as a **disabled affordance, not a rose error**. The `{ok:false}` rose
+  path is kept as the hysteresis-window backstop. Single-row `markRead` stays enabled
+  offline (N-2c-2). **Renderer-only.**
+
+**★ NOTIFICATIONS CLOUD ARC — COMPLETE.** Full path summary for future reference:
+  - **N-1 (`720dbb8`):** identity unification, `user_id` → `user_email`, single choke point
+  - **N-2a (`8851499`):** cloud table + two-tier cloud-first read / mirror-fallback
+  - **N-2b-1 (`64df164`):** Inbox stops lying on mark-read failure
+  - **N-2c-1 (`87483b2`):** offline-CREATED notifications reach cloud via `pending_sync`
+    marker + reconnect/launch sweep
+  - **N-2c-2 (`3ea4021`):** offline single-row mark-READ via the same sweep, with the
+    `syncMirror` `pending_sync=0` guard and the `created_at` cloud-membership split
+  - **N-2c-3 (`bea5a02`):** offline bulk mark-read intentionally online-required
+
+  Every notification path is now either cloud-backed or deliberately online-required
+  with honest UX. **THE #1 PRIORITY-ORDER BLOCKER IS CLEARED.**
+
+**★ NEXT: To-Do 2.5** — "Assigned to me" / "Assigned by me" tabs (currently empty).
+This was **BLOCKED on notifications→cloud** (assignment notifies the assignee,
+completion notifies the assigner back) — now **UNBLOCKED**. Needs
+`board_members.can_assign`, `assigned_by`, and completion-notification-to-assigner
+per the locked To-Do design. Then **To-Do 2.6 → 4 → 5**, then **Team console**, then
+the **Intelligence + Info Pages restructure**.
+
 **LATEST (2026-07-25) — N-2c-2 SHIPPED; notifications cloud arc COMPLETE except
 the deliberately-deferred bulk path.**
 
@@ -44,6 +79,7 @@ click, unrecoverably. N-2c-3 must first answer: the mirror cannot distinguish "i
 cloud, unread" from "never in cloud, unread", so bulk mark-read must mark **ONLY
 provably-in-cloud rows**. Needs its own diagnose. Then **N-3** (user-scoped
 realtime), then **To-Do 2.5**.
+  *(RESOLVED N-2c-3 (`bea5a02`): intentionally online-required — see the decision above.)*
 
 **LATEST (2026-07-24) — NOTIFICATIONS CLOUD ARC: N-2a, N-2b-1, N-2c-1 SHIPPED.**
 
@@ -2605,7 +2641,8 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   hysteresis case. Folds into **N-2c-2**.~~ ✅ **RESOLVED in `3ea4021` (N-2c-2)** —
   the online branch now does signed pending-merge arithmetic. *(markAllRead offline
   is N-2c-3 — deferred for the unbounded-predicate mass-seed risk; single-row
-  markRead shipped in N-2c-2.)*
+  markRead shipped in N-2c-2.)* **RESOLVED N-2c-3 (`bea5a02`): offline markAllRead is
+  intentionally online-required — disabled control, no ledger.**
 - **`env.d.ts:634` types `notifications.create` as returning `{ok?, id?}`** but the
   handler returns a bare `{ok:true}` and **NEVER returns an id**.
 - **Stale `~/Library/Application Support/Electron/` DB** — empty, two months old,
@@ -2628,8 +2665,10 @@ Fixed by making **every restore/undelete refresh tasks, not just the list**:
   **Shared prerequisite with slice 5: `notifications` → cloud** (local-only + `user_id`-keyed
   today, so a directive never reaches the assignee's machine). _(PARTIALLY SUPERSEDED by
   N-1 `720dbb8`: identity is now EMAIL-canonical; the CLOUD half is still outstanding — N-2.)_
-  _(SUPERSEDED: notifications are CLOUD-BACKED as of N-2a/N-2c-1. The prerequisite for
-  To-Do 2.5/2.6/5 and the off-work notification-drop is now MET.)_
+  _(✅ **DONE — NOTIFICATIONS CLOUD ARC COMPLETE** through N-2c-3 (`bea5a02`); see the
+  arc summary at the top. The prerequisite for To-Do 2.5/2.6/5 and the off-work
+  notification-drop is MET, and **item 1 of this priority order is CLEARED — the new
+  top of the queue is To-Do 2.5**.)_
 - **TWO GAPS FOUND DURING To-Do 1b (2026-07-19) — logged, both out of scope so far:**
   - **Dismissals are PERMANENT — there is no un-dismiss path anywhere.** Verified: zero
     `DELETE FROM todo_dismissed`, zero undismiss handler, no UI affordance. `todo:dismiss`
