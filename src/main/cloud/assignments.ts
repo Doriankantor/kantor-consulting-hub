@@ -26,6 +26,9 @@ import { getDatabase } from '../db'
 
 export interface AssignmentRow {
   id: string
+  // 2.5a-fix: the board this assignment is scoped to. NOT NULL in both stores —
+  // every off-card assignment belongs to exactly one board (the head-gate anchor).
+  board_id: string
   assigner_email: string
   assignee_email: string
   title: string
@@ -40,7 +43,7 @@ export interface AssignmentRow {
 }
 
 const SELECT_COLS =
-  'id, assigner_email, assignee_email, title, body, due_date, due_time, completed_at, source_type, source_id, created_at, updated_at'
+  'id, board_id, assigner_email, assignee_email, title, body, due_date, due_time, completed_at, source_type, source_id, created_at, updated_at'
 const PAGE_LIMIT = 200
 
 // Cloud created_at/updated_at are TIMESTAMPTZ (ISO, 'T' + offset); the local
@@ -60,6 +63,7 @@ function toLocalTs(value: unknown): string | null {
 function fromCloud(r: Record<string, unknown>): AssignmentRow {
   return {
     id: String(r.id),
+    board_id: String(r.board_id ?? ''),
     assigner_email: String(r.assigner_email ?? ''),
     assignee_email: String(r.assignee_email ?? ''),
     title: String(r.title ?? ''),
@@ -86,9 +90,9 @@ function syncMirror(rows: AssignmentRow[]): void {
     const db = getDatabase()
     const ins = db.prepare(`
       INSERT INTO assignments
-        (id, assigner_email, assignee_email, title, body, due_date, due_time,
+        (id, board_id, assigner_email, assignee_email, title, body, due_date, due_time,
          completed_at, source_type, source_id, created_at, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(id) DO UPDATE SET
         title        = excluded.title,
         body         = excluded.body,
@@ -99,7 +103,7 @@ function syncMirror(rows: AssignmentRow[]): void {
     const tx = db.transaction((list: AssignmentRow[]) => {
       for (const r of list) {
         ins.run(
-          r.id, r.assigner_email, r.assignee_email, r.title, r.body, r.due_date,
+          r.id, r.board_id, r.assigner_email, r.assignee_email, r.title, r.body, r.due_date,
           r.due_time, r.completed_at, r.source_type, r.source_id, r.created_at, r.updated_at,
         )
       }
@@ -145,7 +149,10 @@ export async function listAssignedTo(email: string): Promise<AssignmentRow[]> {
     const { data, error } = await cloud
       .from('assignments')
       .select(SELECT_COLS)
-      .ilike('assignee_email', email)
+      // 2.5a-fix: EXACT match, not .ilike — emails are stored lowercased on write
+      // (createAssignment), so a lowercased .eq removes the wildcard surface .ilike
+      // carried (a '%' or '_' in an address could otherwise match unintended rows).
+      .eq('assignee_email', email.toLowerCase())
       .is('completed_at', null)
       .order('created_at', { ascending: false })
       .limit(PAGE_LIMIT)
@@ -171,7 +178,8 @@ export async function listAssignedBy(email: string): Promise<AssignmentRow[]> {
     const { data, error } = await cloud
       .from('assignments')
       .select(SELECT_COLS)
-      .ilike('assigner_email', email)
+      // 2.5a-fix: EXACT lowercased match — see listAssignedTo.
+      .eq('assigner_email', email.toLowerCase())
       .is('completed_at', null)
       .order('created_at', { ascending: false })
       .limit(PAGE_LIMIT)
@@ -198,6 +206,7 @@ export async function listAssignedBy(email: string): Promise<AssignmentRow[]> {
 // (same rule as createNotificationCloud).
 export async function createAssignment(a: {
   id: string
+  board_id: string
   assigner_email: string
   assignee_email: string
   title: string
@@ -208,12 +217,20 @@ export async function createAssignment(a: {
   source_id?: string | null
 }): Promise<{ ok: boolean; error?: string }> {
   if (!isOnline()) return { ok: false, error: 'offline' }
+  // board_id is NOT NULL in both stores — reject a boardless assignment here rather
+  // than let the cloud/mirror insert fail obscurely.
+  if (!a.board_id) return { ok: false, error: 'board_id required' }
   const stamp = new Date().toISOString()
+  // Store emails lowercased so the .eq reads (which lowercase the query side) match
+  // exactly — see listAssignedTo. The mirror reads already LOWER() both sides.
+  const assigner = a.assigner_email.toLowerCase()
+  const assignee = a.assignee_email.toLowerCase()
   try {
     const { error } = await cloud.from('assignments').insert({
       id: a.id,
-      assigner_email: a.assigner_email,
-      assignee_email: a.assignee_email,
+      board_id: a.board_id,
+      assigner_email: assigner,
+      assignee_email: assignee,
       title: a.title,
       body: a.body ?? null,
       due_date: a.due_date ?? null,
@@ -229,8 +246,9 @@ export async function createAssignment(a: {
     syncMirror([
       fromCloud({
         id: a.id,
-        assigner_email: a.assigner_email,
-        assignee_email: a.assignee_email,
+        board_id: a.board_id,
+        assigner_email: assigner,
+        assignee_email: assignee,
         title: a.title,
         body: a.body ?? null,
         due_date: a.due_date ?? null,

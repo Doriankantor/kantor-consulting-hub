@@ -300,7 +300,10 @@ function assignmentToItem(r: AssignmentRow, source: 'assigned' | 'assigned-by-me
     completed: !!r.completed_at,
     completed_at: r.completed_at ?? null,
     position: null,
-    board_id: null,
+    // 2.5a-fix: carry the assignment's board scope through on the SAME field board
+    // tasks use, so 2.5b's head-gate and any board labelling have it. board_name is
+    // not resolved here yet (no join) — 2.5b can enrich it when it needs the label.
+    board_id: r.board_id || null,
     board_name: null,
     linked_task_id: null,
     column_id: null,

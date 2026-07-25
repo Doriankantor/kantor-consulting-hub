@@ -276,6 +276,11 @@ export function initDatabase(): void {
     -- single email. Cloud (Supabase) is the SOURCE OF TRUTH via cloud/assignments.ts
     -- (the boards.ts service-role pattern) — this local table is the OFFLINE MIRROR,
     -- NOT a personalSync table (that contract is single-owner only).
+    --   board_id        = the board this assignment is scoped to (2.5a-fix). NOT NULL:
+    --     every off-card assignment belongs to exactly one board — it is the
+    --     permission anchor a board head is gated against, and slice-5 intel
+    --     directives (info-board head → member of that board) obey the same rule.
+    --     There is deliberately no "boardless assignment".
     --   assigner_email  = who assigned it (this IS assigned_by).
     --   assignee_email  = who it is assigned to.
     --   completed_at    = NULL means open.
@@ -283,6 +288,7 @@ export function initDatabase(): void {
     --     in 2.5 code — no 2.5 path reads or writes them.
     CREATE TABLE IF NOT EXISTS assignments (
       id             TEXT PRIMARY KEY,
+      board_id       TEXT NOT NULL,
       assigner_email TEXT NOT NULL,
       assignee_email TEXT NOT NULL,
       title          TEXT NOT NULL,
@@ -1329,14 +1335,50 @@ export function initDatabase(): void {
       ON notifications (pending_sync) WHERE pending_sync = 1`)
   } catch (e) { console.warn('[N-2c] notifications pending index failed:', (e as Error)?.message) }
 
+  // To-Do 2.5a-fix: board_id is a load-bearing NOT NULL column added AFTER 2.5a
+  // shipped the table. SQLite cannot ADD a NOT NULL column without a DEFAULT (even
+  // to an empty table), and a DEFAULT '' would reintroduce the boardless value the
+  // constraint exists to forbid. The table is one commit old, has no FKs pointing
+  // at it, and holds only deleted test rows — so the honest fix is DROP + recreate
+  // with board_id NOT NULL in the CREATE. GUARDED on the column being absent, so it
+  // fires exactly once on an existing 2.5a install and is a no-op everywhere else
+  // (fresh installs already got board_id from the schema-block CREATE above).
+  try {
+    const aCols = db.prepare('PRAGMA table_info(assignments)').all() as { name: string }[]
+    if (aCols.length && !aCols.some(c => c.name === 'board_id')) {
+      db.exec(`
+        DROP TABLE assignments;
+        CREATE TABLE assignments (
+          id             TEXT PRIMARY KEY,
+          board_id       TEXT NOT NULL,
+          assigner_email TEXT NOT NULL,
+          assignee_email TEXT NOT NULL,
+          title          TEXT NOT NULL,
+          body           TEXT,
+          due_date       TEXT,
+          due_time       TEXT,
+          completed_at   DATETIME,
+          source_type    TEXT,
+          source_id      TEXT,
+          created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+        );`)
+      console.log('[2.5a-fix] assignments recreated with board_id NOT NULL (empty dev table — no data lost).')
+    }
+  } catch (e) { console.warn('[2.5a-fix] assignments board_id recreate failed:', (e as Error)?.message) }
+
   // To-Do 2.5: the two tabs are exactly these two lookups — "Assigned to me"
   // (assignee_email) and "Assigned by me" (assigner_email), each filtered to open
-  // items (completed_at). One index per tab.
+  // items (completed_at). One index per tab. board_id (2.5a-fix) backs the head-gate
+  // and board-filtered reads. These run AFTER the recreate above so they land on the
+  // fresh table (DROP TABLE also dropped the old indexes).
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_assignments_assignee
       ON assignments (assignee_email, completed_at)`)
     db.exec(`CREATE INDEX IF NOT EXISTS idx_assignments_assigner
       ON assignments (assigner_email, completed_at)`)
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_assignments_board
+      ON assignments (board_id)`)
   } catch (e) { console.warn('[2.5] assignments indexes failed:', (e as Error)?.message) }
 
   // ── Seed the Contested Skies Source Archive into Source Intelligence ──────────
