@@ -133,6 +133,12 @@ const api = {
     markAllRead: (userEmail: string) => ipcRenderer.invoke('notifications:markAllRead', userEmail),
     create:      (n: { user_id: string; type: string; title: string; body?: string; task_id?: string; task_title?: string; actor_name?: string }) => ipcRenderer.invoke('notifications:create', n),
   },
+  // Off-card assignments write path (To-Do 2.5b-1). Reads are via todos.list.
+  assignments: {
+    listAssignableBoards: ()                => ipcRenderer.invoke('assignment:listAssignableBoards'),
+    listBoardAssignees:   (boardId: string) => ipcRenderer.invoke('assignment:listBoardAssignees', boardId),
+    create:               (params: { board_id: string; assignee_emails: string[]; title: string; body?: string; due_date?: string; due_time?: string }) => ipcRenderer.invoke('assignment:create', params),
+  },
   chat: {
     getMessages: (limit?: number) => ipcRenderer.invoke('chat:getMessages', limit ?? 100),
     send:        (msg: { author_id: string; author_name: string; content: string }) => ipcRenderer.invoke('chat:send', msg),

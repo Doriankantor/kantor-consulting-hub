@@ -28,6 +28,7 @@ import { listTodos } from '../todos'
 import { nextOccurrence } from '../todos/nextOccurrence'
 import { startMissedSchedule, stopMissedSchedule } from '../todos/missedEvaluator'
 import * as intelCloud from '../cloud/intel'
+import * as assignmentsCloud from '../cloud/assignments'
 import * as notificationsCloud from '../cloud/notificationsCloud'
 import { pushNotice } from '../cloud/connection'
 import { isOnline } from '../cloud/connection'
@@ -1809,6 +1810,73 @@ function registerTodoHandlers() {
 
 function registerBoardMembersHandlers() {
   const db = () => getDatabase()
+
+  // ── Off-card ASSIGNMENTS write path (To-Do 2.5b-1) ───────────────────────────
+  // Board picker: boards where the acting user is a head (root → all). Online-only.
+  ipcMain.handle('assignment:listAssignableBoards', () => boardsCloud.listBoardsWhereHead(currentActingUserId))
+  // Assignee picker: members ∪ heads of the chosen board. Online-only.
+  ipcMain.handle('assignment:listBoardAssignees', (_e, boardId: string) => boardsCloud.listBoardAssignees(boardId))
+
+  // Create N off-card assignments (one row per assignee), GATED IN MAIN and
+  // best-effort. The renderer supplies NO assigner — main forces it to the resolved
+  // acting user. Returns { ok, results:[{email, ok, error?}] }.
+  ipcMain.handle('assignment:create', async (_e, params: {
+    board_id: string; assignee_emails: string[]; title: string;
+    body?: string | null; due_date?: string | null; due_time?: string | null
+  }) => {
+    const board_id = params?.board_id
+    const title = (params?.title ?? '').trim()
+    const assignees = Array.isArray(params?.assignee_emails) ? params.assignee_emails : []
+    if (!board_id || !title || assignees.length === 0) {
+      return { ok: false, error: 'A board, a title and at least one assignee are required.', results: [] }
+    }
+
+    const actor = await boardsCloud.resolveActor(currentActingUserId)
+    if (!actor.email) return { ok: false, error: 'Could not resolve the acting user.', results: [] }
+
+    // GATE A — assigner must be a HEAD of this board (root bypasses, matching isOwner).
+    if (!actor.isRoot && !(await boardsCloud.isOwner(currentActingUserId, board_id))) {
+      return { ok: false, error: 'Only a board head can assign on this board.', results: [] }
+    }
+
+    // GATE B eligibility — members ∪ heads of the board (the SAME set the picker uses,
+    // so enforcement and UI cannot diverge). Lowercased for exact comparison.
+    const eligible = new Set((await boardsCloud.listBoardAssignees(board_id)).map(a => a.email.toLowerCase()))
+
+    // Actor display name for the notification (best-effort — falls back to the email).
+    let actorName = actor.email
+    try {
+      const lu = db().prepare('SELECT full_name FROM local_users WHERE LOWER(email)=LOWER(?)').get(actor.email) as { full_name?: string } | undefined
+      if (lu?.full_name) actorName = lu.full_name
+    } catch { /* name resolution best-effort */ }
+
+    const actorEmail = actor.email.toLowerCase()
+    const results: { email: string; ok: boolean; error?: string }[] = []
+    for (const raw of assignees) {
+      const assignee = (raw ?? '').toLowerCase()
+      if (!assignee) { results.push({ email: String(raw), ok: false, error: 'empty email' }); continue }
+      // GATE B — an assignee not on the board is a gate violation: mark failed, skip
+      // its insert AND its notification (do NOT hard-fail the whole call — best-effort).
+      if (!eligible.has(assignee)) { results.push({ email: assignee, ok: false, error: 'not on this board' }); continue }
+
+      const res = await assignmentsCloud.createAssignment({
+        id: uuid(), board_id, assigner_email: actor.email, assignee_email: assignee,
+        title, body: params.body ?? null, due_date: params.due_date ?? null, due_time: params.due_time ?? null,
+      })
+      if (!res.ok) { results.push({ email: assignee, ok: false, error: res.error }); continue }
+      results.push({ email: assignee, ok: true })
+
+      // Notification through the choke point — SKIP self-assign (don't self-notify).
+      if (assignee !== actorEmail) {
+        createNotification({
+          user_id: assignee, type: 'assignment',
+          title: `${actorName} assigned you: "${title}"`,
+          actor_name: actorName,
+        })
+      }
+    }
+    return { ok: results.length > 0 && results.every(r => r.ok), results }
+  })
 
   // CLOUD-SOURCED (Stage 2, category 3). Membership is email-keyed in the cloud.
   ipcMain.handle('boardMembers:list', (_e, boardId: string) => boardsCloud.listMembers(boardId))

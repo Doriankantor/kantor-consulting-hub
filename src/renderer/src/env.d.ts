@@ -633,6 +633,15 @@ interface Window {
       markAllRead: (userEmail: string) => Promise<{ ok: boolean; error?: string }>
       create:      (n: { user_id: string; type: string; title: string; body?: string; task_id?: string; task_title?: string; actor_name?: string }) => Promise<{ ok?: boolean; id?: string }>
     }
+    /** Off-card assignments write path (To-Do 2.5b-1). Reads flow through todos.list. */
+    assignments: {
+      /** Boards where the acting user is a head (root → all). [] offline. */
+      listAssignableBoards: () => Promise<{ id: string; name: string }[]>
+      /** Members ∪ heads of a board — the eligible assignee set. [] offline. */
+      listBoardAssignees:   (boardId: string) => Promise<{ email: string; display_name: string }[]>
+      /** Create N rows (one per assignee), gated + best-effort in main. */
+      create:               (params: { board_id: string; assignee_emails: string[]; title: string; body?: string; due_date?: string; due_time?: string }) => Promise<{ ok: boolean; error?: string; results: { email: string; ok: boolean; error?: string }[] }>
+    }
     chat: {
       getMessages: (limit?: number) => Promise<ChatMessage[]>
       send:        (msg: { author_id: string; author_name: string; content: string }) => Promise<ChatMessage>

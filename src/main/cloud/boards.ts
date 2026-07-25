@@ -1018,6 +1018,53 @@ export async function getOwners(pageId: string): Promise<{ user_email: string; f
   })
 }
 
+// 2.5b-1: boards where the acting user is a HEAD (an info_page_owners row), for the
+// off-card assignment board picker. Root sees ALL non-deleted boards (matching the
+// isRoot short-circuit in isOwner). Online-required — returns [] offline, like
+// listMembers, so the assign form is inherently online-only. Board names come from
+// workspace_boards for display.
+export async function listBoardsWhereHead(actingUserId?: string): Promise<{ id: string; name: string }[]> {
+  if (!isOnline()) return []
+  const { email, isRoot } = resolveIdentity(actingUserId)
+  if (isRoot) {
+    const { data, error } = await cloud.from('workspace_boards')
+      .select('id,name').eq('deleted', 0).order('position', { ascending: true })
+    if (error) { console.warn('[assignments] listBoardsWhereHead(root) failed:', error.message); return [] }
+    return ((data ?? []) as { id: string; name: string }[]).map(b => ({ id: b.id, name: b.name }))
+  }
+  if (!email) return []
+  const { data: owned, error } = await cloud.from('info_page_owners').select('page_id').eq('user_email', email)
+  if (error) { console.warn('[assignments] listBoardsWhereHead failed:', error.message); return [] }
+  const ids = [...new Set(((owned ?? []) as { page_id: string }[]).map(o => o.page_id))]
+  if (ids.length === 0) return []
+  const { data: boards, error: bErr } = await cloud.from('workspace_boards')
+    .select('id,name').in('id', ids).eq('deleted', 0).order('position', { ascending: true })
+  if (bErr) { console.warn('[assignments] listBoardsWhereHead board fetch failed:', bErr.message); return [] }
+  return ((boards ?? []) as { id: string; name: string }[]).map(b => ({ id: b.id, name: b.name }))
+}
+
+// 2.5b-1: the eligible assignee set for off-card assignment on a board — members ∪
+// heads, deduped by lowercased email. This IS the GATE B eligibility set (the handler
+// reuses it), so the picker and the enforcement can never diverge. Online-required
+// (both listMembers and getOwners are). Members win the display name on a collision.
+export async function listBoardAssignees(boardId: string): Promise<{ email: string; display_name: string }[]> {
+  if (!isOnline() || !boardId) return []
+  const out = new Map<string, string>()  // lowercased email → display name
+  try {
+    for (const m of await listMembers(boardId)) {
+      const e = (m.email || '').toLowerCase()
+      if (e) out.set(e, m.full_name || m.email)
+    }
+  } catch (e) { console.warn('[assignments] listBoardAssignees members failed:', (e as Error)?.message) }
+  try {
+    for (const h of await getOwners(boardId)) {
+      const e = (h.user_email || '').toLowerCase()
+      if (e && !out.has(e)) out.set(e, h.full_name || h.user_email)
+    }
+  } catch (e) { console.warn('[assignments] listBoardAssignees heads failed:', (e as Error)?.message) }
+  return [...out.entries()].map(([email, display_name]) => ({ email, display_name }))
+}
+
 export async function getBoardName(boardId: string): Promise<string> {
   const { data } = await cloud.from('workspace_boards').select('name').eq('id', boardId).maybeSingle()
   return (data?.name as string | undefined) ?? boardId

@@ -981,6 +981,24 @@ export default function Todo() {
   const [newPersonalTime, setNewPersonalTime] = useState('')
   const [addingPersonal, setAddingPersonal] = useState(false)
 
+  // ── Off-card assignment form (To-Do 2.5b-1) ─────────────────────────────────
+  // The "+ Add" control is a 2-option menu (Personal | Assign to other). The assign
+  // form mirrors the personal form (title/date/time) plus a board picker (boards
+  // where I'm a head) and a board-scoped assignee multi-select. All picker data is
+  // cloud-only, so the form is inherently online-required; main re-enforces the gate.
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const addMenuRef = usePopoverDismiss(addMenuOpen, useCallback(() => setAddMenuOpen(false), []))
+  const [showAssign, setShowAssign] = useState(false)
+  const [assignBoards, setAssignBoards] = useState<{ id: string; name: string }[]>([])
+  const [assignBoardId, setAssignBoardId] = useState('')
+  const [assignAssignees, setAssignAssignees] = useState<{ email: string; display_name: string }[]>([])
+  const [assignSelected, setAssignSelected] = useState<Set<string>>(new Set())
+  const [assignTitle, setAssignTitle] = useState('')
+  const [assignDate, setAssignDate] = useState('')
+  const [assignTime, setAssignTime] = useState('')
+  const [assigning, setAssigning] = useState(false)
+  const [assignFailed, setAssignFailed] = useState<{ email: string; error?: string }[] | null>(null)
+
   // Meetings (Google, online-only, view-layer)
   const [meetings, setMeetings] = useState<DisplayItem[]>([])
   const [showCalEvents, setShowCalEvents] = useState<boolean>(() => {
@@ -1322,6 +1340,66 @@ export default function Todo() {
     }
   }
 
+  // ── Assignment form handlers (2.5b-1) ───────────────────────────────────────
+  function resetAssignForm() {
+    setAssignBoardId(''); setAssignAssignees([]); setAssignSelected(new Set())
+    setAssignTitle(''); setAssignDate(''); setAssignTime(''); setAssignFailed(null)
+  }
+
+  // Open the assign form and load the board picker (boards where I'm a head).
+  // Imperative load (not an effect) so it fires exactly on open, never on re-render.
+  async function openAssignForm() {
+    setAddMenuOpen(false); setShowAddPersonal(false); setShowAssign(true)
+    resetAssignForm()
+    try { setAssignBoards(await window.api.assignments.listAssignableBoards()) }
+    catch { setAssignBoards([]) }
+  }
+
+  // Board chosen → load its eligible assignees (members ∪ heads) and clear selection.
+  async function onAssignBoardChange(boardId: string) {
+    setAssignBoardId(boardId); setAssignSelected(new Set()); setAssignFailed(null)
+    if (!boardId) { setAssignAssignees([]); return }
+    try { setAssignAssignees(await window.api.assignments.listBoardAssignees(boardId)) }
+    catch { setAssignAssignees([]) }
+  }
+
+  function toggleAssignSelect(email: string) {
+    const key = email.toLowerCase()
+    setAssignSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
+
+  async function handleCreateAssignment() {
+    if (!assignBoardId || !assignTitle.trim() || assignSelected.size === 0 || !online) return
+    setAssigning(true); setAssignFailed(null)
+    try {
+      const res = await window.api.assignments.create({
+        board_id: assignBoardId,
+        assignee_emails: [...assignSelected],
+        title: assignTitle.trim(),
+        due_date: assignDate || undefined,
+        due_time: assignTime || undefined,
+      })
+      // Some rows may have landed even when !ok (best-effort) — always refetch so
+      // the successful ones appear under "Assigned by me".
+      queueLoad()
+      if (res.ok) {
+        setShowAssign(false); resetAssignForm()
+      } else {
+        // Minimal inline result (full toast polish is 2.5b-2): show who failed.
+        const failed = (res.results || []).filter(r => !r.ok).map(r => ({ email: r.email, error: r.error }))
+        setAssignFailed(failed.length ? failed : [{ email: '', error: res.error || 'Assignment failed.' }])
+      }
+    } catch {
+      setAssignFailed([{ email: '', error: 'Assignment failed.' }])
+    } finally {
+      setAssigning(false)
+    }
+  }
+
   async function handleClearCompleted() {
     const done = tabItems.filter(t => t.completed && t.linked_task_id)
     await Promise.all(done.map(t => window.api.todo.dismiss(userId, t.linked_task_id!)))
@@ -1629,13 +1707,33 @@ export default function Todo() {
             </svg>
             Calendar
           </button>
-          <button
-            onClick={() => setShowAddPersonal(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 dark:bg-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.12] text-gray-700 dark:text-white/75 transition border border-gray-200 dark:border-white/[0.1]"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-            Add personal
-          </button>
+          {/* 2.5b-1: "+ Add" is now a 2-option menu — Personal (local, offline-OK) and
+              Assign to other (off-card assignment, online-required). */}
+          <div ref={addMenuRef} className="relative">
+            <button
+              onClick={() => setAddMenuOpen(v => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 dark:bg-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.12] text-gray-700 dark:text-white/75 transition border border-gray-200 dark:border-white/[0.1]"
+            >
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+              Add
+            </button>
+            {addMenuOpen && (
+              <div className="absolute right-0 mt-1 w-48 z-20 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-[#1c1c1e] shadow-lg py-1">
+                <button
+                  onClick={() => { setAddMenuOpen(false); setShowAssign(false); setShowAddPersonal(true) }}
+                  className="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-white/80 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"
+                >
+                  Personal
+                </button>
+                <button
+                  onClick={openAssignForm}
+                  className="w-full text-left px-3 py-2 text-xs text-gray-700 dark:text-white/80 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"
+                >
+                  Assign to other
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1686,6 +1784,97 @@ export default function Todo() {
               Cancel
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Inline "Assign to other" form (2.5b-1). Online-required: the board and
+          assignee pickers are cloud-sourced, and main re-enforces the head-gate. */}
+      {showAssign && (
+        <div className="bg-white dark:bg-black/20 border-b border-black/[0.06] dark:border-white/[0.06] px-6 py-3 shrink-0 space-y-2">
+          {!online ? (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Assigning is unavailable offline — the board and member pickers need a connection.
+            </p>
+          ) : assignBoards.length === 0 ? (
+            <p className="text-xs text-gray-500 dark:text-white/55">
+              You are not a head of any board, so you cannot assign off-card work.
+            </p>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  value={assignTitle}
+                  onChange={e => setAssignTitle(e.target.value)}
+                  placeholder="What needs doing?"
+                  autoFocus
+                  className="flex-1 min-w-[200px] px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/35 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                />
+                <select
+                  value={assignBoardId}
+                  onChange={e => onAssignBoardChange(e.target.value)}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                >
+                  <option value="">Choose a board…</option>
+                  {assignBoards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+                <input type="date" value={assignDate} onChange={e => setAssignDate(e.target.value)}
+                  onClick={e => { try { (e.currentTarget as HTMLInputElement).showPicker() } catch {} }}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 [color-scheme:dark]" />
+                <input type="time" value={assignTime} onChange={e => setAssignTime(e.target.value)}
+                  onClick={e => { try { (e.currentTarget as HTMLInputElement).showPicker() } catch {} }}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-gray-50 dark:bg-white/[0.04] text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 [color-scheme:dark]" />
+              </div>
+
+              {/* Assignee multi-select — board-scoped (members ∪ heads). Reuses the
+                  board-task assignee-pill look, but selection is a local Set. */}
+              {assignBoardId && (
+                assignAssignees.length === 0 ? (
+                  <p className="text-[11px] text-gray-400 dark:text-white/45">No assignable members on this board.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {assignAssignees.map(a => {
+                      const sel = assignSelected.has(a.email.toLowerCase())
+                      return (
+                        <button
+                          key={a.email}
+                          onClick={() => toggleAssignSelect(a.email)}
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs transition ${
+                            sel
+                              ? 'bg-hub-gold/15 border-hub-gold/30 text-gray-900 dark:text-white'
+                              : 'bg-gray-50 dark:bg-white/[0.04] border-gray-200 dark:border-white/[0.07] text-gray-500 dark:text-white/70 hover:text-gray-700 dark:hover:text-white/85'
+                          }`}
+                        >
+                          <span>{a.display_name || a.email}</span>
+                          {sel && <span className="text-hub-gold text-[10px]">✓</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )
+              )}
+
+              {assignFailed && (
+                <p className="text-[11px] text-red-500 dark:text-red-400">
+                  {assignFailed.some(f => f.email)
+                    ? `Could not assign: ${assignFailed.map(f => f.email || 'unknown').join(', ')}.`
+                    : (assignFailed[0]?.error || 'Assignment failed.')}
+                </p>
+              )}
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCreateAssignment}
+                  disabled={!assignBoardId || !assignTitle.trim() || assignSelected.size === 0 || assigning || !online}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white text-sm font-medium transition">
+                  {assigning ? 'Assigning…' : `Assign${assignSelected.size ? ` (${assignSelected.size})` : ''}`}
+                </button>
+                <button onClick={() => { setShowAssign(false); resetAssignForm() }}
+                  className="px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-white/[0.08] text-gray-500 dark:text-white/65 text-sm transition">
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 
