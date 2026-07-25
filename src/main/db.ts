@@ -269,6 +269,33 @@ export function initDatabase(): void {
       pending_sync  INTEGER NOT NULL DEFAULT 0
     );
 
+    -- Off-card ASSIGNMENTS (To-Do slice 2.5). A piece of assigned work that is NOT
+    -- tied to a board card — distinct from workspace_tasks.assignees_json, which is
+    -- on-card. ONE ROW PER (assignment × assignee): assignee_email is a SCALAR, not a
+    -- JSON array, because completion is per-assignee and both To-Do tabs query by a
+    -- single email. Cloud (Supabase) is the SOURCE OF TRUTH via cloud/assignments.ts
+    -- (the boards.ts service-role pattern) — this local table is the OFFLINE MIRROR,
+    -- NOT a personalSync table (that contract is single-owner only).
+    --   assigner_email  = who assigned it (this IS assigned_by).
+    --   assignee_email  = who it is assigned to.
+    --   completed_at    = NULL means open.
+    --   source_type/source_id = RESERVED for slice 5 (intel directives); ALWAYS NULL
+    --     in 2.5 code — no 2.5 path reads or writes them.
+    CREATE TABLE IF NOT EXISTS assignments (
+      id             TEXT PRIMARY KEY,
+      assigner_email TEXT NOT NULL,
+      assignee_email TEXT NOT NULL,
+      title          TEXT NOT NULL,
+      body           TEXT,
+      due_date       TEXT,
+      due_time       TEXT,
+      completed_at   DATETIME,
+      source_type    TEXT,
+      source_id      TEXT,
+      created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Chat messages (team-wide)
     CREATE TABLE IF NOT EXISTS chat_messages (
       id          TEXT PRIMARY KEY,
@@ -1301,6 +1328,16 @@ export function initDatabase(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_notifications_pending
       ON notifications (pending_sync) WHERE pending_sync = 1`)
   } catch (e) { console.warn('[N-2c] notifications pending index failed:', (e as Error)?.message) }
+
+  // To-Do 2.5: the two tabs are exactly these two lookups — "Assigned to me"
+  // (assignee_email) and "Assigned by me" (assigner_email), each filtered to open
+  // items (completed_at). One index per tab.
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_assignments_assignee
+      ON assignments (assignee_email, completed_at)`)
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_assignments_assigner
+      ON assignments (assigner_email, completed_at)`)
+  } catch (e) { console.warn('[2.5] assignments indexes failed:', (e as Error)?.message) }
 
   // ── Seed the Contested Skies Source Archive into Source Intelligence ──────────
   // The sources the live Contested Skies page is built on. FRAMEWORK references

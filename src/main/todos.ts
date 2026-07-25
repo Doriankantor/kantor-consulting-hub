@@ -21,8 +21,9 @@
 import { getDatabase } from './db'
 import { resolveIdentity, visibleBoardIdsFor } from './cloud/boards'
 import { assignedToSql } from './assignees'
+import { listAssignedTo, listAssignedBy, type AssignmentRow } from './cloud/assignments'
 
-export type TodoSource = 'personal' | 'kc-deadline'
+export type TodoSource = 'personal' | 'kc-deadline' | 'assigned' | 'assigned-by-me'
 
 /** One Step Rail dot. PERSONAL items only — see the `steps` field below. */
 export interface TodoStep {
@@ -278,8 +279,55 @@ async function readKcDeadline(actingUser: string): Promise<TodoItem[]> {
     }))
 }
 
+// ── Sources c / d — assigned / assigned-by-me (To-Do 2.5) ────────────────────
+// Off-card assignments from the `assignments` cloud table (mirror-backed). Unlike
+// the two sources above these are NOT all-local: listAssignedTo/By are cloud-first
+// with an offline mirror fallback, so listTodos is now genuinely async on the
+// network. Both tabs share one entity, split only by direction:
+//   'assigned'        → I am the assignee_email
+//   'assigned-by-me'  → I am the assigner_email
+// Board-task assignment (assignees_json / kc-deadline) is a SEPARATE thing and is
+// deliberately not unioned in here.
+function assignmentToItem(r: AssignmentRow, source: 'assigned' | 'assigned-by-me'): TodoItem {
+  return {
+    id: `assigned-${r.id}`,
+    raw_id: String(r.id),
+    source,
+    title: String(r.title ?? ''),
+    due_date: r.due_date ?? null,
+    due_time: r.due_time ?? null,
+    // Open-only reads (completed_at IS NULL), so surfaced items are always active.
+    completed: !!r.completed_at,
+    completed_at: r.completed_at ?? null,
+    position: null,
+    board_id: null,
+    board_name: null,
+    linked_task_id: null,
+    column_id: null,
+    area_of_analysis: null,
+    has_steps: false,
+    // Assignment body maps onto the notes field the renderer already renders.
+    notes: r.body ?? null,
+  }
+}
+
+async function readAssigned(actingUser: string): Promise<TodoItem[]> {
+  const { email } = resolveIdentity(actingUser)
+  if (!email) return []
+  const rows = await listAssignedTo(email)
+  return rows.map(r => assignmentToItem(r, 'assigned'))
+}
+
+async function readAssignedByMe(actingUser: string): Promise<TodoItem[]> {
+  const { email } = resolveIdentity(actingUser)
+  if (!email) return []
+  const rows = await listAssignedBy(email)
+  return rows.map(r => assignmentToItem(r, 'assigned-by-me'))
+}
+
 /**
- * Assemble the full To-Do list for one user. ALL-LOCAL reads.
+ * Assemble the full To-Do list for one user. Local reads for personal/kc-deadline;
+ * the assigned/assigned-by-me sources are cloud-first with an offline mirror.
  *
  * PER-SOURCE ISOLATION: each source is independently try/caught and degrades to
  * an empty array on failure. One broken source must never empty the whole page —
@@ -301,5 +349,19 @@ export async function listTodos(actingUser: string): Promise<TodoItem[]> {
     console.warn('[todos] kc-deadline source failed — serving the rest:', (e as Error)?.message)
   }
 
-  return [...personal, ...deadlines]
+  let assigned: TodoItem[] = []
+  try {
+    assigned = await readAssigned(actingUser)
+  } catch (e) {
+    console.warn('[todos] assigned source failed — serving the rest:', (e as Error)?.message)
+  }
+
+  let assignedByMe: TodoItem[] = []
+  try {
+    assignedByMe = await readAssignedByMe(actingUser)
+  } catch (e) {
+    console.warn('[todos] assigned-by-me source failed — serving the rest:', (e as Error)?.message)
+  }
+
+  return [...personal, ...deadlines, ...assigned, ...assignedByMe]
 }

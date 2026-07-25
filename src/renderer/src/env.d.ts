@@ -113,7 +113,7 @@ interface TodoItem {
    * exists to reject it.
    */
   raw_id: string
-  source: 'personal' | 'kc-deadline'
+  source: 'personal' | 'kc-deadline' | 'assigned' | 'assigned-by-me'
   title: string
   due_date: string | null
   due_time: string | null
