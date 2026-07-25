@@ -105,7 +105,7 @@ export default function Team() {
   const [matrixBoards,  setMatrixBoards]  = useState<BoardRow[]>([])
   const [matrixMembers, setMatrixMembers] = useState<LocalTeamMember[]>([])
   const [matrix, setMatrix] = useState<Record<string, Set<string>>>({}) // boardId → Set<email> (members)
-  const [heads, setHeads]   = useState<Record<string, Set<string>>>({}) // info-page boardId → Set<user_email> (project heads)
+  const [heads, setHeads]   = useState<Record<string, Set<string>>>({}) // boardId → Set<user_email> (heads; 2.5b-0: any board type)
   const [matrixLoading, setMatrixLoading] = useState(false)
   const [matrixLoaded,  setMatrixLoaded]  = useState(false) // lazy-load guard: fetch once on first tab open, retry on failure
   const [matrixMsg,     setMatrixMsg]     = useState<{type:'ok'|'err';text:string}|null>(null)
@@ -250,13 +250,13 @@ export default function Team() {
         // to the cloud user_email) — matching the render + toggles below, and mirroring
         // how heads are keyed. Fixes checkmarks vanishing on reload.
         m[b.id] = new Set(bMembers.map(bm => (bm.email || bm.user_id || '').toLowerCase()))
-        // Project heads (info-page boards only) — email-keyed cloud info_page_owners.
-        if (b.board_type === 'info-page') {
-          try {
-            const owners = await window.api.infoPages.getOwners(b.id)
-            h[b.id] = new Set(owners.map(o => o.user_email.toLowerCase()))
-          } catch { h[b.id] = new Set() }
-        }
+        // Heads (2.5b-0: ALL board types, not just info-page) — email-keyed cloud
+        // info_page_owners. getOwners works for any board id; a board with no heads
+        // returns []. Fetched for every board so the Head toggle reflects truth.
+        try {
+          const owners = await window.api.infoPages.getOwners(b.id)
+          h[b.id] = new Set(owners.map(o => o.user_email.toLowerCase()))
+        } catch { h[b.id] = new Set() }
       }
       setMatrix(m)
       setHeads(h)
@@ -285,9 +285,11 @@ export default function Team() {
         // Invariant: a head must be a member — removing membership removes head too.
         // Under the FK the membership delete already CASCADEs the owner row; this
         // removeOwner is now a no-op backstop that also keeps the head Set truthful.
-        if (board.board_type === 'info-page' && heads[boardId]?.has(key)) {
+        // 2.5b-0: applies to ALL board types now — the `heads[…]?.has(key)` guard
+        // (a board actually has this head) is the real scope, not board_type.
+        if (heads[boardId]?.has(key)) {
           const ro = await window.api.infoPages.removeOwner(boardId, userId)
-          if (!ro.ok) { flashMatrixErr(ro.error || 'Failed to remove project head.'); return }
+          if (!ro.ok) { flashMatrixErr(ro.error || 'Failed to remove head.'); return }
           setHeads(prev => {
             const next = { ...prev }
             next[boardId] = new Set(prev[boardId])
@@ -311,9 +313,10 @@ export default function Team() {
     }
   }
 
-  // Toggle a member as a project HEAD for an info-page board (root-only). Writes/removes
-  // an email-keyed cloud info_page_owners row, then REFETCHES that board's heads (truth,
-  // not an optimistic flip). Invariant: a head must be a member — turning head ON first
+  // Toggle a member as a HEAD of any board (2.5b-0: was info-page only; root-only).
+  // Writes/removes an email-keyed cloud info_page_owners row (which despite its name
+  // holds heads for all board types), then REFETCHES that board's heads (truth, not
+  // an optimistic flip). Invariant: a head must be a member — turning head ON first
   // ensures board membership.
   async function toggleHead(boardId: string, member: LocalTeamMember, isHead: boolean) {
     const key = member.email.toLowerCase()   // local Sets are email-keyed; IPC stays member.id
@@ -321,7 +324,7 @@ export default function Team() {
       if (isHead) {
         // Turning head OFF — membership is left untouched.
         const ro = await window.api.infoPages.removeOwner(boardId, member.id)
-        if (!ro.ok) { flashMatrixErr(ro.error || 'Failed to remove project head.'); return }
+        if (!ro.ok) { flashMatrixErr(ro.error || 'Failed to remove head.'); return }
       } else {
         // Turning head ON — a head must be a member: add membership first if missing.
         // This ordering is LOAD-BEARING under the FK: addOwner fails with SQLSTATE
@@ -339,13 +342,13 @@ export default function Team() {
           })
         }
         const ao = await window.api.infoPages.addOwner(boardId, member.id)
-        if (!ao.ok) { flashMatrixErr(ao.error || 'Failed to assign project head.'); return }
+        if (!ao.ok) { flashMatrixErr(ao.error || 'Failed to assign head.'); return }
       }
       // Refetch this board's heads (truth, not an optimistic flip). Only reached on success.
       const owners = await window.api.infoPages.getOwners(boardId)
       setHeads(prev => ({ ...prev, [boardId]: new Set(owners.map(o => o.user_email.toLowerCase())) }))
     } catch {
-      flashMatrixErr('Failed to update project head.')
+      flashMatrixErr('Failed to update head.')
     }
   }
 
@@ -381,9 +384,9 @@ export default function Team() {
     const key = member.email.toLowerCase()   // local Set is email-keyed; IPC stays m.id
     const failures: string[] = []
     for (const b of matrixBoards) {
-      const isHead   = b.board_type === 'info-page' && heads[b.id]?.has(key)
+      const isHead   = !!heads[b.id]?.has(key)   // 2.5b-0: all board types (was info-page only)
       const isMember = matrix[b.id]?.has(key)
-      // Invariant: revoking membership also revokes head (info-page boards). Remove
+      // Invariant: revoking membership also revokes head (any board type). Remove
       // head first so we never briefly leave a head without membership. Under the FK
       // the membership delete CASCADEs the owner, so this is a no-op backstop + optimistic UI.
       if (isHead) {
@@ -814,11 +817,11 @@ export default function Team() {
       {teamTab === 'access' && isRoot && (
         <div className="space-y-6">
 
-          {/* Board access — membership + project heads (relocated from Settings → Board Access) */}
+          {/* Board access — membership + heads (relocated from Settings → Board Access) */}
           <div className="bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-2xl p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-gray-700 dark:text-white/85 mb-1">Board access</h2>
             <p className="text-xs text-gray-500 dark:text-white/55 mb-4">
-              Who is a member of each board, and who is a project head. Members see the board; a project head on an info page can move sources to analysis and publish.
+              Who is a member of each board, and who is a Head. Members see the board; a Head leads it — on info-page boards a Head can move sources to analysis and publish.
             </p>
             {matrixMsg && (
               <div className={`mb-3 p-2.5 rounded-xl text-xs ${matrixMsg.type === 'ok' ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'}`}>
@@ -831,13 +834,12 @@ export default function Team() {
               <p className="text-sm text-gray-400 dark:text-white/50 py-4 text-center">No boards yet.</p>
             ) : (
               <div className="overflow-x-auto">
-                {matrixBoards.some(b => b.board_type === 'info-page') && (
-                  <p className="mb-2 text-[10px] text-gray-400 dark:text-white/45">
-                    Green checkbox = board <strong>member</strong>. On info-page projects, the amber
-                    <span className="text-amber-600 dark:text-amber-400"> Head</span> toggle assigns a
-                    <strong> project head</strong> — can move sources to analysis and publish.
-                  </p>
-                )}
+                {/* 2.5b-0: Head applies to ALL board types now, so the legend always shows. */}
+                <p className="mb-2 text-[10px] text-gray-400 dark:text-white/45">
+                  Green checkbox = board <strong>member</strong>. The amber
+                  <span className="text-amber-600 dark:text-amber-400"> Head</span> toggle assigns a board
+                  <strong> Head</strong> (root only) — on info-page boards a Head can move sources to analysis and publish.
+                </p>
                 <table className="w-full text-xs">
                   <thead>
                     <tr>
@@ -865,7 +867,6 @@ export default function Team() {
                           </td>
                           {matrixBoards.map(b => {
                             const hasAccess = isRootMember || !!(matrix[b.id]?.has(m.email.toLowerCase()))
-                            const isInfoPage = b.board_type === 'info-page'
                             const isHead = !!(heads[b.id]?.has(m.email.toLowerCase()))
                             return (
                               <td key={b.id} className="py-2.5 px-2 text-center align-top">
@@ -877,20 +878,19 @@ export default function Team() {
                                   className={`titlebar-no-drag w-4 h-4 rounded cursor-pointer disabled:cursor-not-allowed ${hasAccess ? 'accent-green-500' : ''}`}
                                   title={hasAccess ? 'Member — has access' : 'Not a member'}
                                 />
-                                {isInfoPage && (
-                                  <label
-                                    className="mt-1 flex items-center justify-center gap-0.5 cursor-pointer"
-                                    title="Project head — can move sources to analysis and publish"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={isHead}
-                                      onChange={() => toggleHead(b.id, m, isHead)}
-                                      className="titlebar-no-drag w-3 h-3 rounded accent-amber-500 cursor-pointer"
-                                    />
-                                    <span className="text-[8px] uppercase tracking-wide text-amber-600 dark:text-amber-400">Head</span>
-                                  </label>
-                                )}
+                                {/* 2.5b-0: Head toggle renders for ALL board types now (was info-page only). */}
+                                <label
+                                  className="mt-1 flex items-center justify-center gap-0.5 cursor-pointer"
+                                  title="Board Head (root only)"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isHead}
+                                    onChange={() => toggleHead(b.id, m, isHead)}
+                                    className="titlebar-no-drag w-3 h-3 rounded accent-amber-500 cursor-pointer"
+                                  />
+                                  <span className="text-[8px] uppercase tracking-wide text-amber-600 dark:text-amber-400">Head</span>
+                                </label>
                               </td>
                             )
                           })}

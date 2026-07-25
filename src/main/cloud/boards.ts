@@ -966,8 +966,11 @@ export async function removeMember(actingUserId: string | undefined, boardId: st
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// INFO-PAGE OWNERS ("project heads") — email-keyed, mirrors board_members.
-// Root-only assignment; isOwner gates the publication side (canApprove).
+// BOARD "HEADS" (table name `info_page_owners` is historical) — email-keyed, mirrors
+// board_members. ⚠ 2.5b-0: these span ALL board types now, not just info-page —
+// `pageId` here is any board id. Root-only assignment; isOwner gates the info-page
+// publication side (canApprove) AND, from 2.5b, the off-card assignment authority.
+// The functions below never filter on board_type — they operate on whatever id you pass.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function addOwner(actingUserId: string | undefined, pageId: string, targetUserId: string): Promise<{ ok: boolean; error?: string }> {

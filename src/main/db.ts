@@ -1056,6 +1056,12 @@ export function initDatabase(): void {
   try { db.exec("ALTER TABLE workspace_boards ADD COLUMN board_config TEXT;") } catch {}
 
   db.exec(`
+    -- "Heads" of a board. NAME IS HISTORICAL: despite the info_page_owners /
+    -- page_id names, this holds heads for ALL board types (2.5b-0) — page_id is any
+    -- board id, not only an info-page's. Kept as-is deliberately: renaming an FK'd
+    -- permission table + column is a load-bearing find/replace, out of scope. (The
+    -- real store is the CLOUD table, email-keyed with an FK to board_members; this
+    -- local copy is unused.)
     CREATE TABLE IF NOT EXISTS info_page_owners (
       page_id     TEXT NOT NULL,
       user_id     TEXT NOT NULL,
