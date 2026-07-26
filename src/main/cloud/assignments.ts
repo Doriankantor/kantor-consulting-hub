@@ -114,13 +114,15 @@ function syncMirror(rows: AssignmentRow[]): void {
   }
 }
 
-// Mirror reads for the two tabs (offline fallback + last-known cache). Open items
-// only (completed_at IS NULL) — same predicate as the cloud query, so offline and
-// online return the same set.
+// Mirror reads for the two tabs (offline fallback + last-known cache). 2.5c: returns
+// BOTH open and completed rows — same predicate as the cloud query, so offline and
+// online return the same set. The renderer splits active vs done and strikes through
+// completed items (matching personal + kc-deadline); vanishing on complete was the
+// inconsistent behaviour we dropped.
 function readAssignedToMirror(email: string): AssignmentRow[] {
   try {
     return getDatabase()
-      .prepare(`SELECT ${SELECT_COLS} FROM assignments WHERE LOWER(assignee_email)=LOWER(?) AND completed_at IS NULL ORDER BY created_at DESC LIMIT ${PAGE_LIMIT}`)
+      .prepare(`SELECT ${SELECT_COLS} FROM assignments WHERE LOWER(assignee_email)=LOWER(?) ORDER BY created_at DESC LIMIT ${PAGE_LIMIT}`)
       .all(email) as AssignmentRow[]
   } catch (e) {
     console.warn('[assignments] mirror read (assigned-to) failed:', (e as Error)?.message)
@@ -131,7 +133,7 @@ function readAssignedToMirror(email: string): AssignmentRow[] {
 function readAssignedByMirror(email: string): AssignmentRow[] {
   try {
     return getDatabase()
-      .prepare(`SELECT ${SELECT_COLS} FROM assignments WHERE LOWER(assigner_email)=LOWER(?) AND completed_at IS NULL ORDER BY created_at DESC LIMIT ${PAGE_LIMIT}`)
+      .prepare(`SELECT ${SELECT_COLS} FROM assignments WHERE LOWER(assigner_email)=LOWER(?) ORDER BY created_at DESC LIMIT ${PAGE_LIMIT}`)
       .all(email) as AssignmentRow[]
   } catch (e) {
     console.warn('[assignments] mirror read (assigned-by) failed:', (e as Error)?.message)
@@ -153,7 +155,8 @@ export async function listAssignedTo(email: string): Promise<AssignmentRow[]> {
       // (createAssignment), so a lowercased .eq removes the wildcard surface .ilike
       // carried (a '%' or '_' in an address could otherwise match unintended rows).
       .eq('assignee_email', email.toLowerCase())
-      .is('completed_at', null)
+      // 2.5c: no completed_at filter — completed assignments stay visible (struck
+      // through in the done section), consistent with personal + kc-deadline.
       .order('created_at', { ascending: false })
       .limit(PAGE_LIMIT)
     reportCloudResult(!error)
@@ -180,7 +183,7 @@ export async function listAssignedBy(email: string): Promise<AssignmentRow[]> {
       .select(SELECT_COLS)
       // 2.5a-fix: EXACT lowercased match — see listAssignedTo.
       .eq('assigner_email', email.toLowerCase())
-      .is('completed_at', null)
+      // 2.5c: no completed_at filter — see listAssignedTo.
       .order('created_at', { ascending: false })
       .limit(PAGE_LIMIT)
     reportCloudResult(!error)
@@ -263,5 +266,39 @@ export async function createAssignment(a: {
     return { ok: true }
   } catch (e) {
     return { ok: false, error: (e as Error)?.message ?? 'insert failed' }
+  }
+}
+
+// 2.5c: mark an assignment done (completedAt = ISO) or reopen it (completedAt = null).
+// Cloud-first field-level update, then the SAME two fields into the mirror so the
+// To-Do done section reflects it before the next read. Online-required, like
+// createAssignment.
+//
+// NOT a full syncMirror upsert: this patches ONLY the two fields the action changes
+// (the board todo:complete local-UPDATE pattern), so it can never clobber
+// title/body/etc that a concurrent read would carry, and it needs no full-row
+// reconstruction. completed_at is normalized through toLocalTs so the mirror's
+// second-precision copy stays ordering-consistent with cloud (the done section sorts
+// on completed_at). A mirror miss (row not yet mirrored) no-ops harmlessly — the next
+// read re-syncs it.
+export async function setAssignmentCompleted(id: string, completedAt: string | null): Promise<{ ok: boolean; error?: string }> {
+  if (!isOnline()) return { ok: false, error: 'offline' }
+  if (!id) return { ok: false, error: 'id required' }
+  const stamp = new Date().toISOString()
+  try {
+    const { error } = await cloud.from('assignments')
+      .update({ completed_at: completedAt, updated_at: stamp })
+      .eq('id', id)
+    if (error) return { ok: false, error: error.message }
+    try {
+      getDatabase()
+        .prepare('UPDATE assignments SET completed_at=?, updated_at=? WHERE id=?')
+        .run(toLocalTs(completedAt), toLocalTs(stamp), id)
+    } catch (e) {
+      console.warn('[assignments] mirror completed-update failed (cloud write ok):', (e as Error)?.message)
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: (e as Error)?.message ?? 'update failed' }
   }
 }

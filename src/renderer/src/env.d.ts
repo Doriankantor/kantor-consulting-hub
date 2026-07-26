@@ -641,6 +641,9 @@ interface Window {
       listBoardAssignees:   (boardId: string) => Promise<{ email: string; display_name: string }[]>
       /** Create N rows (one per assignee), gated + best-effort in main. */
       create:               (params: { board_id: string; assignee_emails: string[]; title: string; body?: string; due_date?: string; due_time?: string }) => Promise<{ ok: boolean; error?: string; results: { email: string; ok: boolean; error?: string }[] }>
+      /** 2.5c: complete (notifies assigner, self-skip in main) / reopen (no notify). Bare uuid. */
+      complete:             (id: string) => Promise<{ ok: boolean; error?: string }>
+      uncomplete:           (id: string) => Promise<{ ok: boolean; error?: string }>
     }
     chat: {
       getMessages: (limit?: number) => Promise<ChatMessage[]>

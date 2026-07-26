@@ -138,6 +138,10 @@ const api = {
     listAssignableBoards: ()                => ipcRenderer.invoke('assignment:listAssignableBoards'),
     listBoardAssignees:   (boardId: string) => ipcRenderer.invoke('assignment:listBoardAssignees', boardId),
     create:               (params: { board_id: string; assignee_emails: string[]; title: string; body?: string; due_date?: string; due_time?: string }) => ipcRenderer.invoke('assignment:create', params),
+    // 2.5c: complete/reopen an assignment. complete notifies the assigner back
+    // (self-complete skipped in main); uncomplete never notifies. Pass the bare uuid.
+    complete:             (id: string) => ipcRenderer.invoke('assignment:complete', id),
+    uncomplete:           (id: string) => ipcRenderer.invoke('assignment:uncomplete', id),
   },
   chat: {
     getMessages: (limit?: number) => ipcRenderer.invoke('chat:getMessages', limit ?? 100),

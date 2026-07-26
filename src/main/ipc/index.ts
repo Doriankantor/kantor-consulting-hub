@@ -1878,6 +1878,51 @@ function registerBoardMembersHandlers() {
     return { ok: results.length > 0 && results.every(r => r.ok), results }
   })
 
+  // Complete an off-card assignment (To-Do 2.5c) + notify the ASSIGNER back. This is
+  // a SEPARATE handler from board todo:complete on purpose — that one notifies admin,
+  // moves columns and writes workspace_tasks; converging would misroute. NO permission
+  // gate here (slice 4 — the ungated todo:complete finding is independent).
+  ipcMain.handle('assignment:complete', async (_e, rawId: string) => {
+    const id = (rawId ?? '').trim()
+    if (!id) return { ok: false, error: 'id required' }
+    const actor = await boardsCloud.resolveActor(currentActingUserId)
+    if (!actor.email) return { ok: false, error: 'Could not resolve the acting user.' }
+
+    // Read the row (local mirror) for the notify-back — assigner + title. Idempotent:
+    // if it is already completed, no-op success (no duplicate notification).
+    const row = db().prepare('SELECT assigner_email, title, completed_at FROM assignments WHERE id=?')
+      .get(id) as { assigner_email?: string; title?: string; completed_at?: string | null } | undefined
+    if (row?.completed_at) return { ok: true }
+
+    const res = await assignmentsCloud.setAssignmentCompleted(id, new Date().toISOString())
+    if (!res.ok) return res
+
+    // Completer display name — same source 2.5b-1 used for actor_name.
+    let completerName = actor.email
+    try {
+      const lu = db().prepare('SELECT full_name FROM local_users WHERE LOWER(email)=LOWER(?)').get(actor.email) as { full_name?: string } | undefined
+      if (lu?.full_name) completerName = lu.full_name
+    } catch { /* name resolution best-effort */ }
+
+    // Notify-back through the choke point — SKIP self-complete (don't self-notify).
+    const assigner = (row?.assigner_email ?? '').toLowerCase()
+    if (assigner && assigner !== actor.email.toLowerCase()) {
+      createNotification({
+        user_id: assigner, type: 'assignment',
+        title: `${completerName} completed: "${row?.title ?? ''}"`,
+        actor_name: completerName,
+      })
+    }
+    return { ok: true }
+  })
+
+  // Reopen an assignment (To-Do 2.5c). Toggle YES, notify NO — an un-do is not news.
+  ipcMain.handle('assignment:uncomplete', async (_e, rawId: string) => {
+    const id = (rawId ?? '').trim()
+    if (!id) return { ok: false, error: 'id required' }
+    return assignmentsCloud.setAssignmentCompleted(id, null)
+  })
+
   // CLOUD-SOURCED (Stage 2, category 3). Membership is email-keyed in the cloud.
   ipcMain.handle('boardMembers:list', (_e, boardId: string) => boardsCloud.listMembers(boardId))
 

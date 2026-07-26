@@ -1156,6 +1156,46 @@ export default function Todo() {
     queueLoad()
   }
 
+  // ── Off-card assignment completion (2.5c) ───────────────────────────────────
+  // Optimistic flip, then reconcile — matches handlePersonalToggle. Uses raw_id (the
+  // BARE uuid), never item.id (assigned-<uuid>). Completing notifies the assigner
+  // (main handles the self-skip); reopening never notifies. queueLoad() is mandatory:
+  // completion moves the row between the active and done sections.
+  async function handleAssignmentComplete(item: DisplayItem) {
+    if (!online || completing.has(item.id)) return
+    setCompleting(prev => new Set([...prev, item.id]))
+    setItems(prev => prev.map(i => i.id === item.id
+      ? { ...i, completed: true, completed_at: new Date().toISOString() } : i))
+    try {
+      const res = await window.api.assignments.complete(item.raw_id)
+      if (!res.ok) {
+        setItems(prev => prev.map(i => i.id === item.id
+          ? { ...i, completed: false, completed_at: null } : i))
+      }
+    } finally {
+      setCompleting(prev => { const n = new Set(prev); n.delete(item.id); return n })
+      queueLoad()
+    }
+  }
+
+  async function handleAssignmentUncomplete(item: DisplayItem) {
+    if (!online || completing.has(item.id)) return
+    const prevCompletedAt = item.completed_at
+    setCompleting(prev => new Set([...prev, item.id]))
+    setItems(prev => prev.map(i => i.id === item.id
+      ? { ...i, completed: false, completed_at: null } : i))
+    try {
+      const res = await window.api.assignments.uncomplete(item.raw_id)
+      if (!res.ok) {
+        setItems(prev => prev.map(i => i.id === item.id
+          ? { ...i, completed: true, completed_at: prevCompletedAt } : i))
+      }
+    } finally {
+      setCompleting(prev => { const n = new Set(prev); n.delete(item.id); return n })
+      queueLoad()
+    }
+  }
+
   // ── Detail-panel field writes (A-2, over the A-1 setters) ──────────────────
   // OPTIMISTIC, then fire-and-reconcile — the same contract handleStepToggle
   // settled on in 3b. queueLoad() is deliberately NOT called on success: the patch
@@ -1633,7 +1673,16 @@ export default function Todo() {
         onClick={() => handleItemClick(item)}
       >
         <button
-          onClick={e => { e.stopPropagation(); if (!item.completed) handleComplete(item); else handleUncomplete(item) }}
+          onClick={e => {
+            e.stopPropagation()
+            // 2.5c: off-card assignment rows complete through their own handler
+            // (sets completed_at + notifies the assigner), NOT the board path.
+            if (item.source === 'assigned' || item.source === 'assigned-by-me') {
+              if (!item.completed) handleAssignmentComplete(item); else handleAssignmentUncomplete(item)
+              return
+            }
+            if (!item.completed) handleComplete(item); else handleUncomplete(item)
+          }}
           className={`shrink-0 rounded border transition flex items-center justify-center ${
             item.completed ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-white/30 hover:border-indigo-400'
           } ${!online ? 'opacity-40 cursor-not-allowed' : ''}`}
