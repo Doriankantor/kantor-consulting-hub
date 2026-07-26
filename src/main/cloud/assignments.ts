@@ -302,3 +302,27 @@ export async function setAssignmentCompleted(id: string, completedAt: string | n
     return { ok: false, error: (e as Error)?.message ?? 'update failed' }
   }
 }
+
+// 2.5d: set an assignment's notes (the existing `body` column — no new column).
+// Cloud-first field-level update + mirror, same shape as setAssignmentCompleted.
+// Online-required. The IPC handler gates assignee-or-head before calling this.
+export async function setAssignmentBody(id: string, body: string | null): Promise<{ ok: boolean; error?: string }> {
+  if (!isOnline()) return { ok: false, error: 'offline' }
+  if (!id) return { ok: false, error: 'id required' }
+  const stamp = new Date().toISOString()
+  try {
+    const { error } = await cloud.from('assignments')
+      .update({ body, updated_at: stamp })
+      .eq('id', id)
+    if (error) return { ok: false, error: error.message }
+    try {
+      getDatabase().prepare('UPDATE assignments SET body=?, updated_at=? WHERE id=?')
+        .run(body, toLocalTs(stamp), id)
+    } catch (e) {
+      console.warn('[assignments] mirror body-update failed (cloud write ok):', (e as Error)?.message)
+    }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: (e as Error)?.message ?? 'update failed' }
+  }
+}

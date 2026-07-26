@@ -302,6 +302,25 @@ export function initDatabase(): void {
       updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Sub-steps for off-card assignments (To-Do 2.5d). Mirrors personal_todo_steps
+    -- STRUCTURALLY but is a SEPARATE, MULTI-USER table: cloud-first via
+    -- cloud/assignmentSteps.ts (the boards.ts/assignments.ts pattern), NOT
+    -- personalSync (whose scope contract forbids anything but the three single-owner
+    -- tables). This local table is the OFFLINE MIRROR.
+    --   assignment_id = parent assignments.id (the FK anchor; board scope is inherited).
+    --   completed_at  = NULL means open (timestamp model, matching assignments itself,
+    --     not a checked int).
+    --   NO user_email column: steps are scoped by the parent assignment, not by owner.
+    CREATE TABLE IF NOT EXISTS assignment_steps (
+      id             TEXT PRIMARY KEY,
+      assignment_id  TEXT NOT NULL,
+      text           TEXT NOT NULL,
+      completed_at   DATETIME,
+      position       INTEGER NOT NULL DEFAULT 0,
+      created_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Chat messages (team-wide)
     CREATE TABLE IF NOT EXISTS chat_messages (
       id          TEXT PRIMARY KEY,
@@ -1385,6 +1404,9 @@ export function initDatabase(): void {
       ON assignments (assigner_email, completed_at)`)
     db.exec(`CREATE INDEX IF NOT EXISTS idx_assignments_board
       ON assignments (board_id)`)
+    // 2.5d: steps batch-fetched by parent id, displayed in position order.
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_assignment_steps_parent
+      ON assignment_steps (assignment_id, position)`)
   } catch (e) { console.warn('[2.5] assignments indexes failed:', (e as Error)?.message) }
 
   // ── Seed the Contested Skies Source Archive into Source Intelligence ──────────

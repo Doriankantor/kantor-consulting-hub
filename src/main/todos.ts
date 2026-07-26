@@ -22,6 +22,7 @@ import { getDatabase } from './db'
 import { resolveIdentity, visibleBoardIdsFor } from './cloud/boards'
 import { assignedToSql } from './assignees'
 import { listAssignedTo, listAssignedBy, type AssignmentRow } from './cloud/assignments'
+import { listStepsFor } from './cloud/assignmentSteps'
 
 export type TodoSource = 'personal' | 'kc-deadline' | 'assigned' | 'assigned-by-me'
 
@@ -288,7 +289,7 @@ async function readKcDeadline(actingUser: string): Promise<TodoItem[]> {
 //   'assigned-by-me'  → I am the assigner_email
 // Board-task assignment (assignees_json / kc-deadline) is a SEPARATE thing and is
 // deliberately not unioned in here.
-function assignmentToItem(r: AssignmentRow, source: 'assigned' | 'assigned-by-me'): TodoItem {
+function assignmentToItem(r: AssignmentRow, source: 'assigned' | 'assigned-by-me', steps: TodoStep[]): TodoItem {
   return {
     id: `assigned-${r.id}`,
     raw_id: String(r.id),
@@ -296,7 +297,6 @@ function assignmentToItem(r: AssignmentRow, source: 'assigned' | 'assigned-by-me
     title: String(r.title ?? ''),
     due_date: r.due_date ?? null,
     due_time: r.due_time ?? null,
-    // Open-only reads (completed_at IS NULL), so surfaced items are always active.
     completed: !!r.completed_at,
     completed_at: r.completed_at ?? null,
     position: null,
@@ -308,24 +308,45 @@ function assignmentToItem(r: AssignmentRow, source: 'assigned' | 'assigned-by-me
     linked_task_id: null,
     column_id: null,
     area_of_analysis: null,
-    has_steps: false,
+    // 2.5d: real sub-steps (assignment_steps, cloud-backed) — parity with personal.
+    has_steps: steps.length > 0,
+    steps,
     // Assignment body maps onto the notes field the renderer already renders.
     notes: r.body ?? null,
   }
 }
 
+// 2.5d: batch-fetch sub-steps for the visible assignments (one query, like
+// readPersonal's stepsByTodo) and attach them. `checked` derives from completed_at
+// (the timestamp done-model). Steps are an ENHANCEMENT — a failure degrades to no
+// rails, never costs the list.
+async function attachSteps(rows: AssignmentRow[], source: 'assigned' | 'assigned-by-me'): Promise<TodoItem[]> {
+  const stepsByAssignment = new Map<string, TodoStep[]>()
+  if (rows.length) {
+    try {
+      const stepRows = await listStepsFor(rows.map(r => String(r.id)))
+      for (const s of stepRows) {
+        const list = stepsByAssignment.get(s.assignment_id) ?? []
+        list.push({ id: s.id, text: s.text, checked: !!s.completed_at, position: s.position })
+        stepsByAssignment.set(s.assignment_id, list)
+      }
+    } catch (e) {
+      console.warn('[todos] assignment steps read failed — serving items without rails:', (e as Error)?.message)
+    }
+  }
+  return rows.map(r => assignmentToItem(r, source, stepsByAssignment.get(String(r.id)) ?? []))
+}
+
 async function readAssigned(actingUser: string): Promise<TodoItem[]> {
   const { email } = resolveIdentity(actingUser)
   if (!email) return []
-  const rows = await listAssignedTo(email)
-  return rows.map(r => assignmentToItem(r, 'assigned'))
+  return attachSteps(await listAssignedTo(email), 'assigned')
 }
 
 async function readAssignedByMe(actingUser: string): Promise<TodoItem[]> {
   const { email } = resolveIdentity(actingUser)
   if (!email) return []
-  const rows = await listAssignedBy(email)
-  return rows.map(r => assignmentToItem(r, 'assigned-by-me'))
+  return attachSteps(await listAssignedBy(email), 'assigned-by-me')
 }
 
 /**

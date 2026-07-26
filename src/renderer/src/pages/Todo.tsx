@@ -236,7 +236,7 @@ function RepeatIcon({ size = 13 }: { size?: number }): JSX.Element {
 }
 
 function PersonalCard({
-  item, isSelected, duePill, extraClass = '', showMissedBlock = false,
+  item, isSelected, duePill, extraClass = '', showMissedBlock = false, kind = 'personal',
   onComplete, onDelete, onSelect, onStar, onStepToggle,
 }: {
   item: DisplayItem
@@ -246,12 +246,20 @@ function PersonalCard({
   extraClass?: string
   /** Slice C-recurring-3. Transient cue when this card's completion was just blocked. */
   showMissedBlock?: boolean
+  /**
+   * 2.5d: 'personal' (default) is the full card; 'assignment' reuses the same shell
+   * for off-card assignments but HIDES personal-organization chrome (the Personal
+   * pill, star, delete) — completion, due, and the StepRail stay. color/recurrence/
+   * missed are absent on assignment items anyway, so they self-hide.
+   */
+  kind?: 'personal' | 'assignment'
   onComplete: () => void
   onDelete: () => void
   onSelect: () => void
   onStar: () => void
   onStepToggle: (stepId: string) => void
 }) {
+  const isAssignment = kind === 'assignment'
   const steps = item.steps ?? []
   // Slice C-recurring-3. Un-cleared misses block completion, so the card gets a
   // subtle amber "action needed" cue (a left-edge tint) whenever misses exist.
@@ -301,7 +309,7 @@ function PersonalCard({
               {item.title}
             </p>
             <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-gray-100 dark:bg-white/[0.08] text-gray-400 dark:text-white/40 border border-gray-200 dark:border-white/[0.08]">
-              Personal
+              {isAssignment ? (item.source === 'assigned-by-me' ? 'Assigned by me' : 'Assigned to me') : 'Personal'}
             </span>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -345,31 +353,38 @@ function PersonalCard({
         {/* ★ STAR replaces the 3b expand chevron. The panel is now the sole step
             editor, so an expand affordance would open a second, competing one.
             A STARRED star stays at full opacity even at rest — it is state, not an
-            affordance, and must be legible without hovering. */}
-        <button
-          onClick={e => { e.stopPropagation(); onStar() }}
-          className={`w-7 h-7 flex items-center justify-center rounded-lg transition shrink-0 hover:bg-amber-50 dark:hover:bg-amber-500/15 ${
-            item.starred
-              ? 'text-amber-400 opacity-100'
-              : 'text-gray-500 dark:text-white/50 opacity-60 group-hover:opacity-100 hover:text-amber-400'
-          }`}
-          title={item.starred ? 'Unstar' : 'Star'}
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14"
-               fill={item.starred ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5">
-            <path d="M7 1.5l1.7 3.44 3.8.55-2.75 2.68.65 3.78L7 10.16l-3.4 1.79.65-3.78L1.5 5.49l3.8-.55L7 1.5z"
-                  strokeLinejoin="round"/>
-          </svg>
-        </button>
-        <button
-          onClick={e => { e.stopPropagation(); onDelete() }}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 dark:text-white/50 opacity-60 group-hover:opacity-100 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/15 transition shrink-0"
-          title="Delete"
-        >
-          <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
-            <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"/>
-          </svg>
-        </button>
+            affordance, and must be legible without hovering.
+            2.5d: star + delete are personal-organization controls — HIDDEN for
+            assignments (a shared assignment has no per-viewer star, and it is
+            completed/reopened, not deleted, from the To-Do view). */}
+        {!isAssignment && (
+          <button
+            onClick={e => { e.stopPropagation(); onStar() }}
+            className={`w-7 h-7 flex items-center justify-center rounded-lg transition shrink-0 hover:bg-amber-50 dark:hover:bg-amber-500/15 ${
+              item.starred
+                ? 'text-amber-400 opacity-100'
+                : 'text-gray-500 dark:text-white/50 opacity-60 group-hover:opacity-100 hover:text-amber-400'
+            }`}
+            title={item.starred ? 'Unstar' : 'Star'}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14"
+                 fill={item.starred ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5">
+              <path d="M7 1.5l1.7 3.44 3.8.55-2.75 2.68.65 3.78L7 10.16l-3.4 1.79.65-3.78L1.5 5.49l3.8-.55L7 1.5z"
+                    strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
+        {!isAssignment && (
+          <button
+            onClick={e => { e.stopPropagation(); onDelete() }}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 dark:text-white/50 opacity-60 group-hover:opacity-100 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/15 transition shrink-0"
+            title="Delete"
+          >
+            <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
+              <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"/>
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* ★ THE RAIL IS ALWAYS VISIBLE ONCE A STEP EXISTS — no expand required.
@@ -618,13 +633,19 @@ function SortableStepRow({
  * leak into this panel.
  */
 function TodoDetailPanel({
-  item, open, reducedMotion, onClose, onComplete, onStar, onColor, onDue, onNotes, onRecurrence, onClearMissed,
+  item, open, reducedMotion, kind = 'personal', onClose, onComplete, onStar, onColor, onDue, onNotes, onRecurrence, onClearMissed,
   onStepToggle, onStepAdd, onStepDelete, onStepReorder, onExited,
 }: {
   item: DisplayItem
   /** Drives the slide. False = parked off-screen right (opening frame, or exiting). */
   open: boolean
   reducedMotion: boolean
+  /**
+   * 2.5d: 'assignment' reuses this panel (its slide/focus/dnd machinery) but hides
+   * personal-only sections — the star, the Colour picker, and the Repeat picker.
+   * Completion/revive, Due, Steps and Notes stay. Missed is absent on assignments.
+   */
+  kind?: 'personal' | 'assignment'
   /** Fires when the CLOSING slide finishes, so the parent can drop the retained item. */
   onExited: () => void
   onClose: () => void
@@ -650,6 +671,7 @@ function TodoDetailPanel({
   const steps = item.steps ?? []
   const done = steps.filter(s => s.checked).length
   const color = resolveTodoColor(item.color)
+  const isAssignment = kind === 'assignment'
 
   // A-3 DRAG — the SAME dnd-kit setup the Kanban uses (KanbanView.tsx:689). The 5px
   // activation distance means a click on the toggle dot or delete never starts a
@@ -711,7 +733,7 @@ function TodoDetailPanel({
           }`}>
             {item.title}
           </p>
-          <button
+          {!isAssignment && <button
             onClick={onStar}
             className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg transition hover:bg-amber-50 dark:hover:bg-amber-500/15 ${
               item.starred ? 'text-amber-400' : 'text-gray-400 dark:text-white/40 hover:text-amber-400'
@@ -722,7 +744,7 @@ function TodoDetailPanel({
                  fill={item.starred ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5">
               <path d="M7 1.5l1.7 3.44 3.8.55-2.75 2.68.65 3.78L7 10.16l-3.4 1.79.65-3.78L1.5 5.49l3.8-.55L7 1.5z" strokeLinejoin="round"/>
             </svg>
-          </button>
+          </button>}
           {/* CLOSE = a chevron pointing at the right edge, i.e. "collapse away in
               the direction you came from". An X reads as "delete/dismiss", which on
               a to-do panel is an alarming thing to guess wrong about. */}
@@ -763,8 +785,8 @@ function TodoDetailPanel({
           </div>
         )}
 
-        {/* COLOUR */}
-        <div>
+        {/* COLOUR — personal-only (2.5d): hidden for assignments. */}
+        {!isAssignment && <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/40 mb-2">Colour</p>
           <div className="flex items-center gap-2 flex-wrap">
             {TODO_COLORS.map(c => (
@@ -792,11 +814,13 @@ function TodoDetailPanel({
               </svg>
             </button>
           </div>
-        </div>
+        </div>}
 
         {/* DUE — native date input (app-wide standard; OS picker positions itself) +
-            a custom time popover. */}
-        <div>
+            a custom time popover. 2.5d: personal-only in the panel — an assignment's
+            due is set by the head at creation (no assignment:setDue handler); the due
+            still shows on the assignment CARD's pill, just isn't editable here. */}
+        {!isAssignment && <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/40 mb-2">Due</p>
           <div className="flex items-center gap-2 flex-wrap">
             {/* Picking a date carries the current time through; '' clears to null.
@@ -822,13 +846,14 @@ function TodoDetailPanel({
               Clear due date
             </button>
           )}
-        </div>
+        </div>}
 
-        {/* RECURRENCE (slice C-recurring-2) — placed after DUE (date-adjacent). */}
-        <div>
+        {/* RECURRENCE (slice C-recurring-2) — placed after DUE (date-adjacent).
+            2.5d: personal-only — an assignment is a one-shot tasking, not recurring. */}
+        {!isAssignment && <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/40 mb-2">Repeat</p>
           <RecurrencePopover value={item.recurrence ?? null} onPick={onRecurrence} disabled={!item.due_date} />
-        </div>
+        </div>}
 
         {/* STEPS — the editable list. Drag-reorder is A-3. */}
         <div>
@@ -1196,6 +1221,61 @@ export default function Todo() {
     }
   }
 
+  // ── Assignment notes + steps (2.5d) ─────────────────────────────────────────
+  // Cloud-first + ONLINE-REQUIRED (unlike personal, which is offline-capable): the
+  // main gate rejects offline, so guard here to avoid an optimistic flip that just
+  // reverts. Steps are INDEPENDENT of assignment completion. queueLoad after add/
+  // delete so server-minted ids reconcile (not-live across users is expected).
+  async function handleAssignmentSetNotes(item: DisplayItem, notes: string | null) {
+    if (!online) return
+    const before = item.notes ?? null
+    const value = notes && notes.length ? notes : null
+    patchItem(item.id, { notes: value })
+    const res = await window.api.assignments.setNotes(item.raw_id, value)
+    if (!res?.ok) patchItem(item.id, { notes: before })
+  }
+
+  async function handleAssignmentStepToggle(item: DisplayItem, stepId: string) {
+    if (!online) return
+    // Optimistic flip (the rail FLIP reads from the current render). `checked`
+    // derives from completed_at server-side; the next refetch reconciles.
+    const flip = (i: DisplayItem): DisplayItem => ({
+      ...i, steps: (i.steps ?? []).map(s => s.id === stepId ? { ...s, checked: !s.checked } : s),
+    })
+    setItems(prev => prev.map(i => i.id === item.id ? flip(i) : i))
+    const res = await window.api.assignmentStep.toggle(stepId)
+    if (!res?.ok) setItems(prev => prev.map(i => i.id === item.id ? flip(i) : i))
+  }
+
+  async function handleAssignmentStepAdd(item: DisplayItem, text: string) {
+    if (!online) return
+    const body = text.trim()
+    if (!body) return
+    // raw_id (the bare assignment uuid), never item.id (assigned-<uuid>).
+    await window.api.assignmentStep.create(item.raw_id, body)
+    queueLoad()
+  }
+
+  async function handleAssignmentStepDelete(stepId: string, item: DisplayItem) {
+    if (!online) return
+    setItems(prev => prev.map(i => i.id !== item.id ? i : {
+      ...i, steps: (i.steps ?? []).filter(s => s.id !== stepId),
+    }))
+    try { await window.api.assignmentStep.delete(stepId) }
+    finally { queueLoad() }
+  }
+
+  async function handleAssignmentStepReorder(item: DisplayItem, orderedStepIds: string[]) {
+    if (!online) return
+    setItems(prev => prev.map(i => {
+      if (i.id !== item.id) return i
+      const byId = new Map((i.steps ?? []).map(s => [s.id, s]))
+      const next = orderedStepIds.map(id => byId.get(id)).filter(Boolean) as TodoStep[]
+      return next.length === (i.steps ?? []).length ? { ...i, steps: next } : i
+    }))
+    await window.api.assignmentStep.reorder(item.raw_id, orderedStepIds)
+  }
+
   // ── Detail-panel field writes (A-2, over the A-1 setters) ──────────────────
   // OPTIMISTIC, then fire-and-reconcile — the same contract handleStepToggle
   // settled on in 3b. queueLoad() is deliberately NOT called on success: the patch
@@ -1451,7 +1531,8 @@ export default function Todo() {
     // ⚠ Board cards keep their EXISTING behaviour untouched: they deep-link into
     // Workspace, they do not open this panel. The panel edits personal columns
     // (colour, star, personal steps) that board cards structurally do not have.
-    if (item.source === 'personal') {
+    // 2.5d: assignment rows open the SAME detail panel as personal (parameterized).
+    if (item.source === 'personal' || item.source === 'assigned' || item.source === 'assigned-by-me') {
       setSelectedId(prev => (prev === item.id ? null : item.id))
       return
     }
@@ -1617,6 +1698,26 @@ export default function Todo() {
           onSelect={() => handleItemClick(item)}
           onStar={() => handleSetStar(item)}
           onStepToggle={sid => handleStepToggle(item, sid)}
+        />
+      )
+    }
+    // 2.5d: off-card assignments reuse the PersonalCard shell (kind='assignment' hides
+    // personal-only chrome). Completion routes to the assignment handlers (2.5c);
+    // star/delete are hidden so those callbacks are inert no-ops.
+    if (item.source === 'assigned' || item.source === 'assigned-by-me') {
+      return (
+        <PersonalCard
+          key={item.id}
+          item={item}
+          kind="assignment"
+          isSelected={selectedId === item.id}
+          duePill={duePillFor(item)}
+          extraClass={extraClass}
+          onComplete={() => (item.completed ? handleAssignmentUncomplete(item) : handleAssignmentComplete(item))}
+          onDelete={() => {}}
+          onSelect={() => handleItemClick(item)}
+          onStar={() => {}}
+          onStepToggle={sid => handleAssignmentStepToggle(item, sid)}
         />
       )
     }
@@ -2083,7 +2184,7 @@ export default function Todo() {
           the tree: it remains above the `Row` unmount boundary, so its inputs keep
           their DOM nodes and their focus. Do NOT move this inside renderItem,
           PersonalCard or Row. */}
-      {panelItem && panelItem.source === 'personal' && (
+      {panelItem && (panelItem.source === 'personal' || panelItem.source === 'assigned' || panelItem.source === 'assigned-by-me') && (
         <TodoDetailPanel
           // Keyed on the item so switching selection gives the panel a FRESH
           // subtree — otherwise an <input> would carry the previous item's
@@ -2092,19 +2193,35 @@ export default function Todo() {
           item={panelItem}
           open={panelOpen}
           reducedMotion={reducedMotion}
+          // 2.5d: the SAME panel, parameterized. Assignment callbacks route to the
+          // assignment IPC; the personal-only ones (star/color/due/recurrence/missed)
+          // are hidden for kind='assignment', so those callbacks are never invoked.
+          kind={panelItem.source === 'personal' ? 'personal' : 'assignment'}
           onExited={() => setPanelItem(null)}
           onClose={() => setSelectedId(null)}
-          onComplete={() => handlePersonalToggle(panelItem)}
+          onComplete={() => panelItem.source === 'personal'
+            ? handlePersonalToggle(panelItem)
+            : (panelItem.completed ? handleAssignmentUncomplete(panelItem) : handleAssignmentComplete(panelItem))}
           onStar={() => handleSetStar(panelItem)}
           onColor={key => handleSetColor(panelItem, key)}
           onDue={(d, t) => handleSetDue(panelItem, d, t)}
           onRecurrence={freq => handleSetRecurrence(panelItem, freq)}
-          onNotes={notes => handleSetNotes(panelItem, notes)}
+          onNotes={notes => panelItem.source === 'personal'
+            ? handleSetNotes(panelItem, notes)
+            : handleAssignmentSetNotes(panelItem, notes)}
           onClearMissed={date => handleClearMissed(panelItem, date)}
-          onStepToggle={sid => handleStepToggle(panelItem, sid)}
-          onStepAdd={text => handleStepAdd(panelItem, text)}
-          onStepDelete={sid => handleStepDelete(sid, panelItem)}
-          onStepReorder={ids => handleStepReorder(panelItem, ids)}
+          onStepToggle={sid => panelItem.source === 'personal'
+            ? handleStepToggle(panelItem, sid)
+            : handleAssignmentStepToggle(panelItem, sid)}
+          onStepAdd={text => panelItem.source === 'personal'
+            ? handleStepAdd(panelItem, text)
+            : handleAssignmentStepAdd(panelItem, text)}
+          onStepDelete={sid => panelItem.source === 'personal'
+            ? handleStepDelete(sid, panelItem)
+            : handleAssignmentStepDelete(sid, panelItem)}
+          onStepReorder={ids => panelItem.source === 'personal'
+            ? handleStepReorder(panelItem, ids)
+            : handleAssignmentStepReorder(panelItem, ids)}
         />
       )}
       </div>

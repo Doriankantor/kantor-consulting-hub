@@ -142,6 +142,17 @@ const api = {
     // (self-complete skipped in main); uncomplete never notifies. Pass the bare uuid.
     complete:             (id: string) => ipcRenderer.invoke('assignment:complete', id),
     uncomplete:           (id: string) => ipcRenderer.invoke('assignment:uncomplete', id),
+    // 2.5d: notes = the assignments.body column. Gated assignee-or-head in main.
+    setNotes:             (id: string, body: string | null) => ipcRenderer.invoke('assignment:setNotes', id, body),
+  },
+  // 2.5d: assignment sub-steps — SEPARATE from personalTodoStep (multi-user, cloud-
+  // first, gated assignee-or-head in main). create/reorder take the assignment id;
+  // toggle/delete take the step id.
+  assignmentStep: {
+    create:  (assignmentId: string, text: string)          => ipcRenderer.invoke('assignmentStep:create', assignmentId, text),
+    toggle:  (stepId: string)                               => ipcRenderer.invoke('assignmentStep:toggle', stepId),
+    delete:  (stepId: string)                               => ipcRenderer.invoke('assignmentStep:delete', stepId),
+    reorder: (assignmentId: string, orderedIds: string[])  => ipcRenderer.invoke('assignmentStep:reorder', assignmentId, orderedIds),
   },
   chat: {
     getMessages: (limit?: number) => ipcRenderer.invoke('chat:getMessages', limit ?? 100),

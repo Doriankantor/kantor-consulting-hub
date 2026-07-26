@@ -29,6 +29,7 @@ import { nextOccurrence } from '../todos/nextOccurrence'
 import { startMissedSchedule, stopMissedSchedule } from '../todos/missedEvaluator'
 import * as intelCloud from '../cloud/intel'
 import * as assignmentsCloud from '../cloud/assignments'
+import * as assignmentStepsCloud from '../cloud/assignmentSteps'
 import * as notificationsCloud from '../cloud/notificationsCloud'
 import { pushNotice } from '../cloud/connection'
 import { isOnline } from '../cloud/connection'
@@ -1921,6 +1922,68 @@ function registerBoardMembersHandlers() {
     const id = (rawId ?? '').trim()
     if (!id) return { ok: false, error: 'id required' }
     return assignmentsCloud.setAssignmentCompleted(id, null)
+  })
+
+  // ── Assignment sub-steps + notes (To-Do 2.5d), GATED assignee-or-head ─────────
+  // Shared gate: the ASSIGNEE (working the task) or a board HEAD (owns the
+  // assignment) or root may edit; an unrelated peer may not. Reuses 2.5c's row-read
+  // + isOwner. An ungated multi-user step/notes write is a real exposure — this is
+  // the boundary (the renderer only hides UI). Returns the parent row on success.
+  async function gateAssignmentEdit(assignmentId: string): Promise<
+    { ok: true } | { ok: false; error: string }
+  > {
+    const actor = await boardsCloud.resolveActor(currentActingUserId)
+    if (!actor.email) return { ok: false, error: 'Could not resolve the acting user.' }
+    const row = db().prepare('SELECT assignee_email, board_id FROM assignments WHERE id=?')
+      .get(assignmentId) as { assignee_email?: string; board_id?: string } | undefined
+    if (!row) return { ok: false, error: 'no such assignment' }
+    const isAssignee = (row.assignee_email ?? '').toLowerCase() === actor.email.toLowerCase()
+    const isHead = actor.isRoot || (row.board_id ? await boardsCloud.isOwner(currentActingUserId, row.board_id) : false)
+    if (!isAssignee && !isHead) {
+      return { ok: false, error: 'Only the assignee or a board head can edit these steps.' }
+    }
+    return { ok: true }
+  }
+
+  ipcMain.handle('assignmentStep:create', async (_e, assignmentId: string, text: string) => {
+    const id = (assignmentId ?? '').trim()
+    if (!id) return { ok: false, error: 'assignment id required' }
+    const g = await gateAssignmentEdit(id)
+    if (!g.ok) return g
+    return assignmentStepsCloud.createStep(id, text)
+  })
+
+  ipcMain.handle('assignmentStep:toggle', async (_e, stepId: string) => {
+    const parent = assignmentStepsCloud.parentIdOfStep(stepId)
+    if (!parent) return { ok: false, error: 'no such step' }
+    const g = await gateAssignmentEdit(parent)
+    if (!g.ok) return g
+    return assignmentStepsCloud.toggleStep(stepId)
+  })
+
+  ipcMain.handle('assignmentStep:delete', async (_e, stepId: string) => {
+    const parent = assignmentStepsCloud.parentIdOfStep(stepId)
+    if (!parent) return { ok: false, error: 'no such step' }
+    const g = await gateAssignmentEdit(parent)
+    if (!g.ok) return g
+    return assignmentStepsCloud.deleteStep(stepId)
+  })
+
+  ipcMain.handle('assignmentStep:reorder', async (_e, assignmentId: string, orderedIds: string[]) => {
+    const id = (assignmentId ?? '').trim()
+    if (!id) return { ok: false, error: 'assignment id required' }
+    const g = await gateAssignmentEdit(id)
+    if (!g.ok) return g
+    return assignmentStepsCloud.reorderSteps(id, orderedIds)
+  })
+
+  // Notes = the existing assignments.body column (no new column). Same gate.
+  ipcMain.handle('assignment:setNotes', async (_e, rawId: string, body: string | null) => {
+    const id = (rawId ?? '').trim()
+    if (!id) return { ok: false, error: 'id required' }
+    const g = await gateAssignmentEdit(id)
+    if (!g.ok) return g
+    return assignmentsCloud.setAssignmentBody(id, body ?? null)
   })
 
   // CLOUD-SOURCED (Stage 2, category 3). Membership is email-keyed in the cloud.

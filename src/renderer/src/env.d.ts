@@ -644,6 +644,15 @@ interface Window {
       /** 2.5c: complete (notifies assigner, self-skip in main) / reopen (no notify). Bare uuid. */
       complete:             (id: string) => Promise<{ ok: boolean; error?: string }>
       uncomplete:           (id: string) => Promise<{ ok: boolean; error?: string }>
+      /** 2.5d: notes = the assignments.body column. Gated assignee-or-head in main. */
+      setNotes:             (id: string, body: string | null) => Promise<{ ok: boolean; error?: string }>
+    }
+    /** 2.5d: assignment sub-steps (multi-user, cloud-first, gated assignee-or-head). */
+    assignmentStep: {
+      create:  (assignmentId: string, text: string) => Promise<{ ok: boolean; id?: string; error?: string }>
+      toggle:  (stepId: string) => Promise<{ ok: boolean; error?: string }>
+      delete:  (stepId: string) => Promise<{ ok: boolean; error?: string }>
+      reorder: (assignmentId: string, orderedIds: string[]) => Promise<{ ok: boolean; error?: string }>
     }
     chat: {
       getMessages: (limit?: number) => Promise<ChatMessage[]>
