@@ -11,6 +11,66 @@ process complete by end of July, publishing in August.** The stage order is LOCK
 → Analysis & design → Publish → Latest update notes → Sources**, with Claude PROPOSING placements
 and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not jump to code.
 
+**LATEST (2026-07-26) — TO-DO 2.5 ASSIGNMENT LOOP COMPLETE (a / a-fix / b-0 / b-1 / c).**
+
+The off-card assignment feature is functionally whole: a board Head assigns work to
+board members, the assignee is notified, completion notifies the assigner back.
+Slices:
+- **`b607ac7` 2.5a — assignments entity + read path.** Cloud table + local mirror,
+  "Assigned to me" / "Assigned by me" tabs. One row per (assignment × assignee);
+  `assignee_email` scalar; cloud-first via the boards.ts/notifications pattern, **NOT
+  personalSync** (multi-user — same scope-contract trap as always). `source_type`/
+  `source_id` reserved for slice-5 intel directives.
+- **`0c5f417` 2.5a-fix — `board_id` NOT NULL.** DESIGN CORRECTION: off-card
+  assignments are **board-scoped and always human-triggered**; a board Head assigns
+  to a member of THAT board, and slice-5 intel directives are the SAME act (a head
+  tasks a member with culling an intel stream; the AI does the culling, the head
+  issues the directive). One actor, one gate, one table. `board_id` is the permission
+  anchor. Local **drop+recreate** (SQLite can't ADD NOT NULL without a default that
+  reintroduces the falsy value); cloud ALTER on the emptied table.
+- **`c84da27` 2.5b-0 — board heads span ALL board types.** `info_page_owners` is
+  structurally a plain `board_id→head_email` table (its only constraint, the FK to
+  `board_members`, is board-type-agnostic and gives head-implies-member for free);
+  `isOwner`/`addOwner`/etc already work on any board id. Relaxed 5 Team.tsx renderer
+  conditionals + neutralized "project head / info-page" copy to "Head". Table/column
+  names (`info_page_owners`/`page_id`) **KEPT**, commented as spanning all board types
+  (renaming an FK'd permission table is the prefix-clobber risk family — not worth it).
+- **`17a8910` 2.5b-1 — gated write path (+Add → Assign to other).**
+  `listBoardsWhereHead` + `listBoardAssignees` back the pickers. `assignment:create`:
+  **GATE A** (actor `isOwner` or root), **GATE B** (assignee in `listBoardAssignees`,
+  best-effort). **`assigner_email` = actor.email ALWAYS**, never from the renderer
+  payload. Multi-assign loops `createAssignment`, best-effort per-assignee results.
+  Per-assignee notify via the **choke point**, SKIPPED on self-assign. Verified live:
+  gate-A dropdown, assigner integrity (dk vs root recorded per actual actor),
+  cross-person notify, self-skip.
+- **`7cb1f5d` 2.5c — completion + notify-back.** `assignment:complete` sets
+  `completed_at` and notifies the **ASSIGNER** ("X completed: …"), self-skip when
+  completer == assigner. Uncomplete toggles, no notify. Dropped the `completed_at IS
+  NULL` filter (4 sites) so completed assignments stay struck-through in the Completed
+  section. Board `todo:complete` **UNTOUCHED** (separate handler / table / recipient —
+  it notifies admin via `stage_change`; the two must never converge). Verified live:
+  notify-back to root, self-skip, `completed_at` persistence, strike-through-to-Completed.
+
+★ **THE WHOLE LOOP verified on live data:** assign → notify assignee → complete →
+notify assigner. This is the first big payoff of the notifications cloud arc.
+**The gate is `isOwner` (board-scoped head), board-type-agnostic — `can_assign` was
+never built and does not exist** (see the UNIFIED HEAD ROLE entry under Known issues).
+
+**★ NEXT: To-Do 2.5d — FULL-PARITY assignment cards.** Assignment rows currently
+render as a plain `Row` (title + checkbox). They should get the SAME treatment as
+personal todos: the detail sidebar, SUB-STEPS, notes — full `PersonalCard` parity
+(Dorian confirmed full parity). Needs its own diagnosis: how `PersonalCard` + the
+detail sidebar work, whether assignment steps are a **NEW table** (`assignment_steps`
+— NOT `personal_todo_steps`, which personalSync's scope contract forbids for
+multi-user data — same trap as the entity) or reuse something, and the render-routing
+branch. Then: **2.6** (invited collaboration), **4** (card permission tiers + the
+ungated `todo:complete` gate), **5** (intel directives — reuse `createAssignment`
+with `source_type`).
+
+**Untested for lack of a second board member:** N>1 multi-assign fan-out — every
+headed board currently has only dk@ as a member (post-reset roster not repopulated).
+Validate when the team roster is restored.
+
 **LATEST (2026-07-25) — N-2c-3 SHIPPED. NOTIFICATIONS CLOUD ARC COMPLETE.**
 
 - **`bea5a02` — N-2c-3: offline `markAllRead` stays online-required, shown as a
@@ -45,6 +105,11 @@ completion notifies the assigner back) — now **UNBLOCKED**. Needs
 `board_members.can_assign`, `assigned_by`, and completion-notification-to-assigner
 per the locked To-Do design. Then **To-Do 2.6 → 4 → 5**, then **Team console**, then
 the **Intelligence + Info Pages restructure**.
+_✅ SUPERSEDED / DONE — see **LATEST (2026-07-26)** at the top. To-Do 2.5 (a → c) is
+COMPLETE. This entry's dependency list was wrong on two counts: `can_assign` was
+never built (the gate is `isOwner`, board-scoped), and `assigned_by` is native to
+the new `assignments` entity (`assigner_email`), not a `board_members`/`workspace_tasks`
+column. 2.5d (full-parity cards) is the remainder._
 
 **LATEST (2026-07-25) — N-2c-2 SHIPPED; notifications cloud arc COMPLETE except
 the deliberately-deferred bulk path.**
@@ -2330,6 +2395,18 @@ clobbered value, making the loss **permanent**. Guard:
 **`WHERE notifications.pending_sync = 0`**, so cloud only refreshes rows with no
 unsynced local state. This is the **write-side statement** of the same rule
 `mergePending` states on the read side.
+
+## ⚠ Lesson — backticks inside a `db.exec(`...`)` template-literal comment CLOSE the literal
+
+Twice now (2.5a-fix, 2.5b-0) a SQL comment like ``-- the `page_id` column`` placed
+**inside** a `db.exec(`CREATE TABLE …`)` template literal closed the JS literal early
+→ **TS1005 "',' expected"** parse error. The tell that made it obvious: the **node-tsc
+error count DROPPED** (5 → 3 → 1) instead of rising. A DECREASE signals an **early
+parse bail** — tsc stopped reading the file after the broken literal and never saw the
+rest of the errors — **not** that you fixed something. **Rule:** NEVER put a backtick
+in a comment that lives inside a JS template literal; use plain quotes (`'page_id'` or
+just `page_id`). **And watch the tsc count: a DROP is a red flag, not a win** — verify
+the real error list, not the number.
 
 ## Release status at a glance
 
