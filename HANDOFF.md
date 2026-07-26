@@ -11,10 +11,13 @@ process complete by end of July, publishing in August.** The stage order is LOCK
 → Analysis & design → Publish → Latest update notes → Sources**, with Claude PROPOSING placements
 and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not jump to code.
 
-**LATEST (2026-07-26) — TO-DO 2.5 ASSIGNMENT LOOP COMPLETE (a / a-fix / b-0 / b-1 / c).**
+**LATEST (2026-07-26) — TO-DO 2.5 FUNCTIONALLY COMPLETE** — the assignment feature
+(create → notify assignee → complete → notify assigner → +steps/notes/sidebar) is
+whole and proven on live data. Slices a / a-fix / b-0 / b-1 / c / d.
 
 The off-card assignment feature is functionally whole: a board Head assigns work to
-board members, the assignee is notified, completion notifies the assigner back.
+board members, the assignee is notified, completion notifies the assigner back, and
+the cards have full personal-todo parity (steps, notes, detail sidebar).
 Slices:
 - **`b607ac7` 2.5a — assignments entity + read path.** Cloud table + local mirror,
   "Assigned to me" / "Assigned by me" tabs. One row per (assignment × assignee);
@@ -50,26 +53,51 @@ Slices:
   section. Board `todo:complete` **UNTOUCHED** (separate handler / table / recipient —
   it notifies admin via `stage_change`; the two must never converge). Verified live:
   notify-back to root, self-skip, `completed_at` persistence, strike-through-to-Completed.
+- **`6f21976` 2.5d — full-parity assignment cards.** Assignment rows get the
+  `PersonalCard`/`TodoDetailPanel` treatment for the HONEST-parity subset: completion
+  + sub-steps + notes + detail sidebar. **NOT** star/color/recurrence/missed/dismiss
+  (personal-organization concepts that don't fit a shared assignment — over-parity).
+  New **`assignment_steps`** table (cloud + mirror) via `cloud/assignmentSteps.ts`
+  (boards.ts pattern, **NEVER personalSync**). Steps gated **assignee-OR-head**
+  (`gateAssignmentEdit`: actor===assignee OR `isOwner(board_id)` OR root); **INDEPENDENT
+  of parent completion** (a ticked step must not auto-complete — that would
+  surprise-fire the 2.5c notify-back). Notes reuse the `body` column. `PersonalCard`/
+  `TodoDetailPanel` parameterized by **`kind='personal'|'assignment'`** (reused, **NOT
+  forked** — they're presentational/IPC-free; forking would duplicate the slide/focus/
+  dnd machinery). **NOT LIVE** across users (no realtime on assignments; steps show on
+  next refetch). Verified live: steps persist/reorder/toggle-independent, notes→body,
+  personal todos not regressed.
 
 ★ **THE WHOLE LOOP verified on live data:** assign → notify assignee → complete →
-notify assigner. This is the first big payoff of the notifications cloud arc.
+notify assigner (+ full-parity cards). This is the first big payoff of the
+notifications cloud arc.
 **The gate is `isOwner` (board-scoped head), board-type-agnostic — `can_assign` was
 never built and does not exist** (see the UNIFIED HEAD ROLE entry under Known issues).
 
-**★ NEXT: To-Do 2.5d — FULL-PARITY assignment cards.** Assignment rows currently
-render as a plain `Row` (title + checkbox). They should get the SAME treatment as
-personal todos: the detail sidebar, SUB-STEPS, notes — full `PersonalCard` parity
-(Dorian confirmed full parity). Needs its own diagnosis: how `PersonalCard` + the
-detail sidebar work, whether assignment steps are a **NEW table** (`assignment_steps`
-— NOT `personal_todo_steps`, which personalSync's scope contract forbids for
-multi-user data — same trap as the entity) or reuse something, and the render-routing
-branch. Then: **2.6** (invited collaboration), **4** (card permission tiers + the
-ungated `todo:complete` gate), **5** (intel directives — reuse `createAssignment`
-with `source_type`).
+**★ NEXT: To-Do 2.6 — invited collaboration.** A DIFFERENT animal from assignment:
+non-board-scoped "invite someone to collaborate", with its own mechanics per the
+locked three-concepts split (**assigned** / **invited-collaboration** / **personal**).
+Do NOT model it as an assignment variant — it is not board-scoped and not head-gated.
+Then: **slice 4** (card permission tiers + consolidating the ungated
+`todo:complete`/`assignmentStep` gate story), **slice 5** (intel directives — reuse
+`createAssignment` with `source_type='intel-directive'` + the board-scoped head gate,
+exactly the 2.5b machinery), then **Team console**, then the **Intelligence + Info
+Pages restructure**.
 
-**Untested for lack of a second board member:** N>1 multi-assign fan-out — every
-headed board currently has only dk@ as a member (post-reset roster not repopulated).
-Validate when the team roster is restored.
+**Deferred (mentioned, NOT built):** assignment **CHAT** (floated as a possible 2.5d
+piece — deferred, would need its own `assignment_chat` table + UI); **realtime on
+assignments/assignment_steps** (a later slice if the team wants live cross-user
+updates — 2.5 relies on refetch-on-open/`queueLoad`); the **ungated `todo:complete`
+permission gate** (slice 4 — independent of the assignment work).
+
+**★ Verified BY CONSTRUCTION, not live — validate when the roster is repopulated**
+(Daniel / Leonardo / Juan Diego re-added as `board_members`; post-reset every board
+has only dk@):
+- **N>1 multi-assign fan-out** (2.5b-1) — looping `createAssignment` + per-assignee
+  notify to more than one recipient.
+- **The gate REJECTION path** (2.5b-1 GATE B; 2.5d step gate) — an unrelated peer
+  being *refused*. The ALLOW paths (assignee, head, root) and cross-person notify ARE
+  verified live (root → dk).
 
 **LATEST (2026-07-25) — N-2c-3 SHIPPED. NOTIFICATIONS CLOUD ARC COMPLETE.**
 
@@ -105,11 +133,11 @@ completion notifies the assigner back) — now **UNBLOCKED**. Needs
 `board_members.can_assign`, `assigned_by`, and completion-notification-to-assigner
 per the locked To-Do design. Then **To-Do 2.6 → 4 → 5**, then **Team console**, then
 the **Intelligence + Info Pages restructure**.
-_✅ SUPERSEDED / DONE — see **LATEST (2026-07-26)** at the top. To-Do 2.5 (a → c) is
-COMPLETE. This entry's dependency list was wrong on two counts: `can_assign` was
-never built (the gate is `isOwner`, board-scoped), and `assigned_by` is native to
-the new `assignments` entity (`assigner_email`), not a `board_members`/`workspace_tasks`
-column. 2.5d (full-parity cards) is the remainder._
+_✅ SUPERSEDED / DONE — see **LATEST (2026-07-26)** at the top. To-Do 2.5 (a → d) is
+FUNCTIONALLY COMPLETE. This entry's dependency list was wrong on two counts:
+`can_assign` was never built (the gate is `isOwner`, board-scoped), and `assigned_by`
+is native to the new `assignments` entity (`assigner_email`), not a `board_members`/
+`workspace_tasks` column. NEXT is 2.6 (invited collaboration — a separate concept)._
 
 **LATEST (2026-07-25) — N-2c-2 SHIPPED; notifications cloud arc COMPLETE except
 the deliberately-deferred bulk path.**
