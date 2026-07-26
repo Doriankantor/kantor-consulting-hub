@@ -4,12 +4,106 @@ _Last updated: 2026-07-25 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
-**★ NEXT / IN FLIGHT — THE INTELLIGENCE + INFO PAGES RESTRUCTURE (the primary goal).**
-DESIGN-FIRST, in this order: **(1)** a vision conversation, **(2)** read-only diagnosis of the
-two large components, **(3)** the last cloud migration (`info_page_sources`). **Deadline: intel
-process complete by end of July, publishing in August.** The stage order is LOCKED: **New sources
-→ Analysis & design → Publish → Latest update notes → Sources**, with Claude PROPOSING placements
-and the researcher CONFIRMING via a feedback panel. Start at step (1) — do not jump to code.
+**★ NEXT: Slice 5 — intel directives (Contested Skies only).** A board Head issues an
+intel-culling directive to a board member; **reuses `createAssignment` +
+`source_type='intel-directive'` + the board-scoped head gate (2.5b machinery — built +
+tested).** SHRUNK to ONE board: the new research boards are being deferred (see the
+research-board deferral in the LATEST entry), so slice 5 serves **Contested Skies alone**.
+Small. **Then, IN ORDER:** **(2)** the **Intelligence + Info Pages RESTRUCTURE** — the
+**AUGUST DEADLINE**, **DESIGN-FIRST / MOCKUP-FIRST** (a vision/mockup pass, NOT
+diagnose-to-build). The stage order is LOCKED: **New sources → Analysis & design → Publish
+→ Latest update notes → Sources**, with Claude PROPOSING placements and the researcher
+CONFIRMING via a feedback panel. This project **CONTAINS** the publication pipeline AND
+**interview markup (per-highlight annotation)** — they are NOT separable from it. Open with
+a vision/mockup conversation; do not jump to code. **(3)** the **Team console** (relocate
+scattered people-management into one Team view). **(4)** **To-Do 2.6 — full collaboration**
+(shared personal todos — DESIGN-LOCKED, DEFERRED, no deadline; full spec in the LATEST
+entry below).
+
+**LATEST (2026-07-26, session close) — 2.6 DESIGN ARC + ROADMAP RESEQUENCED.**
+
+To-Do 2.5 (assignment) is complete and shipped (a→d, see the prior entry). This session
+also ran a full DESIGN arc on **To-Do 2.6 (invited collaboration)** and **resequenced the
+remaining roadmap**. **NO 2.6 code was written** — it is design-locked and DEFERRED.
+
+**★ 2.6 — invited collaboration = SHARED PERSONAL TODOS. DESIGN-LOCKED, DEFERRED (after
+publication).** The model (locked with Dorian):
+- Personal todos become shareable: **OWNER + COLLABORATORS.** Owner holds sharing /
+  deletion / lifecycle; collaborators have **EQUAL EDIT on content**. Invite → notify →
+  **accept/decline, RE-INVITABLE** after decline. Leave by removal (self or owner); **delete
+  is owner-only**.
+- Everything is **SHARED STATE** (the whole simplification): recurrence respawns to **ALL**;
+  missed-state is **single/shared** (anyone clears); **dismiss is shared** (hides for all);
+  **steps shared-edit**. The ONLY per-person concept is **list membership**. This collapses
+  the hard multi-user-state problem into a **single-shared-object** problem.
+- ★ **THE CHEAP/EXPENSIVE BOUNDARY (the key architectural finding):** it runs exactly
+  between **"toggle DONE"** and **"edit CONTENT"**.
+  - **Shared COMPLETION (view + toggle done) is CHEAP.** Architecture-diagnose verdict (A):
+    `personal_todos` IS cloud-materialized and personalSync is BIDIRECTIONAL, so a
+    collaborator's gated cloud completion-write lands in the owner's view on next drain —
+    **NO new reconcile path**. A **"lite"** version (view + shared-done only, via a
+    `todo_collaborators` table + a gated cloud completion toggle, owner stays on
+    personalSync/offline) is genuinely **~3 slices**.
+  - **CONTENT editing (collaborator adds steps / edits notes / title) is the FOUNDATIONAL
+    REWORK:** it makes `personal_todos` **multi-writer**, forcing them **OFF personalSync**
+    (single-owner contract), triggering a **LIVE-TABLE migration**, and breaking
+    recurrence-ownership / missed / off-work / dismiss assumptions. **~10 slices.**
+    _(NOTE — the second architecture diagnose (2.6-lite two-writer question) sharpened this:
+    personalSync's drain is a WHOLE-ROW unconditional upsert, so even shared COMPLETION on a
+    still-owner-on-personalSync row races unless the owner's shared-todo writes go field-level
+    /cloud-first. "Cheap" still holds for a lite build, but the owner's shared-row write
+    discipline is the precise thing that must change — see the diagnose for the full trace.)_
+- ★ **DORIAN'S DECISION: do the FULL model (equal edit), NOT lite — but DEFERRED to AFTER
+  publication.** Collaboration is essential but **undated internal tooling**; it does not jump
+  the August publication deadline. The full-model spec above is recorded so it is not
+  re-derived; **lite exists as a fallback** if the full rework proves too costly when its turn
+  comes.
+
+**★ RESEQUENCED ROADMAP (this session):**
+1. **Slice 5 — intel directives.** SHRUNK: Dorian is DEFERRING the new research boards
+   (Immigration Undone, Hollow Border, The Stated Order go DORMANT); only **CONTESTED SKIES**
+   stays live. So slice 5 serves **ONE board**. Reuses `createAssignment` +
+   `source_type='intel-directive'` + the board-scoped head gate (2.5b machinery, built +
+   tested). Small.
+2. **Intelligence + Info Pages RESTRUCTURE — the AUGUST DEADLINE.** ★ **DESIGN-FIRST /
+   MOCKUP-FIRST** (not diagnose-to-build). This project **CONTAINS** the publication pipeline
+   (New sources → Analysis & design → Publish → Latest update notes → Sources) AND **interview
+   markup (per-highlight annotation)** — they are NOT separable from the restructure. Open it
+   with a vision/mockup pass, not a build diagnose.
+3. **Team console** — consolidate scattered people-management (Settings→Board Access +
+   Team→Member Permissions + the 2.5b-0 head toggle + off-work/leave) into one Team view.
+   Dorian: "mostly relocating existing controls" — contained, AFTER publication.
+4. **Full collaboration (2.6 above)** — deferred, deliberate, **no deadline**.
+
+**★ RESEARCH-BOARD DEFERRAL (2026-07-26).** **Immigration Undone / Hollow Border / The Stated
+Order are DORMANT for now** — Dorian is deferring new research projects; **only Contested Skies
+is live**. They **remain in the schema; NOT deleted.** Slice 5 and collection scope stay
+**Contested Skies only** until Dorian revives them. (Consistent with the pre-existing standing
+issue "Only Contested Skies has news-pull architecture" — this makes it a deliberate call, not
+just an unbuilt Phase 2.)
+
+**★ PARKED-ITEMS RECONCILE (2026-07-26) — consolidated so nothing is lost.** All still queued:
+**interview markup** (per-highlight annotation — folded INTO the restructure, design-locked
+#5, design-only/unbuilt); **analytical-frameworks-per-project** (never authored; a quality
+ceiling, deferred until the intel process is complete); **archive-sidebar cleanup** (the
+sidebar Archive expander was removed in `ff2bd9a`; residuals: archived-card panel reads live
+context lists → blank stage dropdown; "Restore all" skips cloud boards); **`~/.zshrc:4` +
+`~/.zprofile:1` stale `GH_TOKEN` export** (wins over `.env`; FIX is Dorian's — delete both
+lines; there is no separate "line-2 typo" item, only this stale-token export); **News
+hand-add-article** — ALREADY SHIPPED (`b076929`; requires a project via `d4e8ce9`) — kept here
+only so it is not re-opened as "missing"; **human-relevance-override feedback loop** (in-app
+override storage exists per Decision #3; the loop back into GDELT/Haiku culling is unbuilt,
+PIPELINE repo, blocked by the cloud migration; linked open bug — un-reject doesn't un-push);
+**`.env` blanks** — `GH_TOKEN` (regenerate) + `GOOGLE_CLIENT_ID`/`SECRET` (Google OAuth,
+Drive sync), both BUILD-TIME baked via `define()`; **X/Twitter pipeline** — Dorian-flagged;
+**not previously recorded in this doc** and not in-app (PIPELINE-repo territory, alongside
+collection dedup / outlet targeting) — logged now so it is not lost.
+
+**★ 2.5 CARRY-FORWARD VALIDATIONS (still pending — validate when the team roster is
+repopulated** with Daniel / Leonardo / Juan Diego as `board_members`): **N>1 multi-assign
+fan-out** (looping `createAssignment` + per-assignee notify to >1 recipient) and **the gate
+REJECTION path** (2.5b-1 GATE B / 2.5d step gate — an unrelated peer being REFUSED). The ALLOW
+paths + cross-person notify ARE verified live (root → dk).
 
 **LATEST (2026-07-26) — TO-DO 2.5 FUNCTIONALLY COMPLETE** — the assignment feature
 (create → notify assignee → complete → notify assigner → +steps/notes/sidebar) is
