@@ -4,21 +4,90 @@ _Last updated: 2026-07-25 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
-**★ NEXT: Slice 5 — intel directives (Contested Skies only).** A board Head issues an
-intel-culling directive to a board member; **reuses `createAssignment` +
-`source_type='intel-directive'` + the board-scoped head gate (2.5b machinery — built +
-tested).** SHRUNK to ONE board: the new research boards are being deferred (see the
-research-board deferral in the LATEST entry), so slice 5 serves **Contested Skies alone**.
-Small. **Then, IN ORDER:** **(2)** the **Intelligence + Info Pages RESTRUCTURE** — the
-**AUGUST DEADLINE**, **DESIGN-FIRST / MOCKUP-FIRST** (a vision/mockup pass, NOT
-diagnose-to-build). The stage order is LOCKED: **New sources → Analysis & design → Publish
-→ Latest update notes → Sources**, with Claude PROPOSING placements and the researcher
-CONFIRMING via a feedback panel. This project **CONTAINS** the publication pipeline AND
-**interview markup (per-highlight annotation)** — they are NOT separable from it. Open with
-a vision/mockup conversation; do not jump to code. **(3)** the **Team console** (relocate
-scattered people-management into one Team view). **(4)** **To-Do 2.6 — full collaboration**
-(shared personal todos — DESIGN-LOCKED, DEFERRED, no deadline; full spec in the LATEST
-entry below).
+**★ NEXT: the B2 + re-route recovery (root-cause fix + the 28), then slice 5.** Migrate
+`info_page_sources` to cloud (B2), then idempotently re-route the 28 Contested Skies
+approvals into the now-cloud table. Full plan in the LATEST entry directly below. Then
+slice 5 (intel directives, Contested Skies only).
+
+**LATEST (2026-07-26, session close) — DESIGN ARC + RECOVERY PLAN.** No code shipped this
+session after 2.5d; this is design + a diagnosed recovery task. _(This entry's RESEQUENCED
+ROADMAP is authoritative and SUPERSEDES the roadmap in the "2.6 DESIGN ARC" entry below —
+recovery now leads.)_
+
+**★ INCIDENT + RECOVERY PLAN — 28 Contested Skies approvals, wiped routing pointers.**
+Symptom: Contested Skies (`board-info-latam`) "New Sources" tab empty; 28 articles
+approved in Intelligence not surfacing. DIAGNOSED (not data loss, not a code bug): the 28
+approvals are SAFE in cloud `intelligence_sources`. Approval routes them by writing an
+`info_page_sources` row at `stage='new'` — but `info_page_sources` is **LOCAL-ONLY** (the
+Phase B2 cloud migration was deliberately paused; the table does not exist in cloud —
+verified this session). The machine reset wiped the local DB, so the routing POINTERS were
+lost while the approvals (cloud) survived. The pointer is DERIVABLE from the surviving
+approval state — **fully recoverable.** _(Diagnose evidence: cloud `intelligence_sources` =
+268 rows all `board-info-latam` incl. 20 `pushed` + 28 `approved`; cloud `cs_articles` =
+197, GDELT ran 2026-07-26 — pipeline healthy; local `info_page_sources`/`info_page_items` =
+0; local intel mirror only 92 of 268 — partial post-reset re-sync; "New Sources" reads
+`getSourcePipeline` → `FROM info_page_sources … stage='new'`, so 0 local rows ⇒ empty tab
+regardless of intel state.)_
+★ **PLAN (do FRESH, in this order — do NOT do exhausted; the 28 are safe and not
+time-pressured):**
+  1. **B2 FIRST** — migrate `info_page_sources` to cloud (durable routing; a reset can't
+     wipe it again). Live-table cloud migration, **same care class as N-2a**: byte-verify,
+     upsert-by-id mirror, no delete. This is the ROOT-CAUSE fix.
+  2. **THEN re-route the 28** — idempotently regenerate the missing `stage='new'` rows in
+     the NOW-CLOUD table from the cloud `intelligence_sources` approvals. ⚠ **MUST check for
+     existing pointers first** (partial survival) to avoid duplicates. Route into **CLOUD,
+     not local** (routing into local then migrating = double-migrate).
+  **Sequence rationale:** B2 before re-route so the 28 land somewhere durable first try.
+
+**★ CONTESTED SKIES — CONTENT SPINE LOCKED; FORMAT REDESIGN NEXT (Cowork, mockup-first).**
+Corrected understanding (I had it wrong twice — record the RIGHT version): Contested Skies
+is a **REGION-WIDE (all Latin America)** analytical page on the **DRONE and COUNTER-DRONE
+(C-UAS)** landscape. **NOT** a country-monitor, **NOT** an incident feed, **NOT**
+system-organized. Organized by **FIVE DIMENSIONS** of the LATAM drone/C-UAS ecosystem (the
+**CONTENT SPINE — locked**):
+  1. **Systems** used by governments and VNSAs
+  2. **Investment** decisions
+  3. **Local** drone & counter-drone industry
+  4. **Extra-regional actors** (outside suppliers/backers)
+  5. **Legal frameworks**
+The **FORMAT** (not the spine) is being redesigned — the current page "aggregates a lot of
+info" in a format Dorian dislikes. Redesign = a **COWORK** session, **mockup-first**, built
+around an **INTERACTIVE LATAM MAP**: `world-atlas` (`npm i world-atlas`) already installed on
+the laptop; countries must be **CLICKABLE**; the click interaction (filter dimensions vs
+country panel vs both) is **UNDECIDED** — decide from the rendered map, not upfront.
+★ **THE CORE PROBLEM the redesign must solve** (the publication "meat and potatoes"): how
+intel-process content gets **ORGANIZED** onto the page across the five dimensions + by
+country, AND how the publication process feeds info **BACK** to this page (approved intel →
+placed → published loop). A kickoff Cowork prompt was drafted.
+
+**★ 2.6 — invited collaboration = SHARED PERSONAL TODOS. DESIGN-LOCKED, DEFERRED (after
+publication).** Model: **OWNER + COLLABORATORS**; owner holds sharing/deletion; collaborators
+**EQUAL EDIT**. Invite → notify → accept/decline, re-invitable. **EVERYTHING shared state**
+(recurrence respawns to all, missed-state shared, dismiss shared, steps shared-edit); the only
+per-person concept is **list membership**.
+★ **THE CHEAP/EXPENSIVE BOUNDARY (key finding): between "toggle DONE" and "edit CONTENT".**
+  - **Shared COMPLETION is CHEAP** — diagnose verdict (A): `personal_todos` IS
+    cloud-materialized, personalSync is **BIDIRECTIONAL**, so a gated cloud completion write
+    lands in the owner's view on next drain, **NO new reconcile**. A **"lite"** (view +
+    shared-done only, via `todo_collaborators` + gated cloud toggle, owner stays on
+    personalSync/offline) is **~3 slices**.
+  - **CONTENT editing is the FOUNDATIONAL REWORK** — makes `personal_todos` multi-writer,
+    forces them OFF personalSync, triggers a LIVE-TABLE migration, breaks
+    recurrence/missed/off-work/dismiss assumptions. **~10 slices.**
+  **DORIAN'S CALL:** the **FULL model, DEFERRED to after publication.** Lite kept as a
+  fallback if the full rework proves too costly when its turn comes.
+
+**★ RESEQUENCED ROADMAP (authoritative):**
+1. **RECOVERY: B2 (`info_page_sources` → cloud) + re-route the 28** (see above). ← **do first.**
+2. **Slice 5 — intel directives, CONTESTED SKIES ONLY** (Dorian deferred the new research
+   boards: **Immigration Undone / Hollow Border / The Stated Order go DORMANT, not deleted**).
+   Reuses `createAssignment` + `source_type='intel-directive'` + board-scoped head gate. Small.
+3. **Intelligence + Info Pages RESTRUCTURE incl. the Contested Skies redesign** — the **AUGUST
+   DEADLINE**, **DESIGN-FIRST / MOCKUP-FIRST (Cowork).** Contains the publication pipeline AND
+   **interview markup** (per-highlight annotation, design-only, folded in).
+4. **Team console** — consolidate scattered people-mgmt into one page; "mostly relocating
+   existing controls" (Dorian); after publication.
+5. **2.6 full collaboration** — deferred.
 
 **LATEST (2026-07-26, session close) — 2.6 DESIGN ARC + ROADMAP RESEQUENCED.**
 
@@ -95,7 +164,8 @@ only so it is not re-opened as "missing"; **human-relevance-override feedback lo
 override storage exists per Decision #3; the loop back into GDELT/Haiku culling is unbuilt,
 PIPELINE repo, blocked by the cloud migration; linked open bug — un-reject doesn't un-push);
 **`.env` blanks** — `GH_TOKEN` (regenerate) + `GOOGLE_CLIENT_ID`/`SECRET` (Google OAuth,
-Drive sync), both BUILD-TIME baked via `define()`; **X/Twitter pipeline** — Dorian-flagged;
+Drive sync), both BUILD-TIME baked via `define()`; **X/Twitter pipeline** (seed handle
+**@erichsaumeth**) — Dorian-flagged;
 **not previously recorded in this doc** and not in-app (PIPELINE-repo territory, alongside
 collection dedup / outlet targeting) — logged now so it is not lost.
 
