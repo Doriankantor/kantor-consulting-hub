@@ -4,19 +4,30 @@ _Last updated: 2026-07-27 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
-**★ NEXT: the 28-UN-APPROVE recovery (Dorian's call), then B2 migration, then slice 5.**
-Truly UN-APPROVE the 28 Contested Skies approvals (flip status→unreviewed, re-review
-fresh) — NOT restore routing. Then finish B2 (`info_page_sources` → cloud) as its own
-careful migration. Full plan in the LATEST entry directly below. _(This SUPERSEDES the
-prior "re-route" plan — Dorian changed the decision to un-approve.)_
+**★ NEXT: B2 migration (`info_page_sources` → cloud), then the info-page board-states
+slice (1b), then slice 5.**
+
+**✅ DONE 2026-07-27: the 28 Contested Skies un-approve.** All 28 `board-info-latam`
+`intelligence_sources` rows flipped `approved`→`unreviewed` in cloud + local mirror
+(verified in-app: pending count rose by 28, articles back in review queue; Info Pages
+New Sources still empty as expected — routing intentionally NOT restored). Live-derived
+id set, guarded so the 4 stale `csa-fw` rows were untouchable. Attribution record:
+`recovery/cs28-snapshot-20260727-2158.json` (all columns verbatim — the ONLY surviving
+trace of original `reviewed_by_*`/`reviewed_at`, since `intelligence_sources` has no audit
+table; inverse-apply from it restores the prior approved state). RESIDUALS (accepted, not
+forgotten): (a) `cs_articles` still `status='approved'` for these 28 URLs — GDELT learning
+gate still sees them approved; no reset path exists, correct value unconfirmed; revisit
+deliberately. (b) `queue_section` retained on the now-unreviewed rows — harmless, re-derived
+on re-approve. _(Committed `320d2a9`: `scripts/recovery/unapprove-cs28.mjs` + the snapshot.)_
+_(This SUPERSEDES the prior "re-route" plan — Dorian changed the decision to un-approve.)_
 
 **LATEST (2026-07-26/27, session close) — DESIGN SESSION + RECOVERY PLAN.** No code shipped
 after To-Do 2.5d; this is design capture + a diagnosed recovery task. _(This entry's ROADMAP
 and NEXT are authoritative and SUPERSEDE the roadmap/plan in every entry below — the
 recovery decision changed from re-route to UN-APPROVE.)_
 
-**★ RECOVERY TASK (do FIRST next session) — 28 Contested Skies approvals, wiped routing
-pointers.** 28 articles approved in Intelligence (cloud `intelligence_sources`, SAFE) do not
+**★ RECOVERY TASK — ✅ DONE 2026-07-27 (see resume-point NEXT above; commit `320d2a9`) —
+28 Contested Skies approvals, wiped routing pointers.** 28 articles approved in Intelligence (cloud `intelligence_sources`, SAFE) do not
 appear in Info Pages "New Sources." Diagnosed: approval writes an `info_page_sources` row at
 `stage='new'`, but `info_page_sources` is **LOCAL-ONLY** (Phase B2 migration paused). The
 machine reset wiped the local DB → routing pointers lost, approvals (cloud) survived.
