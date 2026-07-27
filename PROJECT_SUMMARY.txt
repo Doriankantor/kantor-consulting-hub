@@ -1,6 +1,38 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-07-23
+  Generated: 2026-07-23 · Last session update: 2026-07-27
+
+  ★ LATEST SESSION (2026-07-26/27) — high-level state (full detail in HANDOFF.md):
+    • TO-DO 2.5 ASSIGNMENT LOOP COMPLETE (a→d shipped): a board Head assigns work to a
+      board member → assignee notified → completion notifies the assigner back → cards
+      have full personal-todo parity (sub-steps + notes + detail sidebar). Cloud-first
+      via the boards.ts pattern, NOT personalSync (multi-user). Gate = isOwner
+      (board-scoped head), board-type-agnostic.
+    • NOTIFICATIONS CLOUD ARC COMPLETE (N-1 → N-2c-3): every notification path is now
+      cloud-backed or deliberately online-required with honest UX. This was the #1
+      priority-order blocker; clearing it unblocked To-Do 2.5/2.6 and slice 5.
+    • RECOVERY TASK (do first): 28 Contested Skies approvals are SAFE in cloud
+      intelligence_sources but don't surface in Info Pages "New Sources" — approval
+      writes a LOCAL-ONLY info_page_sources routing row (Phase B2 migration paused) and
+      the machine reset wiped it. DORIAN'S CALL: truly UN-APPROVE all 28 (flip
+      status→unreviewed, re-review fresh), snapshot first (the flip NULLs reviewer +
+      timestamp irreversibly). Then finish B2 (migrate info_page_sources to cloud) as a
+      careful live-table migration so routing survives future resets.
+    • CONTESTED SKIES MODEL (design session): a proposed map-navigated, six-dimension
+      LATAM drone/C-UAS model (Systems catalog / Operators / Investment / Local Industry
+      / Extra-regional actors / Legal + an "Our Analysis" block, routed by many-to-many
+      geo × knowledge-area × system tags). ⚠ It does NOT match the ALREADY-BUILT live
+      page (index.html — a VNSA/threat tracker with a map, platforms catalog, and
+      country-organized investment tracker already present). RECONCILING proposed-vs-live
+      is the FIRST design task; the redesign is a Cowork, mockup-first EXTENSION of the
+      existing page, NOT greenfield.
+    • ROADMAP: (1) recovery (un-approve 28 + B2) → (2) slice 5 intel directives
+      (Contested Skies only; other research boards dormant) → (3) Intelligence + Info
+      Pages RESTRUCTURE incl. the Contested Skies redesign (AUGUST deadline,
+      design-first/Cowork; contains publication pipeline + interview markup) → (4) Team
+      console → (5) To-Do 2.6 full collaboration (shared personal todos; design-locked,
+      deferred).
+
   Current version: v2.4.0 — RELEASED 2026-07-23 (tag v2.4.0, version-bump 97846c3).
                    ⚠ UNINSTALLABLE ON macOS: a fresh install is deleted on launch
                    ("Malware entfernt"); spctl reports "notarization indicates this

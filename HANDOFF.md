@@ -4,10 +4,123 @@ _Last updated: 2026-07-25 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
-**★ NEXT: the B2 + re-route recovery (root-cause fix + the 28), then slice 5.** Migrate
-`info_page_sources` to cloud (B2), then idempotently re-route the 28 Contested Skies
-approvals into the now-cloud table. Full plan in the LATEST entry directly below. Then
-slice 5 (intel directives, Contested Skies only).
+**★ NEXT: the 28-UN-APPROVE recovery (Dorian's call), then B2 migration, then slice 5.**
+Truly UN-APPROVE the 28 Contested Skies approvals (flip status→unreviewed, re-review
+fresh) — NOT restore routing. Then finish B2 (`info_page_sources` → cloud) as its own
+careful migration. Full plan in the LATEST entry directly below. _(This SUPERSEDES the
+prior "re-route" plan — Dorian changed the decision to un-approve.)_
+
+**LATEST (2026-07-26/27, session close) — DESIGN SESSION + RECOVERY PLAN.** No code shipped
+after To-Do 2.5d; this is design capture + a diagnosed recovery task. _(This entry's ROADMAP
+and NEXT are authoritative and SUPERSEDE the roadmap/plan in every entry below — the
+recovery decision changed from re-route to UN-APPROVE.)_
+
+**★ RECOVERY TASK (do FIRST next session) — 28 Contested Skies approvals, wiped routing
+pointers.** 28 articles approved in Intelligence (cloud `intelligence_sources`, SAFE) do not
+appear in Info Pages "New Sources." Diagnosed: approval writes an `info_page_sources` row at
+`stage='new'`, but `info_page_sources` is **LOCAL-ONLY** (Phase B2 migration paused). The
+machine reset wiped the local DB → routing pointers lost, approvals (cloud) survived.
+**DORIAN'S DECISION: truly UN-APPROVE all 28** (flip back to unreviewed, re-review fresh) —
+**NOT** restore routing.
+- A read-only diagnose was RUN this session. Findings: the flip primitive already exists —
+  `intelCloud.revertToUnreviewed(id)` / IPC `intelligence:revertToUnreviewed` (writes CLOUD,
+  re-syncs mirror). The exact 28 = **cloud** `intelligence_sources WHERE
+  project_board_id='board-info-latam' AND status='approved'` (exactly 28, all with
+  `reviewed_at`). ⚠ The **local mirror shows 32** — the extra 4 are seeded framework rows
+  `csa-fw-01..04` (cloud `status='pushed'`, not approved); exclude with `reviewed_at IS NOT
+  NULL` if ever touching local. The review tab reads **cloud-first**, so the flip must (and
+  does) target cloud.
+- ★ **NOT fully reversible:** the flip NULLs `reviewed_by_id/name` + `reviewed_at`
+  (attribution/timestamp unrecoverable from the row); `status` + `queue_section` are
+  restorable (queue_section is re-derived on re-approve). **SNAPSHOT the 28 rows (all columns)
+  BEFORE flipping.**
+- **Side effects:** no `info_page_sources` pointer to clear (already wiped, 0 rows); badge/
+  pending counts self-correct (cloud-first, live from status); leave `project_board_id`
+  intact. **One open item:** approve also pushed `cs_articles.status='approved'` by URL; the
+  flip does NOT un-push it, so the GDELT learning gate still sees those 28 URLs as approved
+  (the documented "un-reject doesn't un-push" gap — correct reset value unconfirmed). Accept
+  for now (the un-approve still returns them to the queue) or reset `cs_articles` separately.
+- **ALSO decided but DEFERRED: finish B2** — migrate `info_page_sources` to cloud so routing
+  survives future resets. Its own careful **live-table migration (N-2a care class:
+  byte-verify, upsert-by-id mirror, no delete)**, NOT rushed.
+
+**★ CONTESTED SKIES — DESIGN SESSION OUTPUT (proposed model — MUST be reconciled with the
+LIVE PAGE before building).**
+⚠ **CRITICAL:** this session specified a NEW model through conversation, but the LIVE PAGE
+(`index.html`, a 121 KB standalone HTML page) has a DIFFERENT, already-built structure. They
+do NOT fully match. **Reconciling them is the FIRST design task, not a settled fact.**
+
+**THE LIVE PAGE (`index.html`) — what actually exists today:**
+- Framing: "Contested Skies Monitor — Latin America Drone Threat Tracker", "criminal and
+  paramilitary drone use" — a **SECURITY/THREAT lens, VNSA-heavy, incident-forward.**
+- **7 sections:** (01) Regional Threat Map [**A MAP ALREADY EXISTS**], (02) Incident Feed
+  [+Top Sources, Most Cited VNSAs, Incident Composition], (03) Weaponized Platforms [systems
+  catalog **ALREADY EXISTS**: DJI Mavic 3, Shahed-136 deriv, Mohajer-6…], (04) Capabilities &
+  Investment Tracker [domestic manufacturers + procurement, **ALREADY country-organized**:
+  Colombia/Brazil/Argentina/Mexico/Venezuela], (05) Illicit Finance Nexus [cartel laundering,
+  crypto — **NOT in the proposed model**], (06) Regulatory Comparison, (07) Source Archive.
+- Design: dark navy palette, Playfair Display + JetBrains Mono + Inter Tight, grain overlay.
+  (`index.html` is in `/mnt/user-data/uploads` and the repo `Doriankantor/contested-skies-monitor` — locate it.)
+
+**THE PROPOSED MODEL (from this session's design conversation):**
+- Map-navigated; **REGION (all-LATAM) view + per-COUNTRY summaries** (countries active when
+  they have content).
+- Each summary (region + country) = **SIX dimensions + an "Our Analysis" synthesis block:**
+  1. **SYSTEMS** — reference CATALOG (master + presence: one region-wide master list, each
+     platform defined once w/ specs/origin/civilian-military-**DUAL-USE** status; country views
+     show which systems are PRESENT, as links not re-descriptions; presence is many-to-many,
+     fed by the pipeline's `capabilities[]` extraction).
+  2. **OPERATORS & DEPLOYMENT** — who fields what (govts + VNSAs) and how.
+  3. **INVESTMENT DECISIONS.** 4. **LOCAL DRONE & C-UAS INDUSTRY.** 5. **EXTRA-REGIONAL
+     ACTORS.** 6. **LEGAL FRAMEWORKS.** (dims 3-5 reference the catalog.)
+- **ROUTING = many-to-many tag-driven fan-out:** per-article GEO-tags (countries/region) +
+  KNOWLEDGE-AREA tags (dimensions) + SYSTEM references (via `capabilities[]`), all set in the
+  app during review. Item lands in every matching (geo × dimension) cell; system refs
+  establish catalog presence per country. REGION view = region-tagged ∪ aggregated country
+  content + own Our Analysis. **Data shape = association/join tables, NOT single
+  board_id/section fields.** Tag vocabulary IS both the taxonomy AND the routing key (same
+  vocab as article/interview markup).
+- **SOURCING GAP:** GDELT pull is EVENT-shaped → feeds Systems/Operators/Incidents well,
+  **STARVES Investment/Industry/Legal** (structural). DECISION: **widen the GDELT query**
+  (accept low signal, human synthesizes in Our Analysis) — a SEPARATE careful pipeline task
+  (tune iteratively, affects review-queue volume), NOT part of the page redesign.
+
+★ **THE RECONCILIATION QUESTIONS the redesign must answer FIRST (do not skip):**
+- Live page is a VNSA/threat tracker; proposed model is a broader 6-dimension ecosystem
+  (operators incl. **GOVERNMENTS**, investment as a dimension). **Which framing wins, or how
+  do they merge?**
+- Live page has "Illicit Finance Nexus" (cartel laundering/crypto) — **NOT in the 6-dim
+  model.** Keep it (7th dimension?), fold it, or drop it?
+- The live map, platforms catalog, and country-organized investment tracker **ALREADY EXIST**
+  in `index.html` — the redesign **EXTENDS/RESTRUCTURES** these, it is **NOT greenfield.**
+- Is `index.html` **hand-authored static HTML, or generated from the app's data?** (Determines
+  whether the redesign is "restructure the page" vs "build the app→page generation.")
+
+**REDESIGN = COWORK session, mockup-first.** It must START by reading `index.html` + the app's
+info-page rendering, reconcile live-vs-proposed, THEN design. `world-atlas` is installed (a map
+already exists in `index.html` — reconcile with the world-atlas approach).
+
+**★ ROADMAP (resequenced this session — authoritative):**
+1. **RECOVERY:** un-approve the 28 (Dorian's call), then B2 migration. ← **first.**
+2. **Slice 5 — intel directives, CONTESTED SKIES ONLY** (other research boards DORMANT:
+   Immigration Undone / Hollow Border / The Stated Order — deferred, not deleted). Reuses
+   `createAssignment` + `source_type='intel-directive'` + board-scoped head gate.
+3. **Intelligence + Info Pages RESTRUCTURE incl. the Contested Skies redesign** — **AUGUST
+   DEADLINE**, design-first/mockup-first (Cowork). Contains publication pipeline + interview
+   markup (per-highlight annotation, design-only, folded in).
+4. **Team console** — consolidate people-mgmt into one page; "mostly relocating existing
+   controls"; after publication.
+5. **To-Do 2.6 full collaboration** — shared personal todos, DESIGN-LOCKED, DEFERRED.
+
+**★ To-Do 2.6 (deferred) — locked model + key finding.** Shared personal todos: owner +
+collaborators, equal edit, invite/accept/decline/re-invitable, everything shared-state
+(recurrence respawns to all, missed/dismiss/steps shared). ★ **CHEAP/EXPENSIVE BOUNDARY:**
+shared **COMPLETION is cheap** (diagnose verdict A: `personal_todos` IS cloud-materialized +
+personalSync **BIDIRECTIONAL** → gated cloud completion write reconciles on drain, no new
+path; a "lite" view+shared-done version is **~3 slices**). **CONTENT editing is the
+foundational rework** (multi-writer → off personalSync → live migration → breaks
+recurrence/missed/off-work; **~10 slices**). Dorian: do the **FULL model, deferred to after
+publication**; lite kept as fallback.
 
 **LATEST (2026-07-26, session close) — DESIGN ARC + RECOVERY PLAN.** No code shipped this
 session after 2.5d; this is design + a diagnosed recovery task. _(This entry's RESEQUENCED
@@ -151,7 +264,11 @@ is live**. They **remain in the schema; NOT deleted.** Slice 5 and collection sc
 issue "Only Contested Skies has news-pull architecture" — this makes it a deliberate call, not
 just an unbuilt Phase 2.)
 
-**★ PARKED-ITEMS RECONCILE (2026-07-26) — consolidated so nothing is lost.** All still queued:
+**★ PARKED-ITEMS RECONCILE (2026-07-26/27) — consolidated so nothing is lost.** All still queued:
+**WIDEN GDELT pull for Investment/Industry/Legal** (NEW this session — the GDELT query is
+EVENT-shaped and structurally starves the investment/local-industry/legal dimensions; widen it,
+accept lower signal, human synthesizes in "Our Analysis"; a careful iterative PIPELINE-repo task
+that affects review-queue volume — NOT part of the page redesign);
 **interview markup** (per-highlight annotation — folded INTO the restructure, design-locked
 #5, design-only/unbuilt); **analytical-frameworks-per-project** (never authored; a quality
 ceiling, deferred until the intel process is complete); **archive-sidebar cleanup** (the
