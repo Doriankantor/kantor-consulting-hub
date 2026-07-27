@@ -102,6 +102,38 @@ already exists in `index.html` — reconcile with the world-atlas approach).
 
 **★ ROADMAP (resequenced this session — authoritative):**
 1. **RECOVERY:** un-approve the 28 (Dorian's call), then B2 migration. ← **first.**
+   - **1b. ★ INFO-PAGE BOARD STATES slice** (small; do AFTER recovery, as ONE slice). Set
+     visibility/activity across the 4 info-page boards. **Decided:** Contested Skies
+     (`board-info-latam`) = **ACTIVE**; The Stated Order (`board-info-statedorder`) + Hollow
+     Border (`board-info-hollowborder`) = **DORMANT** (grayed/idle, collection paused — **this
+     state ALREADY EXISTS**: they're `pipeline:false` + empty keywords today, so the 2 dormant
+     "flips" are effectively confirming/labeling, not new machinery); Immigration Undone
+     (`board-info-trump`) = **HIDDEN** (fully OUT of the active list — a **NEW state**, does not
+     exist yet). **NOTHING DELETED — all reversible; all board data preserved.** Do the 2
+     dormant + the new hidden state **together as ONE slice.**
+     - **BUILD:** the visibility filter already exists (`infoPages:list` filters
+       `board_type='info-page' AND deleted=0 AND archived=0`, then intersects visible board
+       ids — per diagnose). "Hidden" reuses the **existing `archived=1`** path
+       (`boards:archive`/`boards:restore`, reversible, data kept) — a new VALUE on an existing
+       filter, **not new machinery.** Small. (Optional cosmetic: a labeled ACTIVE/DORMANT badge
+       in the sidebar is net-new read-side UI — the `status` field is stored+cloud-synced but
+       currently UNREAD except the `setup-pending` badge; skip unless wanted.)
+     - ⚠ **TEST — hiding must remove the board from EVERY surface, not just the Info Pages
+       list:** the list, any board/project pickers (routing targets, tag-to-project selectors,
+       owner/head pickers), and the intel routing fan-out. Verify all, not just the list.
+     - ✅ **TIER CONFIRMED CLOUD (diagnose):** `workspace_boards` incl. `board_config`,
+       `archived`, `deleted`, `position` is CLOUD-migrated + realtime (`boardsSeed.ts:50`,
+       `boardsRealtime.ts:62`) with a local mirror — so board-state changes **SURVIVE a reset**
+       (unlike `info_page_sources`, which was local-only). Prefer/keep cloud.
+     - ⚠ **SAFETY — diagnose CORRECTION (contradicts the queued brief):** all 4 boards exist
+       cloud + mirror, all `status:"active"`, `archived=0`. **All routed/approved intel +
+       `info_page_items` are on `board-info-latam` ONLY.** `board-info-trump` (Immigration
+       Undone) currently holds **ZERO routed intel, ZERO `info_page_items`, ZERO
+       `info_page_sources`** — only 1 owner (head) + 1 board_member (cloud) + its own
+       config/identity (repo `Doriankantor/Trump-immigration`, `index.html`). `info_page_sources`
+       is **0 everywhere** (local wiped by reset; table absent on cloud — B2 not done). So
+       hiding Immigration Undone risks **no content today** — but the slice is still
+       reversible-only (archive, never delete) so any data it later accumulates is safe.
 2. **Slice 5 — intel directives, CONTESTED SKIES ONLY** (other research boards DORMANT:
    Immigration Undone / Hollow Border / The Stated Order — deferred, not deleted). Reuses
    `createAssignment` + `source_type='intel-directive'` + board-scoped head gate.
