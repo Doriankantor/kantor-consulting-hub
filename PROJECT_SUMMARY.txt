@@ -26,7 +26,13 @@
       country-organized investment tracker already present). RECONCILING proposed-vs-live
       is the FIRST design task; the redesign is a Cowork, mockup-first EXTENSION of the
       existing page, NOT greenfield.
-    • ROADMAP: (1) recovery (un-approve 28 + B2) → (2) slice 5 intel directives
+    • ROADMAP: (1) recovery (un-approve 28 + B2) → (1b) INFO-PAGE BOARD STATES slice
+      (small, one slice, after recovery): Contested Skies ACTIVE; The Stated Order +
+      Hollow Border DORMANT (already their state — pipeline:false); Immigration Undone
+      HIDDEN (a NEW state — reuses the existing archived=1 visibility filter, not new
+      machinery). Reversible, NONE deleted; board-state is CLOUD (workspace_boards) so it
+      survives resets. Test: hiding must clear the board from EVERY surface (list +
+      pickers + routing), not just the list → (2) slice 5 intel directives
       (Contested Skies only; other research boards dormant) → (3) Intelligence + Info
       Pages RESTRUCTURE incl. the Contested Skies redesign (AUGUST deadline,
       design-first/Cowork; contains publication pipeline + interview markup) → (4) Team
