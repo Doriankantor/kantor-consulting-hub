@@ -4,10 +4,12 @@ _Last updated: 2026-07-28 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
-**★ NEXT: Slice 2 — source_stream tag (cloud ALTER-first, multi-valued text[],
-dedup-accumulate, ordering hazard: ALTER must land before the writer stamps the
-column). Then widen gate categories, then per-category query groups.
-✅ DONE this session: Slice 1 retain-first shipped.**
+**★ NEXT: collection step 3 — widen the gate categories (add civilian_commercial
+and supply_chain_export to PRIMARY_CATEGORIES; split criminal_vnsa into actor vs
+logistics). Read-only diagnose first. This is the LAST collection step; it settles
+the 9-category set that the app-side tag/routing work (August restructure) will
+organize around.
+✅ DONE this session: Slice 2 source_stream (2a schema + 2b writer) shipped.**
 
 **★ B2 STATUS — ✅ B2b DONE (write path cloud-first).** B2b-1 (routeToNewSources +
 moveBackToIntel, commit `17ccba3`) fully tested. B2b-2 (sendToReview, backSourceToNew,
@@ -42,8 +44,21 @@ net are the two stacked filters (diagnose confirmed both narrow, keywords deeper
   (still status IN ('approved','rejected') — culls do NOT feed calibration yet;
   wiring recall-side training from culled rows is a deliberate FUTURE step, not
   automatic). Tested on a real fetch: 152 genuine culls retained, guards verified.
-  (2) **source_stream — NEXT.** (3) widen gate categories. (4) per-category query
-  groups. (5) horizon: second source for non-event categories.
+  (2) ✅ **source_stream — SHIPPED.** 2a: cloud ALTER cs_articles ADD COLUMN
+  source_stream text[] (nullable, additive; commit `977b384`; sql/2026-07-28-slice2a).
+  2b: within-run dedup now ACCUMULATES query-group labels (merges all matching
+  streams into a deduped set per URL instead of first-wins-dropping) and buildRow
+  stamps source_stream; empty->null; applies to queueable AND culled rows. Merge
+  proven by deterministic unit test (5 cases/13 assertions, loop body verified
+  byte-identical to the real inline loop). Commit `6733c52`.
+  ⚠ NOTE — multi-label rows populate ORGANICALLY: early cloud rows may all be
+  single-label because a URL only shows multiple streams when it matches >1 query
+  group AND survives dedup (already-stored URLs are dropped by filterNewUrls before
+  insert) AND isn't throttled out. This is a fetch artifact, NOT a bug — the merge
+  is unit-proven. Real multi-label rows accrue as fetches accumulate overlapping
+  fresh URLs. Do not mistake all-single-label early data for a broken merge.
+  (3) widen gate categories — NEXT. (4) per-category query groups. (5) horizon:
+  second source for non-event categories.
   Design intent (retained): the loop tunes the GATE, not the keywords — queries fix
   coverage, the loop fixes judgment on what was pulled. Both needed. (Widening gate
   categories = add civilian_commercial, supply_chain_export; split criminal_vnsa
