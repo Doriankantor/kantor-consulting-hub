@@ -263,7 +263,14 @@ function normalizeNewsApiArticle(a, queryLabel) {
 // 'new' when Claude categorized the article, 'uncategorized' when it failed. The
 // retain-first path passes { status: 'culled' } to archive sub-threshold rows
 // WITHOUT making them queueable (see the categorize loop).
+//
+// source_stream (text[]) is written from the accumulated query-group labels the
+// dedup step collected on article._streams. Emitted as null (NOT []) when there is
+// no label, matching the additive-nullable column + existing-row convention.
+// Applies to queueable AND culled rows alike (shared builder) — we want to know
+// which stream produced each row, including the 0-score noise.
 function buildRow(article, cat, opts = {}) {
+  const streams = Array.isArray(article?._streams) && article._streams.length ? article._streams : null
   return {
     title: article.title || null,
     url: article.url || null,
@@ -275,6 +282,7 @@ function buildRow(article, cat, opts = {}) {
     confidence_level: cat?.confidence_suggestion || 'unrated',
     claude_analysis: cat ? JSON.stringify(cat) : null,
     status: opts.status ?? (cat ? 'new' : 'uncategorized'),
+    source_stream: streams,
     imported_to_hub: false,
   }
 }
@@ -357,10 +365,25 @@ async function main() {
     keywordsUsed = ['source:gdelt', ...perQuery.map((p) => p.label)]
   }
 
-  // Dedup within this run by URL.
+  // Dedup within this run by URL. Keep exactly ONE row per URL, but ACCUMULATE the
+  // query-group label (found_by_query) of EVERY match into article._streams (a
+  // deduped array). A multi-stream article — matched by more than one query group
+  // in the same run — must retain ALL its stream tags, not just the first-seen one
+  // (buildRow later writes _streams to the source_stream text[] column). Dedup
+  // behavior is otherwise unchanged: one retained object per URL.
   const byUrl = new Map()
   for (const a of rawArticles) {
-    if (a?.url && !byUrl.has(a.url)) byUrl.set(a.url, a)
+    if (!a?.url) continue
+    const label = a.found_by_query || null
+    const existing = byUrl.get(a.url)
+    if (!existing) {
+      // First sight: retain this object; seed its stream set from its own label.
+      a._streams = label ? [label] : []
+      byUrl.set(a.url, a)
+    } else if (label && !existing._streams.includes(label)) {
+      // Repeat sight: merge the new stream label into the already-retained object.
+      existing._streams.push(label)
+    }
   }
   const candidates = [...byUrl.values()]
   console.log(`  Collected ${rawArticles.length} raw, ${candidates.length} unique by URL.`)
