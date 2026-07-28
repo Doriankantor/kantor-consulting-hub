@@ -2925,6 +2925,10 @@ async function syncFromContestedSkies(): Promise<{ imported: number; skipped: nu
     .from('cs_articles')
     .select('*')
     .eq('imported_to_hub', false)
+    // Retain-first leak-guard: sub-threshold rows are archived as status='culled'
+    // (scripts/fetch-intelligence.js). They must NEVER enter intelligence_sources /
+    // the review queue — exclude them here (status is a column; relevance is not).
+    .neq('status', 'culled')
 
   if (error) {
     console.warn('[Sync] cs_articles fetch failed:', error.message)

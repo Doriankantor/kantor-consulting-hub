@@ -258,7 +258,12 @@ function normalizeNewsApiArticle(a, queryLabel) {
 // Note: image_url / source_country are intentionally NOT written — cs_articles
 // has no such columns (an unknown column would make the insert fail). GDELT has
 // no body snippet, so content_snippet falls back to the title.
-function buildRow(article, cat) {
+//
+// `opts.status` (optional) overrides the default status. Default is UNCHANGED:
+// 'new' when Claude categorized the article, 'uncategorized' when it failed. The
+// retain-first path passes { status: 'culled' } to archive sub-threshold rows
+// WITHOUT making them queueable (see the categorize loop).
+function buildRow(article, cat, opts = {}) {
   return {
     title: article.title || null,
     url: article.url || null,
@@ -269,7 +274,7 @@ function buildRow(article, cat) {
     sub_category: cat?.sub_category || null,
     confidence_level: cat?.confidence_suggestion || 'unrated',
     claude_analysis: cat ? JSON.stringify(cat) : null,
-    status: cat ? 'new' : 'uncategorized',
+    status: opts.status ?? (cat ? 'new' : 'uncategorized'),
     imported_to_hub: false,
   }
 }
@@ -380,7 +385,8 @@ async function main() {
   } else {
     console.log('  No human verdict history yet — gate runs un-calibrated (baseline).')
   }
-  const rows = []
+  const rows = []          // queueable rows (status 'new' / 'uncategorized')
+  const culledRows = []    // retained sub-threshold rows (status 'culled') — archived, NOT queueable
   let discardedLowRelevance = 0
   let learningAdjusted = 0
   for (const article of fresh) {
@@ -392,8 +398,14 @@ async function main() {
     if (cat?.learning_note) learningAdjusted++
     if (cat) {
       if (!isRelevant(cat)) {
+        // RETAIN-FIRST: the gate scored this below threshold. Instead of dropping
+        // it, archive it as status='culled' so the learning loop can eventually
+        // see its own false-negatives (recall) and future runs dedup it by URL
+        // (stop re-Haiku-ing the same reject). It goes to a SEPARATE bucket so it
+        // never enters rows[] (queueable) or the "new articles" counters below.
         discardedLowRelevance++
-        continue // gate failed or score < threshold -> not a LATAM-drone article
+        culledRows.push(buildRow(article, cat, { status: 'culled' }))
+        continue
       }
       rows.push(buildRow(article, cat))
     } else {
@@ -401,7 +413,7 @@ async function main() {
       rows.push(buildRow(article, null))
     }
   }
-  console.log(`  Prepared ${rows.length} relevant row(s); discarded ${discardedLowRelevance} as off-topic / low-relevance.`)
+  console.log(`  Prepared ${rows.length} relevant row(s); retained ${culledRows.length} culled (sub-threshold) row(s); ${discardedLowRelevance} scored below threshold.`)
 
   // STEP 3 — insert into cs_articles.
   console.log('\n[3/5] Inserting into cs_articles...')
@@ -429,6 +441,33 @@ async function main() {
   }
   const articlesNew = inserted.length
   console.log(`  Inserted ${articlesNew} new relevant article(s).`)
+
+  // Retain-first: archive the sub-threshold rows in a SEPARATE insert. They persist
+  // in cs_articles so (a) the learning loop can eventually see its own false-negatives
+  // and (b) filterNewUrls dedups them by URL on future runs (no re-Haiku of the same
+  // reject). Kept OUT of `rows`/`inserted` so articlesNew / keptByGate / byCategory /
+  // cs_fetch_status.new_articles_count stay queueable-only and are never inflated by
+  // culls. A culled-insert failure is backed up locally but does NOT flip the run
+  // status to 'error' — the archive tier is non-critical to the queueable pipeline.
+  let culledInserted = 0
+  if (culledRows.length > 0) {
+    if (!supabase) {
+      backupLocally(culledRows, 'no-supabase-client (culled)')
+    } else {
+      const CHUNK = 50
+      for (let i = 0; i < culledRows.length; i += CHUNK) {
+        const chunk = culledRows.slice(i, i + CHUNK)
+        const { data, error } = await supabase.from('cs_articles').insert(chunk).select('id')
+        if (error) {
+          console.warn('  ✗ Supabase culled insert failed:', error.message)
+          backupLocally(chunk, `culled-insert-error: ${error.message}`)
+        } else {
+          culledInserted += (data || []).length
+        }
+      }
+    }
+    console.log(`  Archived ${culledInserted} culled (sub-threshold) article(s).`)
+  }
 
   const status = errors.length === 0 ? 'success' : 'error'
   const errorMessage = errors.length ? errors.slice(0, 20).join(' | ').slice(0, 4000) : null
@@ -474,7 +513,8 @@ async function main() {
   console.log(`  2. Unique after URL dedup:                    ${candidates.length}`)
   console.log(`  3. New (not already in cs_articles):          ${fresh.length}`)
   console.log(`  4. Kept by Claude gate (score >= ${RELEVANCE_THRESHOLD}):          ${keptByGate}`)
-  console.log(`  5. Discarded by gate (off-topic / low score): ${discardedLowRelevance}`)
+  console.log(`  5. Below threshold (score < ${RELEVANCE_THRESHOLD}):             ${discardedLowRelevance}`)
+  console.log(`     -> retained (culled): ${culledInserted} archived (not queued)`)
   if (uncategorized) console.log(`     (+ ${uncategorized} stored 'uncategorized' — Claude eval failed)`)
   console.log('  6. Kept by primary_category:')
   const catEntries = Object.entries(byCategory).sort((a, b) => b[1] - a[1])

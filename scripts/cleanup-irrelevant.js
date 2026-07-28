@@ -48,10 +48,15 @@ async function main() {
   console.log(`\n=== Cleanup: reject non-LATAM-drone articles ${DRY_RUN ? '(DRY RUN)' : ''} ===`)
 
   // Pull every article that hasn't already been rejected and isn't in the Hub.
+  // Exclude status='culled' too: those are retain-first sub-threshold archives
+  // (scripts/fetch-intelligence.js). Re-running the gate here would relabel them
+  // 'rejected', masquerading as HUMAN rejections and polluting learning.js's
+  // rejected few-shot. Leave culled rows untouched.
   const { data: articles, error } = await supabase
     .from('cs_articles')
     .select('id, title, content_snippet, source_name, status, imported_to_hub')
     .neq('status', 'rejected')
+    .neq('status', 'culled')
     .eq('imported_to_hub', false)
 
   if (error) {
