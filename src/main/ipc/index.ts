@@ -4531,43 +4531,35 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
   })
 
   // Move checked 'new' items to 'review'. Logs each transition.
+  // B2b-2: cloud-first per row (offline-guarded); mirror refreshed via resyncSourceRow.
+  // A per-row cloud failure propagates immediately (partial batch possible — cloud has
+  // no cross-row transaction; the returned `moved` reflects rows committed before it).
   ipcMain.handle('infoPages:sendToReview', async (_e, pageId: string, articleIds: string[]) => {
     if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) {
       console.warn(`[0a-4] deny infoPages:sendToReview — actor=${currentActingUserId} pageId=${pageId}`)
       return { ok: false, error: 'Not authorized' }
     }
+    if (!isOnline()) return { ok: false, error: 'offline — cannot update sources while offline', moved: 0 }
     if (!articleIds?.length) return { ok: true, moved: 0 }
-    const now = new Date().toISOString()
     let moved = 0
     for (const articleId of articleIds) {
-      const r = db().prepare(
-        "UPDATE info_page_sources SET stage='review' WHERE article_id=? AND info_page=? AND stage='new'"
-      ).run(articleId, pageId)
-      if (r.changes > 0) {
-        db().prepare(
-          "INSERT INTO info_page_changes (article_id, info_page, from_stage, to_stage, created_at) VALUES (?,?,'new','review',?)"
-        ).run(articleId, pageId, now)
-        moved++
-      }
+      const res = await infoPageSourcesCloud.sendSourceToReview(articleId, pageId)
+      if (!res.ok) return { ok: false, error: res.error, moved }
+      if (res.moved) moved++
     }
     return { ok: true, moved }
   })
 
   // Move one 'review' item back to 'new' (back-out path).
+  // B2b-2: cloud-first (offline-guarded); clears design_notes; mirror resynced.
   ipcMain.handle('infoPages:backSourceToNew', async (_e, pageId: string, articleId: string) => {
     if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) {
       console.warn(`[0a-4] deny infoPages:backSourceToNew — actor=${currentActingUserId} pageId=${pageId}`)
       return { ok: false, error: 'Not authorized' }
     }
-    const now = new Date().toISOString()
-    const r = db().prepare(
-      "UPDATE info_page_sources SET stage='new', design_notes=NULL WHERE article_id=? AND info_page=? AND stage='review'"
-    ).run(articleId, pageId)
-    if (r.changes > 0) {
-      db().prepare(
-        "INSERT INTO info_page_changes (article_id, info_page, from_stage, to_stage, created_at) VALUES (?,?,'review','new',?)"
-      ).run(articleId, pageId, now)
-    }
+    if (!isOnline()) return { ok: false, error: 'offline — cannot update sources while offline' }
+    const res = await infoPageSourcesCloud.backSourceToNew(articleId, pageId)
+    if (!res.ok) return { ok: false, error: res.error }
     return { ok: true }
   })
 
@@ -4603,40 +4595,47 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
   })
 
   // Commit all 'review' items to 'committed'. Saves design_notes onto each row.
+  // B2b-2: cloud-first per row (offline-guarded); mirror resynced per row.
+  // ⚠ BATCH ATOMICITY: cloud has no cross-row transaction, so rows are committed
+  // SEQUENTIALLY and the FIRST cloud failure is surfaced (returning `committed` =
+  // rows already committed). A mid-batch failure therefore leaves a PARTIAL commit
+  // in cloud — unlike the old single local UPDATE, which was all-or-nothing.
   ipcMain.handle('infoPages:commitSources', async (_e, pageId: string, designNotes: string) => {
     if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) {
       console.warn(`[0a-4] deny infoPages:commitSources — actor=${currentActingUserId} pageId=${pageId}`)
       return { ok: false, error: 'Not authorized' }
     }
+    if (!isOnline()) return { ok: false, error: 'offline — cannot commit sources while offline', committed: 0 }
     const now = new Date().toISOString()
-    // Collect review items before updating.
+    // Pre-read the review batch (mirror; kept fresh by the cloud writers' resync).
     const reviewItems = db().prepare(
       "SELECT article_id FROM info_page_sources WHERE info_page=? AND stage='review'"
     ).all(pageId) as { article_id: string }[]
     if (!reviewItems.length) return { ok: true, committed: 0 }
-    db().prepare(
-      "UPDATE info_page_sources SET stage='committed', committed_at=?, design_notes=? WHERE info_page=? AND stage='review'"
-    ).run(now, designNotes || null, pageId)
+    let committed = 0
     for (const item of reviewItems) {
-      db().prepare(
-        "INSERT INTO info_page_changes (article_id, info_page, from_stage, to_stage, note, created_at) VALUES (?,?,'review','committed',?,?)"
-      ).run(item.article_id, pageId, designNotes || null, now)
+      const res = await infoPageSourcesCloud.commitSourceRow(item.article_id, pageId, designNotes || null, now)
+      if (!res.ok) return { ok: false, error: res.error, committed }
+      if (res.committed) committed++
     }
-    return { ok: true, committed: reviewItems.length }
+    return { ok: true, committed }
   })
 
   // Persist the shared pre-publish design notes onto every item currently in the
   // 'review' stage, without committing. Lets the batch's design guidance survive
   // reloads and be read back when the user returns to Pre-Commit Review.
+  // B2b-2: cloud-first (offline-guarded). Page-level bulk over all 'review' rows
+  // (no article_id — matches the existing semantics); in-place notes, NOT a
+  // transition, so NO companion info_page_changes row. Each affected row is resynced.
   ipcMain.handle('infoPages:saveReviewNotes', async (_e, pageId: string, designNotes: string) => {
     if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) {
       console.warn(`[0a-4] deny infoPages:saveReviewNotes — actor=${currentActingUserId} pageId=${pageId}`)
       return { ok: false, error: 'Not authorized' }
     }
-    const r = db().prepare(
-      "UPDATE info_page_sources SET design_notes=? WHERE info_page=? AND stage='review'"
-    ).run(designNotes || null, pageId)
-    return { ok: true, saved: r.changes }
+    if (!isOnline()) return { ok: false, error: 'offline — cannot save review notes while offline', saved: 0 }
+    const res = await infoPageSourcesCloud.saveReviewNotesForPage(pageId, designNotes || null)
+    if (!res.ok) return { ok: false, error: res.error }
+    return { ok: true, saved: res.saved }
   })
 
   // Return info_page_changes in reverse-chronological order (Recent Changes tab).

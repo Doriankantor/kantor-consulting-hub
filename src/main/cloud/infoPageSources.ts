@@ -105,3 +105,94 @@ export async function removeToIntel(
   await resyncSourceRow(articleId, infoPage)
   return { ok: true, deleted }
 }
+
+// ── B2b-2: the four remaining stage-transition / notes writers ────────────────
+// Same shape as B2b-1: offline-guarded, cloud write FIRST, companion change logged
+// only when a row actually changed, then resyncSourceRow refreshes the mirror.
+// `.select()` on the UPDATE returns the affected rows, giving the same "changes>0"
+// signal the old local `run().changes` provided (0 rows when the stage guard misses).
+
+// WRITER 3 — new -> review. Guarded on stage='new'; companion change ('new'->'review')
+// only when a row moved. Returns whether it moved (the handler sums the batch).
+export async function sendSourceToReview(
+  articleId: string, infoPage: string,
+): Promise<{ ok: boolean; moved?: boolean; error?: string }> {
+  if (!isOnline()) return { ok: false, error: 'offline — cannot update sources while offline' }
+  const now = nowIso()
+  const { data, error } = await cloud.from('info_page_sources')
+    .update({ stage: 'review' })
+    .eq('article_id', articleId).eq('info_page', infoPage).eq('stage', 'new')
+    .select()
+  if (error) return { ok: false, error: `sendToReview cloud update failed: ${error.message}` }
+  const moved = Array.isArray(data) && data.length > 0
+  if (moved) {
+    const { error: cErr } = await cloud.from('info_page_changes')
+      .insert({ article_id: articleId, info_page: infoPage, from_stage: 'new', to_stage: 'review', created_at: now })
+    if (cErr) return { ok: false, error: `sendToReview change-log insert failed: ${cErr.message}` }
+  }
+  await resyncSourceRow(articleId, infoPage)
+  return { ok: true, moved }
+}
+
+// WRITER 4 — review -> new (back-out). Clears design_notes (as the local version did),
+// guarded on stage='review'; companion change ('review'->'new') only when a row moved.
+export async function backSourceToNew(
+  articleId: string, infoPage: string,
+): Promise<{ ok: boolean; moved?: boolean; error?: string }> {
+  if (!isOnline()) return { ok: false, error: 'offline — cannot update sources while offline' }
+  const now = nowIso()
+  const { data, error } = await cloud.from('info_page_sources')
+    .update({ stage: 'new', design_notes: null })
+    .eq('article_id', articleId).eq('info_page', infoPage).eq('stage', 'review')
+    .select()
+  if (error) return { ok: false, error: `backSourceToNew cloud update failed: ${error.message}` }
+  const moved = Array.isArray(data) && data.length > 0
+  if (moved) {
+    const { error: cErr } = await cloud.from('info_page_changes')
+      .insert({ article_id: articleId, info_page: infoPage, from_stage: 'review', to_stage: 'new', created_at: now })
+    if (cErr) return { ok: false, error: `backSourceToNew change-log insert failed: ${cErr.message}` }
+  }
+  await resyncSourceRow(articleId, infoPage)
+  return { ok: true, moved }
+}
+
+// WRITER 5 — review -> committed, ONE row (commitSources iterates its pre-read batch).
+// Guarded on stage='review'; committed_at stamped; design_notes saved; companion
+// change ('review'->'committed', note=designNotes) only when the row moved.
+// ⚠ Cloud has NO cross-row transaction — the caller commits rows SEQUENTIALLY and
+// surfaces the first failure (a partial batch can result; see the handler note).
+export async function commitSourceRow(
+  articleId: string, infoPage: string, designNotes: string | null, committedAt: string,
+): Promise<{ ok: boolean; committed?: boolean; error?: string }> {
+  if (!isOnline()) return { ok: false, error: 'offline — cannot commit sources while offline' }
+  const { data, error } = await cloud.from('info_page_sources')
+    .update({ stage: 'committed', committed_at: committedAt, design_notes: designNotes ?? null })
+    .eq('article_id', articleId).eq('info_page', infoPage).eq('stage', 'review')
+    .select()
+  if (error) return { ok: false, error: `commitSources cloud update failed: ${error.message}` }
+  const committed = Array.isArray(data) && data.length > 0
+  if (committed) {
+    const { error: cErr } = await cloud.from('info_page_changes')
+      .insert({ article_id: articleId, info_page: infoPage, from_stage: 'review', to_stage: 'committed', note: designNotes ?? null, created_at: committedAt })
+    if (cErr) return { ok: false, error: `commitSources change-log insert failed: ${cErr.message}` }
+  }
+  await resyncSourceRow(articleId, infoPage)
+  return { ok: true, committed }
+}
+
+// WRITER 6 — save shared review notes onto EVERY 'review' row of a page. In-place,
+// NOT a transition → NO companion info_page_changes row. Page-level (no article_id),
+// matching the handler's existing semantics; re-syncs each affected row's mirror.
+export async function saveReviewNotesForPage(
+  infoPage: string, designNotes: string | null,
+): Promise<{ ok: boolean; saved?: number; error?: string }> {
+  if (!isOnline()) return { ok: false, error: 'offline — cannot save review notes while offline' }
+  const { data, error } = await cloud.from('info_page_sources')
+    .update({ design_notes: designNotes ?? null })
+    .eq('info_page', infoPage).eq('stage', 'review')
+    .select('article_id')
+  if (error) return { ok: false, error: `saveReviewNotes cloud update failed: ${error.message}` }
+  const rows = (Array.isArray(data) ? data : []) as { article_id: string }[]
+  for (const r of rows) await resyncSourceRow(r.article_id, infoPage)
+  return { ok: true, saved: rows.length }
+}
