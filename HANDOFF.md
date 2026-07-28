@@ -4,12 +4,13 @@ _Last updated: 2026-07-28 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
-**★ NEXT: collection step 3 — widen the gate categories (add civilian_commercial
-and supply_chain_export to PRIMARY_CATEGORIES; split criminal_vnsa into actor vs
-logistics). Read-only diagnose first. This is the LAST collection step; it settles
-the 9-category set that the app-side tag/routing work (August restructure) will
-organize around.
-✅ DONE this session: Slice 2 source_stream (2a schema + 2b writer) shipped.**
+**★ NEXT: collection phase is CLOSED. The next major work is the AUGUST RESTRUCTURE
+(Intelligence + Info Pages, design-first / mockup-first, Cowork) — which now also
+OWNS the remaining category work below. When opening it, start with the
+vision/reconciliation conversation (live Contested Skies page vs proposed
+9-category model), NOT code.
+✅ DONE this session: collection redesign steps 1-3a shipped (retain-first,
+source_stream, gate-map fix + supply_chain_export).**
 
 **★ B2 STATUS — ✅ B2b DONE (write path cloud-first).** B2b-1 (routeToNewSources +
 moveBackToIntel, commit `17ccba3`) fully tested. B2b-2 (sendToReview, backSourceToNew,
@@ -22,6 +23,27 @@ cloud-first) closes out B2 — but note review/committed reads are also
 publication-redesign-adjacent.
 
 **★ COLLECTION REDESIGN (locked this session, 2026-07-28).**
+
+**✅ COLLECTION PHASE — CLOSED.** The collection-durability + instrumentation arc is
+complete: routing is cloud-durable (B2), sub-threshold articles are retained not
+discarded (Slice 1), each article/cull is stream-tagged (Slice 2), and the category
+map is reconciled with a live bug fixed (3a). What REMAINS of 'collection' is
+deliberately handed off: the two new-display-label categories go to the August
+restructure; the per-category keyword widening (step 4) is its own later
+pipeline-tuning session. Nothing here blocks the restructure — it can open clean.
+★ The app-side work Dorian raised (tags organized along the 9 categories,
+multi-geography selection, AI-analysis dovetail) is RESTRUCTURE scope, design-first
+/mockup-first — NOT collection slices. Geography-as-list is a known schema gap
+(intelligence_sources.geography is scalar; needs subject-vs-mentioned-country
+distinction). The tag vocabulary IS the routing key. These are interdependent and
+must be designed together, not built piecemeal.
+⚠ RECONCILIATION the restructure must handle: the category/tag routing model
+proposes changing info_page_sources UNIQUE(article_id, info_page) ->
+UNIQUE(article_id, info_page, category) + a category column — which touches the
+table B2 just cloud-migrated (B2b writers use onConflict 'article_id,info_page').
+Additive, but needs a hand-applied ALTER + the B2b conflict clauses updated. Flag,
+not blocker.
+
 Scope: widen collection to cover all Contested Skies categories; the gate + keyword
 net are the two stacked filters (diagnose confirmed both narrow, keywords deeper).
 - **CATEGORIES: NINE, not ten.** Laundering/finance strand DROPPED (out of scope).
@@ -57,13 +79,30 @@ net are the two stacked filters (diagnose confirmed both narrow, keywords deeper
   insert) AND isn't throttled out. This is a fetch artifact, NOT a bug — the merge
   is unit-proven. Real multi-label rows accrue as fetches accumulate overlapping
   fresh URLs. Do not mistake all-single-label early data for a broken merge.
-  (3) widen gate categories — NEXT. (4) per-category query groups. (5) horizon:
-  second source for non-event categories.
+  (3) widen gate categories — **3a SHIPPED (commit `ee9e00a`).** Fixed a LIVE bug:
+  gate emitted regulatory/diplomatic but the bridge map had no keys for them (dead
+  keys policy_regulation/extra_regional instead) -> unmapped -> null -> mis-filed to
+  Source Archive on approval; 14 regulatory + 15 diplomatic cloud rows affected. Now
+  mapped to 'Policy & Regulation' / 'Extra-regional Supplier' (confirmed real
+  labels). 4 dead keys removed. Added supply_chain_export to the gate end-to-end,
+  mapped to 'Extra-regional Supplier' (interim home).
+  ⚠ HISTORICAL CAVEAT: the fix applies to FUTURE bridge runs. Any of the 29
+  affected rows already APPROVED-into-Source-Archive are NOT retroactively re-filed
+  (most are likely still unreviewed and will map correctly on approval). If
+  regulatory/diplomatic articles are later found sitting in Source Archive, they
+  need a one-off re-derive — not chased for now.
+  >> DEFERRED TO RESTRUCTURE (need NEW display labels -> app UI): civilian_commercial
+  (needs a 'Civilian & Commercial' label) and the criminal_vnsa actor-vs-logistics
+  split (needs an 'Illicit Logistics' label). These CANNOT be done collection-only
+  without recreating the mis-filing bug, so they wait for the app-side label work.
+  (4) per-category query groups — the keyword-widening; DEFERRED, its own pipeline
+  session (tune iteratively, watch queue volume; source_stream now tags which stream
+  found each row, incl. culls, so noisy streams are identifiable).
+  (5) horizon: second source for non-event categories.
   Design intent (retained): the loop tunes the GATE, not the keywords — queries fix
-  coverage, the loop fixes judgment on what was pulled. Both needed. (Widening gate
-  categories = add civilian_commercial, supply_chain_export; split criminal_vnsa
-  into actor vs logistics. Horizon second-source: investment/legal are structurally
-  weak in GDELT; a widened query gets the news fraction only.)
+  coverage, the loop fixes judgment on what was pulled. Both needed. (Horizon
+  second-source: investment/legal are structurally weak in GDELT; a widened query
+  gets the news fraction only.)
 - **Current pipeline facts (diagnose 2026-07-28):** GitHub Action daily 06:00 UTC
   (.github/workflows/daily-intelligence.yml) -> scripts/fetch-intelligence.js;
   8 queries/run (4 country batches + 4 theme: iranian-supplier/guerrilla/cartel/
