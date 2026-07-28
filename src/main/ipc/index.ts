@@ -28,6 +28,7 @@ import { listTodos } from '../todos'
 import { nextOccurrence } from '../todos/nextOccurrence'
 import { startMissedSchedule, stopMissedSchedule } from '../todos/missedEvaluator'
 import * as intelCloud from '../cloud/intel'
+import * as infoPageSourcesCloud from '../cloud/infoPageSources'
 import * as assignmentsCloud from '../cloud/assignments'
 import * as assignmentStepsCloud from '../cloud/assignmentSteps'
 import * as notificationsCloud from '../cloud/notificationsCloud'
@@ -3276,16 +3277,25 @@ function addToInfoPagePipeline(sourceId: string): void {
 // any intel type works, so 3d's compose "Send" reuses this. The routed row is a
 // durable pointer: article_id links back to the intel row (content/analysis/notes
 // stay LIVE via that reference — no copy — so the item remains editable and
-// move-back-able); source_type is denormalized for display. Idempotent via
-// UNIQUE(article_id, info_page) + INSERT OR IGNORE — re-approving never duplicates
-// or resets a row already at new/review/committed. Returns the target page name.
+// move-back-able); source_type is denormalized for display. Idempotent via the
+// cloud PK (article_id, info_page) + ON CONFLICT DO NOTHING — re-approving never
+// duplicates or resets a row already at new/review/committed. Returns the page name.
+//
+// B2b-1: CLOUD-FIRST. The info_page_sources + info_page_changes writes go to cloud
+// (via infoPageSourcesCloud.routeToNew), which re-syncs the local mirror on success.
+// No direct local write; a failed cloud write propagates (no silent local fallback).
+// Offline is blocked here. The supporting reads (intel row type, board name) still
+// come from the local mirrors of already-cloud tables — display inputs, not the
+// info_page_sources write.
 async function routeToNewSources(
   intelSourceId: string,
   boardId: string | null | undefined,
-): Promise<{ ok: boolean; id?: number; pageName?: string; error?: string }> {
+): Promise<{ ok: boolean; pageName?: string; error?: string }> {
   const db = getDatabase()
   const bid = (boardId ?? '').trim()
   if (!bid) return { ok: false, error: 'No project assigned to this source.' }
+  // Write path — block when offline (cloud-first; no local-only routing).
+  if (!isOnline()) return { ok: false, error: 'offline — cannot route sources while offline' }
   // 0a-4: gate the TARGET page write on membership — the write-side sibling of 0a-3.
   // Placed here so it covers all three intelligence:* callers (updateStatus,
   // routeToProject, confirmImported) in one spot.
@@ -3296,17 +3306,9 @@ async function routeToNewSources(
   const src = db.prepare('SELECT id, type FROM intelligence_sources WHERE id=?').get(intelSourceId) as { id: string; type: string } | undefined
   if (!src) return { ok: false, error: 'Source not found.' }
   const board = db.prepare("SELECT name FROM workspace_boards WHERE id=? AND board_type='info-page'").get(bid) as { name?: string } | undefined
-  const now = new Date().toISOString()
-  const r = db.prepare(
-    "INSERT OR IGNORE INTO info_page_sources (article_id, info_page, stage, source_type, added_at) VALUES (?,?,'new',?,?)"
-  ).run(intelSourceId, bid, src.type, now)
-  if (r.changes > 0) {
-    db.prepare(
-      "INSERT INTO info_page_changes (article_id, info_page, from_stage, to_stage, created_at) VALUES (?,?,NULL,'new',?)"
-    ).run(intelSourceId, bid, now)
-  }
-  const row = db.prepare('SELECT id FROM info_page_sources WHERE article_id=? AND info_page=?').get(intelSourceId, bid) as { id: number } | undefined
-  return { ok: true, id: row?.id, pageName: board?.name ?? bid }
+  const res = await infoPageSourcesCloud.routeToNew(intelSourceId, bid, src.type ?? null)
+  if (!res.ok) return { ok: false, error: res.error }
+  return { ok: true, pageName: board?.name ?? bid }
 }
 
 // Retired in 3c: keyword-match fan-out into info_page_items (replaced by
@@ -4580,23 +4582,23 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
       console.warn(`[0a-4] deny infoPages:moveBackToIntel — actor=${currentActingUserId} pageId=${pageId}`)
       return { ok: false, error: 'Not authorized' }
     }
-    const now = new Date().toISOString()
-    // Cross-tier: the info_page_sources DELETE + info_page_changes log stay LOCAL;
-    // the intel status flip is cloud-authoritative. Check existence FIRST, do the
-    // cloud write, and only then apply the local writes — so an offline/failed
-    // cloud write can never leave the pointer deleted but the intel status unmoved.
+    // B2b-1: fully cloud-first, preserving the existing cloud-before-local ordering.
+    // Write path — block when offline (consistent with the cloud-first writers).
+    if (!isOnline()) return { ok: false, error: 'offline — cannot move sources while offline', movedBack: false }
+    // Existence guard reads the local mirror (kept fresh by the cloud writers' resync);
+    // the authoritative removal is the cloud delete below.
     const exists = db().prepare(
       "SELECT 1 FROM info_page_sources WHERE article_id=? AND info_page=? AND stage='new'"
     ).get(articleId, pageId)
     if (!exists) return { ok: true, movedBack: false }
+    // 1) flip the intel row first (cloud-authoritative, re-syncs its own mirror)...
     const reverted = await intelCloud.revertToUnreviewed(articleId)
     if (!reverted.ok) return { ok: false, error: reverted.error, movedBack: false }
-    db().prepare(
-      "DELETE FROM info_page_sources WHERE article_id=? AND info_page=? AND stage='new'"
-    ).run(articleId, pageId)
-    db().prepare(
-      "INSERT INTO info_page_changes (article_id, info_page, from_stage, to_stage, created_at) VALUES (?,?,'new','intel',?)"
-    ).run(articleId, pageId, now)
+    // 2) ...then remove the CLOUD info_page_sources pointer + log the change, and
+    //    reconcile the mirror (drops the local row via resyncSourceRow). No direct
+    //    local write; a failed cloud delete propagates.
+    const removed = await infoPageSourcesCloud.removeToIntel(articleId, pageId)
+    if (!removed.ok) return { ok: false, error: removed.error, movedBack: false }
     return { ok: true, movedBack: true }
   })
 
