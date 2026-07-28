@@ -27,6 +27,7 @@ export const PRIMARY_CATEGORIES = [
   'regulatory',          // laws, agreements, policy
   'criminal_vnsa',       // cartel, gang, VNSA activity
   'diplomatic',          // foreign suppliers, transfers
+  'supply_chain_export', // China/DJI export, geofencing, component dependency, commercial acquisition
 ]
 
 export function makeAnthropic(apiKey) {
@@ -61,6 +62,7 @@ Valid primary categories for this database (Latin American drone activity only):
 - regulatory          (laws, agreements, policy)
 - criminal_vnsa       (cartel, gang, VNSA activity)
 - diplomatic          (foreign suppliers, transfers)
+- supply_chain_export (China/DJI export, geofencing, component dependency, commercial acquisition)
 
 If the article doesn't fit any of these categories for Latin American drone activity, set relevance_score to 0.
 
@@ -69,7 +71,7 @@ Respond ONLY with a JSON object, no other text:
   "q1_about_drones": "yes" | "no",
   "q2_latam_country": "yes" | "no",
   "q3_main_topic": "yes" | "no",
-  "primary_category": one of [offensive_use, defensive_systems, military_investment, private_investment, new_technology, regulatory, criminal_vnsa, diplomatic],
+  "primary_category": one of [offensive_use, defensive_systems, military_investment, private_investment, new_technology, regulatory, criminal_vnsa, diplomatic, supply_chain_export],
   "confidence_suggestion": one of [high, medium, low],
   "confidence_reasoning": "brief explanation",
   "relevance_score": number between 0 and 10,

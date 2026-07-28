@@ -2877,17 +2877,23 @@ async function classifyUnscoredArticles(limit = GATE_MAX_PER_RUN): Promise<numbe
 // ── Supabase → local sync helpers ─────────────────────────────────────────
 
 // Map cs_articles primary_category values to the app's category strings.
+// Keys MUST match the gate's PRIMARY_CATEGORIES (scripts/lib/categorize.js) exactly —
+// the gate emits snake_case, this maps to the app's Title-Case display labels. An
+// unmapped value falls through to null and (on approval) mis-files to Source Archive,
+// so every emitted value needs a key here. (Fixed 2026-07-28: 'regulatory' and
+// 'diplomatic' were previously unmapped — the dead keys 'policy_regulation' /
+// 'military_activity' / 'finance_sanctions' / 'extra_regional', which the gate never
+// emits, were removed.)
 const PIPELINE_CATEGORY_MAP: Record<string, string> = {
-  criminal_vnsa:       'Criminal & VNSA Activity',
   offensive_use:       'Incident',
   defensive_systems:   'Counter-drone / C-UAS',
   military_investment: 'Investment & Procurement',
   private_investment:  'Investment & Procurement',
   new_technology:      'Innovation & Technology',
-  policy_regulation:   'Policy & Regulation',
-  military_activity:   'State Military Activity',
-  finance_sanctions:   'Finance & Sanctions',
-  extra_regional:      'Extra-regional Supplier',
+  regulatory:          'Policy & Regulation',      // FIX: was unmapped (dead key was 'policy_regulation')
+  criminal_vnsa:       'Criminal & VNSA Activity',
+  diplomatic:          'Extra-regional Supplier',  // FIX: was unmapped (dead key was 'extra_regional')
+  supply_chain_export: 'Extra-regional Supplier',  // NEW (interim home; may get its own label in the restructure)
 }
 
 // Infer the article's language from its title and source domain.
