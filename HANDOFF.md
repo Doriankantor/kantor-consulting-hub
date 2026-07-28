@@ -4,12 +4,10 @@ _Last updated: 2026-07-28 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
-**★ NEXT: rejigger the GDELT pull architecture for full-category coverage.
-Retain-first slice leads (flip discard->retain + stamp source_stream), then
-widen gate categories, then per-category query groups, tuned iteratively via
-the learning loop. Design locked this session (see COLLECTION REDESIGN below).
-✅ DONE this session: B2 write path (B2b-1 + B2b-2) shipped; learning-loop
-finding corrected.**
+**★ NEXT: Slice 2 — source_stream tag (cloud ALTER-first, multi-valued text[],
+dedup-accumulate, ordering hazard: ALTER must land before the writer stamps the
+column). Then widen gate categories, then per-category query groups.
+✅ DONE this session: Slice 1 retain-first shipped.**
 
 **★ B2 STATUS — ✅ B2b DONE (write path cloud-first).** B2b-1 (routeToNewSources +
 moveBackToIntel, commit `17ccba3`) fully tested. B2b-2 (sendToReview, backSourceToNew,
@@ -36,15 +34,21 @@ net are the two stacked filters (diagnose confirmed both narrow, keywords deeper
   query group(s) found it -> enables per-stream threshold/calibration tuning on
   shared infrastructure. GDELT maxrecords=250 is PER query, so per-category groups
   also buy independent record budget (incidents don't crowd out regulatory).
-- **BUILD ORDER:** (1) retain-first (flip discard->retain + add source_stream; same
-  write path per diagnose) — LEADS, it's the missing recall-side training substrate;
-  (2) widen gate categories (add civilian_commercial, supply_chain_export; split
-  criminal_vnsa into actor vs logistics); (3) per-category query groups (keyword
-  widening, tuned iteratively watching queue volume); (4) HORIZON, not now — assess
-  residual starvation, then decide on a SECOND SOURCE for non-event categories
-  (investment/legal are structurally weak in GDELT; a widened query gets the news
-  fraction only). The loop tunes the GATE, not the keywords — queries fix coverage,
-  the loop fixes judgment on what was pulled. Both needed.
+- **BUILD ORDER:**
+  (1) ✅ **retain-first — SHIPPED.** Sub-threshold articles (score < 5) now retained
+  as cs_articles status='culled' instead of silently discarded. Two leak-guards
+  (bridge select + cleanup-irrelevant.js both .neq('status','culled')); queueable
+  counters kept culled-free by a separate insert bucket. learning.js untouched
+  (still status IN ('approved','rejected') — culls do NOT feed calibration yet;
+  wiring recall-side training from culled rows is a deliberate FUTURE step, not
+  automatic). Tested on a real fetch: 152 genuine culls retained, guards verified.
+  (2) **source_stream — NEXT.** (3) widen gate categories. (4) per-category query
+  groups. (5) horizon: second source for non-event categories.
+  Design intent (retained): the loop tunes the GATE, not the keywords — queries fix
+  coverage, the loop fixes judgment on what was pulled. Both needed. (Widening gate
+  categories = add civilian_commercial, supply_chain_export; split criminal_vnsa
+  into actor vs logistics. Horizon second-source: investment/legal are structurally
+  weak in GDELT; a widened query gets the news fraction only.)
 - **Current pipeline facts (diagnose 2026-07-28):** GitHub Action daily 06:00 UTC
   (.github/workflows/daily-intelligence.yml) -> scripts/fetch-intelligence.js;
   8 queries/run (4 country batches + 4 theme: iranian-supplier/guerrilla/cartel/
@@ -52,6 +56,21 @@ net are the two stacked filters (diagnose confirmed both narrow, keywords deeper
   in-app bridge syncFromContestedSkies every 6h. cs_articles: 201 rows (~3.5/day).
   The routing tree / channel field / geography-as-list (Cowork's routing-design.md)
   are ROUTING-layer, downstream, part of the August restructure — NOT collection.
+- **⚠ WATCH — culled-insert failures are SILENT.** A failed cull-archive insert warns
+  + backs up locally but does NOT flag the run as errored (deliberate: archive tier
+  is non-critical). Consequence: if the cull write fails for a stretch, runs stay
+  green while NO recall-side substrate accumulates. If you later rely on culled
+  rows for training, periodically check status='culled' row count is still growing
+  (currently 152, dated 2026-07-28). Not a bug — a silent-failure mode to monitor.
+- **⚠ QUERY-NOISE FINDING (concrete input for the query-widening step)** — the first
+  retain-enabled fetch culled 152/152 (0% pass), ALL at score 0 (hard-gate fails,
+  not borderline). Samples were pure world-news noise ('Sudan health collapse', a
+  'Face the Nation' transcript, an Iran/Ukraine/Caspian piece) dragged in by the
+  'manufacturers' and 'guerrilla-actors' theme queries whose keywords (Bayraktar,
+  guerrilla, Revolutionary Armed Forces) match non-LATAM-drone stories. When tuning
+  the query net, the retained culled rows are now the study material: identify which
+  query streams produce only 0-score noise and tighten/drop them. This is exactly
+  why source_stream (step 2) matters — it tags WHICH stream produced each row.
 
 **✅ DONE 2026-07-27: the 28 Contested Skies un-approve.** All 28 `board-info-latam`
 `intelligence_sources` rows flipped `approved`→`unreviewed` in cloud + local mirror
