@@ -4,41 +4,49 @@ _Last updated: 2026-07-28 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
-**★ NEXT: RESTRUCTURE build-order step 2 — routing (intake). FIRST MOVE (read-only):
-pull the real known_tags thematic vocabulary (cloud, project-scoped by
-project_board_id) and author tag→section priors against ACTUAL tags, not invented
-ones. Then: reconcile the approval category set to the nine (drop finance-nexus,
-apply actor split, retire platforms lump); add `channel` to analyze.ts output
-(state-procurement vs commercial-retail; joins analysis_json.ai, NOT a column);
-wire the AI category-proposal step (evidence → one-to-many proposed categories +
-geography fan-out); New-sources UI (section chips, add-all-nine menu, ≥1-section
-gate, bulk approve); capture corrections as labelled examples.
-✅ STEP 1 (ADDITIVE HALF) — DONE & VERIFIED this session (2026-07-30). Cloud applied
-via Supabase editor + recorded in sql/2026-07-30-restructure-step1-additive-schema.sql
-(commit 31516a7); local mirror in db.ts (commit 8bb9280). SHIPPED: nullable
-`category`+`geography` on info_page_sources (PK UNTOUCHED); `subject_countries`+
-`mentioned_countries` JSON-string lists on intelligence_sources (old scalar geography/
-location_mentioned superseded, not dropped); new tables incidents (own key: id +
-event_date + country + verification enum), section_texts (versioned: version/
-superseded_by + override_translation flag), cards (12-slot: slot_kind advisory,
-position 1-12, active/replaced_by). Both cloud + local column-adds byte-verified via
-information_schema (cloud) and PRAGMA table_info (local). New-table LOCAL MIRRORS
-deferred to their consumers (incidents=step 2, section_texts/cards=step 3) — nothing
-reads them yet.
-⚠ SPLIT OUT of step 1, DEFERRED to FRONT OF STEP 2 (needs coordinated code+schema,
-rides with routing): info_page_sources PK widening (article_id,info_page) →
-(article_id,info_page,category,geography); the onConflict edit at
-src/main/cloud/infoPageSources.ts:71 ('article_id,info_page' →
-'article_id,info_page,category,geography'); the LOCAL MIRROR UNIQUE rebuild (SQLite
-can't drop the auto-index in place — needs table rebuild); the five .eq UPDATE/DELETE
-writers in infoPageSources.ts widening (removeToIntel/sendSourceToReview/
-backSourceToNew/commitSourceRow/saveReviewNotesForPage — a single (article_id,
-info_page) can now map to multiple placement rows); and the pre-existing-row backfill
-(new PK columns must be non-null before the widened PK can be created). RATIONALE: the
-instant the cloud PK goes 4-column, the live 2-col onConflict throws until code changes
-in lockstep — that is a breaking change and must not ride the additive slice.
-✅ DONE prior: collection arc closed (steps 1-3a); restructure model locked via Cowork
-diagnose+design.**
+**★ NEXT: RESTRUCTURE step 2 — remaining sub-slices. Two done, three ahead.
+✅ DONE & PUSHED this session (2026-07-30):
+  • Tag→section ROUTING CONTRACT frozen (commit b42280a) — RESTRUCTURE_tag-section-priors.md,
+    now in-repo. Three-axis discipline: section-prior tags vs geography-axis vs actor-axis;
+    priors are SEEDS the mapping learns from researcher decisions.
+  • A1 (commit 6b5b667): analyze.ts emits proposed_sections[{section,confidence}] + channel
+    (state-procurement|commercial-retail|n/a) + routing_reasoning into a NEW
+    analysis_json.routing SIBLING (never inside .ai). One RMW writes .ai + .routing atomically.
+    Verified on the FARC/Popayán source: proposed vnsa·high, systems·high, legal·medium,
+    channel n/a; .ai shape intact; no truncation at max_tokens 4096. NO info_page_sources contact.
+  • A2 (commit 3c32cf6): read-only "CS SECTION" proposal badge on the News card — ghost/outlined
+    chips (distinct from the indigo category pills AND green topic tags), confidence-by-weight
+    (solid vs dashed border), legal→"Regulatory" relabel. New files sectionLabels.ts +
+    SectionProposalBadge.tsx. projectAbbrev hardcoded "CS" with a TODO for multi-project.
+    Renderer-only. Empty-safe for pre-A1 sources.
+
+⚑ KEY DESIGN SHIFT locked this session (drove the plan change): ROUTING IS NOT TAG-DRIVEN.
+  AI reads full text + structured fields (article_type, capabilities, actor_types) and proposes
+  sections holistically — better than the brittle tag→section lookup the priors doc first imagined
+  (that lookup is what produced the 32-of-34-in-Systems failure). Tags' job SHIFTED to descriptive/
+  retrieval + learning-loop signal, NOT routing. AND: SECTION CONFIRMATION HAPPENS AT NEW SOURCES,
+  NOT AT INTEL — sections are per-project page structure, so confirming them belongs in the project's
+  New-sources inbox (per-project, once), not on the intel card. Intel card shows a READ-ONLY proposal
+  badge only. This is why the publication pipeline's first stage (New Sources) is essential, not
+  redundant: AI analyzes once (intel), human confirms once (New Sources) — no repeated AI round.
+
+REMAINING step-2 sub-slices (in order):
+  1. THE CULL (data slice, its own read-only diagnose FIRST — flagged data-deleting):
+     known_tags dedup DELETIONS (counter-uas→cuas, regulatory-response→regulation,
+     criminal-organizations→violent-non-state-actor), thematic_tags backfill of the ~4 drift tags
+     (drone-delivered-ordnance→-explosives, grupo/colombia-grupos-armados→grupos-armados,
+     romania→geo), drop junk tag `inadequate`, and add the synonym map to normalizeTag +
+     normalizeTagClient (write-time fold). Small, self-contained, separately committed.
+  2. NEW SOURCES sectioning: the INTERACTIVE SectionChip (proposed→confirm/trim), the
+     ≥1-section EXIT GATE, per-project, consuming A1's proposed_sections. **The DEFERRED
+     PK-WIDENING BUNDLE RIDES HERE** — this is where placement rows finally get category+geography:
+     info_page_sources PK (article_id,info_page)→(article_id,info_page,category,geography), the
+     onConflict edit at cloud/infoPageSources.ts:71, the local-mirror UNIQUE rebuild, and the five
+     .eq UPDATE/DELETE writer widenings. Plus the pre-existing-row backfill.
+  3. Downstream publication stages (Analysis & design → Publish → update notes → Sources) per
+     PublicationProcess.md — later.
+
+✅ STEP 1 (additive schema) — done & verified earlier this session (see below).**
 
 ## RESTRUCTURE MODEL — LOCKED (2026-07-30)
 
