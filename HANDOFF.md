@@ -4,13 +4,61 @@ _Last updated: 2026-07-28 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
-**★ NEXT: collection phase is CLOSED. The next major work is the AUGUST RESTRUCTURE
-(Intelligence + Info Pages, design-first / mockup-first, Cowork) — which now also
-OWNS the remaining category work below. When opening it, start with the
-vision/reconciliation conversation (live Contested Skies page vs proposed
-9-category model), NOT code.
-✅ DONE this session: collection redesign steps 1-3a shipped (retain-first,
-source_stream, gate-map fix + supply_chain_export).**
+**★ NEXT: RESTRUCTURE build-order step 1 — schema + versioning (widen the
+info_page_sources placement key; add geography/channel; create incidents,
+section_texts, cards). Read-only diagnose first, then hand-applied SQL + dated
+sql/ file + update the B2b onConflict clause. The restructure DATA MODEL IS LOCKED
+(see RESTRUCTURE MODEL — LOCKED below).
+✅ DONE this session: collection arc closed (steps 1-3a); restructure model locked
+via Cowork diagnose+design.**
+
+## RESTRUCTURE MODEL — LOCKED (2026-07-30)
+
+The Intel + Info Pages restructure data model is LOCKED. Full spec:
+`RESTRUCTURE_locked-data-model.md` (companion: `RESTRUCTURE_reconciliation_agenda.md`).
+Built on a fresh read-only diagnose of the live app (HEAD `79c150d`), which CORRECTED
+several assumptions — trust the diagnose over older entries.
+
+**FIVE LOCKED DECISIONS:**
+1. **Placement key = (article_id, info_page, category, geography).** A source produces
+   one placement row per (category × subject-country). Widens the B2-migrated
+   `info_page_sources` key (+category, +geography) and its onConflict clause;
+   additive.
+2. **Geography = subject-countries + mentioned-countries lists on `intelligence_sources`**
+   (scalar `geography`/`location_mentioned` superseded). Only SUBJECT countries generate
+   placements; mentioned = metadata. Cards keep their own multi-country list.
+   Extra-regional = subject entry for BOTH supplier and recipient.
+3. **Incidents are their OWN record type** (own table, keyed by event+date+country+
+   verification), NOT the placement schema. An incident may emit a placement pointer
+   but is separately keyed.
+4. **Routing = AI-PROPOSED, one-to-many, evidence-based** (replaces categories_json →
+   queue_section). AI reads tags+summary+structure (capabilities/actor_type/
+   key_facts/article_type) and proposes a SET of the nine categories + geography
+   fan-out, researcher disposes; ≥1-section exit gate. Requires: reconcile the live
+   approval category set to the nine (drop finance-nexus, apply actor split, retire
+   platforms lump); ADD a `channel` field to analyze.ts (state-procurement vs
+   commercial-retail — separates cat 04 from 05); author tag→section priors against
+   the REAL known_tags vocab (read-only pull first). actor_type is routing EVIDENCE,
+   not a category/key.
+5. **Content tier = `section_texts`** (versioned narrative, maps from mockup CNARR+I18N) +
+   **`cards`** (12-slot, replaced_by, advisory slot_kind for v1, seeded partial/derived
+   from SLOTS). Publication = generate-from-data (option A). MIGRATION TAX REMOVED by
+   a MANUAL page swap: Dorian replaces the live page with the P-shaped mockup by
+   hand, then seed section_texts (full) + cards (partial) from P. Legacy publish tier
+   (`info_page_items`/`commits`/`published` + inject-block `publishToRepo`) RETIRED at
+   cutover. Generated-publish path (GitHub-API commit/push from main process,
+   DB-first/page-as-projection/sync-pending) built LAST.
+
+**BUILD ORDER:** 1 schema+versioning → 2 routing/intake (known_tags priors first) →
+3 Analysis&design grid → 4 manual page cutover+seed → 5 generated-publish path
+(retire legacy) → 6 history/rollback/sources. Steps 1-3 are a working editorial
+tool with AI OFF — the correct failure mode.
+
+**⚠ SEED CARE NOTE:** the seed-from-P step (build 4) is a data migration into new tables
+and is the highest-stakes single op — treat with B2/recovery care class: byte-verify
+seeded rows against P before trusting, snapshot before retiring the legacy tier.
+Safeguard already in model: generated page keeps rendering from existing P structures
+for any cell whose cards aren't authored yet (no blanking).
 
 **★ B2 STATUS — ✅ B2b DONE (write path cloud-first).** B2b-1 (routeToNewSources +
 moveBackToIntel, commit `17ccba3`) fully tested. B2b-2 (sendToReview, backSourceToNew,
@@ -148,7 +196,7 @@ recovery decision changed from re-route to UN-APPROVE.)_
 **★ RECOVERY TASK — ✅ DONE 2026-07-27 (see resume-point NEXT above; commit `320d2a9`) —
 28 Contested Skies approvals, wiped routing pointers.** 28 articles approved in Intelligence (cloud `intelligence_sources`, SAFE) do not
 appear in Info Pages "New Sources." Diagnosed: approval writes an `info_page_sources` row at
-`stage='new'`, but `info_page_sources` is **LOCAL-ONLY** (Phase B2 migration paused). The
+`stage='new'`, but `info_page_sources` is **LOCAL-ONLY** (Phase B2 migration paused). [SUPERSEDED 2026-07-30: B2 SHIPPED — info_page_sources + info_page_changes are CLOUD (schema `3a1dc06`; writers B2b-1 + B2b-2 `0321259`). This line reflects the pre-B2 state.] The
 machine reset wiped the local DB → routing pointers lost, approvals (cloud) survived.
 **DORIAN'S DECISION: truly UN-APPROVE all 28** (flip back to unreviewed, re-review fresh) —
 **NOT** restore routing.
@@ -295,7 +343,7 @@ approved in Intelligence not surfacing. DIAGNOSED (not data loss, not a code bug
 approvals are SAFE in cloud `intelligence_sources`. Approval routes them by writing an
 `info_page_sources` row at `stage='new'` — but `info_page_sources` is **LOCAL-ONLY** (the
 Phase B2 cloud migration was deliberately paused; the table does not exist in cloud —
-verified this session). The machine reset wiped the local DB, so the routing POINTERS were
+verified this session). [SUPERSEDED 2026-07-30: B2 SHIPPED — info_page_sources + info_page_changes are CLOUD (schema `3a1dc06`; writers B2b-1 + B2b-2 `0321259`). This line reflects the pre-B2 state.] The machine reset wiped the local DB, so the routing POINTERS were
 lost while the approvals (cloud) survived. The pointer is DERIVABLE from the surviving
 approval state — **fully recoverable.** _(Diagnose evidence: cloud `intelligence_sources` =
 268 rows all `board-info-latam` incl. 20 `pushed` + 28 `approved`; cloud `cs_articles` =
