@@ -4,13 +4,41 @@ _Last updated: 2026-07-28 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
-**★ NEXT: RESTRUCTURE build-order step 1 — schema + versioning (widen the
-info_page_sources placement key; add geography/channel; create incidents,
-section_texts, cards). Read-only diagnose first, then hand-applied SQL + dated
-sql/ file + update the B2b onConflict clause. The restructure DATA MODEL IS LOCKED
-(see RESTRUCTURE MODEL — LOCKED below).
-✅ DONE this session: collection arc closed (steps 1-3a); restructure model locked
-via Cowork diagnose+design.**
+**★ NEXT: RESTRUCTURE build-order step 2 — routing (intake). FIRST MOVE (read-only):
+pull the real known_tags thematic vocabulary (cloud, project-scoped by
+project_board_id) and author tag→section priors against ACTUAL tags, not invented
+ones. Then: reconcile the approval category set to the nine (drop finance-nexus,
+apply actor split, retire platforms lump); add `channel` to analyze.ts output
+(state-procurement vs commercial-retail; joins analysis_json.ai, NOT a column);
+wire the AI category-proposal step (evidence → one-to-many proposed categories +
+geography fan-out); New-sources UI (section chips, add-all-nine menu, ≥1-section
+gate, bulk approve); capture corrections as labelled examples.
+✅ STEP 1 (ADDITIVE HALF) — DONE & VERIFIED this session (2026-07-30). Cloud applied
+via Supabase editor + recorded in sql/2026-07-30-restructure-step1-additive-schema.sql
+(commit 31516a7); local mirror in db.ts (commit 8bb9280). SHIPPED: nullable
+`category`+`geography` on info_page_sources (PK UNTOUCHED); `subject_countries`+
+`mentioned_countries` JSON-string lists on intelligence_sources (old scalar geography/
+location_mentioned superseded, not dropped); new tables incidents (own key: id +
+event_date + country + verification enum), section_texts (versioned: version/
+superseded_by + override_translation flag), cards (12-slot: slot_kind advisory,
+position 1-12, active/replaced_by). Both cloud + local column-adds byte-verified via
+information_schema (cloud) and PRAGMA table_info (local). New-table LOCAL MIRRORS
+deferred to their consumers (incidents=step 2, section_texts/cards=step 3) — nothing
+reads them yet.
+⚠ SPLIT OUT of step 1, DEFERRED to FRONT OF STEP 2 (needs coordinated code+schema,
+rides with routing): info_page_sources PK widening (article_id,info_page) →
+(article_id,info_page,category,geography); the onConflict edit at
+src/main/cloud/infoPageSources.ts:71 ('article_id,info_page' →
+'article_id,info_page,category,geography'); the LOCAL MIRROR UNIQUE rebuild (SQLite
+can't drop the auto-index in place — needs table rebuild); the five .eq UPDATE/DELETE
+writers in infoPageSources.ts widening (removeToIntel/sendSourceToReview/
+backSourceToNew/commitSourceRow/saveReviewNotesForPage — a single (article_id,
+info_page) can now map to multiple placement rows); and the pre-existing-row backfill
+(new PK columns must be non-null before the widened PK can be created). RATIONALE: the
+instant the cloud PK goes 4-column, the live 2-col onConflict throws until code changes
+in lockstep — that is a breaking change and must not ride the additive slice.
+✅ DONE prior: collection arc closed (steps 1-3a); restructure model locked via Cowork
+diagnose+design.**
 
 ## RESTRUCTURE MODEL — LOCKED (2026-07-30)
 
