@@ -68,6 +68,21 @@ several assumptions — trust the diagnose over older entries.
    commercial-retail — separates cat 04 from 05); author tag→section priors against
    the REAL known_tags vocab (read-only pull first). actor_type is routing EVIDENCE,
    not a category/key.
+
+   **TAG MODEL (locked 2026-07-30):** Tags are DESCRIPTIVE and CATEGORY-FREE in identity —
+   they do NOT nest under the nine categories. Vocabulary is CURATED (controlled + reused
+   via known_tags, not open free-text). Each tag carries a PRIOR: a lean toward one or more
+   of the nine categories, which AI combines with summary + structure to propose placement.
+   A tag POINTS AT categories (often several), it does not SIT IN one — the descriptive axis
+   and the routing axis stay orthogonal. This is what preserves multi-category (41% of
+   sources), captures nuance below the 9 buckets, and leaves the priors something to LEARN
+   from researcher add/remove decisions. Rejected: category-nested tags (collapses evidence
+   into output, re-creates the 32-of-34-in-Systems failure, kills the learning loop) and
+   pure free-text (synonym sprawl breaks prior maintainability + reuse). GUARDRAIL: tags
+   must NOT duplicate what structured fields already carry (article_type / actor_type /
+   capabilities[]) — they capture the emergent, source-specific texture those enums can't
+   anticipate. The step-2 known_tags read-only pull is where existing descriptive vocab is
+   surveyed and priors first assigned.
 5. **Content tier = `section_texts`** (versioned narrative, maps from mockup CNARR+I18N) +
    **`cards`** (12-slot, replaced_by, advisory slot_kind for v1, seeded partial/derived
    from SLOTS). Publication = generate-from-data (option A). MIGRATION TAX REMOVED by
