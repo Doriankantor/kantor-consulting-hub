@@ -520,16 +520,43 @@ export async function setAnalysisOverride(
 
 export async function saveAiAnalysis(id: string, ai: {
   relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]
-}): Promise<{ ok: boolean; ai?: unknown; error?: string }> {
+  // B1 structured extraction (already flowing through the wholesale res.result pass).
+  article_type?: string; capabilities?: unknown[]; key_facts?: unknown[]
+  // Restructure A1: section-routing proposal. Split OUT of the .ai block into a
+  // sibling analysis_json.routing box in the SAME read-modify-write below.
+  proposed_sections?: Array<{ section: string; confidence: string }>
+  channel?: string
+  routing_reasoning?: string
+}): Promise<{ ok: boolean; ai?: unknown; routing?: unknown; error?: string }> {
   if (!isOnline()) return OFFLINE
   const r = await readCloudAnalysis(id)
   if (!r.ok) return { ok: false, error: r.error }
-  const block = { ...ai, analyzed_at: nowIso() }
+  // Peel the routing fields off so .ai keeps its existing shape; the rest is the .ai block.
+  const { proposed_sections, channel, routing_reasoning, ...aiRest } = ai
+  const block = { ...aiRest, analyzed_at: nowIso() }
   r.analysis!.ai = block
+  // Only write the routing sibling when the model actually proposed something —
+  // an empty proposal leaves any prior routing block untouched. ONE RMW: we mutate
+  // both r.analysis.ai and r.analysis.routing before the single write below, so no
+  // second read/write can clobber a sibling.
+  let routingBlock: unknown = r.analysis!.routing
+  const hasRouting =
+    (Array.isArray(proposed_sections) && proposed_sections.length > 0) ||
+    (typeof channel === 'string' && channel && channel !== 'n/a') ||
+    (typeof routing_reasoning === 'string' && routing_reasoning.trim().length > 0)
+  if (hasRouting) {
+    routingBlock = {
+      proposed_sections: Array.isArray(proposed_sections) ? proposed_sections : [],
+      channel: typeof channel === 'string' ? channel : 'n/a',
+      routing_reasoning: typeof routing_reasoning === 'string' ? routing_reasoning : '',
+      proposed_at: nowIso(),
+    }
+    r.analysis!.routing = routingBlock
+  }
   const { error } = await cloud.from('intelligence_sources').update({ analysis_json: JSON.stringify(r.analysis) }).eq('id', id)
   if (error) return { ok: false, error: `saveAiAnalysis failed: ${error.message}` }
   await resyncRow(id)
-  return { ok: true, ai: block }
+  return { ok: true, ai: block, routing: routingBlock }
 }
 
 // Bulk-confirm all imported rows. Cloud SELECT → per-row cloud UPDATE + mirror

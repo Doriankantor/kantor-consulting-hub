@@ -59,6 +59,14 @@ export interface AnalyzeResult {
   article_type?: string
   capabilities?: Array<{ system: string; actor?: string; actor_type?: string; cost?: string; category?: string; relationship?: string }>
   key_facts?: Array<{ label: string; value: string }>
+  // Restructure step 2 (slice A1): AI section-routing proposal. The model proposes
+  // which of the nine page sections a source belongs in (one-to-many) plus an
+  // acquisition-channel classification. Advisory only — the researcher confirms in
+  // the New-sources UI (A2). Persisted to a NEW analysis_json.routing sibling, NOT
+  // into .ai and NOT into info_page_sources.
+  proposed_sections?: Array<{ section: string; confidence: 'high' | 'medium' | 'low' }>
+  channel?: 'state-procurement' | 'commercial-retail' | 'n/a'
+  routing_reasoning?: string
 }
 
 export type AnalyzeResponse =
@@ -270,6 +278,29 @@ Also extract STRUCTURED IDENTIFIERS as JSON fields (separate from the prose summ
 "key_facts": an array of { "label", "value" } capturing the type-appropriate specifics that DON'T fit capabilities — for regulatory: jurisdiction/measure/status/effective-date; for legal/LOAC: framework/concern/actors; for governance: parties/dispute/jurisdiction; plus event dates, locations, casualties (exact figures), etc. Use clear labels.
 
 CRITICAL for all structured fields: report ONLY what the source explicitly states. NEVER invent a system name, actor, cost, figure, or classification. If the source doesn't describe systems, return "capabilities": []. If nothing fits key_facts, return "key_facts": []. Empty is correct and expected — fabricated structured data is far worse than empty fields. Preserve names and numbers VERBATIM; never abstract them.
+
+SECTION ROUTING. Propose which of these NINE page sections the source belongs in. Judge by what each section MEASURES, not by keywords. A source usually touches MORE THAN ONE.
+  systems    — the drone / counter-drone systems themselves: platforms, ranges, payloads, C-UAS performance, state-held military UAS. (C-UAS and state-platform sources DEFAULT here.)
+  vnsa       — violent NON-STATE actors using/holding UAS (cartels, FARC/ELN/CJNG, armed groups).
+  industry   — innovation, domestic development, manufacturing, the technology base.
+  external   — EXTRA-REGIONAL actors: foreign states/suppliers (Iran, China, Russia, Europe) as suppliers, aligners, or threats.
+  supply     — supply chains & transfers: how systems/technology move (transfers, channels, exports).
+  investment — money: procurement buys, budgets, investment signals, acquisitions.
+  legal      — regulation, governance, legal frameworks, compliance, reorganizations, deregulation.
+  civilian   — civilian/commercial impact: civilian casualties/targets, airport & airspace security, UTM, commercial use, civilian compliance.
+  logistics  — ILLICIT logistics: contraband delivery, prison drops, ground routes, interdictions/seizures.
+
+ROUTING RULES:
+- Return a SET (one-to-many). Most sources touch 2+ sections.
+- A country being named does NOT by itself select a section — geography is a separate axis. Do not route to a section just because a place is mentioned.
+- If the source describes a dated/located UAS EVENT, set channel appropriately AND still place it in the section(s) it substantiates (usually vnsa if a non-state actor, systems if a state actor).
+- A source's actor_type=VNSA is strong evidence FOR proposing vnsa, but PROPOSE it — do not treat it as automatic. The researcher confirms.
+- external vs supply: use channel. State procurement/transfer leans external+supply; commercial/retail export leans supply.
+
+CHANNEL: classify the source's acquisition/transfer nature as exactly one of:
+  "state-procurement"  (a state acquires/transfers, or a military/government buy),
+  "commercial-retail"  (commercial/retail/export/civilian purchase),
+  "n/a"                (no acquisition/transfer dimension).
 ${tagsReuse}Return ONLY JSON with exactly these keys:
 {
   "summary": "<A substantive analytical paragraph (roughly 4-7 sentences) narrating what this source reports and what it means for THIS project. Narrate the situation and its significance. Do NOT re-list every figure — named systems, costs, and actors are catalogued separately in capabilities/key_facts below; reference them in prose but do not duplicate the full list.>",
@@ -278,7 +309,10 @@ ${tagsReuse}Return ONLY JSON with exactly these keys:
   "suggested_tags": ["<short topical tag>", "..."],
   "article_type": "<one of the article_type values above>",
   "capabilities": [ { "system": "<exact name>", "actor": "<if stated>", "actor_type": "VNSA|state|commercial|unknown", "cost": "<if stated>", "category": "<if determinable>", "relationship": "operates|acquired|supplies|develops|counters" } ],
-  "key_facts": [ { "label": "<clear label>", "value": "<exact value from the source>" } ]
+  "key_facts": [ { "label": "<clear label>", "value": "<exact value from the source>" } ],
+  "proposed_sections": [ { "section": "<one of: systems|vnsa|industry|external|supply|investment|legal|civilian|logistics>", "confidence": "high|medium|low" } ],
+  "channel": "state-procurement | commercial-retail | n/a",
+  "routing_reasoning": "<ONE short sentence — why these sections. Do NOT write a paragraph per section.>"
 }
 
 Source:
@@ -339,6 +373,32 @@ function normalizeResult(parsed: Record<string, unknown>): AnalyzeResult {
       .slice(0, 30)
   } else {
     out.key_facts = []
+  }
+  // Restructure A1: section-routing proposal — validate defensively, never throw.
+  const VALID_SECTIONS = new Set(['systems', 'vnsa', 'industry', 'external', 'supply', 'investment', 'legal', 'civilian', 'logistics'])
+  const VALID_CONF = new Set(['high', 'medium', 'low'])
+  const VALID_CHANNEL = new Set(['state-procurement', 'commercial-retail', 'n/a'])
+  if (Array.isArray(parsed.proposed_sections)) {
+    const seen = new Set<string>()
+    out.proposed_sections = (parsed.proposed_sections as unknown[])
+      .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object' && typeof (p as any).section === 'string')
+      .map(p => ({ section: String((p as any).section).trim().toLowerCase(), confidence: String((p as any).confidence ?? '').trim().toLowerCase() }))
+      .filter(p => VALID_SECTIONS.has(p.section))
+      .map(p => ({ section: p.section, confidence: (VALID_CONF.has(p.confidence) ? p.confidence : 'medium') as 'high' | 'medium' | 'low' }))
+      .filter(p => { if (seen.has(p.section)) return false; seen.add(p.section); return true })
+      .slice(0, 9)
+  } else {
+    out.proposed_sections = []
+  }
+  if (typeof parsed.channel === 'string' && VALID_CHANNEL.has(parsed.channel.trim().toLowerCase())) {
+    out.channel = parsed.channel.trim().toLowerCase() as 'state-procurement' | 'commercial-retail' | 'n/a'
+  } else {
+    out.channel = 'n/a'
+  }
+  if (parsed.routing_reasoning != null) {
+    out.routing_reasoning = String(parsed.routing_reasoning).trim().slice(0, 600)
+  } else {
+    out.routing_reasoning = ''
   }
   return out
 }

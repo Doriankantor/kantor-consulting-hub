@@ -3570,6 +3570,12 @@ function registerIntelligenceHandlers(): void {
   // replaces .ai only. RMW → cloud-only. Offline → { ok:false }.
   ipcMain.handle('intelligence:saveAiAnalysis', (_e, id: string, ai: {
     relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]
+    article_type?: string; capabilities?: unknown[]; key_facts?: unknown[]
+    // Restructure A1: the on-demand analyze passes res.result wholesale, so these
+    // ride the same save; saveAiAnalysis peels them into analysis_json.routing.
+    proposed_sections?: Array<{ section: string; confidence: string }>
+    channel?: string
+    routing_reasoning?: string
   }) => intelCloud.saveAiAnalysis(id, ai))
 
   // 2b (human-first): persist the EDITABLE reconciled read (HTML) the researcher
