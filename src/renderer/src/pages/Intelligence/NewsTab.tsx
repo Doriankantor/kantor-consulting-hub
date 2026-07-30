@@ -6,6 +6,7 @@ import { useConnection } from '../../contexts/ConnectionContext'
 import RichTextEditor from '../../components/RichTextEditor'
 import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
+import SectionProposalBadge from './SectionProposalBadge'
 import { actorTypeClass } from './actorTypeClass'
 import { resolveFacts, resolveCaps, type ResolvedFact, type ResolvedCap } from './resolveAnalysis'
 import { parseConfig } from './frameworkConfig'
@@ -1303,6 +1304,10 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           const hasArticleText = notesText(contentDraft).length > 40   // substantial pasted text (not ~52-char snippet leftovers)
           const srcAnalysis = parseAnalysis(source.analysis_json)
           const aiBlock = srcAnalysis.ai as Record<string, any> | undefined
+          // A2: AI section-routing proposal (analysis_json.routing.proposed_sections, from A1).
+          // Read-only display; missing on sources analyzed before A1 → empty → badge renders nothing.
+          const routing = (srcAnalysis.routing ?? {}) as Record<string, any>
+          const proposedSections = Array.isArray(routing.proposed_sections) ? routing.proposed_sections : []
           const reconciledBlock = srcAnalysis.reconciled as Record<string, any> | undefined
           // B2: structured identifiers from the AI block (B1 extraction). Graceful-degrade.
           const articleType = aiBlock?.article_type as string | undefined
@@ -1499,6 +1504,10 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                       ))}
                     </div>
                   )}
+
+                  {/* A2: read-only AI section-routing proposal (own row, above PROJECT/TOPIC). */}
+                  {/* TODO: derive project abbrev when multi-project intel lands */}
+                  <SectionProposalBadge sections={proposedSections} projectAbbrev="CS" />
 
                   {/* Phase 1 + Phase 4: PROJECT selector (replaces Disposition TagPicker).
                       Phase 4: TOPIC tag picker (unchanged, with forceOpen for gate). */}
