@@ -983,6 +983,12 @@ export function initDatabase(): void {
   // disposition_tags / thematic_tags: JSON arrays, same pattern as categories_json
   try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN disposition_tags TEXT;') } catch {}
   try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN thematic_tags TEXT;') } catch {}
+  // Restructure step 1: role-split geography lists (JSON arrays, same pattern as
+  // categories_json). Only subject_countries generate placements; mentioned = metadata.
+  // Mirrors the additive cloud columns (sql/2026-07-30-restructure-step1-additive-schema.sql).
+  // The old scalar geography/location_mentioned stay in place (superseded, not dropped).
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN subject_countries TEXT;') } catch {}
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN mentioned_countries TEXT;') } catch {}
   // language: best-guess ISO code inferred from domain/title ('es'|'pt'|'en'). Nullable.
   try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN language TEXT;') } catch {}
 
@@ -1162,6 +1168,11 @@ export function initDatabase(): void {
   // link back to the intel row is article_id; content/analysis/notes stay LIVE
   // via that reference (no copy), so the item remains editable + move-back-able.
   try { db.exec("ALTER TABLE info_page_sources ADD COLUMN source_type TEXT;") } catch {}
+  // Restructure step 1: placement columns mirroring the additive cloud schema
+  // (sql/2026-07-30-restructure-step1-additive-schema.sql). NULLABLE; the PK/UNIQUE
+  // widening to (article_id, info_page, category, geography) is DEFERRED to step 2.
+  try { db.exec("ALTER TABLE info_page_sources ADD COLUMN category TEXT;") } catch {}
+  try { db.exec("ALTER TABLE info_page_sources ADD COLUMN geography TEXT;") } catch {}
   // T1: project-scope thematic tags. Add project_board_id to known_tags, assign all
   // existing thematic tags to Contested Skies (board-info-latam), and re-key the
   // uniqueness index to (name, type, project_board_id). Idempotent.
