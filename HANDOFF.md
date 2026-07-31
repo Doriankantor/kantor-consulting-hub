@@ -46,7 +46,7 @@ _Last updated: 2026-07-28 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
   redundant: AI analyzes once (intel), human confirms once (New Sources) — no repeated AI round.
 
 REMAINING step-2 sub-slices (in order):
-  1. GEOGRAPHY AXIS (next build — 3 sub-slices, analyze→UI→cull rhythm like A1/A2/cull):
+  1. ✅ GEOGRAPHY AXIS — DONE (3 sub-slices, analyze→UI→cull rhythm like A1/A2/cull):
      DECISION LOCKED: country + optional sub-geo are ONE coherent axis (not country-on-axis /
      sub-geo-as-tag). AI suggests countries into a LIST, researcher adds/removes/overrides.
      • ✅ Geo-1 DONE (099530c): analyze.ts extracts subject_countries + mentioned_countries (bare country
@@ -56,36 +56,31 @@ REMAINING step-2 sub-slices (in order):
        nested ⊙ Colombia ▸ Cauca chips — subject=filled emerald, mentioned=ghost, sub-geo nested-in-subject,
        inline-add idiom, scalar as empty-list fallback, session AI-badge cleared on first edit. Scalar-edit
        path RETIRED (geography editing = lists only). Verified edit+persist-across-reload.
-     • Geo-3 IN PROGRESS — remove geography TAGS from vocab now geography lives on the axis. NOT a fold
-       (no winner) — pure deletions, GATED on axis-backfill so no source loses its only geo signal.
-       STATUS:
-         - Step 1 (0734c50): analyze.ts prompt guard — AI must NOT suggest country/place names as thematic
-           tags. COMMITTED. Makes the strip durable (no synonym-map guard exists for geography, unlike VNSA).
-         - Step 2 (BACKFILL 4 at-risk K>0 sources — re-analyze so country lands on axis BEFORE strip) —
-           NOT DONE. Probe found all still empty subject/mentioned lists. TWO SURPRISES: (a) tags MISMATCH
-           scalar geography — csa-rg-02 is a MEXICO cartel story but carries colombia/venezuela/ukraine tags;
-           5b1358a1 carries russia but scalar=Bolivia — tags may be WRONG, making strip doubly-right;
-           re-analyze assigns geography from TEXT. (b) 75706600-8b14-4e57-b08f-49879e2dc391 NOT in local
-           mirror (cloud-only) — check cloud-side. d1ef73a3 has NO geography anywhere (nothing to preserve).
-           AT-RISK IDS: csa-rg-02, d1ef73a3-1358-4bba-9cef-c0b861ac3196,
-           75706600-8b14-4e57-b08f-49879e2dc391, 5b1358a1-9a45-406e-a223-d8fd9859cbd9.
-         - Step 3 (strip+delete script — dry-run/--commit, invariant-verified, dated sql/) — NOT WRITTEN,
-           blocked on Step 2.
-       DELETE targets (country-level, when unblocked): known_tags ids 3,5,14,55,25,53,67,46,50,37
-       (china id 67 = vocab-only, 0 carriers). DEFER sub-geo tags cauca/catatumbo/rio-de-janeiro (no
-       sub_geographies axis home yet). Ukraine/Russia NOT lost — they move to mentioned_countries
-       (extra-regional influence), captured BETTER than the flat tag.
-       RESUME: re-analyze the 4 (verify Ukraine/Russia → mentioned, Mexico/Bolivia → subject) → re-probe →
-       write Step 3. WATCH: the csa-rg-02 tag/geo mismatch may indicate geography tags are WRONG (not just
-       redundant) on more sources — glance whether it's a pattern; if so the axis migration is also a correction.
-     OPEN Q for the slice: does AI propose SUB-geo or only country? Lean: country confidently,
-     sub-geo researcher-added with AI low-confidence hint only when text is explicit (model reliable
-     on countries, shakier on departments).
-  2. ACTOR AXIS (after geography — same 3-step shape):
+     • ✅ Geo-3 DONE — geography tags removed from vocab + sources. Step 1 (0734c50): analyze.ts
+       stops suggesting geography as thematic tags. Step 2 (59137fd): pure-data axis backfill of
+       3 at-risk sources (csa-rg-02→Mexico+[CO,VE,UA] mentioned; d1ef73a3→Colombia; 75706600→Romania+[UA,RU];
+       5b1358a1 already done) — no AI, sub-regions deferred. Step 3 (26e26d8): stripped the 10 country-level
+       tags (argentina/brazil/colombia/venezuela/europe/usa/china/russia/ukraine/latam) from 30 sources'
+       thematic_tags; orphan-guard held on all 30; invariant-verified. Vocab known_tags rows were
+       hand-deleted earlier. GEOGRAPHY AXIS COMPLETE (Geo-1 extraction + Geo-2 UI + Geo-3 cleanup).
+
+       RESIDUALS (minor, deferred — not blocking):
+         - SUB-GEO tags cauca/catatumbo/rio-de-janeiro deliberately KEPT on sources (4/3/3), no
+           sub_geographies axis home yet. cauca's known_tags VOCAB row was accidentally swept in the earlier
+           hand-deletion (its siblings preserved) — harmless (tag still on sources), recreate or migrate when
+           the sub-geo pass runs.
+         - `romania` survives as an orphaned geography-ish tag on 2 sources (3c63c57e, 75706600) — never was
+           in the canonical vocab, so not in the strip list. Fold into geography axis when convenient.
+         - Sub-region detail (Norte de Santander on d1ef73a3, "border region" on 75706600) survives in
+           scalar/text, deferred to the sub-geo pass.
+  2. ACTOR AXIS ◀ NEXT (geography now done — same 3-step shape):
      DECISION LOCKED: named orgs (FARC / ELN / CJNG / Sinaloa / cartels) get their OWN axis
      (actors_mentioned column) — a WHO, not a WHAT, so NOT thematic tags. `violent-non-state-actor`
      stays as the one actor-TYPE tag. AI extracts named orgs → researcher overrides → THEN cull the
      ~9 named-org tags from the vocab (only after the axis holds their data).
+     NOTE (earlier-recorded): AI already populates capabilities[].actor + actor_type, but some actors
+     are PROSE-ONLY (e.g. Grupo Marte) — consolidate from BOTH the structured capabilities array AND
+     the narrative text; don't just copy capabilities[].actor.
   3. NEW SOURCES sectioning: the INTERACTIVE SectionChip (proposed→confirm/trim), the ≥1-section
      EXIT GATE, per-project, consuming A1's proposed_sections. **THE DEFERRED PK-WIDENING BUNDLE
      RIDES HERE** — first write to info_page_sources under the new key: PK (article_id,info_page)→
