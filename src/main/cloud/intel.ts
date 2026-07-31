@@ -38,8 +38,8 @@ import { normalizeTag } from './tags'
 const OFFLINE = { ok: false as const, error: 'Unavailable while offline' }
 const nowIso = () => new Date().toISOString()
 
-// The 48 local columns, in schema order — the mirror whitelist. A cloud row is a
-// superset-safe match (cloud table is exactly these 48), so every cloud row maps
+// The 50 local columns, in schema order — the mirror whitelist. A cloud row is a
+// superset-safe match (cloud table is exactly these 50), so every cloud row maps
 // cleanly; whitelisting guards against an unexpected column breaking the insert.
 const INTEL_COLS = [
   'id','type','title','content','url','source_name','published_at','added_at','added_by_id',
@@ -49,6 +49,10 @@ const INTEL_COLS = [
   'queued_at','queued_by_id','queued_by_name','relevance_score','region','geography','geography_confirmed',
   'gate_processed','gate_reasoning','relevance_type','disposition_tags','thematic_tags','language',
   'used_in_page','used_in_page_at','intel_notes','reconciled_notes','project_board_id','duplicate_of',
+  // Restructure step 2 (Geo-1): role-split geography lists (TEXT holding a JSON-string array).
+  // Whitelisting them here is MANDATORY — resyncRow filters through INTEL_COLS, so without this
+  // the two columns are silently dropped from the local mirror.
+  'subject_countries','mentioned_countries',
 ] as const
 
 function rowForMirror(src: Record<string, unknown>): Record<string, unknown> {
@@ -527,12 +531,16 @@ export async function saveAiAnalysis(id: string, ai: {
   proposed_sections?: Array<{ section: string; confidence: string }>
   channel?: string
   routing_reasoning?: string
+  // Restructure Geo-1: geography axis — two bare-country-name lists written to the
+  // intelligence_sources COLUMNS (JSON-string), not into analysis_json. Same single write.
+  subject_countries?: string[]
+  mentioned_countries?: string[]
 }): Promise<{ ok: boolean; ai?: unknown; routing?: unknown; error?: string }> {
   if (!isOnline()) return OFFLINE
   const r = await readCloudAnalysis(id)
   if (!r.ok) return { ok: false, error: r.error }
-  // Peel the routing fields off so .ai keeps its existing shape; the rest is the .ai block.
-  const { proposed_sections, channel, routing_reasoning, ...aiRest } = ai
+  // Peel the routing + geography fields off so .ai keeps its existing shape; the rest is the .ai block.
+  const { proposed_sections, channel, routing_reasoning, subject_countries, mentioned_countries, ...aiRest } = ai
   const block = { ...aiRest, analyzed_at: nowIso() }
   r.analysis!.ai = block
   // Only write the routing sibling when the model actually proposed something —
@@ -553,7 +561,14 @@ export async function saveAiAnalysis(id: string, ai: {
     }
     r.analysis!.routing = routingBlock
   }
-  const { error } = await cloud.from('intelligence_sources').update({ analysis_json: JSON.stringify(r.analysis) }).eq('id', id)
+  // Geo-1: write the two country COLUMNS in the SAME update as analysis_json (one write, one
+  // resync, atomic with .ai + .routing). Only when the caller actually supplied a list — an
+  // absent field leaves the stored column untouched (never clobber with []). JSON-string to
+  // match the categories_json/thematic_tags convention. Scalar geography is NOT touched.
+  const patch: Record<string, unknown> = { analysis_json: JSON.stringify(r.analysis) }
+  if (Array.isArray(subject_countries)) patch.subject_countries = JSON.stringify(subject_countries)
+  if (Array.isArray(mentioned_countries)) patch.mentioned_countries = JSON.stringify(mentioned_countries)
+  const { error } = await cloud.from('intelligence_sources').update(patch).eq('id', id)
   if (error) return { ok: false, error: `saveAiAnalysis failed: ${error.message}` }
   await resyncRow(id)
   return { ok: true, ai: block, routing: routingBlock }

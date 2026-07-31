@@ -3576,6 +3576,9 @@ function registerIntelligenceHandlers(): void {
     proposed_sections?: Array<{ section: string; confidence: string }>
     channel?: string
     routing_reasoning?: string
+    // Restructure Geo-1: geography lists — peeled into the two intelligence_sources columns.
+    subject_countries?: string[]
+    mentioned_countries?: string[]
   }) => intelCloud.saveAiAnalysis(id, ai))
 
   // 2b (human-first): persist the EDITABLE reconciled read (HTML) the researcher

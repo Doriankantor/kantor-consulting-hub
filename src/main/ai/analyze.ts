@@ -67,6 +67,12 @@ export interface AnalyzeResult {
   proposed_sections?: Array<{ section: string; confidence: 'high' | 'medium' | 'low' }>
   channel?: 'state-procurement' | 'commercial-retail' | 'n/a'
   routing_reasoning?: string
+  // Restructure step 2 (Geo-1): geography axis — two bare-country-name lists (a DIFFERENT
+  // axis from sections). subject_countries = what the story is ABOUT (generate placements);
+  // mentioned_countries = named-but-peripheral (metadata). Persisted to the two
+  // intelligence_sources COLUMNS via saveAiAnalysis, NOT into analysis_json, NOT scalar geography.
+  subject_countries?: string[]
+  mentioned_countries?: string[]
 }
 
 export type AnalyzeResponse =
@@ -301,6 +307,24 @@ CHANNEL: classify the source's acquisition/transfer nature as exactly one of:
   "state-procurement"  (a state acquires/transfers, or a military/government buy),
   "commercial-retail"  (commercial/retail/export/civilian purchase),
   "n/a"                (no acquisition/transfer dimension).
+
+GEOGRAPHY (two separate lists — this is a DIFFERENT axis from sections).
+  subject_countries  — countries the story is genuinely ABOUT: where the event happened, whose
+                       capability/actors/policy is the subject. ONLY these will generate page
+                       placements. Usually 1, sometimes 2.
+  mentioned_countries — countries NAMED but peripheral: a supplier referenced in passing, a
+                       comparison, a country whose official merely commented. Metadata only.
+RULES:
+- Use BARE country names, normalized and in English: "Colombia", "Mexico", "Venezuela", "Iran",
+  "China", "United States". NOT codes, NOT adjectives ("Colombian"→"Colombia"), NOT sub-regions
+  (a department/city/border goes to its COUNTRY here; sub-geography is handled elsewhere).
+- A country belongs in AT MOST ONE list. If it's the subject, it is NOT also "mentioned".
+- Example: a FARC drone attack in Cauca that mentions Iranian-supplied parts →
+  subject_countries: ["Colombia"], mentioned_countries: ["Iran"].
+- Example: Venezuela fields Iranian Mohajer-6 drones → subject_countries: ["Venezuela"],
+  mentioned_countries: ["Iran"]  (Venezuela is the subject; Iran is the supplier mentioned).
+- If genuinely unsure whether a country is subject or mentioned, prefer subject only when the
+  story is substantively about events/actors IN that country; otherwise mentioned.
 ${tagsReuse}Return ONLY JSON with exactly these keys:
 {
   "summary": "<A substantive analytical paragraph (roughly 4-7 sentences) narrating what this source reports and what it means for THIS project. Narrate the situation and its significance. Do NOT re-list every figure — named systems, costs, and actors are catalogued separately in capabilities/key_facts below; reference them in prose but do not duplicate the full list.>",
@@ -312,7 +336,9 @@ ${tagsReuse}Return ONLY JSON with exactly these keys:
   "key_facts": [ { "label": "<clear label>", "value": "<exact value from the source>" } ],
   "proposed_sections": [ { "section": "<one of: systems|vnsa|industry|external|supply|investment|legal|civilian|logistics>", "confidence": "high|medium|low" } ],
   "channel": "state-procurement | commercial-retail | n/a",
-  "routing_reasoning": "<ONE short sentence — why these sections. Do NOT write a paragraph per section.>"
+  "routing_reasoning": "<ONE short sentence — why these sections. Do NOT write a paragraph per section.>",
+  "subject_countries": [ "<bare country name>" ],
+  "mentioned_countries": [ "<bare country name>" ]
 }
 
 Source:
@@ -400,6 +426,28 @@ function normalizeResult(parsed: Record<string, unknown>): AnalyzeResult {
   } else {
     out.routing_reasoning = ''
   }
+  // Geo-1: two bare-country-name lists. Clean strings, de-dupe case-insensitively within each
+  // list, cap at 12, then enforce mutual exclusion (subject wins over mentioned). No canonical
+  // country dictionary in v1 — just trimmed strings. Never throws; absent/invalid → [].
+  const cleanCountryList = (v: unknown): string[] => {
+    if (!Array.isArray(v)) return []
+    const seen = new Set<string>(), out2: string[] = []
+    for (const raw of v) {
+      const s = String(raw ?? '').trim().slice(0, 60)
+      if (!s) continue
+      const key = s.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key); out2.push(s)
+      if (out2.length >= 12) break
+    }
+    return out2
+  }
+  const subj = cleanCountryList(parsed.subject_countries)
+  const subjKeys = new Set(subj.map(s => s.toLowerCase()))
+  // Mutual exclusion: a country in subject_countries is removed from mentioned_countries.
+  const mentioned = cleanCountryList(parsed.mentioned_countries).filter(m => !subjKeys.has(m.toLowerCase()))
+  out.subject_countries = subj
+  out.mentioned_countries = mentioned
   return out
 }
 
