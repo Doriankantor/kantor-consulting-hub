@@ -331,6 +331,7 @@ const api = {
     revertToUnreviewed:   (id: string) => ipcRenderer.invoke('intelligence:revertToUnreviewed', id),
     updateConfidence:     (id: string, confidence: string)   => ipcRenderer.invoke('intelligence:updateConfidence', id, confidence),
     updateGeography:      (id: string, geography: string)    => ipcRenderer.invoke('intelligence:updateGeography', id, geography),
+    updateCountries:      (id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>) => ipcRenderer.invoke('intelligence:updateCountries', id, subject, mentioned, subGeo),
     setProject:           (id: string, boardId: string | null) => ipcRenderer.invoke('intelligence:setProject', id, boardId),
     routeToProject:       (sourceId: string, boardId: string) => ipcRenderer.invoke('intelligence:routeToProject', sourceId, boardId),
     updateNotes:          (id: string, notesHtml: string)    => ipcRenderer.invoke('intelligence:updateNotes', id, notesHtml),

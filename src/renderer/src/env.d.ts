@@ -453,6 +453,9 @@ interface IntelligenceSource {
   region: string | null
   geography: string | null
   geography_confirmed: number          // 0 = AI proposal, 1 = human-confirmed
+  subject_countries?: string | null    // Geo-1: JSON string[] — countries the story is ABOUT
+  mentioned_countries?: string | null  // Geo-1: JSON string[] — named-but-peripheral (metadata)
+  sub_geographies?: string | null      // Geo-2: JSON object {country: string[]} — researcher-entered
   gate_processed: number               // 0 = not yet gated, 1 = gated
   gate_reasoning: string | null
   disposition_tags: string | null      // JSON array (legacy project link — unreliable)
@@ -943,6 +946,7 @@ interface Window {
       revertToUnreviewed:   (id: string) => Promise<{ ok: boolean; error?: string }>
       updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean }>
       updateGeography:      (id: string, geography: string)    => Promise<{ ok: boolean }>
+      updateCountries:      (id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>) => Promise<{ ok: boolean; error?: string }>
       setProject:           (id: string, boardId: string | null) => Promise<{ ok: boolean }>   // 3a: board-id project association
       routeToProject:       (sourceId: string, boardId: string) => Promise<{ ok: boolean; pageName?: string; error?: string }>   // 3d: Send to New sources
       getKnownTags:         (type: string, boardId: string)              => Promise<string[]>

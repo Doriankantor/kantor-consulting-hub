@@ -38,8 +38,8 @@ import { normalizeTag } from './tags'
 const OFFLINE = { ok: false as const, error: 'Unavailable while offline' }
 const nowIso = () => new Date().toISOString()
 
-// The 50 local columns, in schema order — the mirror whitelist. A cloud row is a
-// superset-safe match (cloud table is exactly these 50), so every cloud row maps
+// The 51 local columns, in schema order — the mirror whitelist. A cloud row is a
+// superset-safe match (cloud table is exactly these 51), so every cloud row maps
 // cleanly; whitelisting guards against an unexpected column breaking the insert.
 const INTEL_COLS = [
   'id','type','title','content','url','source_name','published_at','added_at','added_by_id',
@@ -53,6 +53,9 @@ const INTEL_COLS = [
   // Whitelisting them here is MANDATORY — resyncRow filters through INTEL_COLS, so without this
   // the two columns are silently dropped from the local mirror.
   'subject_countries','mentioned_countries',
+  // Restructure step 2 (Geo-2): sub-geography keyed by country (TEXT JSON-string object). Same
+  // mandatory-whitelist rule — omit it and resyncRow silently drops it from the mirror.
+  'sub_geographies',
 ] as const
 
 function rowForMirror(src: Record<string, unknown>): Record<string, unknown> {
@@ -683,6 +686,28 @@ export async function updateGeography(id: string, geography: string): Promise<{ 
   const { error } = await cloud.from('intelligence_sources')
     .update({ geography: geo || null, geography_confirmed: 1 }).eq('id', id)
   if (error) return { ok: false, error: `updateGeography failed: ${error.message}` }
+  await resyncRow(id)
+  return { ok: true }
+}
+
+// Geo-2: the POST-HOC researcher editor for the geography-axis lists. Writes all three geo
+// list-columns (JSON-string) in one cloud UPDATE + resync. Separate from the analyze path
+// (saveAiAnalysis also writes subject/mentioned via Geo-1 — both target the same columns, fine).
+// Lists ONLY — never touches scalar geography / geography_confirmed.
+export async function updateCountries(
+  id: string,
+  subject: string[],
+  mentioned: string[],
+  subGeo: Record<string, string[]>,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isOnline()) return OFFLINE
+  const { error } = await cloud.from('intelligence_sources')
+    .update({
+      subject_countries:   JSON.stringify(subject ?? []),
+      mentioned_countries: JSON.stringify(mentioned ?? []),
+      sub_geographies:     JSON.stringify(subGeo ?? {}),
+    }).eq('id', id)
+  if (error) return { ok: false, error: `updateCountries failed: ${error.message}` }
   await resyncRow(id)
   return { ok: true }
 }

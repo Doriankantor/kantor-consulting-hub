@@ -3503,6 +3503,11 @@ function registerIntelligenceHandlers(): void {
   ipcMain.handle('intelligence:updateGeography', (_e, id: string, geography: string) =>
     intelCloud.updateGeography(id, geography))
 
+  // Geo-2: post-hoc researcher edit of the geography-axis lists (subject/mentioned countries +
+  // per-country sub-geography). Lists-only column write; does not touch scalar geography.
+  ipcMain.handle('intelligence:updateCountries', (_e, id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>) =>
+    intelCloud.updateCountries(id, subject, mentioned, subGeo))
+
   // 3a: reliable board-id project association. Sets project_board_id to a board id
   // (e.g. 'board-info-latam'); empty/null clears it. Does NOT touch disposition_tags.
   // No routing here — routing lands in 3c. Pure write → cloud + mirror.

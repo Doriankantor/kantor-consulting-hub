@@ -989,6 +989,11 @@ export function initDatabase(): void {
   // The old scalar geography/location_mentioned stay in place (superseded, not dropped).
   try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN subject_countries TEXT;') } catch {}
   try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN mentioned_countries TEXT;') } catch {}
+  // Restructure step 2 (Geo-2): researcher-entered sub-geography keyed by country, as a
+  // JSON-string object {"Colombia":["Cauca","Arauca"]}. Mirrors additive cloud column
+  // (sql/2026-07-30-geo2-sub-geographies.sql). AI does not populate this in v1; subject_countries/
+  // mentioned_countries stay flat string[] (untouched).
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN sub_geographies TEXT;') } catch {}
   // language: best-guess ISO code inferred from domain/title ('es'|'pt'|'en'). Nullable.
   try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN language TEXT;') } catch {}
 
