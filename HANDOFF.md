@@ -4,7 +4,7 @@ _Last updated: 2026-07-28 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
-**★ NEXT: RESTRUCTURE step 2 — remaining sub-slices. Two done, three ahead.
+**★ NEXT: RESTRUCTURE step 2 — geography axis is the next build. Cull DONE; two axis slices + New Sources ahead.
 ✅ DONE & PUSHED this session (2026-07-30):
   • Tag→section ROUTING CONTRACT frozen (commit b42280a) — RESTRUCTURE_tag-section-priors.md,
     now in-repo. Three-axis discipline: section-prior tags vs geography-axis vs actor-axis;
@@ -19,6 +19,21 @@ _Last updated: 2026-07-28 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
     (solid vs dashed border), legal→"Regulatory" relabel. New files sectionLabels.ts +
     SectionProposalBadge.tsx. projectAbbrev hardcoded "CS" with a TODO for multi-project.
     Renderer-only. Empty-safe for pre-A1 sources.
+  • CULL (commits ca4ce98 cull-1/2 + c7503aa cull-2/2): VNSA-family fold — losers
+    criminal-organizations / grupos-armados / grupo / colombia-grupos-armados ALL → canonical
+    `violent-non-state-actor`; junk tag `inadequate` dropped. Cull-1/2 = TAG_SYNONYMS write-time
+    guard in BOTH normalizeTag (cloud/tags.ts) + normalizeTagClient (TagPicker.tsx), byte-identical,
+    so losers can never be re-entered. Cull-2/2 = one-time data fold via scripts/cull-vnsa-fold.mjs
+    (dry-run/--commit, idempotent, name-guarded deletes) recorded in sql/2026-07-30-cull-vnsa-fold.sql:
+    12 sources repointed (1 de-dupe), 2 inadequate strips, known_tags 18/30/31 deleted (30 was
+    hand-deleted earlier), csa-co-01 geography preserved (Colombia already on the geography field).
+    Verified by INVARIANTS not absolute count (winner landed at 17, not the stale hardcoded 16 —
+    which is exactly why invariant-based verification was the right call).
+  • NOTE: the cull that shipped is NARROWER than the priors-doc §2 originally imagined. The
+    counter-uas→cuas and regulatory-response→regulation merges, the romania/drift folds, and the
+    geography-tag removal were NOT done here — geography-tag and named-org-tag removal are
+    deliberately deferred into their own AXIS slices (below), because those tags can't leave the
+    vocab until their data has a new home.
 
 ⚑ KEY DESIGN SHIFT locked this session (drove the plan change): ROUTING IS NOT TAG-DRIVEN.
   AI reads full text + structured fields (article_type, capabilities, actor_types) and proposes
@@ -31,19 +46,32 @@ _Last updated: 2026-07-28 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
   redundant: AI analyzes once (intel), human confirms once (New Sources) — no repeated AI round.
 
 REMAINING step-2 sub-slices (in order):
-  1. THE CULL (data slice, its own read-only diagnose FIRST — flagged data-deleting):
-     known_tags dedup DELETIONS (counter-uas→cuas, regulatory-response→regulation,
-     criminal-organizations→violent-non-state-actor), thematic_tags backfill of the ~4 drift tags
-     (drone-delivered-ordnance→-explosives, grupo/colombia-grupos-armados→grupos-armados,
-     romania→geo), drop junk tag `inadequate`, and add the synonym map to normalizeTag +
-     normalizeTagClient (write-time fold). Small, self-contained, separately committed.
-  2. NEW SOURCES sectioning: the INTERACTIVE SectionChip (proposed→confirm/trim), the
-     ≥1-section EXIT GATE, per-project, consuming A1's proposed_sections. **The DEFERRED
-     PK-WIDENING BUNDLE RIDES HERE** — this is where placement rows finally get category+geography:
-     info_page_sources PK (article_id,info_page)→(article_id,info_page,category,geography), the
-     onConflict edit at cloud/infoPageSources.ts:71, the local-mirror UNIQUE rebuild, and the five
-     .eq UPDATE/DELETE writer widenings. Plus the pre-existing-row backfill.
-  3. Downstream publication stages (Analysis & design → Publish → update notes → Sources) per
+  1. GEOGRAPHY AXIS (next build — 3 sub-slices, analyze→UI→cull rhythm like A1/A2/cull):
+     DECISION LOCKED: country + optional sub-geo are ONE coherent axis (not country-on-axis /
+     sub-geo-as-tag). AI suggests countries into a LIST, researcher adds/removes/overrides.
+     • Geo-1 (analyze.ts): extract subject_countries (story is ABOUT — these generate placements)
+       + mentioned_countries (named but peripheral — metadata only) into the step-1 columns already
+       added; sub-geo where text is explicit. Mirrors A1's shape.
+     • Geo-2 (card UI): nested-chip display+edit — `⊙ Colombia ▸ Cauca, Arauca ×` (country chip,
+       sub-locations nested INSIDE their parent, never floating), `+ country` to add. AI suggests,
+       researcher disposes. Interactive (unlike A2's read-only badge).
+     • Geo-3 (cull): ONLY AFTER Geo-1/2 ship and geography reliably lands on the axis — remove the
+       14 geography tags from the vocab (same script pattern as the VNSA cull).
+     OPEN Q for the slice: does AI propose SUB-geo or only country? Lean: country confidently,
+     sub-geo researcher-added with AI low-confidence hint only when text is explicit (model reliable
+     on countries, shakier on departments).
+  2. ACTOR AXIS (after geography — same 3-step shape):
+     DECISION LOCKED: named orgs (FARC / ELN / CJNG / Sinaloa / cartels) get their OWN axis
+     (actors_mentioned column) — a WHO, not a WHAT, so NOT thematic tags. `violent-non-state-actor`
+     stays as the one actor-TYPE tag. AI extracts named orgs → researcher overrides → THEN cull the
+     ~9 named-org tags from the vocab (only after the axis holds their data).
+  3. NEW SOURCES sectioning: the INTERACTIVE SectionChip (proposed→confirm/trim), the ≥1-section
+     EXIT GATE, per-project, consuming A1's proposed_sections. **THE DEFERRED PK-WIDENING BUNDLE
+     RIDES HERE** — first write to info_page_sources under the new key: PK (article_id,info_page)→
+     (article_id,info_page,category,geography), the onConflict edit at cloud/infoPageSources.ts:71,
+     the local-mirror UNIQUE rebuild, the five .eq UPDATE/DELETE writer widenings, and the
+     pre-existing-row backfill. Needs its own careful diagnose.
+  4. Downstream publication stages (Analysis & design → Publish → update notes → Sources) per
      PublicationProcess.md — later.
 
 ✅ STEP 1 (additive schema) — done & verified earlier this session (see below).**
