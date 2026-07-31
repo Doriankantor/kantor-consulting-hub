@@ -325,6 +325,12 @@ RULES:
   mentioned_countries: ["Iran"]  (Venezuela is the subject; Iran is the supplier mentioned).
 - If genuinely unsure whether a country is subject or mentioned, prefer subject only when the
   story is substantively about events/actors IN that country; otherwise mentioned.
+
+THEMATIC TAGS (suggested_tags). DO NOT suggest country, region, or place names as thematic tags
+(no "colombia", "brazil", "ukraine", "russia", "latam", "europe", "cauca", etc.). Geography is
+captured separately in subject_countries / mentioned_countries — never as a thematic tag. Thematic
+tags describe WHAT KIND of thing the source is (weaponized-drone, counter-uas, technology-transfer,
+regulation), not WHERE it happened.
 ${tagsReuse}Return ONLY JSON with exactly these keys:
 {
   "summary": "<A substantive analytical paragraph (roughly 4-7 sentences) narrating what this source reports and what it means for THIS project. Narrate the situation and its significance. Do NOT re-list every figure — named systems, costs, and actors are catalogued separately in capabilities/key_facts below; reference them in prose but do not duplicate the full list.>",
