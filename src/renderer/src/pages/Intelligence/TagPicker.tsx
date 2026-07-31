@@ -1,9 +1,20 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 
+// Tag synonym folds — losers collapse to their canonical winner at write time.
+// Keep BYTE-IDENTICAL with normalizeTagClient in TagPicker.tsx (separate bundle, no shared import).
+// Source of truth: RESTRUCTURE_tag-section-priors.md §2.
+export const TAG_SYNONYMS: Record<string, string> = {
+  'criminal-organizations': 'violent-non-state-actor',
+  'grupos-armados': 'violent-non-state-actor',
+  'grupo': 'violent-non-state-actor',
+  'colombia-grupos-armados': 'violent-non-state-actor',
+}
+
 // Mirror the backend tag normalization for live previews (trim, lowercase, spaces→hyphens).
 export function normalizeTagClient(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, '-')
+  const n = name.trim().toLowerCase().replace(/\s+/g, '-')
+  return TAG_SYNONYMS[n] ?? n
 }
 
 export interface TagPickerProps {

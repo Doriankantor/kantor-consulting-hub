@@ -14,10 +14,21 @@ import { resolveActor } from './boards'
 // Scope key is `project_board_id` (a real workspace_boards id). The 5 NULL-scoped
 // disposition rows were intentionally NOT migrated (dead data — no tab reads them).
 
+// Tag synonym folds — losers collapse to their canonical winner at write time.
+// Keep BYTE-IDENTICAL with normalizeTagClient in TagPicker.tsx (separate bundle, no shared import).
+// Source of truth: RESTRUCTURE_tag-section-priors.md §2.
+export const TAG_SYNONYMS: Record<string, string> = {
+  'criminal-organizations': 'violent-non-state-actor',
+  'grupos-armados': 'violent-non-state-actor',
+  'grupo': 'violent-non-state-actor',
+  'colombia-grupos-armados': 'violent-non-state-actor',
+}
+
 // Normalize a free-text tag: trim, lowercase, collapse whitespace → hyphens.
 // This is the SINGLE source of tag normalization (ipc/index.ts imports it too).
 export function normalizeTag(name: string): string {
-  return (name ?? '').trim().toLowerCase().replace(/\s+/g, '-')
+  const n = (name ?? '').trim().toLowerCase().replace(/\s+/g, '-')
+  return TAG_SYNONYMS[n] ?? n
 }
 
 type TagType = 'thematic' | 'disposition'
