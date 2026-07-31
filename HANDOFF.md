@@ -49,19 +49,35 @@ REMAINING step-2 sub-slices (in order):
   1. GEOGRAPHY AXIS (next build — 3 sub-slices, analyze→UI→cull rhythm like A1/A2/cull):
      DECISION LOCKED: country + optional sub-geo are ONE coherent axis (not country-on-axis /
      sub-geo-as-tag). AI suggests countries into a LIST, researcher adds/removes/overrides.
-     • ✅ Geo-1 DONE (commit 099530c): analyze.ts extracts subject_countries + mentioned_countries
-       (bare country names, subject=generates-placements / mentioned=metadata, mutual-exclusion
-       enforced) into the step-1 columns via widened saveAiAnalysis. INTEL_COLS extended (silent-drop
-       trap fixed). No scalar-geography sync (no-sync decision). Verified on Caño Limón source.
-     • ✅ Geo-2 DONE (Part A b30efd8 schema+updateCountries writer; Part B 54d0c3d UI): additive
-       sub_geographies column ({country:[subs]} JSON), updateCountries writer (lists-only, never
-       touches scalar), and the nested ⊙ Colombia ▸ Cauca chip UI — subject=filled emerald,
-       mentioned=ghost, sub-geo nested-in-subject, inline-add idiom, scalar as empty-list fallback,
-       session AI-badge cleared on first edit. Scalar-edit path RETIRED (geography editing = lists only).
-       Verified: edit + persist-across-reload confirmed end-to-end.
-     • Geo-3 (NEXT): the CULL — remove the 14 geography tags from the vocab now that geography lives
-       on the axis. Same script pattern as the VNSA cull (dry-run/--commit, invariant-verified,
-       dated sql/ record). Data-deleting → its own read-only diagnose FIRST.
+     • ✅ Geo-1 DONE (099530c): analyze.ts extracts subject_countries + mentioned_countries (bare country
+       names, subject=generates-placements / mentioned=metadata, mutual-exclusion) into step-1 columns via
+       widened saveAiAnalysis. INTEL_COLS extended. No scalar sync. Verified on Caño Limón.
+     • ✅ Geo-2 DONE (Part A b30efd8: sub_geographies column + updateCountries writer; Part B 54d0c3d: UI):
+       nested ⊙ Colombia ▸ Cauca chips — subject=filled emerald, mentioned=ghost, sub-geo nested-in-subject,
+       inline-add idiom, scalar as empty-list fallback, session AI-badge cleared on first edit. Scalar-edit
+       path RETIRED (geography editing = lists only). Verified edit+persist-across-reload.
+     • Geo-3 IN PROGRESS — remove geography TAGS from vocab now geography lives on the axis. NOT a fold
+       (no winner) — pure deletions, GATED on axis-backfill so no source loses its only geo signal.
+       STATUS:
+         - Step 1 (0734c50): analyze.ts prompt guard — AI must NOT suggest country/place names as thematic
+           tags. COMMITTED. Makes the strip durable (no synonym-map guard exists for geography, unlike VNSA).
+         - Step 2 (BACKFILL 4 at-risk K>0 sources — re-analyze so country lands on axis BEFORE strip) —
+           NOT DONE. Probe found all still empty subject/mentioned lists. TWO SURPRISES: (a) tags MISMATCH
+           scalar geography — csa-rg-02 is a MEXICO cartel story but carries colombia/venezuela/ukraine tags;
+           5b1358a1 carries russia but scalar=Bolivia — tags may be WRONG, making strip doubly-right;
+           re-analyze assigns geography from TEXT. (b) 75706600-8b14-4e57-b08f-49879e2dc391 NOT in local
+           mirror (cloud-only) — check cloud-side. d1ef73a3 has NO geography anywhere (nothing to preserve).
+           AT-RISK IDS: csa-rg-02, d1ef73a3-1358-4bba-9cef-c0b861ac3196,
+           75706600-8b14-4e57-b08f-49879e2dc391, 5b1358a1-9a45-406e-a223-d8fd9859cbd9.
+         - Step 3 (strip+delete script — dry-run/--commit, invariant-verified, dated sql/) — NOT WRITTEN,
+           blocked on Step 2.
+       DELETE targets (country-level, when unblocked): known_tags ids 3,5,14,55,25,53,67,46,50,37
+       (china id 67 = vocab-only, 0 carriers). DEFER sub-geo tags cauca/catatumbo/rio-de-janeiro (no
+       sub_geographies axis home yet). Ukraine/Russia NOT lost — they move to mentioned_countries
+       (extra-regional influence), captured BETTER than the flat tag.
+       RESUME: re-analyze the 4 (verify Ukraine/Russia → mentioned, Mexico/Bolivia → subject) → re-probe →
+       write Step 3. WATCH: the csa-rg-02 tag/geo mismatch may indicate geography tags are WRONG (not just
+       redundant) on more sources — glance whether it's a pattern; if so the axis migration is also a correction.
      OPEN Q for the slice: does AI propose SUB-geo or only country? Lean: country confidently,
      sub-geo researcher-added with AI low-confidence hint only when text is explicit (model reliable
      on countries, shakier on departments).
