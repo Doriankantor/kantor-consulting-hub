@@ -1,0 +1,57 @@
+-- Geo-3 Step 2 — axis backfill of the 3 at-risk sources (2026-07-30).
+-- RECORD of a data write APPLIED VIA scripts/geo3-backfill.mjs, not the Supabase SQL editor.
+--
+-- Why a script and not plain SQL: subject_countries / mentioned_countries are JSON-STRING array
+-- columns (same convention as categories_json / Geo-1), written over REST. The script is idempotent
+-- (skips any row whose subject_countries is already non-empty), dry-run by default (--commit to write),
+-- and fail-stops on any error. Scope: project_board_id = 'board-info-latam' (Contested Skies).
+--
+-- PURPOSE: geography now lives on the axis (subject_countries + scalar geography). Before Geo-3 Step 3
+-- strips the geography TAGS from thematic_tags, these sources — whose axis lists were still empty —
+-- must have their country lifted onto the axis, or the strip would erase their only geo signal
+-- (the csa-co-01 lesson). Values are DERIVED (scalar + existing tags + title/text) — NO AI call.
+
+-- ── The 3 sources backfilled (axis columns only; scalar geography + thematic_tags untouched) ──
+--
+-- csa-rg-02  "Cartels Deploy FPV Drones and Anti-UAS Systems…"
+--   subject_countries   = ["Mexico"]                              -- scalar geography was "Mexico"; the story IS about Mexico
+--   mentioned_countries = ["Colombia","Venezuela","Ukraine"]      -- real text mentions (regional comparisons / Ukraine-war FPV tactics)
+--   Derivation: scalar=Mexico + the colombia/venezuela/ukraine tags are legitimate peripheral text
+--   mentions (NOT wrong tags) — they move to mentioned_countries, captured better than as flat tags.
+--
+-- d1ef73a3-1358-4bba-9cef-c0b861ac3196  (drone attack, Tibú / Norte de Santander)
+--   subject_countries   = ["Colombia"]                            -- tag-derived: Tibú & Norte de Santander are Colombian
+--   mentioned_countries = []
+--   Derivation: scalar geography was NULL, so the `colombia` tag was the ONLY geo signal — this is the
+--   true K-risk row; lifting Colombia onto the axis preserves it before the tag strip.
+--
+-- 75706600-8b14-4e57-b08f-49879e2dc391  "Russian Drone Crashes In NATO Member Romania, Injuring 2"
+--   subject_countries   = ["Romania"]                             -- scalar="Romania/Ukraine border region"; title/story centre = Romania
+--   mentioned_countries = ["Ukraine","Russia"]                    -- attack target (Ukraine) + drone origin (Russia)
+--   Derivation: a marginal-relevance European story on the LATAM board; backfilled per decision so a
+--   later strip loses nothing. NOTE: content is empty (text only in snippet) → in-app re-analyze fails,
+--   which is why the pure-data script (not re-analyze) is the correct tool here.
+--
+-- Illustrative per-row effect (actually applied as REST JSON updates by the script):
+--   UPDATE public.intelligence_sources SET subject_countries = '["Mexico"]',
+--          mentioned_countries = '["Colombia","Venezuela","Ukraine"]' WHERE id = 'csa-rg-02';
+--   UPDATE public.intelligence_sources SET subject_countries = '["Colombia"]',
+--          mentioned_countries = '[]' WHERE id = 'd1ef73a3-1358-4bba-9cef-c0b861ac3196';
+--   UPDATE public.intelligence_sources SET subject_countries = '["Romania"]',
+--          mentioned_countries = '["Ukraine","Russia"]' WHERE id = '75706600-8b14-4e57-b08f-49879e2dc391';
+
+-- ── 5b1358a1-9a45-406e-a223-d8fd9859cbd9 — ALREADY DONE, not written ──
+-- Already carries subject_countries=["Bolivia"], mentioned_countries=["Russia"], thematic_tags=[].
+-- The script asserts this (sanity check) and skips it.
+
+-- ── NOT touched by this step ──
+-- thematic_tags are UNCHANGED — the geography tags (colombia, ukraine, venezuela, russia, europe,
+-- romania, etc.) MUST still be present here; removing them from sources is Geo-3 Step 3, a separate
+-- script. The known_tags vocab rows for the country tags (+cauca) were ALREADY hand-deleted earlier,
+-- so Step 3 is a SOURCE-STRIP ONLY — no known_tags deletes remain (catatumbo/rio-de-janeiro vocab
+-- rows were preserved; the sub-geo tags are deferred until sub_geographies has a home).
+
+-- ── Expected post-state (verified by the script's invariants) ──
+--   inv1: all 4 (csa-rg-02, d1ef73a3, 75706600, 5b1358a1) have non-empty subject_countries.
+--   inv2: subjects = Mexico / Colombia / Romania / Bolivia (exact).
+--   inv3: no thematic_tags modified (geo tags still present for Step 3).
