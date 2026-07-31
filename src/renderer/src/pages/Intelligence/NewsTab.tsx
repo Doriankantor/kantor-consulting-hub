@@ -7,6 +7,7 @@ import RichTextEditor from '../../components/RichTextEditor'
 import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
 import SectionProposalBadge from './SectionProposalBadge'
+import GeographyChips from './GeographyChips'
 import { actorTypeClass } from './actorTypeClass'
 import { resolveFacts, resolveCaps, type ResolvedFact, type ResolvedCap } from './resolveAnalysis'
 import { parseConfig } from './frameworkConfig'
@@ -56,6 +57,16 @@ function relevanceBadge(score: number | null): { label: string; cls: string } {
 
 function readTags(raw: string | null): string[] {
   try { const a = JSON.parse(raw || '[]'); return Array.isArray(a) ? a : [] } catch { return [] }
+}
+// Geo-2: parse a JSON-string object {country: string[]} defensively → {} on null/invalid.
+function safeParseObject(raw: string | null | undefined): Record<string, string[]> {
+  try {
+    const o = JSON.parse(raw || '{}')
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return {}
+    const out: Record<string, string[]> = {}
+    for (const [k, v] of Object.entries(o)) if (Array.isArray(v)) out[k] = v.map(String)
+    return out
+  } catch { return {} }
 }
 
 // News human layer helpers.
@@ -128,7 +139,9 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     try { return localStorage.getItem('intel-news-sort') === 'date' ? 'date' : 'relevance' } catch { return 'relevance' }
   })
   const [search, setSearch] = useState('')
-  const [geoEdit, setGeoEdit] = useState<{ id: string; value: string } | null>(null)
+  // Geo-2: session-scoped set of ids whose country lists the researcher has edited this session —
+  // flips the AI badge off after the first edit (there's no per-list confirmed column in v1).
+  const [countriesTouched, setCountriesTouched] = useState<Set<string>>(new Set())
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
   const [fadingIds, setFadingIds] = useState<Set<string>>(new Set())
   // Phase 1: project list sourced from info-page boards (replaces disposition tag registry).
@@ -883,14 +896,18 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     closeDupModal()
   }
 
-  // Confirm / correct the gate's proposed geography.
-  async function handleGeography(id: string, geography: string) {
-    const value = geography.trim()
-    await window.api.intelligence.updateGeography(id, value)
-    setSources(prev => prev.map(s =>
-      s.id === id ? { ...s, geography: value, geography_confirmed: 1 } : s
-    ))
-    setGeoEdit(null)
+  // Geo-2: researcher edit of the geography-axis lists (subject/mentioned countries + per-country
+  // sub-geo). Lists-only column write via updateCountries — scalar geography stays gate-set.
+  // Optimistic: store the three columns as JSON strings on the row (matching the mirror format).
+  async function handleCountries(id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>) {
+    await window.api.intelligence.updateCountries(id, subject, mentioned, subGeo)
+    setSources(prev => prev.map(s => s.id === id ? {
+      ...s,
+      subject_countries: JSON.stringify(subject),
+      mentioned_countries: JSON.stringify(mentioned),
+      sub_geographies: JSON.stringify(subGeo),
+    } : s))
+    setCountriesTouched(prev => new Set(prev).add(id))   // first edit clears the AI badge
   }
 
   // Write a tag set for one type (thematic) immediately — no Approve needed.
@@ -1304,6 +1321,12 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           const hasArticleText = notesText(contentDraft).length > 40   // substantial pasted text (not ~52-char snippet leftovers)
           const srcAnalysis = parseAnalysis(source.analysis_json)
           const aiBlock = srcAnalysis.ai as Record<string, any> | undefined
+          // Geo-2: the geography-axis lists (Part A columns). aiUnconfirmed = has lists but the
+          // researcher hasn't edited them this session (no per-list confirmed column in v1).
+          const subjectCountries = readTags(source.subject_countries ?? null)
+          const mentionedCountries = readTags(source.mentioned_countries ?? null)
+          const subGeographies = safeParseObject(source.sub_geographies)
+          const geoAiUnconfirmed = (subjectCountries.length > 0 || mentionedCountries.length > 0) && !countriesTouched.has(source.id)
           // A2: AI section-routing proposal (analysis_json.routing.proposed_sections, from A1).
           // Read-only display; missing on sources analyzed before A1 → empty → badge renders nothing.
           const routing = (srcAnalysis.routing ?? {}) as Record<string, any>
@@ -1437,48 +1460,16 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                     {/* Date */}
                     <span className="text-xs text-gray-400 dark:text-white/30">{formatDate(source.published_at)}</span>
 
-                    {/* Geography editor */}
-                    {geoEdit?.id === source.id ? (
-                      <span className="inline-flex items-center gap-1">
-                        <input
-                          autoFocus
-                          value={geoEdit.value}
-                          onChange={e => setGeoEdit({ id: source.id, value: e.target.value })}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') handleGeography(source.id, geoEdit.value)
-                            if (e.key === 'Escape') setGeoEdit(null)
-                          }}
-                          placeholder="Geography…"
-                          className="px-1.5 py-0.5 rounded border border-gray-200 dark:border-white/[0.15] bg-white dark:bg-transparent text-[11px] text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 w-32"
-                        />
-                        <button onClick={() => handleGeography(source.id, geoEdit.value)} className="p-0.5 rounded text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20" title="Save geography">
-                          <svg width="11" height="11" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        </button>
-                        <button onClick={() => setGeoEdit(null)} className="p-0.5 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-white/[0.06]" title="Cancel">
-                          <svg width="11" height="11" viewBox="0 0 10 10" fill="none"><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                        </button>
-                      </span>
-                    ) : source.geography ? (
-                      <span
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-500/20"
-                        onClick={() => setGeoEdit({ id: source.id, value: source.geography || '' })}
-                        title={source.geography_confirmed ? 'Confirmed geography — click to edit' : 'AI-proposed geography — click to confirm or edit'}
-                      >
-                        <svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M5 .8C3 .8 1.6 2.2 1.6 4.1c0 2.3 3.4 5.1 3.4 5.1s3.4-2.8 3.4-5.1C8.4 2.2 7 .8 5 .8z" stroke="currentColor" strokeWidth="1" /><circle cx="5" cy="4" r="1.1" fill="currentColor"/></svg>
-                        {source.geography}
-                        {!source.geography_confirmed && (
-                          <span className="ml-0.5 px-1 rounded bg-amber-200/70 dark:bg-amber-500/30 text-amber-800 dark:text-amber-200 text-[8px] font-bold uppercase tracking-wide" title="AI proposal — not yet confirmed">AI</span>
-                        )}
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => setGeoEdit({ id: source.id, value: '' })}
-                        className="px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-400 dark:text-white/30 border border-dashed border-gray-300 dark:border-white/[0.15] hover:text-gray-600 dark:hover:text-white/60"
-                        title="Add geography"
-                      >
-                        + geography
-                      </button>
-                    )}
+                    {/* Geography — Geo-2 nested country + sub-geo chips (replaces the scalar editor).
+                        Scalar source.geography survives as the empty-list read-through fallback. */}
+                    <GeographyChips
+                      subject={subjectCountries}
+                      mentioned={mentionedCountries}
+                      subGeo={subGeographies}
+                      scalarFallback={source.geography}
+                      aiUnconfirmed={geoAiUnconfirmed}
+                      onChange={(subject, mentioned, subGeo) => handleCountries(source.id, subject, mentioned, subGeo)}
+                    />
                   </div>
 
                   {/* Title */}
