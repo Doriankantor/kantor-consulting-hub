@@ -994,6 +994,12 @@ export function initDatabase(): void {
   // (sql/2026-07-30-geo2-sub-geographies.sql). AI does not populate this in v1; subject_countries/
   // mentioned_countries stay flat string[] (untouched).
   try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN sub_geographies TEXT;') } catch {}
+  // Restructure step 2 (Actor-1): actor axis — the named actors a document ENGAGES, as a
+  // JSON-string array of {name,type} objects (type ∈ VNSA|state|extra-regional|commercial|unknown).
+  // AI-extracted (consolidates capabilities[].actor + prose), researcher-editable. Mirrors the
+  // additive cloud column (sql/2026-07-31-actor-1-actors-column.sql). DISTINCT from the social
+  // actors_mentioned free-text column, which is untouched.
+  try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN actors TEXT;') } catch {}
   // language: best-guess ISO code inferred from domain/title ('es'|'pt'|'en'). Nullable.
   try { db.exec('ALTER TABLE intelligence_sources ADD COLUMN language TEXT;') } catch {}
 

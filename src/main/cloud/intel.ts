@@ -56,6 +56,9 @@ const INTEL_COLS = [
   // Restructure step 2 (Geo-2): sub-geography keyed by country (TEXT JSON-string object). Same
   // mandatory-whitelist rule — omit it and resyncRow silently drops it from the mirror.
   'sub_geographies',
+  // Restructure step 2 (Actor-1): actor axis — TEXT JSON-string array of {name,type}. Same
+  // mandatory-whitelist rule (silent-drop trap). NOT the social actors_mentioned column above.
+  'actors',
 ] as const
 
 function rowForMirror(src: Record<string, unknown>): Record<string, unknown> {
@@ -538,12 +541,15 @@ export async function saveAiAnalysis(id: string, ai: {
   // intelligence_sources COLUMNS (JSON-string), not into analysis_json. Same single write.
   subject_countries?: string[]
   mentioned_countries?: string[]
+  // Restructure Actor-1: actor axis — typed named actors written to the `actors` COLUMN
+  // (JSON-string), not into analysis_json. Same single write. NOT the social actors_mentioned column.
+  actors?: { name: string; type: string }[]
 }): Promise<{ ok: boolean; ai?: unknown; routing?: unknown; error?: string }> {
   if (!isOnline()) return OFFLINE
   const r = await readCloudAnalysis(id)
   if (!r.ok) return { ok: false, error: r.error }
   // Peel the routing + geography fields off so .ai keeps its existing shape; the rest is the .ai block.
-  const { proposed_sections, channel, routing_reasoning, subject_countries, mentioned_countries, ...aiRest } = ai
+  const { proposed_sections, channel, routing_reasoning, subject_countries, mentioned_countries, actors, ...aiRest } = ai
   const block = { ...aiRest, analyzed_at: nowIso() }
   r.analysis!.ai = block
   // Only write the routing sibling when the model actually proposed something —
@@ -571,6 +577,9 @@ export async function saveAiAnalysis(id: string, ai: {
   const patch: Record<string, unknown> = { analysis_json: JSON.stringify(r.analysis) }
   if (Array.isArray(subject_countries)) patch.subject_countries = JSON.stringify(subject_countries)
   if (Array.isArray(mentioned_countries)) patch.mentioned_countries = JSON.stringify(mentioned_countries)
+  // Actor-1: write the typed-actor list to the `actors` COLUMN in the same update. Only when the
+  // caller supplied a list (absent leaves the stored column untouched). JSON-string convention.
+  if (Array.isArray(actors)) patch.actors = JSON.stringify(actors)
   const { error } = await cloud.from('intelligence_sources').update(patch).eq('id', id)
   if (error) return { ok: false, error: `saveAiAnalysis failed: ${error.message}` }
   await resyncRow(id)

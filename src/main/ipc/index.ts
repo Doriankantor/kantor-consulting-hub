@@ -3584,6 +3584,8 @@ function registerIntelligenceHandlers(): void {
     // Restructure Geo-1: geography lists — peeled into the two intelligence_sources columns.
     subject_countries?: string[]
     mentioned_countries?: string[]
+    // Restructure Actor-1: typed actor list — peeled into the intelligence_sources `actors` column.
+    actors?: { name: string; type: string }[]
   }) => intelCloud.saveAiAnalysis(id, ai))
 
   // 2b (human-first): persist the EDITABLE reconciled read (HTML) the researcher

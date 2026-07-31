@@ -73,6 +73,11 @@ export interface AnalyzeResult {
   // intelligence_sources COLUMNS via saveAiAnalysis, NOT into analysis_json, NOT scalar geography.
   subject_countries?: string[]
   mentioned_countries?: string[]
+  // Restructure step 2 (Actor-1): actor axis — the named actors this document ENGAGES, each
+  // typed. A DIFFERENT axis from geography/sections. Consolidated from capabilities[].actor +
+  // prose. Persisted to the intelligence_sources `actors` COLUMN via saveAiAnalysis (JSON-string),
+  // NOT into analysis_json, and NOT into the social actors_mentioned column.
+  actors?: { name: string; type: string }[]
 }
 
 export type AnalyzeResponse =
@@ -326,6 +331,24 @@ RULES:
 - If genuinely unsure whether a country is subject or mentioned, prefer subject only when the
   story is substantively about events/actors IN that country; otherwise mentioned.
 
+ACTORS. List every named actor the document ENGAGES — not only incident perpetrators. This axis is
+"which actors is this document about / dealing with," which matters as much for ANALYTICAL pieces as
+for incidents.
+  - INCIDENT article: the perpetrator, the target, and any responder named (all are engaged actors).
+  - ANALYTICAL / think-tank article (e.g. on VNSAs challenging state authority): list BOTH the VNSAs
+    discussed AND the state actors responding/countering/investing — even with no single "perpetrator."
+Consolidate from BOTH the structured capabilities AND the prose (summary/key_facts) — an actor named
+only in prose (e.g. a responding unit, a state agency, a group referenced in analysis) still counts.
+Each entry = { "name": "<canonical short name>", "type": "<one of: VNSA | state | extra-regional | commercial>" }:
+  - VNSA — armed groups, cartels, guerrillas, criminal orgs (FARC/EMC, ELN, CJNG, Comando Vermelho…).
+  - state — governments, militaries, ministries, state agencies (Colombian state, Venezuelan Air Force,
+    a Ministry of Security…). Name the specific state actor where the text does.
+  - extra-regional — foreign states/backers/suppliers outside LATAM (Iran, China, Russia, the US as
+    an external actor).
+  - commercial — companies, manufacturers, vendors (a drone maker, a defense contractor).
+Keep DISTINCT groups distinct (don't merge ELN and FARC; don't collapse different cartels). Use a
+canonical short name. If the same actor appears twice, list once.
+
 THEMATIC TAGS (suggested_tags). DO NOT suggest country, region, or place names as thematic tags
 (no "colombia", "brazil", "ukraine", "russia", "latam", "europe", "cauca", etc.). Geography is
 captured separately in subject_countries / mentioned_countries — never as a thematic tag. Thematic
@@ -344,7 +367,8 @@ ${tagsReuse}Return ONLY JSON with exactly these keys:
   "channel": "state-procurement | commercial-retail | n/a",
   "routing_reasoning": "<ONE short sentence — why these sections. Do NOT write a paragraph per section.>",
   "subject_countries": [ "<bare country name>" ],
-  "mentioned_countries": [ "<bare country name>" ]
+  "mentioned_countries": [ "<bare country name>" ],
+  "actors": [ { "name": "<actor>", "type": "VNSA | state | extra-regional | commercial" } ]
 }
 
 Source:
@@ -454,6 +478,26 @@ function normalizeResult(parsed: Record<string, unknown>): AnalyzeResult {
   const mentioned = cleanCountryList(parsed.mentioned_countries).filter(m => !subjKeys.has(m.toLowerCase()))
   out.subject_countries = subj
   out.mentioned_countries = mentioned
+  // Actor-1: named actors, each typed. Fail-safe never-throw. Each item must be an object with a
+  // non-empty string name (trim). type is lowercase-compared to the four valid values; a match keeps
+  // the canonical cased value, anything missing/invalid becomes 'unknown' (we KEEP the actor — a named
+  // actor with a bad type is recoverable; a dropped one is invisible). De-dupe by name (case-insensitive),
+  // cap at 20. Absent/invalid → [].
+  const VALID_ACTOR_TYPE = new Map<string, string>([
+    ['vnsa', 'VNSA'], ['state', 'state'], ['extra-regional', 'extra-regional'], ['commercial', 'commercial'],
+  ])
+  if (Array.isArray(parsed.actors)) {
+    const seenActors = new Set<string>()
+    out.actors = (parsed.actors as unknown[])
+      .filter((a): a is Record<string, unknown> => !!a && typeof a === 'object')
+      .map(a => ({ name: String((a as any).name ?? '').trim().slice(0, 120), type: String((a as any).type ?? '').trim().toLowerCase() }))
+      .filter(a => a.name.length > 0)
+      .map(a => ({ name: a.name, type: VALID_ACTOR_TYPE.get(a.type) ?? 'unknown' }))
+      .filter(a => { const k = a.name.toLowerCase(); if (seenActors.has(k)) return false; seenActors.add(k); return true })
+      .slice(0, 20)
+  } else {
+    out.actors = []
+  }
   return out
 }
 
