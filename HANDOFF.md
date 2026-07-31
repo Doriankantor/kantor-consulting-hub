@@ -49,14 +49,19 @@ REMAINING step-2 sub-slices (in order):
   1. GEOGRAPHY AXIS (next build — 3 sub-slices, analyze→UI→cull rhythm like A1/A2/cull):
      DECISION LOCKED: country + optional sub-geo are ONE coherent axis (not country-on-axis /
      sub-geo-as-tag). AI suggests countries into a LIST, researcher adds/removes/overrides.
-     • Geo-1 (analyze.ts): extract subject_countries (story is ABOUT — these generate placements)
-       + mentioned_countries (named but peripheral — metadata only) into the step-1 columns already
-       added; sub-geo where text is explicit. Mirrors A1's shape.
-     • Geo-2 (card UI): nested-chip display+edit — `⊙ Colombia ▸ Cauca, Arauca ×` (country chip,
-       sub-locations nested INSIDE their parent, never floating), `+ country` to add. AI suggests,
-       researcher disposes. Interactive (unlike A2's read-only badge).
-     • Geo-3 (cull): ONLY AFTER Geo-1/2 ship and geography reliably lands on the axis — remove the
-       14 geography tags from the vocab (same script pattern as the VNSA cull).
+     • ✅ Geo-1 DONE (commit 099530c): analyze.ts extracts subject_countries + mentioned_countries
+       (bare country names, subject=generates-placements / mentioned=metadata, mutual-exclusion
+       enforced) into the step-1 columns via widened saveAiAnalysis. INTEL_COLS extended (silent-drop
+       trap fixed). No scalar-geography sync (no-sync decision). Verified on Caño Limón source.
+     • ✅ Geo-2 DONE (Part A b30efd8 schema+updateCountries writer; Part B 54d0c3d UI): additive
+       sub_geographies column ({country:[subs]} JSON), updateCountries writer (lists-only, never
+       touches scalar), and the nested ⊙ Colombia ▸ Cauca chip UI — subject=filled emerald,
+       mentioned=ghost, sub-geo nested-in-subject, inline-add idiom, scalar as empty-list fallback,
+       session AI-badge cleared on first edit. Scalar-edit path RETIRED (geography editing = lists only).
+       Verified: edit + persist-across-reload confirmed end-to-end.
+     • Geo-3 (NEXT): the CULL — remove the 14 geography tags from the vocab now that geography lives
+       on the axis. Same script pattern as the VNSA cull (dry-run/--commit, invariant-verified,
+       dated sql/ record). Data-deleting → its own read-only diagnose FIRST.
      OPEN Q for the slice: does AI propose SUB-geo or only country? Lean: country confidently,
      sub-geo researcher-added with AI low-confidence hint only when text is explicit (model reliable
      on countries, shakier on departments).
