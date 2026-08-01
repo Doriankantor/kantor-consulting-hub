@@ -948,6 +948,7 @@ interface Window {
       updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean }>
       updateGeography:      (id: string, geography: string)    => Promise<{ ok: boolean }>
       updateCountries:      (id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>) => Promise<{ ok: boolean; error?: string }>
+      updateActors:         (id: string, actors: { name: string; type: string }[]) => Promise<{ ok: boolean; error?: string }>
       setProject:           (id: string, boardId: string | null) => Promise<{ ok: boolean }>   // 3a: board-id project association
       routeToProject:       (sourceId: string, boardId: string) => Promise<{ ok: boolean; pageName?: string; error?: string }>   // 3d: Send to New sources
       getKnownTags:         (type: string, boardId: string)              => Promise<string[]>

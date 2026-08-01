@@ -3508,6 +3508,9 @@ function registerIntelligenceHandlers(): void {
   ipcMain.handle('intelligence:updateCountries', (_e, id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>) =>
     intelCloud.updateCountries(id, subject, mentioned, subGeo))
 
+  ipcMain.handle('intelligence:updateActors', (_e, id: string, actors: { name: string; type: string }[]) =>
+    intelCloud.updateActors(id, actors))
+
   // 3a: reliable board-id project association. Sets project_board_id to a board id
   // (e.g. 'board-info-latam'); empty/null clears it. Does NOT touch disposition_tags.
   // No routing here — routing lands in 3c. Pure write → cloud + mirror.

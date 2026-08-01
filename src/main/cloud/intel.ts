@@ -721,6 +721,22 @@ export async function updateCountries(
   return { ok: true }
 }
 
+// Actor-2: the POST-HOC researcher editor for the actor axis. Writes the typed-actor list to the
+// `actors` COLUMN (JSON-string) in one cloud UPDATE + resync. Same column the analyze path
+// (saveAiAnalysis, Actor-1) writes — both target `actors`, fine. NOT the social actors_mentioned
+// column (that's saveSocialPost). List of {name,type} only.
+export async function updateActors(
+  id: string,
+  actors: { name: string; type: string }[],
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isOnline()) return OFFLINE
+  const { error } = await cloud.from('intelligence_sources')
+    .update({ actors: JSON.stringify(actors ?? []) }).eq('id', id)
+  if (error) return { ok: false, error: `updateActors failed: ${error.message}` }
+  await resyncRow(id)
+  return { ok: true }
+}
+
 export async function setProject(id: string, boardId: string | null): Promise<{ ok: boolean; error?: string }> {
   if (!isOnline()) return OFFLINE
   const bid = (boardId ?? '').trim()

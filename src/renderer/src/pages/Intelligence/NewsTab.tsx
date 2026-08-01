@@ -8,6 +8,7 @@ import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
 import SectionProposalBadge from './SectionProposalBadge'
 import GeographyChips from './GeographyChips'
+import ActorChips from './ActorChips'
 import { actorTypeClass } from './actorTypeClass'
 import { resolveFacts, resolveCaps, type ResolvedFact, type ResolvedCap } from './resolveAnalysis'
 import { parseConfig } from './frameworkConfig'
@@ -67,6 +68,23 @@ function safeParseObject(raw: string | null | undefined): Record<string, string[
     for (const [k, v] of Object.entries(o)) if (Array.isArray(v)) out[k] = v.map(String)
     return out
   } catch { return {} }
+}
+// Actor-2: parse the `actors` JSON-string column → [{name,type}] defensively. Keeps only objects
+// with a non-empty string name (trimmed); coerces type to string, default 'unknown'. → [] on invalid.
+function safeParseObjectArray(raw: string | null | undefined): { name: string; type: string }[] {
+  try {
+    const a = JSON.parse(raw || '[]')
+    if (!Array.isArray(a)) return []
+    const out: { name: string; type: string }[] = []
+    for (const item of a) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+      const name = typeof (item as any).name === 'string' ? (item as any).name.trim() : ''
+      if (!name) continue
+      const type = typeof (item as any).type === 'string' ? (item as any).type : 'unknown'
+      out.push({ name, type })
+    }
+    return out
+  } catch { return [] }
 }
 
 // News human layer helpers.
@@ -142,6 +160,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   // Geo-2: session-scoped set of ids whose country lists the researcher has edited this session —
   // flips the AI badge off after the first edit (there's no per-list confirmed column in v1).
   const [countriesTouched, setCountriesTouched] = useState<Set<string>>(new Set())
+  const [actorsTouched, setActorsTouched] = useState<Set<string>>(new Set())
   const [pendingStatus, setPendingStatus] = useState<Record<string, boolean>>({})
   const [fadingIds, setFadingIds] = useState<Set<string>>(new Set())
   // Phase 1: project list sourced from info-page boards (replaces disposition tag registry).
@@ -910,6 +929,14 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     setCountriesTouched(prev => new Set(prev).add(id))   // first edit clears the AI badge
   }
 
+  // Actor-2: researcher edit of the actor axis. Writes the `actors` column (JSON-string) via
+  // updateActors. Optimistic: store the JSON string on the row (mirror format). Mirrors handleCountries.
+  async function handleActors(id: string, next: { name: string; type: string }[]) {
+    await window.api.intelligence.updateActors(id, next)
+    setSources(prev => prev.map(s => s.id === id ? { ...s, actors: JSON.stringify(next) } : s))
+    setActorsTouched(prev => new Set(prev).add(id))   // first edit clears the AI badge
+  }
+
   // Write a tag set for one type (thematic) immediately — no Approve needed.
   async function handleSetTags(id: string, type: 'disposition' | 'thematic', tags: string[]) {
     const col = type === 'disposition' ? 'disposition_tags' : 'thematic_tags'
@@ -1327,6 +1354,9 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           const mentionedCountries = readTags(source.mentioned_countries ?? null)
           const subGeographies = safeParseObject(source.sub_geographies)
           const geoAiUnconfirmed = (subjectCountries.length > 0 || mentionedCountries.length > 0) && !countriesTouched.has(source.id)
+          // Actor-2: the actor axis (Actor-1 `actors` column). aiUnconfirmed until first edit this session.
+          const actors = safeParseObjectArray(source.actors)
+          const actorsAiUnconfirmed = actors.length > 0 && !actorsTouched.has(source.id)
           // A2: AI section-routing proposal (analysis_json.routing.proposed_sections, from A1).
           // Read-only display; missing on sources analyzed before A1 → empty → badge renders nothing.
           const routing = (srcAnalysis.routing ?? {}) as Record<string, any>
@@ -1469,6 +1499,13 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                       scalarFallback={source.geography}
                       aiUnconfirmed={geoAiUnconfirmed}
                       onChange={(subject, mentioned, subGeo) => handleCountries(source.id, subject, mentioned, subGeo)}
+                    />
+
+                    {/* Actors — Actor-2 flat typed chips (click-to-cycle type), under geography. */}
+                    <ActorChips
+                      actors={actors}
+                      aiUnconfirmed={actorsAiUnconfirmed}
+                      onChange={(next) => handleActors(source.id, next)}
                     />
                   </div>
 
