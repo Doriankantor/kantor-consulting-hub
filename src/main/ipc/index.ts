@@ -3566,6 +3566,10 @@ function registerIntelligenceHandlers(): void {
   ipcMain.handle('intelligence:setHumanRelevance', (_e, id: string, value: string | null) =>
     intelCloud.setHumanRelevance(id, value))
 
+  // NS-1: confirm/trim the AI's proposed sections → analysis_json.routing.confirmed.
+  ipcMain.handle('intelligence:setRoutingConfirmed', (_e, id: string, sections: string[]) =>
+    intelCloud.setRoutingConfirmed(id, sections))
+
   // Human overrides for the AI's extracted KEY FACTS / SYSTEMS. Stored under
   // analysis_json.human.overrides (OUTSIDE .ai) so re-analysis cannot clobber them.
   // patch === null clears that entry. RMW → cloud-only. Offline → { ok:false }.

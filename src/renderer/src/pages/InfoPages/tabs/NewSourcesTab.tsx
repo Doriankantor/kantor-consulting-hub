@@ -43,6 +43,20 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
     } finally { setSending(false) }
   }
 
+  // NS-1: confirm/trim the AI's proposed sections → analysis_json.routing.confirmed on the
+  // intel row. Optimistic: patch routing.confirmed on the local row's analysis_json so the chips
+  // reflect the choice immediately. NO info_page_sources / placement write (that's NS-2).
+  const handleConfirmSections = async (articleId: string, sections: string[]) => {
+    await window.api.intelligence.setRoutingConfirmed(articleId, sections)
+    setRows(prev => prev.map(r => {
+      if (r.article_id !== articleId) return r
+      let analysis: any = {}
+      try { analysis = r.analysis_json ? JSON.parse(r.analysis_json) : {} } catch { analysis = {} }
+      analysis.routing = { ...(analysis.routing ?? {}), confirmed: sections }
+      return { ...r, analysis_json: JSON.stringify(analysis) }
+    }))
+  }
+
   // 3c-2b: remove this source from the pipeline and return it to the intel queue.
   const handleMoveBack = async (articleId: string) => {
     await window.api.infoPages.moveBackToIntel(pageId, articleId)
@@ -83,6 +97,7 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
         {rows.map(row => (
           <PipelineSourceCard key={row.article_id} row={row}
             checked={checked.has(row.article_id)}
+            onConfirmSections={handleConfirmSections}
             onCheck={c => {
               const s = new Set(checked)
               c ? s.add(row.article_id) : s.delete(row.article_id)

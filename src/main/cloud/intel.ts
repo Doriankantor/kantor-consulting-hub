@@ -586,6 +586,30 @@ export async function saveAiAnalysis(id: string, ai: {
   return { ok: true, ai: block, routing: routingBlock }
 }
 
+// NS-1: store the researcher's confirmed/trimmed section set into
+// analysis_json.routing.confirmed on the intel row — the New-Sources pipeline card's
+// confirm/trim of A1's proposed_sections. Cloud-authoritative RMW (readCloudAnalysis),
+// so it NEVER clobbers .ai or .routing.proposed_sections: we preserve the whole routing
+// block and set only `confirmed`. ONE update + resync. Writes intelligence_sources — NO
+// info_page_sources / placement contact (that's NS-2).
+export async function setRoutingConfirmed(
+  id: string, sections: string[],
+): Promise<{ ok: boolean; routing?: unknown; error?: string }> {
+  if (!isOnline()) return OFFLINE
+  const r = await readCloudAnalysis(id)
+  if (!r.ok) return { ok: false, error: r.error }
+  const confirmed = Array.isArray(sections) ? sections.map(String) : []
+  const prior = (r.analysis!.routing && typeof r.analysis!.routing === 'object')
+    ? r.analysis!.routing as Record<string, unknown> : {}
+  const routingBlock = { ...prior, confirmed, confirmed_at: nowIso() }   // preserve proposed_sections/channel/reasoning
+  r.analysis!.routing = routingBlock
+  const { error } = await cloud.from('intelligence_sources')
+    .update({ analysis_json: JSON.stringify(r.analysis) }).eq('id', id)
+  if (error) return { ok: false, error: `setRoutingConfirmed failed: ${error.message}` }
+  await resyncRow(id)
+  return { ok: true, routing: routingBlock }
+}
+
 // Bulk-confirm all imported rows. Cloud SELECT → per-row cloud UPDATE + mirror
 // re-sync. Returns the rows so the caller can route (local info_page_sources) and
 // push verdicts to cs_articles — both stay in the ipc handler.

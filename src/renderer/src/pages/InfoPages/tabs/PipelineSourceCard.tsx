@@ -1,6 +1,8 @@
 import { ReactNode } from 'react'
 import { actorTypeClass } from '../../Intelligence/actorTypeClass'
 import { resolveFacts, resolveCaps } from '../../Intelligence/resolveAnalysis'
+import { sectionLabel } from '../../Intelligence/sectionLabels'
+import SectionChips from './SectionChips'
 
 // Shared read-only source card for the Info Page source pipeline tabs
 // (New Sources / Pre-Commit Review / All Sources). All metadata shown here was
@@ -49,9 +51,10 @@ interface Props {
   onCheck?: (checked: boolean) => void   // when provided, renders a checkbox
   action?: ReactNode                      // rendered top-right (e.g. a back-out button)
   showDesignNotes?: boolean               // render the committed/batch design notes
+  onConfirmSections?: (articleId: string, sections: string[]) => void   // NS-1: editable section confirm (New Sources only)
 }
 
-export default function PipelineSourceCard({ row, checked, onCheck, action, showDesignNotes }: Props) {
+export default function PipelineSourceCard({ row, checked, onCheck, action, showDesignNotes, onConfirmSections }: Props) {
   const cats = readArr(row.categories_json)
   const topics = readArr(row.thematic_tags)
   const date = row.published_at ? new Date(row.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
@@ -59,6 +62,13 @@ export default function PipelineSourceCard({ row, checked, onCheck, action, show
   // 3c-2a: full-item data (all optional — most rows have none of these).
   const analysis = parseAnalysis(row.analysis_json)
   const hasAnalysis = !!(analysis.ai || analysis.human || analysis.reconciled)
+  // NS-1: section routing (A1's proposal + the researcher's confirmed set). routing is a sibling
+  // key of .ai in analysis_json. Editable only in the New-Sources stage (onConfirmSections + stage='new').
+  const routing = (analysis as any).routing as { proposed_sections?: { section: string; confidence?: string }[]; confirmed?: string[] } | undefined
+  const proposedSections = routing?.proposed_sections ?? []
+  const confirmedSections = routing?.confirmed ?? null
+  const sectionsEditable = typeof onConfirmSections === 'function' && row.stage === 'new'
+  const readOnlySections = confirmedSections ?? proposedSections.map(p => p.section)   // read-only stages: show confirmed, else proposal
   // B3: structured identifiers from the AI block (B1 extraction; travels via the live JOIN).
   const articleType = analysis.ai?.article_type as string | undefined
   // Part B: resolved (edited ?? ai) values ONLY — no provenance/edit UI downstream.
@@ -134,6 +144,23 @@ export default function PipelineSourceCard({ row, checked, onCheck, action, show
           </div>
           {/* Snippet */}
           {row.snippet && <p className="text-xs text-gray-500 dark:text-white/50 mt-1.5 line-clamp-2">{row.snippet}</p>}
+          {/* NS-1: section routing — editable confirm/trim in New Sources, read-only chips elsewhere */}
+          {sectionsEditable ? (
+            <SectionChips
+              proposed={proposedSections}
+              confirmed={confirmedSections}
+              onChange={next => onConfirmSections!(row.article_id, next)}
+            />
+          ) : readOnlySections.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30">Section</span>
+              {readOnlySections.map(sec => (
+                <span key={sec} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                  {sectionLabel(sec)}
+                </span>
+              ))}
+            </div>
+          )}
           {/* Review note (editor's free-hand note from approval) */}
           {row.review_notes && (
             <p className="mt-2 text-xs text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-1.5 rounded-lg italic">

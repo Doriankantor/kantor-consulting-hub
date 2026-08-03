@@ -342,6 +342,7 @@ const api = {
     saveReconciled:       (id: string, reconciled: Record<string, unknown>) => ipcRenderer.invoke('intelligence:saveReconciled', id, reconciled),
     updateReconciledNotes:(id: string, html: string)         => ipcRenderer.invoke('intelligence:updateReconciledNotes', id, html),
     setHumanRelevance:    (id: string, value: string | null) => ipcRenderer.invoke('intelligence:setHumanRelevance', id, value),
+    setRoutingConfirmed:  (id: string, sections: string[]) => ipcRenderer.invoke('intelligence:setRoutingConfirmed', id, sections),
     setAnalysisOverride:  (id: string, kind: 'key_fact' | 'capability', key: string, patch: Record<string, unknown> | null) => ipcRenderer.invoke('intelligence:setAnalysisOverride', id, kind, key, patch),
     getKnownTags:         (type: string, boardId: string)              => ipcRenderer.invoke('intelligence:getKnownTags', type, boardId),
     createTag:            (name: string, type: string, boardId: string) => ipcRenderer.invoke('intelligence:createTag', name, type, boardId),
