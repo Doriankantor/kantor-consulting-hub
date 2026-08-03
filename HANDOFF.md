@@ -81,12 +81,42 @@ REMAINING step-2 sub-slices (in order):
      NOTE (earlier-recorded): AI already populates capabilities[].actor + actor_type, but some actors
      are PROSE-ONLY (e.g. Grupo Marte) — consolidate from BOTH the structured capabilities array AND
      the narrative text; don't just copy capabilities[].actor.
-  3. NEW SOURCES sectioning: the INTERACTIVE SectionChip (proposed→confirm/trim), the ≥1-section
-     EXIT GATE, per-project, consuming A1's proposed_sections. **THE DEFERRED PK-WIDENING BUNDLE
-     RIDES HERE** — first write to info_page_sources under the new key: PK (article_id,info_page)→
-     (article_id,info_page,category,geography), the onConflict edit at cloud/infoPageSources.ts:71,
-     the local-mirror UNIQUE rebuild, the five .eq UPDATE/DELETE writer widenings, and the
-     pre-existing-row backfill. Needs its own careful diagnose.
+  **3. NEW SOURCES sectioning — NS-1 DONE; NS-2 (placement + PK-widening) is the next build.**
+    KEY DE-RISK (found in NS diagnose): info_page_sources has ZERO cloud rows. The PK widening is a
+    schema change on an EMPTY table — NO backfill, NO data migration, NO legacy-row reconciliation. The
+    scariest deferred piece is now the easiest. (Local mirror may hold stale test rows — the rebuild
+    handles them; mirror is disposable.)
+    VOCAB RESOLVED: info_page_sources.category will be RENAMED → `section` (it holds a section key; the
+    nine sections replaced the old category taxonomy per the locked crosswalk; the name is stale). Free
+    on an empty column. Rides NS-2.
+    • ✅ NS-1 DONE (338888a): interactive SectionChips on the New Sources pipeline card (all nine sections,
+      AI-proposed pre-selected, click to add/remove, indigo dot = AI-proposed vs researcher-added).
+      Confirmed set → analysis_json.routing.confirmed via setRoutingConfirmed (cloud-authoritative RMW,
+      sibling-merge preserves .ai + .routing.proposed_sections — verified on csa-co-08: confirmed written,
+      proposed + ai.summary intact). Read-only static chips on Pre-Commit/All-Sources stages. NO
+      info_page_sources contact. Confirmed set is the learning-loop signal AND what NS-2 reads to write
+      placements.
+    • NS-2 (NEXT — the heavy interlocking slice, first WRITE to info_page_sources under the new model):
+      - RENAME info_page_sources.category → section (cloud + mirror). Empty, free.
+      - 4-COL PK (article_id, info_page, section, geography) created on the EMPTY cloud table.
+      - N-ROW ROUTING: routeToNew reads routing.confirmed and upserts ONE placement row PER confirmed
+        section (was one row per article), onConflict 'article_id,info_page,section' (+geography if 2-D).
+      - ≥1-SECTION EXIT GATE: can't route without a confirmed section (validation the tab lacks today).
+      - SIX WRITERS widen (not five — diagnose caught a sixth): the five .eq writers (removeToIntel,
+        sendSourceToReview, backSourceToNew, commitSourceRow, saveReviewNotesForPage) PLUS resyncSourceRow
+        — its maybeSingle() THROWS on the first multi-placement pair, so it breaks immediately without
+        widening. saveReviewNotesForPage is page-wide (no article/section key) → will touch ALL placements;
+        confirm that's intended.
+      - SRC_COLS (infoPageSources.ts) must add section + geography or the mirror silently NULLs placements
+        (same trap as INTEL_COLS).
+      - MIRROR UNIQUE REBUILD: db.ts declares UNIQUE(article_id,info_page) inline → SQLite auto-index can't
+        drop in place → full table-rebuild (new 4-col-UNIQUE table, copy, drop, rename).
+      - UI RE-KEY: PipelineSourceCard/NewSourcesTab key on article_id everywhere (key=, checked-set, batch
+        articleIds[]). One article → N placement rows breaks all of it. Switch to the surrogate pipeline_id
+        (already SELECTed as ips.id as pipeline_id).
+      RESUME: open NS-2 with its OWN diagnose to sequence sub-steps (schema+PK on empty table first, verify;
+      then SRC_COLS + mirror rebuild; then routeToNew N-row + gate; then the six writers; then the UI re-key).
+      It's the riskiest write in the restructure — sequence deliberately, do NOT start-then-stop mid-way.
   4. Downstream publication stages (Analysis & design → Publish → update notes → Sources) per
      PublicationProcess.md — later.
 
