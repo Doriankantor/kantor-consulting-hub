@@ -1184,6 +1184,42 @@ export function initDatabase(): void {
   // widening to (article_id, info_page, category, geography) is DEFERRED to step 2.
   try { db.exec("ALTER TABLE info_page_sources ADD COLUMN category TEXT;") } catch {}
   try { db.exec("ALTER TABLE info_page_sources ADD COLUMN geography TEXT;") } catch {}
+  // NS-2 Step 2: rebuild the mirror to match the cloud 4-col PK
+  // (sql/2026-08-03-ns2-step1-section-rename-4col-pk.sql). The mirror still carries the
+  // old inline UNIQUE(article_id, info_page) + the mis-named `category` column; SQLite can
+  // neither drop an inline auto-index nor rename a column into a UNIQUE key in place, so we
+  // do a guarded table-rebuild: rename category→section, apply the sentinels ('' section,
+  // 'REGIONAL' geography), and widen the UNIQUE to (article_id, info_page, section, geography).
+  // Guard on the `category` column still existing → re-running after success is a no-op.
+  {
+    const ipsCols = db.prepare("PRAGMA table_info(info_page_sources)").all() as { name: string }[]
+    if (ipsCols.some(c => c.name === 'category')) {
+      db.exec(`
+        BEGIN;
+        CREATE TABLE info_page_sources_new (
+          id           INTEGER PRIMARY KEY AUTOINCREMENT,
+          article_id   TEXT NOT NULL,
+          info_page    TEXT NOT NULL,
+          stage        TEXT NOT NULL DEFAULT 'new' CHECK(stage IN ('new','review','committed')),
+          design_notes TEXT,
+          added_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+          committed_at DATETIME,
+          source_type  TEXT,
+          section      TEXT NOT NULL DEFAULT '',
+          geography    TEXT NOT NULL DEFAULT 'REGIONAL',
+          UNIQUE(article_id, info_page, section, geography)
+        );
+        INSERT INTO info_page_sources_new
+          (id, article_id, info_page, stage, design_notes, added_at, committed_at, source_type, section, geography)
+        SELECT id, article_id, info_page, stage, design_notes, added_at, committed_at, source_type,
+               COALESCE(category, ''), COALESCE(geography, 'REGIONAL')
+        FROM info_page_sources;
+        DROP TABLE info_page_sources;
+        ALTER TABLE info_page_sources_new RENAME TO info_page_sources;
+        COMMIT;
+      `)
+    }
+  }
   // T1: project-scope thematic tags. Add project_board_id to known_tags, assign all
   // existing thematic tags to Contested Skies (board-info-latam), and re-key the
   // uniqueness index to (name, type, project_board_id). Idempotent.

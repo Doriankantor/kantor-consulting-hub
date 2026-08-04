@@ -25,7 +25,7 @@ const nowIso = (): string => new Date().toISOString()
 // Mirror columns for info_page_sources (cloud shape). The local `id` autoincrement
 // is intentionally omitted so SQLite assigns it on INSERT OR REPLACE — nothing
 // cross-tier depends on the surrogate; identity is (article_id, info_page).
-const SRC_COLS = ['article_id', 'info_page', 'stage', 'design_notes', 'added_at', 'committed_at', 'source_type'] as const
+const SRC_COLS = ['article_id', 'info_page', 'stage', 'design_notes', 'added_at', 'committed_at', 'source_type', 'section', 'geography'] as const
 const MIRROR_UPSERT_SQL =
   `INSERT OR REPLACE INTO info_page_sources (${SRC_COLS.join(',')}) VALUES (${SRC_COLS.map(c => '@' + c).join(',')})`
 

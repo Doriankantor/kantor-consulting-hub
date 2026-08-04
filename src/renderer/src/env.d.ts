@@ -474,6 +474,10 @@ interface InfoPageSourceRow {
   design_notes: string | null
   added_at: string
   committed_at: string | null
+  // NS-2: placement axis from info_page_sources (mirror). geography aliased to
+  // placement_geography so it doesn't collide with the intel article's `geography` below.
+  section?: string
+  placement_geography?: string
   // From intelligence_sources:
   title: string | null
   url: string | null

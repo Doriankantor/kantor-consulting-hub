@@ -4551,6 +4551,7 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
     return db().prepare(`
       SELECT ips.id as pipeline_id, ips.article_id, ips.info_page, ips.stage,
              ips.design_notes, ips.added_at, ips.committed_at,
+             ips.section, ips.geography as placement_geography,
              is2.title, is2.url, is2.source_name, is2.published_at, is2.snippet,
              is2.relevance_score, is2.relevance_type, is2.geography, is2.language,
              is2.categories_json, is2.thematic_tags, is2.confidence,
