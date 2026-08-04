@@ -4,6 +4,87 @@ _Last updated: 2026-07-28 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
+**★ ACTIVE: DOWNSTREAM PUBLICATION ARC — P0 (seed) mid-flight**
+
+CONTEXT: NS-2 complete (New Sources sectioning works end-to-end). The intel→page pipeline is done;
+now building the PUBLICATION side — turning committed placements into editable page content and
+eventually a live publish. Design docs: PublicationProcess.md + contested-skies_publication-pipeline-design.md
+(both in /mnt/project, written pre-restructure so partly stale — steps 1-2 of their build order are
+already DONE by the restructure).
+
+LOCKED DECISIONS (this session):
+  - English-only v1 (section_texts.lang keeps ES/PT reachable). Diff editor must show full text (chevron
+    to expand) with new=yellow highlight, deleted=red strikeout, changed-context=blue.
+  - Publish target repo EXISTS: Doriankantor/contested-skies-monitor (Vite/React SPA, content currently
+    FUSED into JSX markup — not a data object).
+  - ARCHITECTURE = Option B (headless content): page content lives in DB (editable/versioned), the page
+    becomes a RENDERER of that content, layout/design stays hand-built and is NEVER regenerated/risked by
+    publish. Publish writes content data, not JSX. This is the SAFE model — publish can't degrade the design.
+  - Single researcher; publish + cull gated to Board Heads (no concurrency/soft-lock needed v1).
+  - Seed cells from the CURRENT page content (via the Cowork session that created the page — cleaner than
+    scraping JSX).
+
+CONTENT MODEL (4 types per cell, cell = geography × section):
+  - narrative → section_texts (existing step-1 table; body/lang/version columns; section_KEY not section)
+  - cards (key figures) → cards (existing step-1 table; headline/detail/confidence)
+  - outline (structured named-item lists) → section_items (NEW table, created this session)
+  - citations (section-level source refs) → section_citations (NEW table, created this session)
+
+SCHEMA DONE THIS SESSION:
+  - sql/2026-08-04-p0-outline-citations-tables.sql (committed 242b857): created section_items (hybrid —
+    columns heading/label/detail/status/operator/origin/conf + attrs JSONB for section-specific extras
+    supplier/channel/instrument/kind/figure/date + position/active) and section_citations (geography/
+    section_key/what/where_ref/position; 'where'→'where_ref' because where is a SQL keyword). BOTH applied
+    in cloud, verified. CLOUD-ONLY — the 4 publication tables (section_texts/cards/section_items/
+    section_citations) are GREENFIELD: no mirror CREATEs, no read path anywhere in src yet. Mirror-vs-cloud
+    read decision deferred to P1 (when the grid's read path is built).
+
+⚠ P0-IMPORT — MID-FLIGHT, NOT DONE. RESUME HERE:
+  - Seed data: the Cowork export is ON DISK but NOT at the canonical path. VERIFIED location =
+    "scripts/Data /contested-skies-cells-full.json" — capital D, TRAILING SPACE in the dir name (a Finder-
+    drag artifact); the spec path scripts/data/ does NOT exist. 55 cells, all 4 content types. The seed
+    script resolves scripts/data/ first then falls back to "scripts/Data /" and logs which it loaded, so
+    it runs either way — but consider  mv "scripts/Data " scripts/data  to normalize.
+  - Script: scripts/p0-seed-publication.mjs — built, reads that JSON, maps narrative→section_texts,
+    cards→cards, outline(GROUPED {heading,items[]} → FLATTEN to one row per item, heading carried onto
+    each)→section_items, citations({where}→where_ref)→section_citations. section-specific outline extras →
+    attrs JSONB (don't-flatten decision; captures EVERY non-promoted field generically, incl. an unlisted
+    'systems' key, so nothing is dropped). Cloud-only. Dry-run default / --commit. Idempotent
+    (clear-then-insert on --commit since tables empty).
+  - STATUS: dry-run RAN and counts VERIFIED exact (43/73/344/189). NOT --commit'd. Script NOT committed to git.
+  - RESUME STEP 1: re-run  node scripts/p0-seed-publication.mjs  (dry-run) and CONFIRM the four counts
+    EXACTLY match the ground truth measured from the JSON:
+        section_texts = 43,  cards = 73,  section_items = 344,  section_citations = 189
+    The CRITICAL check is section_items = 344 (NOT 54) — proves the grouped-outline flatten works (54 =
+    counted groups not items = flatten bug). Also confirm a sample section_items row has attrs populated
+    for a supply/legal cell's section-specific field.
+  - RESUME STEP 2: if counts match → run with --commit → verify invariants (same 4 counts in-DB) →
+    commit the script (scripts/p0-seed-publication.mjs + note the seed JSON). If any count is off
+    (esp. section_items≠344), FIX the mapping before committing.
+
+CONTENT DECISIONS (locked, for the import + later re-index):
+  - Citations are SECTION-LEVEL (mostly REGIONAL), NOT per-cell, NOT duplicated. 189 citations, only 60/189
+    name one country, 116 name none — do NOT infer per-cell attribution (would put unsourced claims on page).
+  - Supplier-axis NON-LATAM geographies (US/China/Israel/Turkey/Ukraine/Syria/Lebanon/GLOBAL, 40 outline
+    items in sections 04-external/05-supply) → OPTION C: import faithfully now, FLAG sections 04/05 for
+    later re-indexing (this is the design doc's §7.4 "05 Supply is supplier-axis-inverted" problem, now
+    concrete — section 05 has no LATAM-recipient cells).
+  - conf added to cards (confidence column exists). Outline NOT flattened (rich fields → columns + attrs).
+
+PUBLICATION ARC SLICE SEQUENCE (after P0):
+  - P0 (mid-flight): seed section_texts/cards/section_items/section_citations from the Cowork JSON.
+  - P1: read-only cell GRID (15 geo × 9 sections) — projects DB content into the grid. FIRST decision:
+    grid reads mirror or cloud (determines if the 4 tables need mirror CREATEs + sync).
+  - P2: direct-edit cells (versioned section_texts).
+  - P3: cards (12-slot replace flow).
+  - P4: AI-integrate + the yellow/red/blue diff + divergence warning.
+  - P5: publish transaction — atomic DB write → regenerate content.json → GitHub-API push to
+    contested-skies-monitor (Head-only credential, DB-first ordering, sync-pending/retry). This is where
+    the page gets refactored to READ content.json (Option B). Riskiest write in the system.
+  - P6/P7: change history + all-sources search.
+  NOTE: the page-reads-from-content.json refactor is deferred to P5 (extract-first: seed DB now, page
+  stays inline until publish needs it).
+
 **★ NEXT: RESTRUCTURE step 2 — geography axis is the next build. Cull DONE; two axis slices + New Sources ahead.
 ✅ DONE & PUSHED this session (2026-07-30):
   • Tag→section ROUTING CONTRACT frozen (commit b42280a) — RESTRUCTURE_tag-section-priors.md,

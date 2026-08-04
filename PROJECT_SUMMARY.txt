@@ -1,6 +1,43 @@
 ═══════════════════════════════════════════════════════════════════════════════
   KANTOR CONSULTING HUB — PROJECT SUMMARY
-  Generated: 2026-07-23 · Last session update: 2026-07-27
+  Generated: 2026-07-23 · Last session update: 2026-08-05
+
+  ★ CURRENT ARCHITECTURE STATE (2026-08-05) — durable reference (full detail in HANDOFF.md):
+
+    • RESTRUCTURE STATUS: intel-side pipeline COMPLETE. Done: step-1 additive schema;
+      routing contract; A1/A2 (section proposals + badge); tag cull; GEOGRAPHY AXIS complete
+      (Geo-1 extraction / Geo-2 nested chip UI / Geo-3 vocab+source cleanup); ACTOR AXIS
+      (Actor-1 extraction "engaged actors {name,type}", Actor-2 typed chips); NS-1 (section
+      confirm/trim → routing.confirmed); NS-2 (placement model — 4-col PK
+      (article_id,info_page,section,geography), N-row seed, stage-safe reconcile, >=1-section
+      gate, per-source grouping, source-accurate counts). NOW: publication arc (P0 mid-flight).
+
+    • KEY DATA MODEL: intelligence_sources holds subject_countries/mentioned_countries/
+      sub_geographies (geo axis), actors [{name,type}] (actor axis, types
+      VNSA/state/extra-regional/commercial/unknown), analysis_json.routing.{proposed_sections,
+      confirmed}. info_page_sources = placement rows keyed (article_id, info_page, section,
+      geography), sentinels section='' / geography='REGIONAL', stages new->review->committed.
+      Publication: section_texts (narratives), cards (figures), section_items (outline),
+      section_citations — cell = (geography x section), 9 section keys
+      systems/vnsa/industry/external/supply/investment/legal/civilian/logistics (legal displays
+      as "Regulatory"), 15 geographies (REGIONAL + LATAM countries; supplier-axis non-LATAM geos
+      are a known section 04/05 exception).
+
+    • COLUMN NAMING GOTCHA: info_page_sources uses 'section'; section_texts/cards/section_items/
+      section_citations use 'section_key'. Same nine values. Joins must map section_key <-> section.
+
+    • RESIDUALS: left-panel "N new" badge refetch-lag (stale-view, small fix); info_page_changes
+      NOT mirrored locally (audit trail cloud-only); saveReviewNotesForPage untested-not-broken;
+      corpus re-analysis backfill pending (most sources predate the axes); geo/actor axis-tag cull
+      remnants (romania orphan tag; sub-geo cauca/catatumbo/rio deferred; Actor-3 named-org tag
+      strip pending backfill).
+
+    • DISCIPLINE (unchanged): design-first + mockup; read-only diagnose before any change; test
+      in-app before commit; separate SQL-record / code / docs commits; push immediately; cloud-
+      authoritative RMW on analysis_json (never mirror); em-dashes fail in git -m (ASCII only);
+      Supabase SQL editor collapses multi-line pastes onto one line — run SQL WITHOUT -- comments
+      to avoid the comment-collapse swallowing statements; verify which repo before destructive git
+      (contested-skies-monitor is a SEPARATE repo from newsroom-pm).
 
   ★ LATEST SESSION (2026-07-26/27) — high-level state (full detail in HANDOFF.md):
     • TO-DO 2.5 ASSIGNMENT LOOP COMPLETE (a→d shipped): a board Head assigns work to a
