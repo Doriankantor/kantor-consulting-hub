@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import PipelineSourceCard from './PipelineSourceCard'
+import { groupByArticle } from './groupByArticle'
 import { notifyIntelChanged } from '../../../utils/intelEvents'
 
 interface Props {
@@ -32,11 +33,14 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
 
   useEffect(() => { load() }, [load])
 
-  const allChecked = rows.length > 0 && rows.every(r => checked.has(r.article_id))
+  // NS-2 Step 5: one card per ARTICLE (shared helper — see groupByArticle).
+  const grouped = useMemo(() => groupByArticle(rows), [rows])
+
+  const allChecked = grouped.length > 0 && grouped.every(g => checked.has(g.article_id))
 
   function toggleAll() {
     if (allChecked) setChecked(new Set())
-    else setChecked(new Set(rows.map(r => r.article_id)))
+    else setChecked(new Set(grouped.map(g => g.article_id)))
   }
 
   async function handleSendToReview() {
@@ -98,7 +102,7 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
         <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-white/60 cursor-pointer select-none">
           <input type="checkbox" checked={allChecked} onChange={toggleAll}
             className="w-3.5 h-3.5 rounded border-gray-300 dark:border-white/20 accent-indigo-600"/>
-          Select all ({rows.length})
+          Select all ({grouped.length})
         </label>
         <div className="flex-1"/>
         <button
@@ -112,24 +116,24 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
       </div>
       {/* List */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-        {rows.length === 0 && (
+        {grouped.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <p className="text-sm font-medium text-gray-500 dark:text-white/40">No new sources</p>
             <p className="text-xs text-gray-400 dark:text-white/25 mt-1">Approved articles assigned to this project appear here</p>
           </div>
         )}
-        {rows.map(row => (
-          <PipelineSourceCard key={row.article_id} row={row}
-            checked={checked.has(row.article_id)}
+        {grouped.map(g => (
+          <PipelineSourceCard key={g.article_id} row={g}
+            checked={checked.has(g.article_id)}
             onConfirmSections={handleConfirmSections}
             onCheck={c => {
               const s = new Set(checked)
-              c ? s.add(row.article_id) : s.delete(row.article_id)
+              c ? s.add(g.article_id) : s.delete(g.article_id)
               setChecked(s)
             }}
             action={
               <button
-                onClick={() => handleMoveBack(row.article_id)}
+                onClick={() => handleMoveBack(g.article_id)}
                 className="px-2 py-0.5 rounded-lg text-[11px] font-medium text-gray-500 dark:text-white/50 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition"
                 title="Return this source to the Intelligence pending queue"
               >↩ Move back to intel</button>

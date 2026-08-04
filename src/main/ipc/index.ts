@@ -4326,7 +4326,9 @@ export function registerInfoPageHandlers(): void {
     // newAvailable now reads the REAL 3c pipeline table (info_page_sources stage='new'),
     // matching getSourcePipelineCounts so the list badge and the New Sources tab agree.
     // inAnalysis still reflects the legacy manual flow (info_page_items in_analysis).
-    const newAvailable = (db().prepare("SELECT COUNT(*) as c FROM info_page_sources WHERE info_page=? AND stage='new'").get(pageId) as { c: number }).c
+    // NS-2 Step 5: count SOURCES, not placement rows (COUNT(DISTINCT article_id) — a source
+    // with N section-placements counts once, matching getSourcePipelineCounts + the grouped tab).
+    const newAvailable = (db().prepare("SELECT COUNT(DISTINCT article_id) as c FROM info_page_sources WHERE info_page=? AND stage='new'").get(pageId) as { c: number }).c
     const inAnalysis = (db().prepare("SELECT COUNT(*) as c FROM info_page_items WHERE page_id=? AND sub_type='intelligence_source' AND status='in_analysis'").get(pageId) as { c: number }).c
     return { newAvailable, inAnalysis }
   })
@@ -4712,8 +4714,11 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
   // Count items currently in each pipeline stage for a page (used by Intelligence tab).
   ipcMain.handle('infoPages:getSourcePipelineCounts', async (_e, pageId: string) => {
     if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) return { new: 0, review: 0, committed: 0 }
+    // NS-2 Step 5: count SOURCES, not placement rows. One source can now hold N placement
+    // rows (one per section), so COUNT(*) over-counted the tab badges (a 5-section source
+    // showed '5'). COUNT(DISTINCT article_id) counts it once per stage, per page.
     const rows = db().prepare(
-      'SELECT stage, COUNT(*) as c FROM info_page_sources WHERE info_page=? GROUP BY stage'
+      'SELECT stage, COUNT(DISTINCT article_id) as c FROM info_page_sources WHERE info_page=? GROUP BY stage'
     ).all(pageId) as { stage: string; c: number }[]
     const m: Record<string, number> = {}
     rows.forEach(r => { m[r.stage] = r.c })
