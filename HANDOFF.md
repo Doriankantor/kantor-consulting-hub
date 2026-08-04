@@ -96,36 +96,48 @@ REMAINING step-2 sub-slices (in order):
       proposed + ai.summary intact). Read-only static chips on Pre-Commit/All-Sources stages. NO
       info_page_sources contact. Confirmed set is the learning-loop signal AND what NS-2 reads to write
       placements.
-    **NS-2 — schema foundation DONE (Steps 0-2); behavior change (Steps 3-5) next.**
-      De-risk held: info_page_sources cleared to empty (Step 0 removed the 1 NS-1 test-route row), so the
-      PK widened on a truly empty table.
-      • ✅ Step 0: cleared the csa-co-08 test placement (cloud + mirror → 0 rows). info_page_changes audit
-        log left intact (append-only).
-      • ✅ Step 1 (8484fb5): cloud rename category→section; both section (default '') and geography
-        (default 'REGIONAL') set NOT NULL; PK swapped to (article_id, info_page, section, geography).
-        Verified: defaults + 4-col PK. GEOGRAPHY SENTINEL = 'REGIONAL' (region-wide/All-LATAM), section
-        sentinel = ''.
-      • ✅ Step 2 (8ef892d): local mirror rebuilt (table-rebuild, guarded/idempotent on category-column
-        presence) to 4-col UNIQUE matching cloud; category→section renamed; id surrogate preserved
-        (=pipeline_id); SRC_COLS extended with section+geography; getSourcePipeline SELECT now returns
-        ips.section/ips.geography. Verified: PRAGMA shows section (not category), 4-col UNIQUE. Cloud/mirror
-        placement identity now AGREE.
-      REMAINING (next session):
-      • Step 3: widen the SIX writers (removeToIntel/sendSourceToReview/backSourceToNew/commitSourceRow/
-        saveReviewNotesForPage + resyncSourceRow's maybeSingle — it THROWS on the 2nd placement) to target a
-        single placement by section. NO behavior change yet (still 1 row/article), so safe/committable alone.
-        Decide removeToIntel/sendToReview/commit semantics: all-placements-together vs per-placement.
-      • Step 4a (DESIGN, DO FIRST — the crux): the SEED-vs-PRESENCE fork. Routing happens at APPROVE time
-        (Intel) but section confirm/trim happens LATER (New Sources tab), so routing.confirmed is NULL at
-        route time — routeToNew CANNOT read confirmed to fan out. Resolve: (A) routeToNew seeds placements
-        from proposed_sections (AI) at approve, then confirm/trim RECONCILES placement rows to
-        routing.confirmed (needs a new syncPlacements writer; NS-1's handleConfirmSections grows a
-        placement-write); OR (B) routeToNew writes one presence row (section=sentinel) until confirm creates
-        real placements. Determines where fan-out + the ≥1-section gate live. LOCK THIS BEFORE 4b.
-      • Step 4b: placement fan-out (N rows) + ≥1-section gate per 4a. FIRST real multi-row write — sequence
-        deliberately, do NOT start-then-stop.
-      • Step 5: UI re-key article_id → pipeline_id (key=, checked-set, batch articleIds[]). LAST, once N-row
-        data exists to test against.
+    **NS-2 — FUNCTIONALLY COMPLETE. New Sources sectioning pipeline works end-to-end:
+    route → grouped card → confirm/trim → placements reconcile → gate → review → commit, source-accurate
+    counts throughout.**
+      • ✅ Steps 0-2 (schema foundation): empty-table PK widen to (article_id,info_page,section,geography),
+        category→section rename, sentinels section='' / geography='REGIONAL', mirror rebuilt to 4-col UNIQUE.
+        (Step 0 clear; Step 1 = 8484fb5 cloud DDL; Step 2 = 8ef892d mirror rebuild.)
+      • ✅ 4b-i (468a694): routeToNew seeds N placement rows from proposed_sections (one per section,
+        geography=REGIONAL); empty-proposal → single '' sentinel presence row. resyncSourceRow widened to
+        N rows (was maybeSingle, threw on row 2).
+      • ✅ CRASH-FIX (9135f65): the Step-2 mirror migration had a bad idempotency guard — unconditional
+        ADD COLUMN category resurrected the retired column every init → rebuild re-fired → COALESCE collapsed
+        section→'' → 4-col UNIQUE violation → boot crash-loop. Fixed: re-keyed on section-PRESENCE (skip
+        rebuild if section exists), guarded category-add inside the !section branch, one-time drop of stray
+        category. Data safe throughout (rollback preserved it). Verified: boots clean, category dropped, rows intact.
+      • ✅ 4b-ii (c28d9a7): syncPlacements — stage-safe DIFF reconciling placements to routing.confirmed on
+        confirm/trim. Only reconciles stage='new' (review/committed PROTECTED — never deleted by a re-trim).
+        Empty-confirmed re-seeds '' sentinel (source never vanishes). Diff preserves survivors' added_at.
+        Verified: trim/add/stage-safe/empty-floor all pass.
+      • ✅ 4b-iii (5774896): ≥1-section gate in setSourceStage — blocks →review/→committed unless ≥1
+        non-sentinel placement; backward (→new) unblocked. Verified: sentinel-only blocked with toast,
+        backward flows.
+      • ✅ Step 5 (8fd1662): shared groupByArticle helper → one card per SOURCE across New Sources /
+        Pre-Commit / All Sources (was N cards per placement). Badge counts fixed to COUNT(DISTINCT article_id)
+        at the server (getSourcePipelineCounts + getSourceStats) — badges now count sources not rows.
+        commitSources traced correct (pair-keyed commitSourceRow, no dup audit rows). Verified: Pre-Commit
+        shows 1 for the 5-placement CSIS source, round-trip new↔review counts correct.
+
+      ⚑ RESIDUALS (not blocking, for later):
+        - LEFT-PANEL BADGE REFETCH-LAG: the sidebar "N new" per-page badge (getSourceStats path) doesn't
+          refetch promptly on stage transitions — number is correct but lags. Top tab badges update promptly;
+          only the sidebar path is stale. Small targeted refetch fix. (Known stale-view bug class.)
+        - info_page_changes NOT MIRRORED LOCALLY (0 rows): the audit trail is cloud-only (getSourceChanges
+          hits cloud). Fine today, but an offline history view would find nothing. Cloud audit log confirmed
+          working (used it to prove a "lost source" was a clean move-back, not a bug).
+        - STEP 3 mostly validated: move-back (removeToIntel/backSourceToNew) proven correct via audit log;
+          commitSources + send-to-review deduped. Only saveReviewNotesForPage (page-wide notes) is
+          untested-not-broken — low priority audit under N placements.
+
+      NEXT after NS-2: the DOWNSTREAM PUBLICATION stages (Analysis & design → Publish → update notes →
+      Sources) per PublicationProcess.md — a whole second arc (the cell editor + publish transaction).
+      Also queued: the corpus re-analysis backfill (most sources predate the axes), and the geo/actor
+      axis-tag culls' remaining bits.
   4. Downstream publication stages (Analysis & design → Publish → update notes → Sources) per
      PublicationProcess.md — later.
 
