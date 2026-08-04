@@ -320,6 +320,9 @@ const api = {
     get:  (userId: string) => ipcRenderer.invoke('notificationPrefs:get', userId),
     save: (userId: string, prefs: Record<string,unknown>) => ipcRenderer.invoke('notificationPrefs:save', userId, prefs),
   },
+  publication: {
+    getGrid: () => ipcRenderer.invoke('publication:getGrid'),
+  },
   intelligence: {
     getSources:           (params?: Record<string, unknown>) => ipcRenderer.invoke('intelligence:getSources', params),
     getSourcesCount:      (params?: Record<string, unknown>) => ipcRenderer.invoke('intelligence:getSourcesCount', params),

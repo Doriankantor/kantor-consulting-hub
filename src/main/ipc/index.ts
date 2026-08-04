@@ -29,6 +29,7 @@ import { nextOccurrence } from '../todos/nextOccurrence'
 import { startMissedSchedule, stopMissedSchedule } from '../todos/missedEvaluator'
 import * as intelCloud from '../cloud/intel'
 import * as infoPageSourcesCloud from '../cloud/infoPageSources'
+import * as publicationCloud from '../cloud/publication'
 import * as assignmentsCloud from '../cloud/assignments'
 import * as assignmentStepsCloud from '../cloud/assignmentSteps'
 import * as notificationsCloud from '../cloud/notificationsCloud'
@@ -3388,6 +3389,10 @@ function registerIntelligenceHandlers(): void {
   } = {}) => intelCloud.getSourcesCount(params, currentActingUserId))
 
   ipcMain.handle('intelligence:getUnreviewedCount', () => intelCloud.getUnreviewedCount(currentActingUserId))
+
+  // Publication grid (P1a) — cloud-direct read of the four publication tables,
+  // channel-gated on Contested Skies board membership inside getGrid.
+  ipcMain.handle('publication:getGrid', (_e) => publicationCloud.getGrid(currentActingUserId))
 
   // Mark a news article as a duplicate. Removes it from the review queue WITHOUT any
   // learning signal (no verdict to cs_articles, no decision log) - a duplicate is

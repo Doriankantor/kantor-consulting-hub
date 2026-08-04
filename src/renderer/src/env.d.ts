@@ -926,6 +926,11 @@ interface Window {
       getSourceChanges:     (pageId: string) => Promise<InfoPageChangeRow[]>
       getSourcePipelineCounts: (pageId: string) => Promise<{ new: number; review: number; committed: number }>
     }
+    // Publication grid (P1a) — cloud-direct read of the four publication tables.
+    // Loose any[] rows for now; row shapes get typed in P1b when the UI needs them.
+    publication: {
+      getGrid: () => Promise<{ section_texts: any[]; cards: any[]; section_items: any[]; section_citations: any[] }>
+    }
     intelligence: {
       getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number; project?: string; excludeStatus?: string }) => Promise<IntelligenceSource[]>
       // Exact total for the same query (drives "Showing X of Y" + Load-more gate). No limit/offset.
