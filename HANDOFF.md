@@ -96,27 +96,36 @@ REMAINING step-2 sub-slices (in order):
       proposed + ai.summary intact). Read-only static chips on Pre-Commit/All-Sources stages. NO
       info_page_sources contact. Confirmed set is the learning-loop signal AND what NS-2 reads to write
       placements.
-    • NS-2 (NEXT — the heavy interlocking slice, first WRITE to info_page_sources under the new model):
-      - RENAME info_page_sources.category → section (cloud + mirror). Empty, free.
-      - 4-COL PK (article_id, info_page, section, geography) created on the EMPTY cloud table.
-      - N-ROW ROUTING: routeToNew reads routing.confirmed and upserts ONE placement row PER confirmed
-        section (was one row per article), onConflict 'article_id,info_page,section' (+geography if 2-D).
-      - ≥1-SECTION EXIT GATE: can't route without a confirmed section (validation the tab lacks today).
-      - SIX WRITERS widen (not five — diagnose caught a sixth): the five .eq writers (removeToIntel,
-        sendSourceToReview, backSourceToNew, commitSourceRow, saveReviewNotesForPage) PLUS resyncSourceRow
-        — its maybeSingle() THROWS on the first multi-placement pair, so it breaks immediately without
-        widening. saveReviewNotesForPage is page-wide (no article/section key) → will touch ALL placements;
-        confirm that's intended.
-      - SRC_COLS (infoPageSources.ts) must add section + geography or the mirror silently NULLs placements
-        (same trap as INTEL_COLS).
-      - MIRROR UNIQUE REBUILD: db.ts declares UNIQUE(article_id,info_page) inline → SQLite auto-index can't
-        drop in place → full table-rebuild (new 4-col-UNIQUE table, copy, drop, rename).
-      - UI RE-KEY: PipelineSourceCard/NewSourcesTab key on article_id everywhere (key=, checked-set, batch
-        articleIds[]). One article → N placement rows breaks all of it. Switch to the surrogate pipeline_id
-        (already SELECTed as ips.id as pipeline_id).
-      RESUME: open NS-2 with its OWN diagnose to sequence sub-steps (schema+PK on empty table first, verify;
-      then SRC_COLS + mirror rebuild; then routeToNew N-row + gate; then the six writers; then the UI re-key).
-      It's the riskiest write in the restructure — sequence deliberately, do NOT start-then-stop mid-way.
+    **NS-2 — schema foundation DONE (Steps 0-2); behavior change (Steps 3-5) next.**
+      De-risk held: info_page_sources cleared to empty (Step 0 removed the 1 NS-1 test-route row), so the
+      PK widened on a truly empty table.
+      • ✅ Step 0: cleared the csa-co-08 test placement (cloud + mirror → 0 rows). info_page_changes audit
+        log left intact (append-only).
+      • ✅ Step 1 (8484fb5): cloud rename category→section; both section (default '') and geography
+        (default 'REGIONAL') set NOT NULL; PK swapped to (article_id, info_page, section, geography).
+        Verified: defaults + 4-col PK. GEOGRAPHY SENTINEL = 'REGIONAL' (region-wide/All-LATAM), section
+        sentinel = ''.
+      • ✅ Step 2 (8ef892d): local mirror rebuilt (table-rebuild, guarded/idempotent on category-column
+        presence) to 4-col UNIQUE matching cloud; category→section renamed; id surrogate preserved
+        (=pipeline_id); SRC_COLS extended with section+geography; getSourcePipeline SELECT now returns
+        ips.section/ips.geography. Verified: PRAGMA shows section (not category), 4-col UNIQUE. Cloud/mirror
+        placement identity now AGREE.
+      REMAINING (next session):
+      • Step 3: widen the SIX writers (removeToIntel/sendSourceToReview/backSourceToNew/commitSourceRow/
+        saveReviewNotesForPage + resyncSourceRow's maybeSingle — it THROWS on the 2nd placement) to target a
+        single placement by section. NO behavior change yet (still 1 row/article), so safe/committable alone.
+        Decide removeToIntel/sendToReview/commit semantics: all-placements-together vs per-placement.
+      • Step 4a (DESIGN, DO FIRST — the crux): the SEED-vs-PRESENCE fork. Routing happens at APPROVE time
+        (Intel) but section confirm/trim happens LATER (New Sources tab), so routing.confirmed is NULL at
+        route time — routeToNew CANNOT read confirmed to fan out. Resolve: (A) routeToNew seeds placements
+        from proposed_sections (AI) at approve, then confirm/trim RECONCILES placement rows to
+        routing.confirmed (needs a new syncPlacements writer; NS-1's handleConfirmSections grows a
+        placement-write); OR (B) routeToNew writes one presence row (section=sentinel) until confirm creates
+        real placements. Determines where fan-out + the ≥1-section gate live. LOCK THIS BEFORE 4b.
+      • Step 4b: placement fan-out (N rows) + ≥1-section gate per 4a. FIRST real multi-row write — sequence
+        deliberately, do NOT start-then-stop.
+      • Step 5: UI re-key article_id → pipeline_id (key=, checked-set, batch articleIds[]). LAST, once N-row
+        data exists to test against.
   4. Downstream publication stages (Analysis & design → Publish → update notes → Sources) per
      PublicationProcess.md — later.
 
