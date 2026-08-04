@@ -4641,6 +4641,17 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
     return { ok: true, movedBack: true }
   })
 
+  // NS-2 4b-ii: reconcile placement rows to the researcher's confirmed sections (a
+  // stage-safe diff). Called from the New Sources card's confirm/trim, right after
+  // intelligence:setRoutingConfirmed. Board-scoped → one membership gate on pageId.
+  ipcMain.handle('infoPages:syncPlacements', async (_e, pageId: string, articleId: string, sections: string[]) => {
+    if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) {
+      console.warn(`[0a-4] deny infoPages:syncPlacements — actor=${currentActingUserId} pageId=${pageId}`)
+      return { ok: false, error: 'Not authorized' }
+    }
+    return infoPageSourcesCloud.syncPlacements(articleId, pageId, sections)
+  })
+
   // Commit all 'review' items to 'committed'. Saves design_notes onto each row.
   // B2b-2: cloud-first per row (offline-guarded); mirror resynced per row.
   // ⚠ BATCH ATOMICITY: cloud has no cross-row transaction, so rows are committed

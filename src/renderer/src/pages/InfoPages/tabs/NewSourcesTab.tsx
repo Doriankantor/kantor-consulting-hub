@@ -48,6 +48,14 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
   // reflect the choice immediately. NO info_page_sources / placement write (that's NS-2).
   const handleConfirmSections = async (articleId: string, sections: string[]) => {
     await window.api.intelligence.setRoutingConfirmed(articleId, sections)
+    // NS-2 4b-ii: reconcile the physical placement rows to the confirmed set (stage-safe
+    // diff). Runs AFTER the confirmed write — a placement-sync failure must not lose it,
+    // so we log and continue rather than revert. No placement-view refresh needed yet
+    // (New Sources doesn't render placement rows until the Step-5 UI re-key).
+    try {
+      const res = await window.api.infoPages.syncPlacements(pageId, articleId, sections)
+      if (!res.ok) console.warn('[NS-2 4b-ii] syncPlacements failed:', res.error)
+    } catch (e) { console.warn('[NS-2 4b-ii] syncPlacements threw:', e) }
     setRows(prev => prev.map(r => {
       if (r.article_id !== articleId) return r
       let analysis: any = {}

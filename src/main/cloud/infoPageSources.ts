@@ -97,6 +97,72 @@ export async function routeToNew(
   return { ok: true, inserted, count: Array.isArray(data) ? data.length : 0 }
 }
 
+// WRITER 1b — NS-2 Step 4b-ii: reconcile the placement rows for one (article_id,
+// info_page) to the researcher's CONFIRMED section set, as a STAGE-SAFE diff. Runs
+// right after setRoutingConfirmed (which writes routing.confirmed on the intel row);
+// this brings the physical placement rows into line with that choice.
+//
+// STAGE-SAFE is the core invariant: rows already advanced to 'review'/'committed' are
+// LOCKED — never deleted (don't destroy downstream work) and never re-added as a fresh
+// 'new' duplicate. Only stage='new' rows are reconcilable.
+//   toDelete = newSections − confirmed                  (unchecked 'new' rows, incl. a stale '' sentinel)
+//   toAdd    = confirmed − newSections − lockedSections (confirmed sections not already present)
+// EMPTY FLOOR: if the result would leave the pair with ZERO rows (confirmed empty AND
+// no locked rows), re-seed one '' sentinel so the source never vanishes from New Sources
+// (the interim safety until the 4b-iii ≥1-section gate). If locked rows exist, the source
+// is still present via them — no sentinel needed.
+//
+// Cloud-authoritative READ (never the mirror). Never throws — setRoutingConfirmed has
+// already persisted the confirmed set, so a placement-sync failure must not lose it.
+export async function syncPlacements(
+  articleId: string, infoPage: string, confirmedSections: string[],
+): Promise<{ ok: boolean; added?: number; deleted?: number; error?: string }> {
+  if (!isOnline()) return { ok: false, error: 'offline — cannot sync placements while offline' }
+  try {
+    const confirmed = Array.from(new Set((confirmedSections ?? []).filter(s => typeof s === 'string' && s.length > 0)))
+    // a. cloud-authoritative read of the pair's current placements (N rows, no maybeSingle)
+    const { data, error } = await cloud.from('info_page_sources').select('section,stage')
+      .eq('article_id', articleId).eq('info_page', infoPage)
+    if (error) return { ok: false, error: `syncPlacements read failed: ${error.message}` }
+    const cur = (Array.isArray(data) ? data : []) as { section: string; stage: string }[]
+    // b. partition current sections by stage
+    const newSections    = cur.filter(r => r.stage === 'new').map(r => r.section)
+    const lockedSections = new Set(cur.filter(r => r.stage === 'review' || r.stage === 'committed').map(r => r.section))
+    // c. stage-safe diff (locked sections invisible to delete AND skipped for add)
+    const confirmedSet = new Set(confirmed)
+    const newSet = new Set(newSections)
+    const toDelete = newSections.filter(s => !confirmedSet.has(s))                       // unchecked 'new' rows (incl. '' sentinel)
+    const toAdd    = confirmed.filter(s => !newSet.has(s) && !lockedSections.has(s))      // confirmed but not already present
+    // d. empty floor: would the pair end with zero rows? (all 'new' deleted, nothing added, none locked)
+    const remainingNew = newSections.length - toDelete.length + toAdd.length
+    const needsSentinel = remainingNew === 0 && lockedSections.size === 0
+    // e. apply — deletes first, then adds, then optional sentinel re-seed
+    let deleted = 0
+    for (const section of toDelete) {
+      const { data: del, error: dErr } = await cloud.from('info_page_sources').delete()
+        .eq('article_id', articleId).eq('info_page', infoPage).eq('section', section).eq('stage', 'new').select()
+      if (dErr) return { ok: false, error: `syncPlacements delete failed: ${dErr.message}` }
+      deleted += Array.isArray(del) ? del.length : 0
+    }
+    let added = 0
+    const addRows = needsSentinel ? [''] : toAdd   // empty floor takes precedence over adds (toAdd is [] when confirmed is [])
+    if (addRows.length) {
+      const rows = addRows.map(section => ({
+        article_id: articleId, info_page: infoPage, stage: 'new', section, geography: 'REGIONAL', added_at: nowIso(),
+      }))
+      const { data: ins, error: aErr } = await cloud.from('info_page_sources')
+        .upsert(rows, { onConflict: 'article_id,info_page,section,geography', ignoreDuplicates: true }).select()
+      if (aErr) return { ok: false, error: `syncPlacements add failed: ${aErr.message}` }
+      added = Array.isArray(ins) ? ins.length : 0
+    }
+    // f. reconcile the mirror once (N-row capable)
+    await resyncSourceRow(articleId, infoPage)
+    return { ok: true, added, deleted }
+  } catch (e) {
+    return { ok: false, error: `syncPlacements failed: ${(e as Error)?.message ?? String(e)}` }
+  }
+}
+
 // WRITER 2 — moveBackToIntel's info_page_sources removal (stage 'new' → gone).
 // Cloud-first DELETE by composite key + companion info_page_changes row
 // (to_stage='intel'), then reconcile the mirror (drops the local row). The intel
