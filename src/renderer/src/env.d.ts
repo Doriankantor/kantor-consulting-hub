@@ -917,7 +917,7 @@ interface Window {
       summarizeAnalysis:    (params: { pageId: string; pageName: string; userId?: string }) => Promise<{ ok: boolean; summary?: string; recommendations?: Array<{ section: string; action: string; detail: string; confidence: string }>; error?: string }>
       // Source pipeline
       getSourcePipeline:    (pageId: string) => Promise<InfoPageSourceRow[]>
-      sendToReview:         (pageId: string, articleIds: string[]) => Promise<{ ok: boolean; moved: number }>
+      sendToReview:         (pageId: string, articleIds: string[]) => Promise<{ ok: boolean; moved: number; error?: string }>
       backSourceToNew:      (pageId: string, articleId: string) => Promise<{ ok: boolean }>
       moveBackToIntel:      (pageId: string, articleId: string) => Promise<{ ok: boolean; movedBack: boolean }>
       syncPlacements:       (pageId: string, articleId: string, sections: string[]) => Promise<{ ok: boolean; added?: number; deleted?: number; error?: string }>

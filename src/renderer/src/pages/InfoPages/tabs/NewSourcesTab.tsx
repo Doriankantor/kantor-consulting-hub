@@ -12,6 +12,14 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
   const [loading, setLoading] = useState(true)
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+
+  // 4b-iii: brief inline notice (mirrors the sibling tabs). Slightly longer than the
+  // sibling 1800ms because the gate message is actionable ("confirm a section first").
+  function flash(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(null), 3200)
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -36,9 +44,12 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
     if (!ids.length) return
     setSending(true)
     try {
-      await window.api.infoPages.sendToReview(pageId, ids)
-      setChecked(new Set())
-      await load()
+      const res = await window.api.infoPages.sendToReview(pageId, ids)
+      // 4b-iii: surface the ≥1-section gate (and any writer error) instead of swallowing it.
+      // Keep the selection on failure so the researcher can confirm sections and retry.
+      if (!res.ok) flash(res.error || 'Could not send to review.')
+      else setChecked(new Set())
+      await load()   // reflect any partial batch that DID advance before the block
       onMoved?.()
     } finally { setSending(false) }
   }
@@ -76,7 +87,12 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
   if (loading) return <div className="flex items-center justify-center py-16"><div className="w-5 h-5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"/></div>
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden relative">
+      {toast && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-medium shadow-2xl">
+          {toast}
+        </div>
+      )}
       {/* Toolbar */}
       <div className="shrink-0 px-5 py-3 border-b border-gray-100 dark:border-white/[0.06] flex items-center gap-3">
         <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-white/60 cursor-pointer select-none">

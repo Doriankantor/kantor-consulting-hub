@@ -193,12 +193,33 @@ export async function removeToIntel(
 // `.select()` on the UPDATE returns the affected rows, giving the same "changes>0"
 // signal the old local `run().changes` provided (0 rows when the stage guard misses).
 
+// NS-2 Step 4b-iii — ≥1-section gate. Forward advancement (→review / →committed) is only
+// allowed when the source has at least one REAL (non-sentinel) placement; the '' sentinel
+// (the empty-floor presence row from syncPlacements) does NOT count. Cloud-authoritative
+// COUNT over the pair (head:true → no rows fetched). FAIL-CLOSED: a read error blocks the
+// advance, so a transient failure can never smuggle a sentinel-only source forward.
+// Backward transitions (→new) never call this — de-escalation is always allowed.
+async function countRealPlacements(
+  articleId: string, infoPage: string,
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const { count, error } = await cloud.from('info_page_sources')
+    .select('*', { count: 'exact', head: true })
+    .eq('article_id', articleId).eq('info_page', infoPage).neq('section', '')
+  if (error) return { ok: false, error: `placement-gate read failed: ${error.message}` }
+  return { ok: true, count: count ?? 0 }
+}
+
 // WRITER 3 — new -> review. Guarded on stage='new'; companion change ('new'->'review')
 // only when a row moved. Returns whether it moved (the handler sums the batch).
+// 4b-iii: gated — refuses to advance a source with no real (non-sentinel) placement.
 export async function sendSourceToReview(
   articleId: string, infoPage: string,
 ): Promise<{ ok: boolean; moved?: boolean; error?: string }> {
   if (!isOnline()) return { ok: false, error: 'offline — cannot update sources while offline' }
+  // ≥1-section gate (forward transition). Block sentinel-only / zero-placement sources.
+  const gate = await countRealPlacements(articleId, infoPage)
+  if (!gate.ok) return { ok: false, error: gate.error }
+  if ((gate.count ?? 0) < 1) return { ok: false, error: 'Confirm at least one section before sending to review.' }
   const now = nowIso()
   const { data, error } = await cloud.from('info_page_sources')
     .update({ stage: 'review' })
@@ -246,6 +267,12 @@ export async function commitSourceRow(
   articleId: string, infoPage: string, designNotes: string | null, committedAt: string,
 ): Promise<{ ok: boolean; committed?: boolean; error?: string }> {
   if (!isOnline()) return { ok: false, error: 'offline — cannot commit sources while offline' }
+  // 4b-iii: ≥1-section gate (forward transition). Defense-in-depth — a source only reaches
+  // 'review' past the send-to-review gate, but re-check so a sentinel-only source can never
+  // be committed even if it slipped through before this step existed.
+  const gate = await countRealPlacements(articleId, infoPage)
+  if (!gate.ok) return { ok: false, error: gate.error }
+  if ((gate.count ?? 0) < 1) return { ok: false, error: 'Confirm at least one section before committing this source.' }
   const { data, error } = await cloud.from('info_page_sources')
     .update({ stage: 'committed', committed_at: committedAt, design_notes: designNotes ?? null })
     .eq('article_id', articleId).eq('info_page', infoPage).eq('stage', 'review')
