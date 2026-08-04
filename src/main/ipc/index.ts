@@ -3313,10 +3313,23 @@ async function routeToNewSources(
     console.warn(`[0a-4] deny routeToNewSources — actor=${currentActingUserId} pageId=${bid} sourceId=${intelSourceId}`)
     return { ok: false, error: 'Not authorized' }
   }
-  const src = db.prepare('SELECT id, type FROM intelligence_sources WHERE id=?').get(intelSourceId) as { id: string; type: string } | undefined
+  const src = db.prepare('SELECT id, type, analysis_json FROM intelligence_sources WHERE id=?').get(intelSourceId) as { id: string; type: string; analysis_json?: string } | undefined
   if (!src) return { ok: false, error: 'Source not found.' }
   const board = db.prepare("SELECT name FROM workspace_boards WHERE id=? AND board_type='info-page'").get(bid) as { name?: string } | undefined
-  const res = await infoPageSourcesCloud.routeToNew(intelSourceId, bid, src.type ?? null)
+  // NS-2 4b-i: seed placements from the AI's proposed sections. Extract just the section
+  // keys (analysis_json.routing.proposed_sections is [{section, confidence}]); guard
+  // null/empty → [] so routeToNew falls back to a single sentinel presence row.
+  let proposedSections: string[] = []
+  try {
+    const analysis = src.analysis_json ? JSON.parse(src.analysis_json) : null
+    const proposed = analysis?.routing?.proposed_sections
+    if (Array.isArray(proposed)) {
+      proposedSections = proposed
+        .map((p: { section?: unknown }) => p?.section)
+        .filter((s: unknown): s is string => typeof s === 'string' && s.length > 0)
+    }
+  } catch { proposedSections = [] }
+  const res = await infoPageSourcesCloud.routeToNew(intelSourceId, bid, src.type ?? null, proposedSections)
   if (!res.ok) return { ok: false, error: res.error }
   return { ok: true, pageName: board?.name ?? bid }
 }

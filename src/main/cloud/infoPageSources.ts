@@ -42,34 +42,49 @@ function mirrorDeleteSource(articleId: string, infoPage: string): void {
   catch (e) { console.warn('[infoPageSources] mirror delete failed (cloud delete succeeded):', (e as Error)?.message) }
 }
 
-// Re-fetch ONE cloud info_page_sources row by the composite key and reconcile the
-// mirror: upsert it when present, DELETE the local row when the cloud row is gone
-// (the delete path is how removeToIntel drops the mirror). Best-effort, never throws.
+// Re-fetch ALL cloud info_page_sources rows for a (article_id, info_page) pair and
+// reconcile the mirror as a SET. NS-2: one article can now have N placement rows
+// (one per section), so the old .maybeSingle() would throw on the 2nd row. We fetch
+// the whole pair (no maybeSingle), clear the pair's mirror rows, then re-insert the
+// cloud set. When the cloud has zero rows for the pair (e.g. removeToIntel), the
+// delete alone drops the mirror — same effect as the old else-branch. Best-effort.
 export async function resyncSourceRow(articleId: string, infoPage: string): Promise<void> {
   const { data, error } = await cloud.from('info_page_sources').select('*')
-    .eq('article_id', articleId).eq('info_page', infoPage).maybeSingle()
+    .eq('article_id', articleId).eq('info_page', infoPage)
   if (error) { console.warn('[infoPageSources] cloud re-fetch for mirror failed:', error.message); return }
-  if (data) mirrorUpsertSource(data as Record<string, unknown>)
-  else mirrorDeleteSource(articleId, infoPage)
+  const rows = Array.isArray(data) ? data : []
+  // Pair-scoped rewrite: mirrorDeleteSource clears ALL local rows for the pair, then
+  // each cloud row is re-inserted (filtered through SRC_COLS, incl. section+geography).
+  mirrorDeleteSource(articleId, infoPage)
+  for (const r of rows) mirrorUpsertSource(r as Record<string, unknown>)
 }
 
 // WRITER 1 — approval-path route into a project's "New sources" (stage='new').
-// Cloud-first + idempotent: upsert with ON CONFLICT (article_id, info_page) DO
-// NOTHING (ignoreDuplicates), so a re-approve of an already-routed source is a
-// no-op — it neither errors nor duplicates. The companion info_page_changes row
-// is logged ONLY when a NEW row was actually inserted (mirrors the old
-// INSERT-OR-IGNORE + `changes > 0` guard). Errors propagate; local is touched only
-// by the post-success resync.
+// NS-2 Step 4b-i: SEED N PLACEMENT ROWS — one per AI-proposed section (from
+// analysis_json.routing.proposed_sections, passed in by the caller), each at the
+// 'REGIONAL' geography sentinel. If NO sections were proposed (the common case for
+// pre-A1 sources), seed ONE presence row at the section='' sentinel so the source
+// still surfaces in New Sources; 4b-ii (syncPlacements) will later reconcile these
+// AI seeds to the researcher's routing.confirmed set.
+// Cloud-first + idempotent: upsert with ON CONFLICT (article_id, info_page, section,
+// geography) DO NOTHING (ignoreDuplicates), so re-approving an already-routed source
+// is a no-op per placement. The companion info_page_changes row is logged ONCE when
+// ANY new placement was inserted (the change log has no section column — one entry
+// per pair, not per section). Errors propagate; local is touched only by the resync.
 export async function routeToNew(
-  articleId: string, infoPage: string, sourceType: string | null,
-): Promise<{ ok: boolean; inserted?: boolean; error?: string }> {
+  articleId: string, infoPage: string, sourceType: string | null, sections: string[],
+): Promise<{ ok: boolean; inserted?: boolean; count?: number; error?: string }> {
   if (!isOnline()) return { ok: false, error: 'offline — cannot route sources while offline' }
   const now = nowIso()
+  // Dedupe + drop blanks; empty proposal → single sentinel presence row (section='').
+  const keys = Array.from(new Set((sections ?? []).filter(s => typeof s === 'string' && s.length > 0)))
+  const seedSections = keys.length ? keys : ['']
+  const rows = seedSections.map(section => ({
+    article_id: articleId, info_page: infoPage, stage: 'new',
+    source_type: sourceType ?? null, section, geography: 'REGIONAL', added_at: now,
+  }))
   const { data, error } = await cloud.from('info_page_sources')
-    .upsert(
-      { article_id: articleId, info_page: infoPage, stage: 'new', source_type: sourceType ?? null, added_at: now },
-      { onConflict: 'article_id,info_page', ignoreDuplicates: true },
-    )
+    .upsert(rows, { onConflict: 'article_id,info_page,section,geography', ignoreDuplicates: true })
     .select()
   if (error) return { ok: false, error: `route cloud upsert failed: ${error.message}` }
   const inserted = Array.isArray(data) && data.length > 0
@@ -79,7 +94,7 @@ export async function routeToNew(
     if (cErr) return { ok: false, error: `route change-log insert failed: ${cErr.message}` }
   }
   await resyncSourceRow(articleId, infoPage)
-  return { ok: true, inserted }
+  return { ok: true, inserted, count: Array.isArray(data) ? data.length : 0 }
 }
 
 // WRITER 2 — moveBackToIntel's info_page_sources removal (stage 'new' → gone).
