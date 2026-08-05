@@ -39,28 +39,78 @@ SCHEMA DONE THIS SESSION:
     section_citations) are GREENFIELD: no mirror CREATEs, no read path anywhere in src yet. Mirror-vs-cloud
     read decision deferred to P1 (when the grid's read path is built).
 
-⚠ P0-IMPORT — MID-FLIGHT, NOT DONE. RESUME HERE:
-  - Seed data: the Cowork export is ON DISK but NOT at the canonical path. VERIFIED location =
-    "scripts/Data /contested-skies-cells-full.json" — capital D, TRAILING SPACE in the dir name (a Finder-
-    drag artifact); the spec path scripts/data/ does NOT exist. 55 cells, all 4 content types. The seed
-    script resolves scripts/data/ first then falls back to "scripts/Data /" and logs which it loaded, so
-    it runs either way — but consider  mv "scripts/Data " scripts/data  to normalize.
-  - Script: scripts/p0-seed-publication.mjs — built, reads that JSON, maps narrative→section_texts,
-    cards→cards, outline(GROUPED {heading,items[]} → FLATTEN to one row per item, heading carried onto
-    each)→section_items, citations({where}→where_ref)→section_citations. section-specific outline extras →
-    attrs JSONB (don't-flatten decision; captures EVERY non-promoted field generically, incl. an unlisted
-    'systems' key, so nothing is dropped). Cloud-only. Dry-run default / --commit. Idempotent
-    (clear-then-insert on --commit since tables empty).
-  - STATUS: dry-run RAN and counts VERIFIED exact (43/73/344/189). NOT --commit'd. Script NOT committed to git.
-  - RESUME STEP 1: re-run  node scripts/p0-seed-publication.mjs  (dry-run) and CONFIRM the four counts
-    EXACTLY match the ground truth measured from the JSON:
-        section_texts = 43,  cards = 73,  section_items = 344,  section_citations = 189
-    The CRITICAL check is section_items = 344 (NOT 54) — proves the grouped-outline flatten works (54 =
-    counted groups not items = flatten bug). Also confirm a sample section_items row has attrs populated
-    for a supply/legal cell's section-specific field.
-  - RESUME STEP 2: if counts match → run with --commit → verify invariants (same 4 counts in-DB) →
-    commit the script (scripts/p0-seed-publication.mjs + note the seed JSON). If any count is off
-    (esp. section_items≠344), FIX the mapping before committing.
+✅ P0 — DONE. Publication tables seeded from the Cowork export, verified in the Supabase SQL editor (the
+  authoritative store, NOT the script's self-report): section_texts=43, cards=73, section_items=344,
+  section_citations=189, items-with-attrs=169. Script + seed JSON committed (caf803c). Path normalized
+  "scripts/Data " → scripts/data/ (trailing-space Finder artifact; fallback now dead code, left as an
+  inert safety net). Script hardened: tiered exit codes (counts → exit 1 hard; spot-checks → exit 2 soft,
+  machine-distinguishable) and spot-check B retargeted from REGIONAL/systems (a false 0-attrs witness) to
+  REGIONAL/external (14/14 attrs). LESSON: Claude Code's git session reported "tables empty" AFTER a
+  successful --commit — a stale guess from a process with no cloud visibility; caught by direct count
+  query. Same phantom-test class as the security false-PASS: verify in the authoritative store, never
+  trust a process's self-narration about a store it can't see.
+
+✅ P1 — DONE (read-only publication cell grid).
+  - P1a (d56371b): READ PATH, cloud-direct. src/main/cloud/publication.ts getGrid() gated on
+    board-info-latam membership via isBoardVisibleFor; four cloud selects via Promise.all, no mirror.
+    IPC/preload/env.d.ts wiring. Verified in-app 43/73/344/189.
+  - P1b (1f8719d): cell GRID in the app's design, mockup layout. New sectionColors.ts (9-key section→hex
+    from AUTHORITATIVE P.CATS in info-pages/contested-skies/index.html — vnsa #f45f78, logistics #e889c4
+    differ from the mockup fallback). CellGridTab: geography tab bar (LATAM + supplier-axis grouped/flagged
+    pending re-index) / 9-section rail / four content boxes per cell (SectionText / Cards-as-tiles-with-
+    left-accent-bar / Outline-grouped-by-heading-with-attr-chips / Citations-REGIONAL-only) as edit-ready
+    sub-components, READ-ONLY. Card headline color moved to a left-accent bar (neon P.CATS palette failed
+    contrast on light surfaces).
+  - P1c (ff08032): full-width flow. Left InfoPagesList DEFAULTS COLLAPSED (localStorage
+    infopages-list-collapsed, '0'=expanded) with a high-contrast toggle; right InfoPageStatus panel
+    REMOVED, its content relocated to an inline header status strip (freshness dot / published date /
+    pending pill / view-live ghost button). KNOWN DELIBERATE NON-FIX: both the toggle and strip live in the
+    selectedPage-gated header, so a genuine no-page state has no list re-open control — unreachable in
+    practice (auto-select picks the first page whenever any exists); left as-is for v1. CLEANUP DEFERRED:
+    InfoPageStatus.tsx is now ORPHANED (only a stale doc comment in FrameworkPanel.tsx references it) —
+    safe to delete in a later cleanup. TODO: freshness (getLastCommit) is now fetched in BOTH index.tsx and
+    InfoPagesList — dedupe deferred to its own slice.
+  - P1d (ba5017d): drag-resizable section rail. Ported the Workspace archived-drawer drag idiom horizontal
+    + localStorage-persisted width (infopages-cellgrid-rail-width, clamp 56-280px, default 208). Below
+    120px the label+count hide leaving dot+number centered, label recoverable as a hover tooltip;
+    section-color dot is the narrow-state identifier.
+  - DESIGN DECISIONS LOCKED (P1): aesthetic = app design (Tailwind indigo/gray), NOT the mockup's
+    teal/serif — only per-section color carried as an accent. P1 grid is a read-only BROWSE of the whole
+    seeded grid (all geos as tabs, all 9 sections), NOT the mockup's single-source review screen; the
+    review/edit/AI-integrate/diff/approve machinery is P2-P5, layering onto these same boxes. The four
+    publication tables remain CLOUD-ONLY (no mirror) — P1 reads cloud-direct; mirror-vs-cloud stays
+    deferred until a concrete need (offline, or a mirror JOIN) forces it.
+
+✅ P2 — DONE (versioned direct-edit of section_texts).
+  - P2 (619671e): versioned direct-edit of section_texts — FIRST publication WRITE, turns the dormant
+    versioning columns on. New writeSection cloud writer in publication.ts: reads live row (superseded_by
+    IS NULL), refuses >1-live-row repair case, INSERTS new version first (version+1, updated_by=actor) then
+    SUPERSEDES old (stamps prev.superseded_by=new.id) — insert-first so a failed write never orphans
+    content. Head-gated: publication:writeSection IPC uses isOwner(board-info-latam) (canApprove tier, same
+    as reviewCommit) — only Heads edit page text; read stays membership-tier. MANDATORY companion read-fix:
+    getGrid/readTable now reads section_texts live-version-only (.is('superseded_by', null)) so multi-
+    version cells don't double-render; other three tables unfiltered (cards get active/replaced_by in P3).
+    SectionTextBox gained an Edit affordance (textarea/Save/Cancel, re-loads grid on ok, inline error on
+    fail); edit-button gating = SERVER-ONLY (no cheap correct renderer Head signal existed — isRoot too
+    narrow, isOwner an async fetch on wrong id; server gate + inline error is the sanctioned fallback). lang
+    hardcoded 'en'; edit shown only where narrative already exists (empty-cell authoring is later). VERIFIED
+    in authoritative store: version chain 44->87->88 across two sequential edits, each superseding the
+    then-live row (not the seed), live_rows=1, updated_by stamped.
+  - DECISION LOCKED (P2): page-text editing and publishing are the SAME permission tier — Heads only
+    (isOwner). Members view (P1a read = membership), Heads edit (P2) and will publish (P5). Not
+    members-edit/Heads-publish.
+  - KNOWN, non-blocking (for P6): updated_by writes the acting-user id, which in the dev session is
+    'local-admin' (root/infra admin string), NOT a board_members identity. The P6 change-history view will
+    need to resolve updated_by to real member names for the audit trail. Flagged, not a P2 problem.
+
+▶ RESUME HERE → P3: cards — the 12-slot replace flow. CardsBox becomes editable (add / edit / replace /
+  delete), enforcing the 12-slot hard max with explicit eviction (pick which card the new one replaces; no
+  silent overwrite, no 13th card). Cards have their OWN versioning columns (active / replaced_by) — the
+  cards analogue of section_texts' version/superseded_by — so the write pattern mirrors P2 (insert-first
+  discipline, Head-gated isOwner, companion getGrid read-fix to filter active-only) but the 12-slot
+  eviction logic is new. Needs a short write-path diagnose first (confirm the cards columns: active,
+  replaced_by, position, slot_kind; how getGrid reads cards today; the eviction contract). See the
+  PUBLICATION ARC SLICE SEQUENCE below for P3-P7.
 
 CONTENT DECISIONS (locked, for the import + later re-index):
   - Citations are SECTION-LEVEL (mostly REGIONAL), NOT per-cell, NOT duplicated. 189 citations, only 60/189
@@ -72,7 +122,8 @@ CONTENT DECISIONS (locked, for the import + later re-index):
   - conf added to cards (confidence column exists). Outline NOT flattened (rich fields → columns + attrs).
 
 PUBLICATION ARC SLICE SEQUENCE (after P0):
-  - P0 (mid-flight): seed section_texts/cards/section_items/section_citations from the Cowork JSON.
+  - P0 (DONE, caf803c): seeded section_texts/cards/section_items/section_citations from the Cowork JSON;
+    cloud-verified 43/73/344/189 (169 attrs).
   - P1: read-only cell GRID (15 geo × 9 sections) — projects DB content into the grid. FIRST decision:
     grid reads mirror or cloud (determines if the 4 tables need mirror CREATEs + sync).
   - P2: direct-edit cells (versioned section_texts).
