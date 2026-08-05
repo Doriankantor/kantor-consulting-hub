@@ -103,14 +103,43 @@ SCHEMA DONE THIS SESSION:
     'local-admin' (root/infra admin string), NOT a board_members identity. The P6 change-history view will
     need to resolve updated_by to real member names for the audit trail. Flagged, not a P2 problem.
 
-▶ RESUME HERE → P3: cards — the 12-slot replace flow. CardsBox becomes editable (add / edit / replace /
-  delete), enforcing the 12-slot hard max with explicit eviction (pick which card the new one replaces; no
-  silent overwrite, no 13th card). Cards have their OWN versioning columns (active / replaced_by) — the
-  cards analogue of section_texts' version/superseded_by — so the write pattern mirrors P2 (insert-first
-  discipline, Head-gated isOwner, companion getGrid read-fix to filter active-only) but the 12-slot
-  eviction logic is new. Needs a short write-path diagnose first (confirm the cards columns: active,
-  replaced_by, position, slot_kind; how getGrid reads cards today; the eviction contract). See the
-  PUBLICATION ARC SLICE SEQUENCE below for P3-P7.
+✅ P3 — DONE (editable cards, the 12-slot replace flow).
+  - P3 (a801c86): SECOND publication WRITE slice — turns cards' active/replaced_by columns on (the cards
+    analogue of section_texts' version/superseded_by). Four cloud writers in publication.ts, all Head-gated
+    (isOwner(board-info-latam) via the factored denyIfNotHead helper, same gate as writeSection), insert-
+    first/flip-second so a failed write never loses a card:
+      - addCard: inserts at next dense position; HARD CEILING refuses at 12 active with {full:true}
+        (signals the eviction picker, not a plain error).
+      - editCard: in-place versioned edit — insert new active at same position, flip old active=false
+        replaced_by=new.id.
+      - replaceCard: the eviction op — insert new at the VICTIM's position, flip victim. Net active count
+        unchanged (one in, one out).
+      - deleteCard: soft (active=false, replaced_by stays null). Leaves a position GAP by design — no
+        renumber (would be N un-atomic writes); CardsBox sorts by position so gaps don't break rendering.
+    SLOT MODEL LOCKED: Option A (count-enforced). slot_kind stays null; 12-max by active count; position is
+    a dense 1-based rank. Option B (typed slots) reachable later via the existing slot_kind column, no
+    migration. Companion read-fix: getGrid/readTable reads cards active=true only (parallel to P2's
+    section_texts superseded_by IS NULL). section_items/section_citations still unfiltered (P4+).
+    CardsBox editable: sort-by-position, Add-card header action, per-tile Edit/two-step Delete on hover, and
+    the EVICTION PICKER — when addCard returns {full:true} the typed draft is held in state (never re-typed)
+    and the user picks which of 12 to replace. Edit gating = server-only (same as P2).
+  - SCROLL-JUMP FIX (bundled): card/text saves previously called load() which set loading=true, hitting the
+    spinner early-return that UNMOUNTED the canvas and reset scroll. Split load({background?}) — background
+    reload skips setLoading, so the canvas stays mounted and scrollTop survives. The {background:true}
+    pattern from the WAL-echo architecture note. Applied to BOTH CardsBox and SectionTextBox onSaved (also
+    improves P2's text edit). Retry button rewrapped () => load() so the click event isn't read as opts.
+  - VERIFIED in authoritative store: ceiling query (active>12) returns zero rows; edit chain 76->148->149
+    at one position; eviction one-in-one-out; live cell clean after test-card cleanup. Inactive test rows
+    left in table as harmless history (never render; soft-delete is the audit trail P6 will surface).
+
+▶ RESUME HERE → P4: AI-integrate + diff + divergence warning. The first slice with AI in the write path.
+  "Integrate this source" produces a reconciled section-text version shown as a DIFF against current; accept
+  replaces (writes a new section_texts version via the P2 writeSection path), reject changes nothing. If the
+  reconciled text CONTRADICTS the current reading (not just extends it), a divergence warning gates the
+  accept behind an explicit second confirmation. Needs design: what "integrate" feeds the model (current
+  body + new source text), how the diff is computed/displayed, and the divergence-detection approach (design
+  doc leans (a) model self-reports contradiction with prior text supplied in full, logged for false-positive
+  measurement). See the PUBLICATION ARC SLICE SEQUENCE below for P4-P7.
 
 CONTENT DECISIONS (locked, for the import + later re-index):
   - Citations are SECTION-LEVEL (mostly REGIONAL), NOT per-cell, NOT duplicated. 189 citations, only 60/189
