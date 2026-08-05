@@ -3394,16 +3394,38 @@ function registerIntelligenceHandlers(): void {
   // channel-gated on Contested Skies board membership inside getGrid.
   ipcMain.handle('publication:getGrid', (_e) => publicationCloud.getGrid(currentActingUserId))
 
-  // Publication write (P2) — versioned direct-edit of section text. HEAD-GATED:
-  // isOwner (canApprove = isRoot || isOwner), NOT plain membership — mirrors the
-  // reviewCommit gate. Gated against the single Contested Skies board (P1a constant).
-  ipcMain.handle('publication:writeSection', async (_e, cell: { geography: string; section_key: string; lang: string; body: string }) => {
+  // Publication write gate (P2/P3) — HEAD-GATED: isOwner (canApprove = isRoot ||
+  // isOwner), NOT plain membership — mirrors the reviewCommit gate. Gated against the
+  // single Contested Skies board (P1a constant). Shared by every publication writer;
+  // returns the {ok:false} deny shape on refusal, null when the actor may proceed.
+  const denyIfNotHead = async (op: string): Promise<{ ok: false; error: string } | null> => {
     const canApprove = await boardsCloud.isOwner(currentActingUserId, 'board-info-latam')
     if (!canApprove) {
-      console.warn(`[publication] deny writeSection — actor=${currentActingUserId} not a Head`)
-      return { ok: false, error: 'Not authorized — only Heads can edit page text' }
+      console.warn(`[publication] deny ${op} — actor=${currentActingUserId} not a Head`)
+      return { ok: false, error: 'Not authorized — only Heads can edit page content' }
     }
-    return publicationCloud.writeSection(currentActingUserId, cell)
+    return null
+  }
+
+  // Publication write (P2) — versioned direct-edit of section text.
+  ipcMain.handle('publication:writeSection', async (_e, cell: { geography: string; section_key: string; lang: string; body: string }) => {
+    return (await denyIfNotHead('writeSection')) ?? publicationCloud.writeSection(currentActingUserId, cell)
+  })
+
+  // Publication cards (P3) — editable 12-slot cards. Same Head gate as writeSection.
+  // addCard returns { full:true } when the cell is at 12 → the UI opens the eviction
+  // picker and re-submits via replaceCard.
+  ipcMain.handle('publication:addCard', async (_e, cell: { geography: string; section_key: string; headline: string; detail?: string; confidence?: string }) => {
+    return (await denyIfNotHead('addCard')) ?? publicationCloud.addCard(currentActingUserId, cell)
+  })
+  ipcMain.handle('publication:editCard', async (_e, edit: { id: number; headline: string; detail?: string; confidence?: string }) => {
+    return (await denyIfNotHead('editCard')) ?? publicationCloud.editCard(currentActingUserId, edit)
+  })
+  ipcMain.handle('publication:replaceCard', async (_e, repl: { victimId: number; headline: string; detail?: string; confidence?: string }) => {
+    return (await denyIfNotHead('replaceCard')) ?? publicationCloud.replaceCard(currentActingUserId, repl)
+  })
+  ipcMain.handle('publication:deleteCard', async (_e, del: { id: number }) => {
+    return (await denyIfNotHead('deleteCard')) ?? publicationCloud.deleteCard(currentActingUserId, del)
   })
 
   // Mark a news article as a duplicate. Removes it from the review queue WITHOUT any

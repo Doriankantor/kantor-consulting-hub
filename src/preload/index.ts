@@ -323,6 +323,10 @@ const api = {
   publication: {
     getGrid: () => ipcRenderer.invoke('publication:getGrid'),
     writeSection: (cell: { geography: string; section_key: string; lang: string; body: string }) => ipcRenderer.invoke('publication:writeSection', cell),
+    addCard: (cell: { geography: string; section_key: string; headline: string; detail?: string; confidence?: string }) => ipcRenderer.invoke('publication:addCard', cell),
+    editCard: (edit: { id: number; headline: string; detail?: string; confidence?: string }) => ipcRenderer.invoke('publication:editCard', edit),
+    replaceCard: (repl: { victimId: number; headline: string; detail?: string; confidence?: string }) => ipcRenderer.invoke('publication:replaceCard', repl),
+    deleteCard: (del: { id: number }) => ipcRenderer.invoke('publication:deleteCard', del),
   },
   intelligence: {
     getSources:           (params?: Record<string, unknown>) => ipcRenderer.invoke('intelligence:getSources', params),

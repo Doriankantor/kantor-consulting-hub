@@ -69,16 +69,20 @@ export default function CellGridTab({ pageId }: Props) {
   })
   const compact = railWidth < 120
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  // Foreground load (tab open) flips to the spinner; a background reload (post-write)
+  // refetches WITHOUT touching `loading`, so the canvas subtree stays mounted and its
+  // scrollTop survives. The {background:true} pattern — the write already succeeded, so
+  // a background refetch failure is logged, not surfaced as a canvas-blanking error.
+  const load = useCallback(async (opts?: { background?: boolean }) => {
+    if (!opts?.background) setLoading(true)
     setError(null)
     try {
       setGrid(await window.api.publication.getGrid())
     } catch (e) {
       console.error(e)
-      setError('Could not load published content.')
+      if (!opts?.background) setError('Could not load published content.')
     }
-    setLoading(false)
+    if (!opts?.background) setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -140,7 +144,7 @@ export default function CellGridTab({ pageId }: Props) {
   if (error) return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <p className="text-sm font-medium text-red-500 dark:text-red-400">{error}</p>
-      <button onClick={load} className="mt-2 text-xs px-2.5 py-1 rounded-lg border border-gray-200 dark:border-white/[0.1] text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition">Retry</button>
+      <button onClick={() => load()} className="mt-2 text-xs px-2.5 py-1 rounded-lg border border-gray-200 dark:border-white/[0.1] text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition">Retry</button>
     </div>
   )
 
@@ -242,9 +246,16 @@ export default function CellGridTab({ pageId }: Props) {
                 color={sectionColor(activeSection)}
                 geography={activeGeo ?? ''}
                 sectionKey={activeSection}
-                onSaved={load}
+                onSaved={() => load({ background: true })}
               />
-              <CardsBox cards={activeCell?.cards ?? []} color={sectionColor(activeSection)} />
+              <CardsBox
+                key={`cards-${activeGeo}-${activeSection}`}
+                cards={activeCell?.cards ?? []}
+                color={sectionColor(activeSection)}
+                geography={activeGeo ?? ''}
+                sectionKey={activeSection}
+                onSaved={() => load({ background: true })}
+              />
               <OutlineBox items={activeCell?.items ?? []} color={sectionColor(activeSection)} />
               <CitationsBox citations={activeCell?.citations ?? []} geography={activeGeo ?? ''} color={sectionColor(activeSection)} />
             </div>
@@ -366,21 +377,194 @@ function SectionTextBox({ body, color, geography, sectionKey, onSaved }: {
   )
 }
 
-// 2. CARDS — tile grid. "N of 12". Omitted if none.
-function CardsBox({ cards, color }: { cards: Row[]; color: string }) {
-  if (!cards.length) return null
+// 2. CARDS — tile grid. "N of 12". Omitted if the cell has no cards.
+// P3: editable (Head-gated server-side), the 12-slot replace flow. add / edit /
+// delete / replace, each a cloud write via window.api.publication.*, then a grid
+// reload so the new active set renders. Cards sort by dense `position` rank.
+//
+// The eviction flow: addCard on a full (12) cell returns { full:true } rather than
+// erroring — we stash the typed-but-unsaved draft in `evict` and open a victim
+// picker; choosing a card calls replaceCard(victimId, draft) so the user never
+// re-types. Like SectionTextBox, adding the FIRST card to an all-empty cell is a
+// later slice — the box is omitted when the cell has no cards, so Add appears only
+// once a cell already has ≥1 card. All errors surface inline, never swallowed.
+type CardDraft = { headline: string; detail: string; confidence: string }
+const EMPTY_CARD_DRAFT: CardDraft = { headline: '', detail: '', confidence: '' }
+
+function CardsBox({ cards, color, geography, sectionKey, onSaved }: {
+  cards: Row[]; color: string; geography: string; sectionKey: string; onSaved: () => void
+}) {
+  const [adding, setAdding] = useState(false)
+  const [addDraft, setAddDraft] = useState<CardDraft>(EMPTY_CARD_DRAFT)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editDraft, setEditDraft] = useState<CardDraft>(EMPTY_CARD_DRAFT)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
+  const [evict, setEvict] = useState<CardDraft | null>(null)   // pending new card awaiting a victim pick
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // dense-position order (P3 makes position meaningful; read order was arbitrary)
+  const sorted = [...cards].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+  if (!sorted.length) return null
+
+  const clean = (d: CardDraft) => ({
+    headline: d.headline.trim(),
+    detail: d.detail.trim() || undefined,
+    confidence: d.confidence.trim() || undefined,
+  })
+
+  const submitAdd = async () => {
+    if (!addDraft.headline.trim()) { setError('Headline is required.'); return }
+    setBusy(true); setError(null)
+    try {
+      const res = await window.api.publication.addCard({ geography, section_key: sectionKey, ...clean(addDraft) })
+      if (res.ok) { setAdding(false); setAddDraft(EMPTY_CARD_DRAFT); onSaved() }
+      else if (res.full) { setEvict(addDraft); setAdding(false) }   // preserve the draft; open the picker
+      else setError(res.error ?? 'Add failed.')
+    } catch (e) { console.error(e); setError('Add failed.') }
+    setBusy(false)
+  }
+
+  const submitEdit = async () => {
+    if (editingId == null) return
+    if (!editDraft.headline.trim()) { setError('Headline is required.'); return }
+    setBusy(true); setError(null)
+    try {
+      const res = await window.api.publication.editCard({ id: editingId, ...clean(editDraft) })
+      if (res.ok) { setEditingId(null); onSaved() }
+      else setError(res.error ?? 'Edit failed.')
+    } catch (e) { console.error(e); setError('Edit failed.') }
+    setBusy(false)
+  }
+
+  const submitDelete = async (id: number) => {
+    setBusy(true); setError(null)
+    try {
+      const res = await window.api.publication.deleteCard({ id })
+      if (res.ok) { setConfirmDeleteId(null); onSaved() }
+      else setError(res.error ?? 'Delete failed.')
+    } catch (e) { console.error(e); setError('Delete failed.') }
+    setBusy(false)
+  }
+
+  const submitReplace = async (victimId: number) => {
+    if (!evict) return
+    setBusy(true); setError(null)
+    try {
+      const res = await window.api.publication.replaceCard({ victimId, ...clean(evict) })
+      if (res.ok) { setEvict(null); onSaved() }
+      else setError(res.error ?? 'Replace failed.')
+    } catch (e) { console.error(e); setError('Replace failed.') }
+    setBusy(false)
+  }
+
+  // "Add card" header affordance — hidden while any inline flow is open.
+  const addBtn = (adding || editingId != null || evict) ? undefined : (
+    <button
+      onClick={() => { setError(null); setAddDraft(EMPTY_CARD_DRAFT); setAdding(true) }}
+      className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-gray-200 dark:border-white/[0.12] text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition"
+    >Add card</button>
+  )
+
   return (
-    <Box title="Figures" meta={`${cards.length} of 12`} color={color}>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {cards.map((cd, i) => (
-          <div key={i} className="rounded-lg border border-l-2 border-gray-100 dark:border-white/[0.06] bg-gray-50/60 dark:bg-white/[0.02] px-3 py-2" style={{ borderLeftColor: color }}>
-            <div className="text-sm font-bold leading-snug text-gray-900 dark:text-white/85">{cd.headline}</div>
-            {cd.detail && <div className="text-[12px] leading-snug text-gray-600 dark:text-white/55 mt-0.5">{cd.detail}</div>}
-            {cd.confidence && <div className="text-[10px] text-gray-400 dark:text-white/30 mt-1">confidence: {cd.confidence}</div>}
+    <Box title="Figures" meta={`${sorted.length} of 12`} color={color} action={addBtn}>
+      {/* EVICTION PICKER — full cell; pick a card to replace with the pending draft */}
+      {evict ? (
+        <div className="space-y-2">
+          <p className="text-[12px] text-gray-600 dark:text-white/60">
+            This cell has 12 cards. Choose one to replace with <span className="font-semibold text-gray-800 dark:text-white/80">“{evict.headline.trim() || '(untitled)'}”</span>:
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {sorted.map(cd => (
+              <button
+                key={cd.id}
+                onClick={() => submitReplace(cd.id)}
+                disabled={busy}
+                className="text-left rounded-lg border border-l-2 border-gray-100 dark:border-white/[0.06] bg-gray-50/60 dark:bg-white/[0.02] px-3 py-2 hover:border-red-300 dark:hover:border-red-400/40 hover:bg-red-50/40 dark:hover:bg-red-500/[0.06] disabled:opacity-50 transition"
+                style={{ borderLeftColor: color }}
+              >
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-[10px] font-mono tabular-nums text-gray-400 dark:text-white/30">{cd.position}</span>
+                  <span className="text-sm font-bold leading-snug text-gray-900 dark:text-white/85">{cd.headline}</span>
+                </div>
+                {cd.detail && <div className="text-[12px] leading-snug text-gray-600 dark:text-white/55 mt-0.5">{cd.detail}</div>}
+              </button>
+            ))}
           </div>
-        ))}
-      </div>
+          {error && <p className="text-[12px] text-red-500 dark:text-red-400">{error}</p>}
+          <button
+            onClick={() => { setEvict(null); setError(null) }}
+            disabled={busy}
+            className="text-xs font-medium px-3 py-1.5 rounded-lg text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.06] disabled:opacity-50 transition"
+          >Cancel</button>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {sorted.map(cd => (
+              <div key={cd.id} className="rounded-lg border border-l-2 border-gray-100 dark:border-white/[0.06] bg-gray-50/60 dark:bg-white/[0.02] px-3 py-2" style={{ borderLeftColor: color }}>
+                {editingId === cd.id ? (
+                  <CardForm draft={editDraft} setDraft={setEditDraft} onSubmit={submitEdit} onCancel={() => { setEditingId(null); setError(null) }} busy={busy} submitLabel="Save" />
+                ) : confirmDeleteId === cd.id ? (
+                  <div className="space-y-1.5">
+                    <div className="text-sm font-bold leading-snug text-gray-900 dark:text-white/85">{cd.headline}</div>
+                    <p className="text-[12px] text-red-500 dark:text-red-400">Delete this card?</p>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => submitDelete(cd.id)} disabled={busy} className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white transition">{busy ? '…' : 'Delete'}</button>
+                      <button onClick={() => setConfirmDeleteId(null)} disabled={busy} className="text-xs font-medium px-2.5 py-1 rounded-lg text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.06] disabled:opacity-50 transition">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="group/card">
+                    <div className="text-sm font-bold leading-snug text-gray-900 dark:text-white/85">{cd.headline}</div>
+                    {cd.detail && <div className="text-[12px] leading-snug text-gray-600 dark:text-white/55 mt-0.5">{cd.detail}</div>}
+                    {cd.confidence && <div className="text-[10px] text-gray-400 dark:text-white/30 mt-1">confidence: {cd.confidence}</div>}
+                    <div className="flex items-center gap-1.5 mt-2 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => { setEditingId(cd.id); setEditDraft({ headline: cd.headline ?? '', detail: cd.detail ?? '', confidence: cd.confidence ?? '' }); setError(null) }}
+                        className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-gray-200 dark:border-white/[0.12] text-gray-500 dark:text-white/50 hover:bg-white dark:hover:bg-white/[0.06] transition"
+                      >Edit</button>
+                      <button
+                        onClick={() => { setConfirmDeleteId(cd.id); setError(null) }}
+                        className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-gray-200 dark:border-white/[0.12] text-gray-500 dark:text-white/50 hover:bg-red-50 dark:hover:bg-red-500/[0.08] hover:text-red-500 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-400/30 transition"
+                      >Delete</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* inline ADD form */}
+          {adding && (
+            <div className="rounded-lg border border-dashed border-gray-200 dark:border-white/[0.1] px-3 py-2.5">
+              <CardForm draft={addDraft} setDraft={setAddDraft} onSubmit={submitAdd} onCancel={() => { setAdding(false); setError(null) }} busy={busy} submitLabel="Add" />
+            </div>
+          )}
+
+          {/* errors from add / edit / delete (eviction has its own inline error above) */}
+          {error && !editingId && confirmDeleteId == null && <p className="text-[12px] text-red-500 dark:text-red-400">{error}</p>}
+        </div>
+      )}
     </Box>
+  )
+}
+
+// Shared card add/edit form — headline required, detail + confidence optional.
+function CardForm({ draft, setDraft, onSubmit, onCancel, busy, submitLabel }: {
+  draft: CardDraft; setDraft: (d: CardDraft) => void; onSubmit: () => void; onCancel: () => void; busy: boolean; submitLabel: string
+}) {
+  const input = 'w-full text-[13px] text-gray-800 dark:text-white/80 bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.1] rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-400'
+  return (
+    <div className="space-y-1.5">
+      <input value={draft.headline} onChange={e => setDraft({ ...draft, headline: e.target.value })} placeholder="Headline (required)" className={`${input} font-semibold`} />
+      <textarea value={draft.detail} onChange={e => setDraft({ ...draft, detail: e.target.value })} rows={2} placeholder="Detail (optional)" className={`${input} resize-y`} />
+      <input value={draft.confidence} onChange={e => setDraft({ ...draft, confidence: e.target.value })} placeholder="Confidence (optional)" className={input} />
+      <div className="flex items-center gap-2 pt-0.5">
+        <button onClick={onSubmit} disabled={busy} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white transition">{busy ? 'Saving…' : submitLabel}</button>
+        <button onClick={onCancel} disabled={busy} className="text-xs font-medium px-3 py-1.5 rounded-lg text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.06] disabled:opacity-50 transition">Cancel</button>
+      </div>
+    </div>
   )
 }
 

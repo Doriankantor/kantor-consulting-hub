@@ -41,11 +41,13 @@ const EMPTY_GRID = (): PublicationGrid => ({
 // section_texts is now VERSIONED (P2): an edit inserts a new row and stamps the old
 // row's superseded_by, so a cell can hold multiple rows. The grid must see ONE live
 // row per cell, so section_texts is filtered to superseded_by IS NULL (the canonical
-// "live version" predicate). The other three tables have no superseded_by column —
-// they read unfiltered here (cards get their active/replaced_by filter in P3).
+// "live version" predicate). cards are now VERSIONED too (P3): filtered to active=true
+// so a superseded card doesn't double-render its slot. section_items / section_citations
+// have no versioning columns yet — they read unfiltered here (P4+).
 async function readTable(table: string): Promise<Record<string, unknown>[]> {
   let query = cloud.from(table).select('*')
   if (table === 'section_texts') query = query.is('superseded_by', null)
+  if (table === 'cards') query = query.eq('active', true)
   const { data, error } = await query
   reportCloudResult(!error)
   if (error) {
@@ -120,4 +122,140 @@ export async function writeSection(
     if (supErr) return { ok: false, error: `supersede old row (new row ${inserted.id} written OK): ${supErr.message}` }
   }
   return { ok: true, id: inserted.id }
+}
+
+// ── publication WRITE path (P3): editable cards, 12-slot replace flow ─────────
+// The second write slice. Turns on the dormant active / replaced_by columns for
+// cards (the analogue of section_texts' version / superseded_by). Slots are
+// COUNT-ENFORCED (option A): a cell holds at most 12 ACTIVE cards, `position` is a
+// dense 1-based rank for ordering, `slot_kind` stays null (typed slots deferred).
+//
+// Same discipline as writeSection: online-guard, read the CURRENT active state of
+// the cell before writing, INSERT-first / flip-second so a failure never loses a
+// card, reportCloudResult on the insert, never throw. Cloud-direct, no mirror.
+// Gating is at the IPC layer (Head-only, isOwner) — these assume an authorized caller.
+
+// Read a cell's live (active) cards, ordered by dense position rank. Used by every
+// card writer to see the current slot state before mutating (writeSection's live-row
+// read, generalized to N cards).
+async function activeCardsFor(
+  geography: string,
+  section_key: string
+): Promise<{ rows: { id: number; position: number; headline: string }[]; error: string | null }> {
+  const { data, error } = await cloud.from('cards')
+    .select('id,position,headline')
+    .eq('geography', geography).eq('section_key', section_key).eq('active', true)
+    .order('position')
+  return { rows: (data ?? []) as { id: number; position: number; headline: string }[], error: error?.message ?? null }
+}
+
+// 1a. addCard — append a new card at the next free position. HARD CEILING at 12:
+// when the cell is full we do NOT error blindly — we return { full: true } so the UI
+// opens the eviction picker (→ replaceCard) instead. No flip: an add only inserts.
+export async function addCard(
+  actingUserId: string | undefined,
+  cell: { geography: string; section_key: string; headline: string; detail?: string; confidence?: string }
+): Promise<{ ok: boolean; error?: string; id?: number; full?: boolean }> {
+  if (!isOnline()) return { ok: false, error: 'offline — cannot add card while offline' }
+
+  const { rows, error: readErr } = await activeCardsFor(cell.geography, cell.section_key)
+  if (readErr) return { ok: false, error: `read cell cards: ${readErr}` }
+
+  // 12-slot ceiling. full:true is a signal, not an error — the UI evicts instead.
+  if (rows.length >= 12)
+    return { ok: false, full: true, error: 'Cell is full (12 cards). Choose a card to replace.' }
+
+  const nextPosition = rows.length ? rows[rows.length - 1].position + 1 : 1
+  const { data: inserted, error: insErr } = await cloud.from('cards')
+    .insert({
+      geography: cell.geography, section_key: cell.section_key,
+      headline: cell.headline, detail: cell.detail ?? null, confidence: cell.confidence ?? null,
+      position: nextPosition, active: true, updated_by: actingUserId ?? null,
+    })
+    .select('id').single()
+  reportCloudResult(!insErr)
+  if (insErr || !inserted) return { ok: false, error: `insert card: ${insErr?.message ?? 'no row returned'}` }
+  return { ok: true, id: inserted.id }
+}
+
+// 1b. editCard — versioned edit in place. Insert a NEW active card inheriting the
+// old card's geography / section_key / position, then flip the old one (active=false,
+// replaced_by=new.id). Insert-first: if the insert fails the old card is untouched.
+export async function editCard(
+  actingUserId: string | undefined,
+  edit: { id: number; headline: string; detail?: string; confidence?: string }
+): Promise<{ ok: boolean; error?: string; id?: number }> {
+  if (!isOnline()) return { ok: false, error: 'offline — cannot edit card while offline' }
+
+  const { data: old, error: readErr } = await cloud.from('cards').select('*').eq('id', edit.id).single()
+  if (readErr) return { ok: false, error: `read card: ${readErr.message}` }
+  if (!old || old.active === false) return { ok: false, error: 'card not found or not active' }
+
+  // INSERT FIRST — same slot (position), old card still live if this fails
+  const { data: inserted, error: insErr } = await cloud.from('cards')
+    .insert({
+      geography: old.geography, section_key: old.section_key, position: old.position,
+      headline: edit.headline, detail: edit.detail ?? null, confidence: edit.confidence ?? null,
+      active: true, updated_by: actingUserId ?? null,
+    })
+    .select('id').single()
+  reportCloudResult(!insErr)
+  if (insErr || !inserted) return { ok: false, error: `insert edited card: ${insErr?.message ?? 'no row returned'}` }
+
+  // FLIP OLD — stamp replaced_by. If this fails the cell briefly shows 2 cards at
+  // that position (repair case); content is NOT lost.
+  const { error: flipErr } = await cloud.from('cards')
+    .update({ active: false, replaced_by: inserted.id }).eq('id', edit.id)
+  if (flipErr) return { ok: false, error: `edit: new card written (id ${inserted.id}) but old flip failed: ${flipErr.message}` }
+  return { ok: true, id: inserted.id }
+}
+
+// 1c. replaceCard — the EVICTION op. Used when the cell is full and the user picked
+// which card to evict. Insert the new card at the VICTIM's position, then flip the
+// victim (active=false, replaced_by=new.id). Net active count is unchanged: one in,
+// one out. Insert-first: if the insert fails the victim is untouched.
+export async function replaceCard(
+  actingUserId: string | undefined,
+  repl: { victimId: number; headline: string; detail?: string; confidence?: string }
+): Promise<{ ok: boolean; error?: string; id?: number }> {
+  if (!isOnline()) return { ok: false, error: 'offline — cannot replace card while offline' }
+
+  const { data: victim, error: readErr } = await cloud.from('cards').select('*').eq('id', repl.victimId).single()
+  if (readErr) return { ok: false, error: `read victim card: ${readErr.message}` }
+  if (!victim || victim.active === false) return { ok: false, error: 'victim card not found or not active' }
+
+  // INSERT FIRST at the victim's slot — victim still live if this fails
+  const { data: inserted, error: insErr } = await cloud.from('cards')
+    .insert({
+      geography: victim.geography, section_key: victim.section_key, position: victim.position,
+      headline: repl.headline, detail: repl.detail ?? null, confidence: repl.confidence ?? null,
+      active: true, updated_by: actingUserId ?? null,
+    })
+    .select('id').single()
+  reportCloudResult(!insErr)
+  if (insErr || !inserted) return { ok: false, error: `insert replacement card: ${insErr?.message ?? 'no row returned'}` }
+
+  // FLIP VICTIM — evict it. If this fails the cell briefly has 13 cards (repair case).
+  const { error: flipErr } = await cloud.from('cards')
+    .update({ active: false, replaced_by: inserted.id }).eq('id', repl.victimId)
+  if (flipErr) return { ok: false, error: `replace: new card written (id ${inserted.id}) but victim flip failed: ${flipErr.message}` }
+  return { ok: true, id: inserted.id }
+}
+
+// 1d. deleteCard — SOFT delete, no new row: flip active=false, leave replaced_by
+// null (a delete is not a replacement). This leaves a position GAP (delete position
+// 3 of 5 → 1,2,4,5). Acceptable for v1: position is a rank for ordering and CardsBox
+// sorts by it, so gaps don't break rendering. We deliberately do NOT renumber the
+// survivors — that would be N extra writes with no transaction to make them atomic.
+export async function deleteCard(
+  actingUserId: string | undefined,
+  del: { id: number }
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isOnline()) return { ok: false, error: 'offline — cannot delete card while offline' }
+
+  const { error: delErr } = await cloud.from('cards')
+    .update({ active: false }).eq('id', del.id).eq('active', true)
+  reportCloudResult(!delErr)
+  if (delErr) return { ok: false, error: `delete card: ${delErr.message}` }
+  return { ok: true }
 }

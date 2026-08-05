@@ -931,6 +931,10 @@ interface Window {
     publication: {
       getGrid: () => Promise<{ section_texts: any[]; cards: any[]; section_items: any[]; section_citations: any[] }>
       writeSection: (cell: { geography: string; section_key: string; lang: string; body: string }) => Promise<{ ok: boolean; error?: string; id?: number }>
+      addCard: (cell: { geography: string; section_key: string; headline: string; detail?: string; confidence?: string }) => Promise<{ ok: boolean; error?: string; id?: number; full?: boolean }>
+      editCard: (edit: { id: number; headline: string; detail?: string; confidence?: string }) => Promise<{ ok: boolean; error?: string; id?: number }>
+      replaceCard: (repl: { victimId: number; headline: string; detail?: string; confidence?: string }) => Promise<{ ok: boolean; error?: string; id?: number }>
+      deleteCard: (del: { id: number }) => Promise<{ ok: boolean; error?: string }>
     }
     intelligence: {
       getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number; project?: string; excludeStatus?: string }) => Promise<IntelligenceSource[]>
