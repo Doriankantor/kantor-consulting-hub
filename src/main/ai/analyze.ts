@@ -25,6 +25,11 @@ import { resolveAnthropicKey } from '../ipc'
 // if reconcile needs more headroom than Haiku provides.
 const MODEL = 'claude-haiku-4-5'
 
+// Max source chars fed to the model, AFTER HTML stripping. Raised from 8000:
+// strip-first means these are prose chars (no markup/href waste), so ~18k prose
+// ≈ a full long analytical article. Bump this single const to adjust the window.
+const ANALYSIS_BODY_CAP = 18000
+
 export type AnalyzeTask = 'relevance' | 'reconcile'
 
 export interface ProjectConfig {
@@ -210,6 +215,33 @@ catalogue in the prose. Do NOT invent specifics that are not above or in the sou
 `
 }
 
+// Convert HTML source to analysis-ready plain text. Reuses the proven in-repo
+// regex-stripper pattern (no DOM, main-process safe), upgraded to preserve
+// paragraph boundaries and drop href URLs while keeping anchor text.
+function stripHtmlForAnalysis(input: string): string {
+  if (!input) return ''
+  return input
+    // block-level close/br -> newline FIRST, so paragraph structure survives
+    .replace(/<\/(p|div|li|h[1-6]|tr|blockquote)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    // all remaining tags -> space (space, not empty, so word<b>s</b> doesn't fuse)
+    .replace(/<[^>]+>/g, ' ')
+    // entity decode (superset of the existing app stripper)
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;|&rsquo;|&lsquo;/g, "'")
+    .replace(/&quot;|&ldquo;|&rdquo;/g, '"')
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–')
+    // collapse spaces/tabs but KEEP newlines; cap runs of blank lines
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 function buildPrompt(
   task: AnalyzeTask,
   text: string,
@@ -224,7 +256,9 @@ function buildPrompt(
     'collection framework. Respond with STRICT JSON ONLY — no prose, no markdown, no code fences.'
 
   const context = projectBlock(projectConfig)
-  const body = text.slice(0, 8000) // cost/context cap, matches the doc-analysis path
+  // Strip HTML BEFORE the cap so the window fills with prose, not markup/href URLs.
+  // Idempotent no-op on already-clean callers (Documents/Interviews/Social).
+  const body = stripHtmlForAnalysis(text).slice(0, ANALYSIS_BODY_CAP) // cost/context cap
   const tagsReuse = tagReuseBlock(existingTags) // T7: '' when no existing vocabulary
   const priorStructure = priorStructureBlock(priorAi) // '' when no prior extraction
 
@@ -406,6 +440,11 @@ function normalizeResult(parsed: Record<string, unknown>): AnalyzeResult {
     out.article_type = parsed.article_type.trim().slice(0, 40)
   }
   if (Array.isArray(parsed.capabilities)) {
+    // De-dupe on COMPOSITE (system+actor), case-insensitive: same system + different
+    // actor (quadcopter/CJNG vs quadcopter/ELN) are distinct rows and both survive;
+    // only truly-identical (system+actor) duplicates collapse. Keep first. Mirrors the
+    // actors de-dupe below. Prevents the duplicate-key React warning + shared override slot.
+    const seenCaps = new Set<string>()
     out.capabilities = (parsed.capabilities as unknown[])
       .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object' && typeof (c as any).system === 'string' && !!(c as any).system.trim())
       .map(c => {
@@ -418,14 +457,27 @@ function normalizeResult(parsed: Record<string, unknown>): AnalyzeResult {
         }
         return cap
       })
+      .filter(cap => {
+        const k = `${cap.system.toLowerCase().trim()}|${(cap.actor || '').toLowerCase().trim()}`
+        if (seenCaps.has(k)) return false
+        seenCaps.add(k); return true
+      })
       .slice(0, 20)
   } else {
     out.capabilities = []
   }
   if (Array.isArray(parsed.key_facts)) {
+    // De-dupe on COMPOSITE (label+value), case-insensitive: same label + different value
+    // stays separate; only identical label+value collapse. Keep first. Same rationale as caps.
+    const seenFacts = new Set<string>()
     out.key_facts = (parsed.key_facts as unknown[])
       .filter((f): f is Record<string, unknown> => !!f && typeof f === 'object' && typeof (f as any).label === 'string' && typeof (f as any).value === 'string' && !!(f as any).label.trim() && !!(f as any).value.trim())
       .map(f => ({ label: String((f as any).label).trim().slice(0, 100), value: String((f as any).value).trim().slice(0, 500) }))
+      .filter(f => {
+        const k = `${f.label.toLowerCase().trim()}|${f.value.toLowerCase().trim()}`
+        if (seenFacts.has(k)) return false
+        seenFacts.add(k); return true
+      })
       .slice(0, 30)
   } else {
     out.key_facts = []

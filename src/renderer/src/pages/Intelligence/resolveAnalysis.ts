@@ -15,7 +15,7 @@ export interface ResolvedFact {
 }
 
 export interface ResolvedCap {
-  key: string          // the AI's ORIGINAL `system` — the stable override key (survives a rename)
+  key: string          // composite `${AI system}|${AI actor}` — stable override key (survives a rename; keeps same-system/different-actor rows distinct)
   system: string       // resolved (may be renamed by an override)
   actor?: string
   actor_type?: string
@@ -56,7 +56,9 @@ export function resolveCaps(analysis: any): ResolvedCap[] {
   return (aiCaps as any[])
     .filter(c => c && typeof c === 'object')
     .map(c => {
-      const key = String(c.system ?? '')
+      // Composite key (system+actor) so two same-system/different-actor caps get SEPARATE
+      // override slots. Derived from the AI's ORIGINAL c.system/c.actor so it survives a rename.
+      const key = `${String(c.system ?? '')}|${String(c.actor ?? '')}`
       const ov = overrides[key]
       if (ov && typeof ov === 'object') {
         const { edited_at, ...ovFields } = ov as Record<string, any>   // drop bookkeeping
