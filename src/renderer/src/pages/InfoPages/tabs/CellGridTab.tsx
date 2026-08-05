@@ -1,0 +1,343 @@
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
+import { SECTION_LABELS, sectionLabel } from '../../Intelligence/sectionLabels'
+import { sectionColor } from '../../Intelligence/sectionColors'
+
+interface Props {
+  // publication tables are global CS data — no board/page column yet; pageId
+  // accepted for tab-shape consistency, intentionally unused in P1.
+  pageId: string
+}
+
+// P1b — read-only publication cell GRID. Consumes window.api.publication.getGrid()
+// (the P1a cloud-direct read), shapes the four flat table arrays into cells keyed
+// (geography x section_key), and renders the approved mockup layout: geography tabs
+// across the top, a 9-section rail on the left, and a canvas of four content boxes.
+// Read-only: no edit controls, no mutations — editing is P2. App palette (indigo/
+// gray); the ONLY thing lifted from the mockup is the per-section accent color.
+
+// Supplier-axis geographies — the documented §04/§05 re-index debt, bucketed
+// separately so that debt is VISIBLE rather than mixed into the LATAM grid.
+const SUPPLIER_AXIS_GEOS = new Set([
+  'United States', 'China', 'GLOBAL', 'Ukraine', 'Israel', 'Lebanon', 'Syria', 'Turkey', 'Costa Rica',
+])
+
+// Loose row aliases — P1a returns untyped any[]; the columns we read are stable.
+type Row = Record<string, any>
+
+interface Cell {
+  geography: string
+  section_key: string
+  narrative?: string
+  cards: Row[]
+  items: Row[]
+  citations: Row[]
+}
+
+const SECTION_ORDER = Object.keys(SECTION_LABELS)   // canonical 9, in display order
+const cellKey = (geography: string, section_key: string) => `${geography}|${section_key}`
+const sectionNo = (key: string) => String(SECTION_ORDER.indexOf(key) + 1).padStart(2, '0')
+
+// number of the four content types present in a cell (0–4)
+function typeCount(c?: Cell): number {
+  if (!c) return 0
+  return (c.narrative ? 1 : 0) + (c.cards.length ? 1 : 0) + (c.items.length ? 1 : 0) + (c.citations.length ? 1 : 0)
+}
+
+// REGIONAL first, then everything else alphabetically.
+function geoSort(a: string, b: string): number {
+  if (a === 'REGIONAL') return -1
+  if (b === 'REGIONAL') return 1
+  return a.localeCompare(b)
+}
+const geoLabel = (g: string) => (g === 'REGIONAL' ? 'ALL LATAM' : g)
+
+export default function CellGridTab({ pageId }: Props) {
+  void pageId   // intentionally unused (see Props comment)
+
+  const [grid, setGrid] = useState<{ section_texts: Row[]; cards: Row[]; section_items: Row[]; section_citations: Row[] } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [activeGeo, setActiveGeo] = useState<string | null>(null)
+  const [activeSection, setActiveSection] = useState<string>(SECTION_ORDER[0])
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      setGrid(await window.api.publication.getGrid())
+    } catch (e) {
+      console.error(e)
+      setError('Could not load published content.')
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  // ── shape the four flat arrays into a cell map + geography buckets ──────────
+  const { cells, mainGeos, supplierGeos, total } = useMemo(() => {
+    const cells = new Map<string, Cell>()
+    if (!grid) return { cells, mainGeos: [] as string[], supplierGeos: [] as string[], total: 0 }
+
+    const ensure = (geography: string, section_key: string): Cell => {
+      const k = cellKey(geography, section_key)
+      let c = cells.get(k)
+      if (!c) { c = { geography, section_key, cards: [], items: [], citations: [] }; cells.set(k, c) }
+      return c
+    }
+    for (const r of grid.section_texts) {
+      const body = (r.body ?? '').toString()
+      if (body.trim()) ensure(r.geography, r.section_key).narrative = body
+    }
+    for (const r of grid.cards)             ensure(r.geography, r.section_key).cards.push(r)
+    for (const r of grid.section_items)     ensure(r.geography, r.section_key).items.push(r)
+    for (const r of grid.section_citations) ensure(r.geography, r.section_key).citations.push(r)
+
+    const geoSet = new Set<string>()
+    for (const c of cells.values()) if (typeCount(c) > 0) geoSet.add(c.geography)
+    const all = [...geoSet]
+    const mainGeos = all.filter(g => !SUPPLIER_AXIS_GEOS.has(g)).sort(geoSort)
+    const supplierGeos = all.filter(g => SUPPLIER_AXIS_GEOS.has(g)).sort(geoSort)
+    return { cells, mainGeos, supplierGeos, total: cells.size }
+  }, [grid])
+
+  const getCell = useCallback((geo: string | null, sec: string): Cell | undefined =>
+    (geo ? cells.get(cellKey(geo, sec)) : undefined), [cells])
+
+  const popCount = useCallback((geo: string): number =>
+    SECTION_ORDER.reduce((n, s) => n + (typeCount(cells.get(cellKey(geo, s))) > 0 ? 1 : 0), 0), [cells])
+
+  // Initial selection once data lands: first geography (REGIONAL) + its first populated section.
+  useEffect(() => {
+    if (activeGeo || !mainGeos.length && !supplierGeos.length) return
+    const geo = (mainGeos[0] ?? supplierGeos[0])
+    setActiveGeo(geo)
+    const first = SECTION_ORDER.find(s => typeCount(cells.get(cellKey(geo, s))) > 0) ?? SECTION_ORDER[0]
+    setActiveSection(first)
+  }, [activeGeo, mainGeos, supplierGeos, cells])
+
+  // Geo switch: if the current section is empty in the new geography, jump to that
+  // geography's first populated section (never land on a blank cell after switching).
+  function selectGeo(geo: string) {
+    setActiveGeo(geo)
+    if (typeCount(getCell(geo, activeSection)) === 0) {
+      const first = SECTION_ORDER.find(s => typeCount(getCell(geo, s)) > 0)
+      if (first) setActiveSection(first)
+    }
+  }
+
+  if (loading) return <div className="flex items-center justify-center py-16"><div className="w-5 h-5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"/></div>
+
+  if (error) return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <p className="text-sm font-medium text-red-500 dark:text-red-400">{error}</p>
+      <button onClick={load} className="mt-2 text-xs px-2.5 py-1 rounded-lg border border-gray-200 dark:border-white/[0.1] text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition">Retry</button>
+    </div>
+  )
+
+  if (total === 0) return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <p className="text-sm font-medium text-gray-500 dark:text-white/40">No published content</p>
+      <p className="text-xs text-gray-400 dark:text-white/25 mt-1">Seeded page content appears here once available for this project</p>
+    </div>
+  )
+
+  const activeCell = getCell(activeGeo, activeSection)
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* A. GEOGRAPHY TAB BAR */}
+      <div className="shrink-0 px-4 py-2.5 border-b border-gray-100 dark:border-white/[0.06] flex flex-wrap items-center gap-1.5">
+        {mainGeos.map(g => <GeoTab key={g} geo={g} active={g === activeGeo} count={popCount(g)} onClick={() => selectGeo(g)} />)}
+        {supplierGeos.length > 0 && (
+          <>
+            <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-white/10" />
+            <span className="text-[10px] font-medium uppercase tracking-wide text-amber-500/70 dark:text-amber-300/50 mr-0.5">supplier axis · pending re-index</span>
+            {supplierGeos.map(g => <GeoTab key={g} geo={g} active={g === activeGeo} count={popCount(g)} onClick={() => selectGeo(g)} supplier />)}
+          </>
+        )}
+      </div>
+
+      {/* B. TWO-COLUMN FRAME */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* C. SECTION RAIL */}
+        <div className="w-52 shrink-0 border-r border-gray-100 dark:border-white/[0.06] overflow-y-auto py-2">
+          {SECTION_ORDER.map(sec => {
+            const c = getCell(activeGeo, sec)
+            const n = typeCount(c)
+            const active = sec === activeSection
+            const color = sectionColor(sec)
+            return (
+              <button
+                key={sec}
+                onClick={() => setActiveSection(sec)}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-left border-l-2 transition ${
+                  active
+                    ? 'bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white'
+                    : 'border-l-transparent text-gray-600 dark:text-white/60 hover:bg-gray-50/60 dark:hover:bg-white/[0.03]'
+                } ${n === 0 ? 'opacity-40' : ''}`}
+                style={active ? { borderLeftColor: color } : undefined}
+              >
+                <span className="text-[10px] font-mono tabular-nums text-gray-400 dark:text-white/30">{sectionNo(sec)}</span>
+                <span className="flex-1 text-xs font-medium truncate">{sectionLabel(sec)}</span>
+                {n > 0 && <span className="text-[10px] text-gray-400 dark:text-white/30">{n}</span>}
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: n > 0 ? color : 'transparent', boxShadow: n > 0 ? undefined : 'inset 0 0 0 1px rgba(148,163,184,.4)' }} />
+              </button>
+            )
+          })}
+        </div>
+
+        {/* D. CANVAS */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {/* header */}
+          <div className="flex items-center gap-2.5 mb-4">
+            <span className="text-sm font-mono font-bold tabular-nums" style={{ color: sectionColor(activeSection) }}>{sectionNo(activeSection)}</span>
+            <h2 className="text-base font-bold text-gray-900 dark:text-white">{sectionLabel(activeSection)}</h2>
+            <span className="text-sm text-gray-400 dark:text-white/30">·</span>
+            <span className="text-sm text-gray-500 dark:text-white/50">{geoLabel(activeGeo ?? '')}</span>
+            <span className="ml-auto text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/40">read-only</span>
+          </div>
+
+          {typeCount(activeCell) === 0 ? (
+            <p className="text-sm text-gray-400 dark:text-white/30 py-8 text-center">No published content in this cell.</p>
+          ) : (
+            <div className="space-y-3">
+              <SectionTextBox body={activeCell?.narrative} color={sectionColor(activeSection)} />
+              <CardsBox cards={activeCell?.cards ?? []} color={sectionColor(activeSection)} />
+              <OutlineBox items={activeCell?.items ?? []} color={sectionColor(activeSection)} />
+              <CitationsBox citations={activeCell?.citations ?? []} geography={activeGeo ?? ''} color={sectionColor(activeSection)} />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── geography tab ─────────────────────────────────────────────────────────────
+function GeoTab({ geo, active, count, onClick, supplier }: { geo: string; active: boolean; count: number; onClick: () => void; supplier?: boolean }) {
+  const base = 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition whitespace-nowrap'
+  const cls = active
+    ? 'border-indigo-500 text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10'
+    : supplier
+      ? 'border-transparent text-amber-600/70 dark:text-amber-300/50 hover:bg-amber-50 dark:hover:bg-amber-500/[0.06]'
+      : 'border-transparent text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.05]'
+  return (
+    <button onClick={onClick} className={`${base} ${cls}`}>
+      {geoLabel(geo)}
+      <span className={`text-[10px] ${active ? 'text-indigo-400 dark:text-indigo-300/70' : 'text-gray-400 dark:text-white/30'}`}>{count}</span>
+    </button>
+  )
+}
+
+// ── shared box shell ──────────────────────────────────────────────────────────
+function Box({ title, meta, color, children }: { title: string; meta?: string; color: string; children: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02]">
+      <div className="flex items-center gap-2 px-3.5 py-2 border-b border-gray-100 dark:border-white/[0.05]">
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-white/50">{title}</span>
+        {meta && <span className="ml-auto text-[10px] text-gray-400 dark:text-white/30">{meta}</span>}
+      </div>
+      <div className="px-3.5 py-3">{children}</div>
+    </div>
+  )
+}
+
+// 1. NARRATIVE — prose, paragraphs split on blank lines. Omitted if absent.
+function SectionTextBox({ body, color }: { body?: string; color: string }) {
+  if (!body || !body.trim()) return null
+  const paragraphs = body.split(/\n\n+/).map(p => p.trim()).filter(Boolean)
+  return (
+    <Box title="Narrative" color={color}>
+      <div className="space-y-2">
+        {paragraphs.map((p, i) => <p key={i} className="text-[13px] leading-relaxed text-gray-700 dark:text-white/70">{p}</p>)}
+      </div>
+    </Box>
+  )
+}
+
+// 2. CARDS — tile grid. "N of 12". Omitted if none.
+function CardsBox({ cards, color }: { cards: Row[]; color: string }) {
+  if (!cards.length) return null
+  return (
+    <Box title="Figures" meta={`${cards.length} of 12`} color={color}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {cards.map((cd, i) => (
+          <div key={i} className="rounded-lg border border-l-2 border-gray-100 dark:border-white/[0.06] bg-gray-50/60 dark:bg-white/[0.02] px-3 py-2" style={{ borderLeftColor: color }}>
+            <div className="text-sm font-bold leading-snug text-gray-900 dark:text-white/85">{cd.headline}</div>
+            {cd.detail && <div className="text-[12px] leading-snug text-gray-600 dark:text-white/55 mt-0.5">{cd.detail}</div>}
+            {cd.confidence && <div className="text-[10px] text-gray-400 dark:text-white/30 mt-1">confidence: {cd.confidence}</div>}
+          </div>
+        ))}
+      </div>
+    </Box>
+  )
+}
+
+// 3. OUTLINE — items grouped by heading; label + status chip + detail + attr chips.
+function OutlineBox({ items, color }: { items: Row[]; color: string }) {
+  if (!items.length) return null
+  const groups: [string, Row[]][] = []
+  const idx = new Map<string, Row[]>()
+  for (const it of items) {
+    const h = (it.heading ?? '').toString() || '—'
+    if (!idx.has(h)) { const arr: Row[] = []; idx.set(h, arr); groups.push([h, arr]) }
+    idx.get(h)!.push(it)
+  }
+  return (
+    <Box title="Outline" meta={`${items.length} items`} color={color}>
+      <div className="space-y-3">
+        {groups.map(([heading, list], gi) => (
+          <div key={gi}>
+            {heading !== '—' && <div className="text-[11px] font-semibold text-gray-500 dark:text-white/50 mb-1.5">{heading}</div>}
+            <ul className="space-y-2 pl-2 border-l border-gray-100 dark:border-white/[0.06]">
+              {list.map((it, i) => (
+                <li key={i} className="text-[13px] leading-snug">
+                  <span className="font-semibold text-gray-900 dark:text-white/85">{it.label}</span>
+                  {it.status && <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/50 align-middle">{it.status}</span>}
+                  {it.detail && <span className="text-gray-500 dark:text-white/45"> — {it.detail}</span>}
+                  {it.attrs && Object.keys(it.attrs).length > 0 && (
+                    <span className="inline-flex flex-wrap gap-1 mt-1">
+                      {Object.entries(it.attrs as Record<string, unknown>).map(([k, v]) => (
+                        <span key={k} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/50">
+                          <span className="text-gray-400 dark:text-white/30">{k}:</span>{String(v)}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </Box>
+  )
+}
+
+// 4. CITATIONS — REGIONAL-only in the seed. Non-REGIONAL cells get a one-line note
+// (citations are section-level). REGIONAL with none → omitted.
+function CitationsBox({ citations, geography, color }: { citations: Row[]; geography: string; color: string }) {
+  const isRegional = geography === 'REGIONAL'
+  if (!citations.length) {
+    if (isRegional) return null
+    return (
+      <Box title="Sources" color={color}>
+        <p className="text-[12px] text-gray-400 dark:text-white/30">Citations are section-level, stored at REGIONAL only.</p>
+      </Box>
+    )
+  }
+  return (
+    <Box title="Sources" meta={`${citations.length}`} color={color}>
+      <ul className="space-y-1.5">
+        {citations.map((ct, i) => (
+          <li key={i} className="text-[12px] leading-snug text-gray-500 dark:text-white/45">
+            {ct.what}
+            {ct.where_ref && <span className="text-gray-400 dark:text-white/30"> · {ct.where_ref}</span>}
+          </li>
+        ))}
+      </ul>
+    </Box>
+  )
+}
