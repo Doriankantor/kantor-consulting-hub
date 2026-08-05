@@ -30,7 +30,7 @@ const MODEL = 'claude-haiku-4-5'
 // ≈ a full long analytical article. Bump this single const to adjust the window.
 const ANALYSIS_BODY_CAP = 18000
 
-export type AnalyzeTask = 'relevance' | 'reconcile'
+export type AnalyzeTask = 'relevance' | 'reconcile' | 'integrate'
 
 export interface ProjectConfig {
   name?: string
@@ -52,6 +52,12 @@ export interface AnalyzeOpts {
   // the already-extracted capabilities[]/key_facts[] instead of re-deriving
   // them from raw text. Absent/empty → prompt unchanged (re-derives as before).
   priorAi?: Record<string, unknown> | null
+  // 'integrate' task (Pre-Commit Review): the cell's CURRENT live section text
+  // (section_texts.body) that the new source is being folded into, and the cell's
+  // identity so the prompt can name the section it's revising. Only read on the
+  // integrate path; ignored by relevance/reconcile.
+  currentText?: string | null
+  cellIdentity?: { geography: string; section_key: string } | null
 }
 
 export interface AnalyzeResult {
@@ -83,6 +89,14 @@ export interface AnalyzeResult {
   // prose. Persisted to the intelligence_sources `actors` COLUMN via saveAiAnalysis (JSON-string),
   // NOT into analysis_json, and NOT into the social actors_mentioned column.
   actors?: { name: string; type: string }[]
+  // 'integrate' task (Pre-Commit Review proposal generation): the revised section text
+  // plus signal flags. proposed_text is clean lightweight <p> HTML (the same format the
+  // section bodies use), NOT diff markup — the renderer diffs original vs proposed later.
+  // Populated ONLY on the integrate path (via normalizeIntegrate, NOT normalizeResult).
+  proposed_text?: string
+  no_material_change?: boolean
+  divergence?: boolean
+  divergence_reasoning?: string
 }
 
 export type AnalyzeResponse =
@@ -99,16 +113,18 @@ export async function analyzeWithClaude(opts: AnalyzeOpts): Promise<AnalyzeRespo
     if (!apiKey) return { ok: false, error: 'No Anthropic API key configured.' }
 
     const client = new Anthropic({ apiKey })
-    const { system, user } = buildPrompt(opts.task, text, opts.projectConfig, opts.userNotes, opts.existingTags, opts.priorAi)
+    const { system, user } = buildPrompt(opts.task, text, opts.projectConfig, opts.userNotes, opts.existingTags, opts.priorAi, opts.currentText, opts.cellIdentity)
 
     let raw = ''
     try {
       // max_tokens 4096: B1's structured output (capabilities[] + key_facts[]) is larger
       // than the old summary/tags-only response and was truncating at 1024 → parse fail.
+      // integrate returns a WHOLE revised section body (can be long) → 8192 headroom, a
+      // per-task override rather than raising the global default for every call.
       // timeout 60s: a stalled request can't hang the spinner forever (SDK default is ~10min).
       const msg = await client.messages.create({
         model: MODEL,
-        max_tokens: 4096,
+        max_tokens: opts.task === 'integrate' ? 8192 : 4096,
         system,
         messages: [{ role: 'user', content: user }],
       }, { timeout: 60000 })
@@ -134,7 +150,10 @@ export async function analyzeWithClaude(opts: AnalyzeOpts): Promise<AnalyzeRespo
       return { ok: false, error: 'AI response could not be parsed.' }
     }
 
-    return { ok: true, result: normalizeResult(parsed) }
+    // integrate has its own tiny contract (proposed_text + flags); the 13-field
+    // relevance normalizer would mangle it, so route it to normalizeIntegrate.
+    const result = opts.task === 'integrate' ? normalizeIntegrate(parsed) : normalizeResult(parsed)
+    return { ok: true, result }
   } catch (e) {
     // Absolute backstop — the helper must never throw to its caller.
     return { ok: false, error: errMsg(e) }
@@ -242,6 +261,15 @@ function stripHtmlForAnalysis(input: string): string {
     .trim()
 }
 
+// Canonical nine page-section keys → display labels (main-process copy of the
+// renderer's sectionLabels.ts; keys are NOT always their own label — `legal` →
+// "Regulatory"). Used only to NAME the section in the integrate prompt.
+const SECTION_LABELS: Record<string, string> = {
+  systems: 'Systems', vnsa: 'VNSA', industry: 'Industry', external: 'External',
+  supply: 'Supply', investment: 'Investment', legal: 'Regulatory',
+  civilian: 'Civilian', logistics: 'Logistics',
+}
+
 function buildPrompt(
   task: AnalyzeTask,
   text: string,
@@ -249,6 +277,8 @@ function buildPrompt(
   userNotes?: string | null,
   existingTags?: string[],
   priorAi?: Record<string, unknown> | null,
+  currentText?: string | null,
+  cellIdentity?: { geography: string; section_key: string } | null,
 ): { system: string; user: string } {
   const system =
     'You are an intelligence analyst assistant for a security-focused consultancy. ' +
@@ -261,6 +291,60 @@ function buildPrompt(
   const body = stripHtmlForAnalysis(text).slice(0, ANALYSIS_BODY_CAP) // cost/context cap
   const tagsReuse = tagReuseBlock(existingTags) // T7: '' when no existing vocabulary
   const priorStructure = priorStructureBlock(priorAi) // '' when no prior extraction
+
+  if (task === 'integrate') {
+    // Pre-Commit Review proposal: fold what the NEW source materially adds into ONE
+    // section's live text and return the revised body (clean <p> HTML, no diff markup).
+    const geo = String(cellIdentity?.geography ?? '').trim() || 'REGIONAL'
+    const sectionKey = String(cellIdentity?.section_key ?? '').trim()
+    const sectionName = SECTION_LABELS[sectionKey] ?? (sectionKey || 'this section')
+    // Parity with `body`: strip the current section HTML to prose for the model to read.
+    const currentBody = stripHtmlForAnalysis(currentText ?? '')
+    // The source's already-extracted narrative summary (analysis_json.ai.summary), when present.
+    const priorSummary = typeof (priorAi as any)?.summary === 'string' && (priorAi as any).summary.trim()
+      ? `New source summary (already analyzed): ${String((priorAi as any).summary).trim()}\n\n`
+      : ''
+    return {
+      system,
+      user: `${context}
+
+You are updating ONE section of a living intelligence page by integrating a NEW source into it.
+
+SECTION BEING UPDATED: "${sectionName}" (geography: ${geo})
+
+CURRENT TEXT OF THIS SECTION (this is what you are revising; it may be empty if the section has no text yet):
+${currentBody || '(this section currently has no text)'}
+
+A NEW SOURCE has been routed to this section. ${priorSummary}${priorStructure}NEW SOURCE (full text):
+${body}
+
+TASK: Produce a revised version of THIS SECTION'S TEXT that incorporates what the new source
+MATERIALLY adds to THIS section — new facts, systems, actors, events, figures, or developments
+that belong to what this section covers. Fold them into the existing narrative naturally and keep
+the existing content the source does not change. If the source adds NOTHING material to THIS
+section (it is about other sections, or only repeats what is already here), return the current
+text UNCHANGED and set "no_material_change" to true.
+
+RULES:
+- FAITHFULNESS: incorporate ONLY what the new source explicitly states. Never infer, estimate, or
+  invent a system, actor, figure, date, or claim not present in the source or the current text.
+  Fabricated intelligence is worse than missing intelligence. Preserve names and numbers VERBATIM.
+- OUTPUT FORMAT: return clean prose as lightweight HTML — wrap each paragraph in <p>...</p>, exactly
+  as the current section text is formatted. NO markdown, NO change-markers, NO diff syntax, NO
+  annotations like [added] or **bold** — just the finished revised text as it should read once saved.
+- DIVERGENCE: set "divergence" true ONLY if the new source CONTRADICTS or REVERSES the current
+  section's reading (e.g. current text says a deal proceeded, the source says it collapsed) rather
+  than merely extending it. Otherwise divergence is false.
+
+Return ONLY JSON with exactly these keys:
+{
+  "proposed_text": "<the full revised section text as lightweight <p> HTML; if no material change, return the current text unchanged>",
+  "no_material_change": <true if the source adds nothing material to THIS section, else false>,
+  "divergence": <true if the source contradicts/reverses this section's current reading, else false>,
+  "divergence_reasoning": "<one sentence naming the contradiction if divergence is true, else empty string>"
+}`,
+    }
+  }
 
   if (task === 'reconcile') {
     const notes = (userNotes ?? '').trim()
@@ -550,6 +634,20 @@ function normalizeResult(parsed: Record<string, unknown>): AnalyzeResult {
   } else {
     out.actors = []
   }
+  return out
+}
+
+// 'integrate' task normalizer — the four-field proposal contract. Deliberately NOT
+// routed through normalizeResult (that coerces the 13-field relevance shape and would
+// drop/mangle these). Validate + default defensively; never throw. proposed_text is
+// capped generously (a long revised section) but bounded against a pathological blob.
+function normalizeIntegrate(parsed: Record<string, unknown>): AnalyzeResult {
+  const out: AnalyzeResult = {}
+  out.proposed_text = parsed.proposed_text != null ? String(parsed.proposed_text).slice(0, 40000) : ''
+  out.no_material_change = parsed.no_material_change === true
+  out.divergence = parsed.divergence === true
+  out.divergence_reasoning = parsed.divergence_reasoning != null
+    ? String(parsed.divergence_reasoning).trim().slice(0, 1000) : ''
   return out
 }
 

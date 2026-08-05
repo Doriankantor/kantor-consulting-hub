@@ -4635,6 +4635,15 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
       if (!res.ok) return { ok: false, error: res.error, moved }
       if (res.moved) moved++
     }
+    // Pre-Commit Review: fire-and-forget section-text proposal generation for the
+    // just-advanced sources. NOT awaited — the button returns immediately and an AI
+    // failure can't fail the transition (generateProposals swallows its own errors).
+    // Fire only if something actually moved; generateProposals no-ops on non-review rows.
+    if (moved > 0) {
+      for (const articleId of articleIds) {
+        void infoPageSourcesCloud.generateProposals(articleId, pageId)
+      }
+    }
     return { ok: true, moved }
   })
 

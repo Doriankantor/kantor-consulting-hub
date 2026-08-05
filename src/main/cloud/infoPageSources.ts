@@ -1,6 +1,7 @@
 import { cloud } from './client'
 import { isOnline } from './connection'
 import { getDatabase } from '../db'
+import { analyzeWithClaude } from '../ai/analyze'
 
 // ── info_page_sources: cloud-authoritative with a local offline MIRROR (Phase B2) ──
 // Second info-page tier migrated to cloud (after info_page_owners in B1). Cloud
@@ -25,7 +26,7 @@ const nowIso = (): string => new Date().toISOString()
 // Mirror columns for info_page_sources (cloud shape). The local `id` autoincrement
 // is intentionally omitted so SQLite assigns it on INSERT OR REPLACE — nothing
 // cross-tier depends on the surrogate; identity is (article_id, info_page).
-const SRC_COLS = ['article_id', 'info_page', 'stage', 'design_notes', 'added_at', 'committed_at', 'source_type', 'section', 'geography'] as const
+const SRC_COLS = ['article_id', 'info_page', 'stage', 'design_notes', 'added_at', 'committed_at', 'source_type', 'section', 'geography', 'proposal_json'] as const
 const MIRROR_UPSERT_SQL =
   `INSERT OR REPLACE INTO info_page_sources (${SRC_COLS.join(',')}) VALUES (${SRC_COLS.map(c => '@' + c).join(',')})`
 
@@ -33,7 +34,13 @@ const MIRROR_UPSERT_SQL =
 function mirrorUpsertSource(row: Record<string, unknown> | null | undefined): void {
   if (!row) return
   const out: Record<string, unknown> = {}
-  for (const c of SRC_COLS) out[c] = row[c] === undefined ? null : row[c]
+  for (const c of SRC_COLS) {
+    const v = row[c]
+    // proposal_json arrives from cloud (jsonb) as a parsed JS object — better-sqlite3
+    // can only bind scalars, so serialize any object/array to a JSON string for the
+    // TEXT mirror column. All other columns are already scalar and pass through.
+    out[c] = v === undefined || v === null ? null : (typeof v === 'object' ? JSON.stringify(v) : v)
+  }
   try { getDatabase().prepare(MIRROR_UPSERT_SQL).run(out) }
   catch (e) { console.warn('[infoPageSources] mirror upsert failed (cloud write succeeded):', (e as Error)?.message) }
 }
@@ -243,8 +250,10 @@ export async function backSourceToNew(
 ): Promise<{ ok: boolean; moved?: boolean; error?: string }> {
   if (!isOnline()) return { ok: false, error: 'offline — cannot update sources while offline' }
   const now = nowIso()
+  // Clear proposal_json too: a source returning to New invalidates any proposals its
+  // review-stage placements carried (they were reconciled against a state it's leaving).
   const { data, error } = await cloud.from('info_page_sources')
-    .update({ stage: 'new', design_notes: null })
+    .update({ stage: 'new', design_notes: null, proposal_json: null })
     .eq('article_id', articleId).eq('info_page', infoPage).eq('stage', 'review')
     .select()
   if (error) return { ok: false, error: `backSourceToNew cloud update failed: ${error.message}` }
@@ -303,4 +312,119 @@ export async function saveReviewNotesForPage(
   const rows = (Array.isArray(data) ? data : []) as { article_id: string }[]
   for (const r of rows) await resyncSourceRow(r.article_id, infoPage)
   return { ok: true, saved: rows.length }
+}
+
+// ── Pre-Commit Review: fire-and-forget section-text proposal generation ───────
+// Section TEXT only (cards/incidents are later arcs). Runs AFTER a source advances
+// new->review, DECOUPLED from that transition: the stage flip has already succeeded
+// and returned to the UI, so this is pure best-effort background work. It NEVER
+// throws to its caller and one cell's failure never stops the others. NOT awaited.
+
+// The full proposal_json shape — every field always present so future readers can
+// rely on it. `overrides` fills status + whatever that step knows.
+function proposalShape(overrides: Record<string, unknown>): Record<string, unknown> {
+  return {
+    status: 'pending',
+    original_body: '',
+    proposed_body: '',
+    divergence: false,          // reserved contradiction flag (wired into UI later)
+    divergence_reasoning: '',
+    error: '',
+    generated_at: nowIso(),
+    ...overrides,
+  }
+}
+
+// Write proposal_json onto ONE placement row (article_id, info_page, section, geography)
+// and refresh that pair's mirror. Best-effort — a write miss (e.g. the row moved back to
+// 'new' mid-generation) is logged, not thrown. proposal_json is jsonb: pass the OBJECT
+// (supabase-js serializes); the mirror stringifies it (mirrorUpsertSource).
+async function setProposal(
+  articleId: string, infoPage: string, section: string, geography: string,
+  overrides: Record<string, unknown>,
+): Promise<void> {
+  const { error } = await cloud.from('info_page_sources')
+    .update({ proposal_json: proposalShape(overrides) })
+    .eq('article_id', articleId).eq('info_page', infoPage).eq('section', section).eq('geography', geography)
+  if (error) { console.warn('[precommit] setProposal write failed:', error.message); return }
+  await resyncSourceRow(articleId, infoPage)
+}
+
+// Generate + store the proposal for ONE (section, geography) cell. Marks 'generating',
+// reads the cell's live section text, calls the integrate task, then writes 'ready' /
+// 'nochange' / 'error'. Never throws.
+async function generateOneProposal(
+  articleId: string, infoPage: string, section: string, geography: string,
+  sourceText: string, priorAi: Record<string, unknown> | null,
+): Promise<void> {
+  await setProposal(articleId, infoPage, section, geography, { status: 'generating' })
+  try {
+    // 1. the cell's current live section text (canonical live version, English).
+    const { data: live, error: lErr } = await cloud.from('section_texts')
+      .select('body').eq('geography', geography).eq('section_key', section).eq('lang', 'en')
+      .is('superseded_by', null).maybeSingle()
+    if (lErr) throw new Error(lErr.message)
+    const originalBody = typeof live?.body === 'string' ? live.body : ''
+    // 2. reconcile the new source into this section's text.
+    const res = await analyzeWithClaude({
+      task: 'integrate',
+      text: sourceText,
+      currentText: originalBody,
+      cellIdentity: { geography, section_key: section },
+      priorAi,
+    })
+    if (!res.ok) {
+      await setProposal(articleId, infoPage, section, geography, { status: 'error', error: res.error, original_body: originalBody })
+      return
+    }
+    const proposed = res.result.proposed_text ?? ''
+    // 'nochange' is a first-class outcome: the model flagged it, OR the proposal is empty
+    // or textually identical to the current body.
+    const noChange = res.result.no_material_change === true || !proposed.trim() || proposed.trim() === originalBody.trim()
+    await setProposal(articleId, infoPage, section, geography, {
+      status: noChange ? 'nochange' : 'ready',
+      original_body: originalBody,
+      proposed_body: proposed,
+      divergence: res.result.divergence === true,
+      divergence_reasoning: res.result.divergence_reasoning ?? '',
+    })
+  } catch (e) {
+    await setProposal(articleId, infoPage, section, geography, { status: 'error', error: (e as Error)?.message ?? String(e) })
+  }
+}
+
+// Entry point (fire-and-forget). For a source that just entered review, generate a
+// text proposal for each REAL placement cell it touches. Reads the source's content +
+// analysis once and reuses across its cells. Swallows all errors — the transition that
+// triggered it has already committed.
+export async function generateProposals(articleId: string, infoPage: string): Promise<void> {
+  try {
+    if (!isOnline()) return
+    // The cells this source touches now: its review-stage placements. The '' sentinel
+    // (empty-floor presence row) has no cell to reconcile, so it's excluded.
+    const { data: cells, error: cErr } = await cloud.from('info_page_sources')
+      .select('section,geography')
+      .eq('article_id', articleId).eq('info_page', infoPage).eq('stage', 'review').neq('section', '')
+    if (cErr) { console.warn('[precommit] read touched cells failed:', cErr.message); return }
+    const touched = (Array.isArray(cells) ? cells : []) as { section: string; geography: string }[]
+    if (!touched.length) return
+
+    // Source content + analysis — read ONCE, shared across the source's cells.
+    const { data: src, error: sErr } = await cloud.from('intelligence_sources')
+      .select('content,analysis_json').eq('id', articleId).maybeSingle()
+    if (sErr) { console.warn('[precommit] read source failed:', sErr.message); return }
+    const sourceText = typeof src?.content === 'string' ? src.content : ''
+    let priorAi: Record<string, unknown> | null = null
+    try {
+      const aj = src?.analysis_json ? JSON.parse(src.analysis_json as string) : null
+      priorAi = aj && typeof aj === 'object' && (aj as any).ai && typeof (aj as any).ai === 'object' ? (aj as any).ai : null
+    } catch { priorAi = null }
+
+    // Each cell independent — one cell's error must not stop the rest.
+    for (const cell of touched) {
+      await generateOneProposal(articleId, infoPage, cell.section, cell.geography, sourceText, priorAi)
+    }
+  } catch (e) {
+    console.warn('[precommit] generateProposals crashed (transition already succeeded):', (e as Error)?.message)
+  }
 }

@@ -1231,6 +1231,11 @@ export function initDatabase(): void {
     try { db.exec("ALTER TABLE info_page_sources DROP COLUMN category;") }
     catch (e) { console.warn('[db] stray category-column cleanup failed (harmless):', (e as Error)?.message) }
   }
+  // Pre-Commit Review: per-cell AI text proposal (mirror of the cloud jsonb column,
+  // stored here as a JSON string). Added AFTER the section rebuild above so it lands
+  // on the final table shape regardless of migration path (the rebuild lists explicit
+  // columns and would otherwise drop it). Idempotent try/catch — no-op once present.
+  try { db.exec("ALTER TABLE info_page_sources ADD COLUMN proposal_json TEXT;") } catch {}
   // T1: project-scope thematic tags. Add project_board_id to known_tags, assign all
   // existing thematic tags to Contested Skies (board-info-latam), and re-key the
   // uniqueness index to (name, type, project_board_id). Idempotent.
