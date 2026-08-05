@@ -60,6 +60,15 @@ export default function CellGridTab({ pageId }: Props) {
   const [activeGeo, setActiveGeo] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<string>(SECTION_ORDER[0])
 
+  // Persisted, drag-resizable section-rail width (px). Lazy-init from localStorage,
+  // clamped on read so a corrupt/out-of-range stored value can't break the rail.
+  // Default 208 = today's w-52. Drag idiom ported from Workspace's archived drawer.
+  const [railWidth, setRailWidth] = useState(() => {
+    const v = parseInt(localStorage.getItem('infopages-cellgrid-rail-width') || '', 10)
+    return Number.isFinite(v) ? Math.max(56, Math.min(v, 280)) : 208
+  })
+  const compact = railWidth < 120
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -160,8 +169,8 @@ export default function CellGridTab({ pageId }: Props) {
 
       {/* B. TWO-COLUMN FRAME */}
       <div className="flex-1 flex overflow-hidden">
-        {/* C. SECTION RAIL */}
-        <div className="w-52 shrink-0 border-r border-gray-100 dark:border-white/[0.06] overflow-y-auto py-2">
+        {/* C. SECTION RAIL — drag-resizable width (see railWidth) */}
+        <div className="shrink-0 border-r border-gray-100 dark:border-white/[0.06] overflow-y-auto py-2" style={{ width: railWidth }}>
           {SECTION_ORDER.map(sec => {
             const c = getCell(activeGeo, sec)
             const n = typeCount(c)
@@ -171,21 +180,46 @@ export default function CellGridTab({ pageId }: Props) {
               <button
                 key={sec}
                 onClick={() => setActiveSection(sec)}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-left border-l-2 transition ${
+                className={`w-full flex items-center gap-2 px-3 py-2 text-left border-l-2 transition ${compact ? 'justify-center' : ''} ${
                   active
                     ? 'bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white'
                     : 'border-l-transparent text-gray-600 dark:text-white/60 hover:bg-gray-50/60 dark:hover:bg-white/[0.03]'
                 } ${n === 0 ? 'opacity-40' : ''}`}
                 style={active ? { borderLeftColor: color } : undefined}
+                title={compact ? sectionLabel(sec) : undefined}
               >
                 <span className="text-[10px] font-mono tabular-nums text-gray-400 dark:text-white/30">{sectionNo(sec)}</span>
-                <span className="flex-1 text-xs font-medium truncate">{sectionLabel(sec)}</span>
-                {n > 0 && <span className="text-[10px] text-gray-400 dark:text-white/30">{n}</span>}
+                {!compact && <span className="flex-1 text-xs font-medium truncate">{sectionLabel(sec)}</span>}
+                {!compact && n > 0 && <span className="text-[10px] text-gray-400 dark:text-white/30">{n}</span>}
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: n > 0 ? color : 'transparent', boxShadow: n > 0 ? undefined : 'inset 0 0 0 1px rgba(148,163,184,.4)' }} />
               </button>
             )
           })}
         </div>
+
+        {/* Drag handle — resizes the rail; canvas (flex-1) reflows automatically.
+            Ported from Workspace's archived-drawer resize, horizontal. Persists on
+            release only (mouseup), not per-move, to avoid localStorage hammering. */}
+        <div
+          className="w-1 shrink-0 cursor-col-resize hover:bg-indigo-400/30 transition-colors"
+          onMouseDown={(e) => {
+            e.preventDefault()
+            const startX = e.clientX
+            const startW = railWidth
+            const onMove = (ev: MouseEvent) => {
+              const next = startW + (ev.clientX - startX)
+              setRailWidth(Math.max(56, Math.min(next, 280)))
+            }
+            const onUp = () => {
+              document.removeEventListener('mousemove', onMove)
+              document.removeEventListener('mouseup', onUp)
+              // read-current-value setter: persist the final width without a stale closure
+              setRailWidth(w => { localStorage.setItem('infopages-cellgrid-rail-width', String(w)); return w })
+            }
+            document.addEventListener('mousemove', onMove)
+            document.addEventListener('mouseup', onUp)
+          }}
+        />
 
         {/* D. CANVAS */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
