@@ -930,6 +930,7 @@ interface Window {
     // Loose any[] rows for now; row shapes get typed in P1b when the UI needs them.
     publication: {
       getGrid: () => Promise<{ section_texts: any[]; cards: any[]; section_items: any[]; section_citations: any[] }>
+      writeSection: (cell: { geography: string; section_key: string; lang: string; body: string }) => Promise<{ ok: boolean; error?: string; id?: number }>
     }
     intelligence: {
       getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number; project?: string; excludeStatus?: string }) => Promise<IntelligenceSource[]>

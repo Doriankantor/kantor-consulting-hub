@@ -322,6 +322,7 @@ const api = {
   },
   publication: {
     getGrid: () => ipcRenderer.invoke('publication:getGrid'),
+    writeSection: (cell: { geography: string; section_key: string; lang: string; body: string }) => ipcRenderer.invoke('publication:writeSection', cell),
   },
   intelligence: {
     getSources:           (params?: Record<string, unknown>) => ipcRenderer.invoke('intelligence:getSources', params),

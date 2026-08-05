@@ -236,7 +236,14 @@ export default function CellGridTab({ pageId }: Props) {
             <p className="text-sm text-gray-400 dark:text-white/30 py-8 text-center">No published content in this cell.</p>
           ) : (
             <div className="space-y-3">
-              <SectionTextBox body={activeCell?.narrative} color={sectionColor(activeSection)} />
+              <SectionTextBox
+                key={`text-${activeGeo}-${activeSection}`}
+                body={activeCell?.narrative}
+                color={sectionColor(activeSection)}
+                geography={activeGeo ?? ''}
+                sectionKey={activeSection}
+                onSaved={load}
+              />
               <CardsBox cards={activeCell?.cards ?? []} color={sectionColor(activeSection)} />
               <OutlineBox items={activeCell?.items ?? []} color={sectionColor(activeSection)} />
               <CitationsBox citations={activeCell?.citations ?? []} geography={activeGeo ?? ''} color={sectionColor(activeSection)} />
@@ -265,13 +272,20 @@ function GeoTab({ geo, active, count, onClick, supplier }: { geo: string; active
 }
 
 // ── shared box shell ──────────────────────────────────────────────────────────
-function Box({ title, meta, color, children }: { title: string; meta?: string; color: string; children: ReactNode }) {
+// `action` is an optional right-aligned header slot (P2 uses it for the Narrative
+// Edit button); the other three boxes pass none and stay read-only.
+function Box({ title, meta, color, action, children }: { title: string; meta?: string; color: string; action?: ReactNode; children: ReactNode }) {
   return (
     <div className="rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02]">
       <div className="flex items-center gap-2 px-3.5 py-2 border-b border-gray-100 dark:border-white/[0.05]">
         <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
         <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-white/50">{title}</span>
-        {meta && <span className="ml-auto text-[10px] text-gray-400 dark:text-white/30">{meta}</span>}
+        {(meta || action) && (
+          <div className="ml-auto flex items-center gap-2">
+            {meta && <span className="text-[10px] text-gray-400 dark:text-white/30">{meta}</span>}
+            {action}
+          </div>
+        )}
       </div>
       <div className="px-3.5 py-3">{children}</div>
     </div>
@@ -279,14 +293,75 @@ function Box({ title, meta, color, children }: { title: string; meta?: string; c
 }
 
 // 1. NARRATIVE — prose, paragraphs split on blank lines. Omitted if absent.
-function SectionTextBox({ body, color }: { body?: string; color: string }) {
+// P2: editable (Head-gated server-side). Edit swaps prose → textarea; Save writes a
+// NEW section_texts version via publication.writeSection, then re-loads the grid so
+// the new version renders. Save failures (incl. the server's non-Head "Not authorized")
+// surface inline — never silently swallowed. lang hardcoded 'en' (P1 English-only).
+// The parent keys this box by cell, so switching cells remounts it and resets edit state.
+function SectionTextBox({ body, color, geography, sectionKey, onSaved }: {
+  body?: string; color: string; geography: string; sectionKey: string; onSaved: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Edit affordance only where narrative exists (adding text to an empty cell is a
+  // later slice — this box is omitted entirely when the cell has no narrative).
   if (!body || !body.trim()) return null
+
+  const startEdit = () => { setDraft(body); setError(null); setEditing(true) }
+
+  const save = async () => {
+    setSaving(true); setError(null)
+    try {
+      const res = await window.api.publication.writeSection({ geography, section_key: sectionKey, lang: 'en', body: draft })
+      if (res.ok) { setEditing(false); onSaved() }
+      else setError(res.error ?? 'Save failed.')
+    } catch (e) {
+      console.error(e)
+      setError('Save failed.')
+    }
+    setSaving(false)
+  }
+
+  const editBtn = editing ? undefined : (
+    <button
+      onClick={startEdit}
+      className="text-[10px] font-medium px-2 py-0.5 rounded-md border border-gray-200 dark:border-white/[0.12] text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition"
+    >Edit</button>
+  )
+
   const paragraphs = body.split(/\n\n+/).map(p => p.trim()).filter(Boolean)
   return (
-    <Box title="Narrative" color={color}>
-      <div className="space-y-2">
-        {paragraphs.map((p, i) => <p key={i} className="text-[13px] leading-relaxed text-gray-700 dark:text-white/70">{p}</p>)}
-      </div>
+    <Box title="Narrative" color={color} action={editBtn}>
+      {editing ? (
+        <div className="space-y-2">
+          <textarea
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            rows={12}
+            className="w-full text-[13px] leading-relaxed text-gray-800 dark:text-white/80 bg-white dark:bg-white/[0.03] border border-gray-200 dark:border-white/[0.1] rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-400 resize-y"
+          />
+          {error && <p className="text-[12px] text-red-500 dark:text-red-400">{error}</p>}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white transition"
+            >{saving ? 'Saving…' : 'Save'}</button>
+            <button
+              onClick={() => setEditing(false)}
+              disabled={saving}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.06] disabled:opacity-50 transition"
+            >Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {paragraphs.map((p, i) => <p key={i} className="text-[13px] leading-relaxed text-gray-700 dark:text-white/70">{p}</p>)}
+        </div>
+      )}
     </Box>
   )
 }

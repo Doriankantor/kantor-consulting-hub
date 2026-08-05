@@ -3394,6 +3394,18 @@ function registerIntelligenceHandlers(): void {
   // channel-gated on Contested Skies board membership inside getGrid.
   ipcMain.handle('publication:getGrid', (_e) => publicationCloud.getGrid(currentActingUserId))
 
+  // Publication write (P2) — versioned direct-edit of section text. HEAD-GATED:
+  // isOwner (canApprove = isRoot || isOwner), NOT plain membership — mirrors the
+  // reviewCommit gate. Gated against the single Contested Skies board (P1a constant).
+  ipcMain.handle('publication:writeSection', async (_e, cell: { geography: string; section_key: string; lang: string; body: string }) => {
+    const canApprove = await boardsCloud.isOwner(currentActingUserId, 'board-info-latam')
+    if (!canApprove) {
+      console.warn(`[publication] deny writeSection — actor=${currentActingUserId} not a Head`)
+      return { ok: false, error: 'Not authorized — only Heads can edit page text' }
+    }
+    return publicationCloud.writeSection(currentActingUserId, cell)
+  })
+
   // Mark a news article as a duplicate. Removes it from the review queue WITHOUT any
   // learning signal (no verdict to cs_articles, no decision log) - a duplicate is
   // relevant-but-redundant, not a relevance rejection. Optionally links to the original.
