@@ -17,6 +17,9 @@ export interface Placement {
   section?: string
   geography?: string
   stage: InfoPageSourceRow['stage']
+  // Pre-Commit Review: per-cell text proposal (JSON string from the mirror, or null).
+  // Per-placement — kept on Placement so a source's N cells each retain their own.
+  proposal_json?: string | null
 }
 export interface GroupedSource extends InfoPageSourceRow {
   placements: Placement[]
@@ -30,6 +33,7 @@ export function groupByArticle(rows: InfoPageSourceRow[]): GroupedSource[] {
       section: row.section,
       geography: row.placement_geography,
       stage: row.stage,
+      proposal_json: row.proposal_json,
     }
     const g = map.get(row.article_id)
     if (g) g.placements.push(placement)

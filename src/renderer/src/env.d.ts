@@ -478,6 +478,9 @@ interface InfoPageSourceRow {
   // placement_geography so it doesn't collide with the intel article's `geography` below.
   section?: string
   placement_geography?: string
+  // Pre-Commit Review: per-cell AI text proposal. Mirror stores it as TEXT, so it
+  // arrives as a JSON STRING (or null) — JSON.parse in the renderer before use.
+  proposal_json?: string | null
   // From intelligence_sources:
   title: string | null
   url: string | null
@@ -497,6 +500,9 @@ interface InfoPageSourceRow {
   type?: string
   analysis_json?: string
   intel_notes?: string
+  // P4a-2: the source article's raw body (from intelligence_sources.content), for the
+  // "re-read the article" toggle in Pre-Commit Review. May be HTML; optional.
+  content?: string | null
 }
 
 // Audit log entry from info_page_changes.

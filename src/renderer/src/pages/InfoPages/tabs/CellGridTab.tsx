@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { SECTION_LABELS, sectionLabel } from '../../Intelligence/sectionLabels'
 import { sectionColor } from '../../Intelligence/sectionColors'
+import { Box } from './cellPrimitives'
 
 interface Props {
   // publication tables are global CS data — no board/page column yet; pageId
@@ -282,26 +283,8 @@ function GeoTab({ geo, active, count, onClick, supplier }: { geo: string; active
   )
 }
 
-// ── shared box shell ──────────────────────────────────────────────────────────
-// `action` is an optional right-aligned header slot (P2 uses it for the Narrative
-// Edit button); the other three boxes pass none and stay read-only.
-function Box({ title, meta, color, action, children }: { title: string; meta?: string; color: string; action?: ReactNode; children: ReactNode }) {
-  return (
-    <div className="rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.02]">
-      <div className="flex items-center gap-2 px-3.5 py-2 border-b border-gray-100 dark:border-white/[0.05]">
-        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-white/50">{title}</span>
-        {(meta || action) && (
-          <div className="ml-auto flex items-center gap-2">
-            {meta && <span className="text-[10px] text-gray-400 dark:text-white/30">{meta}</span>}
-            {action}
-          </div>
-        )}
-      </div>
-      <div className="px-3.5 py-3">{children}</div>
-    </div>
-  )
-}
+// Box shell extracted to ./cellPrimitives (P4a-2a) — imported above, shared with the
+// Pre-Commit Review diff view. Behavior unchanged.
 
 // 1. NARRATIVE — prose, paragraphs split on blank lines. Omitted if absent.
 // P2: editable (Head-gated server-side). Edit swaps prose → textarea; Save writes a
