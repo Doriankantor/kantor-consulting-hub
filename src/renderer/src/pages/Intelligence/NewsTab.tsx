@@ -1828,10 +1828,10 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                             <div>
                               <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30 mb-1">Systems</p>
                               <div className="space-y-1">
-                                {caps.map(c => {
+                                {caps.map((c, i) => {
                                   const base = `${source.id}|cap|${c.key}`
                                   return (
-                                    <div key={c.key} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                    <div key={`${c.key}-${i}`} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                                       {editableText(`${base}|system`, c.system, v => commitCap(source.id, c, 'system', v), { className: 'font-semibold text-gray-800 dark:text-white/80' })}
                                       <span className="text-gray-400 dark:text-white/30">·</span>
                                       {editableText(`${base}|actor`, c.actor || '', v => commitCap(source.id, c, 'actor', v), { className: 'text-gray-500 dark:text-white/50' })}
@@ -1864,11 +1864,11 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                             <div>
                               <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-white/30 mb-1">Key facts</p>
                               <div className="space-y-1">
-                                {facts.map(f => {
+                                {facts.map((f, i) => {
                                   const cellId = `${source.id}|fact|${f.label}`
                                   const editing = editCell === cellId
                                   return (
-                                    <div key={f.label} className="grid grid-cols-[128px_1fr] gap-x-2">
+                                    <div key={`${f.label}-${i}`} className="grid grid-cols-[128px_1fr] gap-x-2">
                                       <span className="text-gray-400 dark:text-white/35 break-words">{f.label}</span>
                                       <span className="text-gray-700 dark:text-white/70 break-words">
                                         <span className="inline-flex flex-wrap items-baseline gap-1">
