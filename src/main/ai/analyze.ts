@@ -318,12 +318,40 @@ ${currentBody || '(this section currently has no text)'}
 A NEW SOURCE has been routed to this section. ${priorSummary}${priorStructure}NEW SOURCE (full text):
 ${body}
 
-TASK: Produce a revised version of THIS SECTION'S TEXT that incorporates what the new source
-MATERIALLY adds to THIS section — new facts, systems, actors, events, figures, or developments
-that belong to what this section covers. Fold them into the existing narrative naturally and keep
-the existing content the source does not change. If the source adds NOTHING material to THIS
-section (it is about other sections, or only repeats what is already here), return the current
+CORE PRINCIPLE: these section narratives are ANALYTICAL ASSESSMENTS, not event logs. Most sources
+should change them little or not at all. Your DEFAULT is to return the text UNCHANGED and set
+"no_material_change" to true. Only propose a change when the source genuinely shifts the ANALYSIS
+of THIS section. When in doubt, do not change it.
+
+TASK: Decide whether this source shifts THIS section's analytical assessment. Apply ALL FOUR tests
+below BEFORE proposing any change. If the source fails them for this section, return the current
 text UNCHANGED and set "no_material_change" to true.
+
+  1. EVENT vs ANALYSIS. Does the source change the analytical ASSESSMENT of this section, or does it
+     merely REPORT AN EVENT (an attack, a seizure, a single incident)? A reported event that the
+     narrative already accounts for at a general level is NOT grounds to change the narrative — such
+     events belong in the incident record, not the analytical prose. Only an event that reveals a NEW
+     analytical fact — a new capability class, a confirmed new actor behavior, a documented trend or
+     tempo shift, or a reversal of a prior assessment — warrants a narrative change.
+
+  2. GEOGRAPHY SCOPE. A local or single-country event almost NEVER changes a REGIONAL (ALL LATAM,
+     geography = REGIONAL) narrative — the regional narrative describes the region-wide picture, which
+     one local event rarely shifts. For REGIONAL cells, default STRONGLY to UNCHANGED; propose a change
+     only if the source shifts the region-wide assessment. A country-specific cell (e.g. Colombia) may
+     take a change for genuinely significant new information about that country — but still subtle.
+
+  3. MATERIALITY. Change the narrative ONLY for: a genuinely new capability class or system type; a
+     documented shift in trend or tempo; a new confirmed actor behavior not already described; a
+     revision of a specific figure the narrative already states; or a reversal of the current
+     assessment. Do NOT change it merely to add detail about something the narrative already covers in
+     general terms.
+
+  4. SURGICAL. When a change IS warranted, make the MINIMAL edit — a single clause or sentence that
+     captures the analytical shift. NEVER transplant the source's full detail (dates, casualty
+     breakdowns, place lists, quotes) into the narrative; those specifics belong in the incident record
+     and structured fields, not the analytical prose. If your revision adds more than roughly one or two
+     sentences, you are almost certainly over-incorporating — reconsider whether the change is warranted
+     at all.
 
 RULES:
 - FAITHFULNESS: incorporate ONLY what the new source explicitly states. Never infer, estimate, or
@@ -334,7 +362,7 @@ RULES:
   annotations like [added] or **bold** — just the finished revised text as it should read once saved.
 - DIVERGENCE: set "divergence" true ONLY if the new source CONTRADICTS or REVERSES the current
   section's reading (e.g. current text says a deal proceeded, the source says it collapsed) rather
-  than merely extending it. Otherwise divergence is false.
+  than merely extending it. This is rare and important. Otherwise divergence is false.
 
 Return ONLY JSON with exactly these keys:
 {
