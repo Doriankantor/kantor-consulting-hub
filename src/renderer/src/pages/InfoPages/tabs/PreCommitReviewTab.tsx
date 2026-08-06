@@ -136,13 +136,13 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
   const [showFullSource, setShowFullSource] = useState(false)
   const [showArticleText, setShowArticleText] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (opts?: { background?: boolean }) => {
+    if (!opts?.background) setLoading(true)
     try {
       const all = await window.api.infoPages.getSourcePipeline(pageId)
       setRows(all.filter(r => r.stage === 'review'))
     } catch (e) { console.error(e) }
-    setLoading(false)
+    if (!opts?.background) setLoading(false)
   }, [pageId])
 
   useEffect(() => { load() }, [load])
@@ -171,6 +171,35 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
     }
     return m
   }, [selected])
+
+  // True while the SELECTED source has any proposal still generating/pending. Proposals
+  // are written by a background (fire-and-forget) main-process batch, so without this the
+  // 'generating' state would persist visually until the tab remounts.
+  const anyGenerating = useMemo(() => {
+    for (const p of selected?.placements ?? []) {
+      const st = parseProposal(p.proposal_json)?.status
+      if (st === 'generating' || st === 'pending') return true
+    }
+    return false
+  }, [selected])
+
+  // Poll-while-generating: while the selected source has any generating/pending cell,
+  // background-refetch every 3s (no spinner) so completion shows without a remount. The
+  // effect re-runs whenever anyGenerating or the selection changes, so it STOPS (cleanup
+  // clears the interval) the moment every proposal resolves to ready/nochange/error, when
+  // the source changes, and on unmount. A safety cap (40 polls ~= 2 min) prevents a truly
+  // stuck 'generating' (a call that never wrote a terminal status) from polling forever —
+  // on cap we stop and leave it; the user can remount to retry.
+  useEffect(() => {
+    if (!anyGenerating) return
+    let polls = 0
+    const MAX_POLLS = 40
+    const id = setInterval(() => {
+      if (++polls > MAX_POLLS) { clearInterval(id); return }
+      void load({ background: true })
+    }, 3000)
+    return () => clearInterval(id)
+  }, [anyGenerating, selectedArticleId, load])
 
   // When the source changes, jump the rail to its first ready (else first touched) section.
   useEffect(() => {
