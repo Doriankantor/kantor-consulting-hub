@@ -418,15 +418,30 @@ function toDateOnly(s: string): string | null {
 
 async function generateIncident(
   articleId: string, sourceText: string, priorAi: Record<string, unknown> | null,
-  actingUserId: string | undefined,
+  priorHuman: Record<string, unknown> | null, actingUserId: string | undefined,
 ): Promise<void> {
   try {
-    // Gate on the INCIDENT flag. It lives in analysis_json.ai.article_type (relevance
-    // task output); priorAi IS that .ai block. Trust the flag per decision — if it ever
-    // misses incidents, the lever is the relevance prompt's detection, not a fallback here.
-    const articleType = typeof (priorAi as any)?.article_type === 'string'
-      ? String((priorAi as any).article_type).trim().toLowerCase() : ''
-    if (articleType !== 'incident') return          // not an incident source — skip
+    // NS Slice 2: gate on the RESOLVED incident flag (human-over-AI), NOT the raw AI flag.
+    // The AI baseline is analysis_json.ai.article_type === 'incident'; the researcher's New
+    // Sources decision is analysis_json.human.incident (true = confirm/force, false = not an
+    // incident, absent = defer to AI). This mirrors resolveIncident() in the renderer's
+    // resolveAnalysis.ts EXACTLY — that module is renderer-only and can't cross the process
+    // boundary, so the same merge is replicated here (see the FIX-Slice-2 diagnose).
+    const aiFlagged = typeof (priorAi as any)?.article_type === 'string'
+      && String((priorAi as any).article_type).trim().toLowerCase() === 'incident'
+    const humanRaw = (priorHuman as any)?.incident
+    const humanFlag: boolean | null = typeof humanRaw === 'boolean' ? humanRaw : null
+    const isIncident = humanFlag != null ? humanFlag : aiFlagged
+
+    if (!isIncident) {
+      // Not an incident (AI never flagged it, OR the researcher marked "Not an incident").
+      // Suppression must also REMOVE an already-generated row: a source that WAS an incident
+      // and is now overridden off should lose its record, not just stop regenerating. Delete
+      // any existing incident for this source (idempotent — no rows is a no-op). Cloud-only.
+      const { error: delErr } = await cloud.from('incidents').delete().eq('source_id', articleId)
+      if (delErr) console.warn('[incident] suppression cleanup failed:', delErr.message)
+      return
+    }
     if (!sourceText.trim()) return
 
     const res = await analyzeWithClaude({ task: 'incident', text: sourceText, priorAi })
@@ -499,10 +514,14 @@ export async function generateProposals(articleId: string, infoPage: string, act
     if (sErr) { console.warn('[precommit] read source failed:', sErr.message); return }
     const sourceText = typeof src?.content === 'string' ? src.content : ''
     let priorAi: Record<string, unknown> | null = null
+    let priorHuman: Record<string, unknown> | null = null
     try {
       const aj = src?.analysis_json ? JSON.parse(src.analysis_json as string) : null
       priorAi = aj && typeof aj === 'object' && (aj as any).ai && typeof (aj as any).ai === 'object' ? (aj as any).ai : null
-    } catch { priorAi = null }
+      // NS Slice 2: the researcher's .human block carries the incident-flag override
+      // (human.incident). The incident gate resolves human-over-AI, so thread it through.
+      priorHuman = aj && typeof aj === 'object' && (aj as any).human && typeof (aj as any).human === 'object' ? (aj as any).human : null
+    } catch { priorAi = null; priorHuman = null }
 
     // The calls are INDEPENDENT — each narrative task writes ONLY its own cell's
     // proposal_json (distinct (article_id, info_page, section, geography) row), and the
@@ -523,7 +542,7 @@ export async function generateProposals(articleId: string, infoPage: string, act
     const tasks: Promise<void>[] = touched.map(cell =>
       generateOneProposal(articleId, infoPage, cell.section, cell.geography, sourceText, priorAi),
     )
-    tasks.push(generateIncident(articleId, sourceText, priorAi, actingUserId))
+    tasks.push(generateIncident(articleId, sourceText, priorAi, priorHuman, actingUserId))
     await Promise.allSettled(tasks)
   } catch (e) {
     console.warn('[precommit] generateProposals crashed (transition already succeeded):', (e as Error)?.message)

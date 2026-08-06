@@ -80,6 +80,25 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
     }))
   }
 
+  // NS Slice 2: confirm/override the AI's incident flag → analysis_json.human.incident on the
+  // intel row (true = confirm/force, false = not an incident). Mirrors handleConfirmSections:
+  // cloud write via setIncidentFlag, then an optimistic patch of the local row's analysis_json
+  // so the chip reflects the choice immediately. NO placement/incidents-table contact (the
+  // incident RECORD is still generated at the new->review transition, from the resolved flag).
+  const handleSetIncident = async (articleId: string, value: boolean) => {
+    await window.api.intelligence.setIncidentFlag(articleId, value)
+    setRows(prev => prev.map(r => {
+      if (r.article_id !== articleId) return r
+      let analysis: any = {}
+      try { analysis = r.analysis_json ? JSON.parse(r.analysis_json) : {} } catch { analysis = {} }
+      const human = (analysis.human && typeof analysis.human === 'object') ? analysis.human : {}
+      human.incident = value
+      human.incident_at = new Date().toISOString()
+      analysis.human = human
+      return { ...r, analysis_json: JSON.stringify(analysis) }
+    }))
+  }
+
   // 3c-2b: remove this source from the pipeline and return it to the intel queue.
   const handleMoveBack = async (articleId: string) => {
     await window.api.infoPages.moveBackToIntel(pageId, articleId)
@@ -126,6 +145,7 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
           <PipelineSourceCard key={g.article_id} row={g}
             checked={checked.has(g.article_id)}
             onConfirmSections={handleConfirmSections}
+            onSetIncident={handleSetIncident}
             onCheck={c => {
               const s = new Set(checked)
               c ? s.add(g.article_id) : s.delete(g.article_id)

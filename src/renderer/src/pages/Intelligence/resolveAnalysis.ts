@@ -29,6 +29,34 @@ function asObject(x: unknown): Record<string, any> {
   return (x && typeof x === 'object' && !Array.isArray(x)) ? (x as Record<string, any>) : {}
 }
 
+// NS Slice 2: the incident FLAG resolved human-over-AI, parallel to resolveFacts/
+// resolveCaps. The AI baseline is analysis.ai.article_type === 'incident'; the researcher's
+// decision (New Sources) is a scalar analysis.human.incident (true = confirm/force, false =
+// not an incident, absent = defer to AI) — stored OUTSIDE .ai so re-analysis can't clobber
+// it, exactly like human.relevance. `state` drives the chip styling; `isIncident` is the
+// single boolean the generation gate cares about (human wins, else the AI flag).
+export type IncidentState = 'confirmed' | 'forced' | 'not-incident' | 'none'
+
+export interface ResolvedIncident {
+  isIncident: boolean       // resolved: human override if set, else the AI flag
+  aiFlagged: boolean        // ai.article_type === 'incident'
+  human: boolean | null     // human.incident (true/false), or null when untouched
+  state: IncidentState
+}
+
+export function resolveIncident(analysis: any): ResolvedIncident {
+  const ai = asObject(analysis?.ai)
+  const aiFlagged = typeof ai.article_type === 'string' && ai.article_type.trim().toLowerCase() === 'incident'
+  const humanRaw = asObject(analysis?.human).incident
+  const human: boolean | null = typeof humanRaw === 'boolean' ? humanRaw : null
+  const isIncident = human != null ? human : aiFlagged
+  const state: IncidentState =
+    human === false ? 'not-incident'
+    : isIncident ? (aiFlagged ? 'confirmed' : 'forced')
+    : 'none'
+  return { isIncident, aiFlagged, human, state }
+}
+
 // analysis.human.overrides.<bucket> — guarded at every rung (missing → {}).
 function overrideBucket(analysis: any, bucket: 'key_facts' | 'capabilities'): Record<string, any> {
   return asObject(asObject(asObject(analysis?.human).overrides)[bucket])

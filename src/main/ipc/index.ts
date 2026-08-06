@@ -3622,6 +3622,12 @@ function registerIntelligenceHandlers(): void {
   ipcMain.handle('intelligence:setRoutingConfirmed', (_e, id: string, sections: string[]) =>
     intelCloud.setRoutingConfirmed(id, sections))
 
+  // NS Slice 2: the researcher's INCIDENT-FLAG decision → analysis_json.human.incident
+  // (scalar, OUTSIDE .ai so re-analysis can't clobber it). true = confirm/force,
+  // false = not an incident, null = clear. RMW → cloud-only. Offline → { ok:false }.
+  ipcMain.handle('intelligence:setIncidentFlag', (_e, id: string, value: boolean | null) =>
+    intelCloud.setIncidentFlag(id, value))
+
   // Human overrides for the AI's extracted KEY FACTS / SYSTEMS. Stored under
   // analysis_json.human.overrides (OUTSIDE .ai) so re-analysis cannot clobber them.
   // patch === null clears that entry. RMW → cloud-only. Offline → { ok:false }.
@@ -4641,7 +4647,7 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
     // Fire only if something actually moved; generateProposals no-ops on non-review rows.
     if (moved > 0) {
       for (const articleId of articleIds) {
-        void infoPageSourcesCloud.generateProposals(articleId, pageId)
+        void infoPageSourcesCloud.generateProposals(articleId, pageId, currentActingUserId)
       }
     }
     return { ok: true, moved }

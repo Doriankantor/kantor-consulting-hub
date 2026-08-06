@@ -479,6 +479,28 @@ export async function setHumanRelevance(id: string, value: string | null): Promi
   return { ok: true, human: analysis.human ?? null }
 }
 
+// NS Slice 2: the researcher's INCIDENT-FLAG decision, stored as a scalar under
+// analysis_json.human (parallel to human.relevance) so re-running Analyze — which replaces
+// analysis.ai WHOLESALE — can never clobber it. Modeled EXACTLY on setHumanRelevance: read
+// CLOUD (never the mirror), merge the one scalar, preserve every sibling (.ai / .reconciled /
+// .human.relevance / .human.overrides), then resync the mirror. value true = confirm/force,
+// false = not an incident, null = clear (defer to the AI flag). resolveIncident reads this.
+export async function setIncidentFlag(id: string, value: boolean | null): Promise<{ ok: boolean; human?: unknown; error?: string }> {
+  if (!isOnline()) return OFFLINE
+  const r = await readCloudAnalysis(id)
+  if (!r.ok) return { ok: false, error: r.error }
+  const analysis = r.analysis!
+  const human = (analysis.human && typeof analysis.human === 'object') ? analysis.human as Record<string, unknown> : {}
+  if (value == null) { delete human.incident; delete human.incident_at }
+  else { human.incident = value; human.incident_at = nowIso() }
+  if (Object.keys(human).length) analysis.human = human
+  else delete analysis.human
+  const { error } = await cloud.from('intelligence_sources').update({ analysis_json: JSON.stringify(analysis) }).eq('id', id)
+  if (error) return { ok: false, error: `setIncidentFlag failed: ${error.message}` }
+  await resyncRow(id)
+  return { ok: true, human: analysis.human ?? null }
+}
+
 // Human overrides for the AI's extracted KEY FACTS + SYSTEMS. Stored OUTSIDE analysis.ai
 // (under analysis.human.overrides) so re-running Analyze — which replaces analysis.ai
 // WHOLESALE (see saveAiAnalysis) — can never clobber a researcher's correction. Modeled

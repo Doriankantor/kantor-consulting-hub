@@ -1,8 +1,9 @@
 import { ReactNode } from 'react'
 import { actorTypeClass } from '../../Intelligence/actorTypeClass'
-import { resolveFacts, resolveCaps } from '../../Intelligence/resolveAnalysis'
+import { resolveFacts, resolveCaps, resolveIncident } from '../../Intelligence/resolveAnalysis'
 import { sectionLabel } from '../../Intelligence/sectionLabels'
 import SectionChips from './SectionChips'
+import IncidentChip from './IncidentChip'
 
 // Shared read-only source card for the Info Page source pipeline tabs
 // (New Sources / Pre-Commit Review / All Sources). All metadata shown here was
@@ -52,9 +53,10 @@ interface Props {
   action?: ReactNode                      // rendered top-right (e.g. a back-out button)
   showDesignNotes?: boolean               // render the committed/batch design notes
   onConfirmSections?: (articleId: string, sections: string[]) => void   // NS-1: editable section confirm (New Sources only)
+  onSetIncident?: (articleId: string, value: boolean) => void           // NS Slice 2: incident-flag confirm (New Sources only)
 }
 
-export default function PipelineSourceCard({ row, checked, onCheck, action, showDesignNotes, onConfirmSections }: Props) {
+export default function PipelineSourceCard({ row, checked, onCheck, action, showDesignNotes, onConfirmSections, onSetIncident }: Props) {
   const cats = readArr(row.categories_json)
   const topics = readArr(row.thematic_tags)
   const date = row.published_at ? new Date(row.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
@@ -69,6 +71,9 @@ export default function PipelineSourceCard({ row, checked, onCheck, action, show
   const confirmedSections = routing?.confirmed ?? null
   const sectionsEditable = typeof onConfirmSections === 'function' && row.stage === 'new'
   const readOnlySections = confirmedSections ?? proposedSections.map(p => p.section)   // read-only stages: show confirmed, else proposal
+  // NS Slice 2: resolved incident flag (human-over-AI). Editable only in New Sources.
+  const incident = resolveIncident(analysis)
+  const incidentEditable = typeof onSetIncident === 'function' && row.stage === 'new'
   // B3: structured identifiers from the AI block (B1 extraction; travels via the live JOIN).
   const articleType = analysis.ai?.article_type as string | undefined
   // Part B: resolved (edited ?? ai) values ONLY — no provenance/edit UI downstream.
@@ -159,6 +164,17 @@ export default function PipelineSourceCard({ row, checked, onCheck, action, show
                   {sectionLabel(sec)}
                 </span>
               ))}
+            </div>
+          )}
+          {/* NS Slice 2: incident-flag confirm — editable in New Sources; read-only badge elsewhere when incident */}
+          {incidentEditable ? (
+            <IncidentChip resolved={incident} onChange={v => onSetIncident!(row.article_id, v)} />
+          ) : incident.isIncident && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30">Incident</span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                ⚠ Incident{incident.state === 'forced' ? ' · added' : ''}
+              </span>
             </div>
           )}
           {/* Review note (editor's free-hand note from approval) */}
