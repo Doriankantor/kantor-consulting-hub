@@ -184,6 +184,32 @@ SCHEMA DONE THIS SESSION:
     Colombia incident, casualties=1 (discrete Filogringo event, NOT the 39-attack/32-wounded campaign
     aggregate — scope integrity holds), fine location preserved, dedup=1 across re-routes.
 
+  • INCIDENTS SLICE 2 (commit 2f06c40): researcher confirms the incident flag in New Sources. Three-state
+    IncidentChip control (confirm / not an incident / mark as incident), mirroring the section-chip
+    confirmation pattern, on PipelineSourceCard/NewSourcesTab. New setIncidentFlag (intel.ts) persists the
+    decision as human.incident (boolean, + incident_at) under analysis_json.human — modeled on
+    setHumanRelevance: cloud-authoritative read, sibling-preserving merge (survives an Analyze re-run that
+    replaces analysis.ai wholesale), mirror resync. resolveAnalysis extended to merge the incident flag
+    (human-over-AI). BUG FIXED: the incident generation gate was reading the RAW AI article_type instead of
+    the resolved human-over-AI flag, so "Not an incident" was ignored and generation fired anyway. Gate now
+    reads the resolved boolean (human wins if set, else AI). Gate ALSO deletes any existing incident row when
+    resolved not-incident (so suppressing an already-generated incident REMOVES it, not just skips
+    regeneration — backSourceToNew only covered the review->new path, not re-route-while-suppressed).
+    VERIFIED in-DB: suppress->0 (no new generation), confirm->1 (generates), suppress-with-existing-row->0
+    (row deleted). Three states all work: AI-incident+no-override generates; AI-incident+"not an incident"
+    skips; AI-not-incident+"mark as incident" forces.
+
+  • KNOWN — NARRATIVE LEAK (model variance, deferred): the integrate (narrative) task and the incident task
+    both see the same source; the narrative task sometimes still pulls incident event-statistics into
+    narrative prose despite the conservative tuning. Observed BOTH variants on the same Catatumbo source
+    across runs: a GOOD analytical edit ("sustained operationalization rather than isolated incidents" — the
+    right behavior) and a BAD statistics-dump ("39+ attacks... 7 deaths, 32 wounded..." — the leak). This is
+    model run-to-run variance; tuning reduced frequency but can't eliminate it. TWO-PART FIX (not yet done):
+    (a) one more integrate-prompt pass explicitly barring event-statistics/casualty-tallies from narrative
+    now that incidents capture them; (b) rely on the P4a-2b accept/reject flow — human review is the robust
+    catch for the residual bad variants. Not a hard bug; the review system is DESIGNED for the human to
+    accept good edits and reject leaks.
+
   • KNOWN ITEMS (non-blocking):
     - event_date defaults to GENERATION date when a source gives no precise incident date (Catatumbo got
       2026-08-06). Tuning item — for a temporal incident dataset, "unknown date -> today" corrupts
@@ -197,13 +223,15 @@ SCHEMA DONE THIS SESSION:
     - P2's updated_by writes 'local-admin' (dev acting-user), not a board_members identity — P6
       change-history will need to resolve to real names.
 
-▶ RESUME HERE → INCIDENTS SLICE 2: confirm incidents in New Sources. Researcher confirms/edits the AI's
-  incident (add/remove/correct) mirroring the section/actor chip pattern. Then Slice 3 (surface incidents
-  in Page Content as a box, cloud-direct read), Slice 4 (render/route incident proposals in Pre-Commit
-  Review — the slice that makes the incident VISIBLE in the review screen and closes the reconciliation
-  loop). After incidents: back to P4a-2b (the accept flow + Layer-1 change-record capture into Recent
-  Changes) — the functional keystone that makes the review screen actually write. The PUBLICATION ARC SLICE
-  SEQUENCE block below stays the canonical P4-P7 map.
+▶ RESUME HERE → INCIDENTS SLICE 3: surface incidents in Page Content. Add an incidents box/feed to the
+  cell (the shared Box primitive in cellPrimitives), reading the incidents table cloud-direct (like getGrid
+  reads the publication tables — incidents is cloud-only, unmirrored). Renders a geography's incident feed
+  (structured: date, location, actor, system, casualties, summary). Then Slice 4: render/route incident
+  PROPOSALS in Pre-Commit Review alongside the narrative diffs — the slice that makes incidents VISIBLE in
+  the review screen and closes the three-way reconciliation loop (narrative / incident / nothing). After
+  incidents: the narrative-leak tuning (see KNOWN — NARRATIVE LEAK above), then P4a-2b (the accept flow +
+  Layer-1 change-record capture into Recent Changes — the functional keystone that makes the review screen
+  actually write). The PUBLICATION ARC SLICE SEQUENCE block below stays the canonical P4-P7 map.
 
 CONTENT DECISIONS (locked, for the import + later re-index):
   - Citations are SECTION-LEVEL (mostly REGIONAL), NOT per-cell, NOT duplicated. 189 citations, only 60/189
