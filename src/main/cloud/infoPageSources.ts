@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { cloud } from './client'
 import { isOnline } from './connection'
 import { getDatabase } from '../db'
@@ -262,6 +263,12 @@ export async function backSourceToNew(
     const { error: cErr } = await cloud.from('info_page_changes')
       .insert({ article_id: articleId, info_page: infoPage, from_stage: 'review', to_stage: 'new', created_at: now })
     if (cErr) return { ok: false, error: `backSourceToNew change-log insert failed: ${cErr.message}` }
+    // Incidents Slice 1: a source returning to New invalidates any incident record it
+    // generated (homed to a state it's now leaving) — delete by source_id (the real source
+    // link) so a re-route regenerates cleanly, parallel to clearing proposal_json above.
+    // Best-effort: an incidents cleanup failure must not fail the back-out (stage flip OK).
+    const { error: incErr } = await cloud.from('incidents').delete().eq('source_id', articleId)
+    if (incErr) console.warn('[incident] backSourceToNew incident cleanup failed:', incErr.message)
   }
   await resyncSourceRow(articleId, infoPage)
   return { ok: true, moved }
@@ -393,11 +400,88 @@ async function generateOneProposal(
   }
 }
 
+// ── Incidents Slice 1: fire-and-forget structured incident generation ─────────
+// Runs ALONGSIDE the narrative proposal generation (not instead of it) for a source
+// entering review. Gated on the INCIDENT article-type flag (analysis_json.ai.article_type,
+// surfaced here as priorAi.article_type): a non-incident source does no incident work.
+// An incident source generates ONE structured record homed to the EVENT's geography, and
+// upserts it idempotently by dedup_key. Cloud-only (incidents is unmirrored). Never throws.
+
+// Parse a stated date string to a YYYY-MM-DD value for the NOT-NULL event_date column.
+// Returns null when unparseable — the caller falls back so event_date is always present.
+function toDateOnly(s: string): string | null {
+  const m = s.match(/\d{4}-\d{2}-\d{2}/)
+  if (m) return m[0]
+  const d = new Date(s)
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10)
+}
+
+async function generateIncident(
+  articleId: string, sourceText: string, priorAi: Record<string, unknown> | null,
+  actingUserId: string | undefined,
+): Promise<void> {
+  try {
+    // Gate on the INCIDENT flag. It lives in analysis_json.ai.article_type (relevance
+    // task output); priorAi IS that .ai block. Trust the flag per decision — if it ever
+    // misses incidents, the lever is the relevance prompt's detection, not a fallback here.
+    const articleType = typeof (priorAi as any)?.article_type === 'string'
+      ? String((priorAi as any).article_type).trim().toLowerCase() : ''
+    if (articleType !== 'incident') return          // not an incident source — skip
+    if (!sourceText.trim()) return
+
+    const res = await analyzeWithClaude({ task: 'incident', text: sourceText, priorAi })
+    if (!res.ok) { console.warn('[incident] extraction failed:', res.error); return }
+    const r = res.result
+
+    // Container key: the event's normalized country. country is NOT NULL, so fall back to
+    // REGIONAL (a valid multi-country container) when the model gives no country.
+    const country = (r.incident_country ?? '').trim() || 'REGIONAL'
+    const rawDate = (r.incident_event_date ?? '').trim()
+    // dedup_key = source_id + country + stated date (stable across days, NOT the event_date
+    // fallback), so re-generating the same source+event is idempotent whenever it re-runs.
+    const dedupKey = `${articleId}|${country}|${rawDate || 'nodate'}`
+
+    // Idempotency = on-conflict-do-nothing, done as an explicit check (PostgREST upsert
+    // can't reliably infer a PARTIAL unique index). The partial unique index still backstops
+    // a concurrent double-insert — the insert below would error and we swallow it.
+    const { data: existing, error: exErr } = await cloud.from('incidents')
+      .select('id').eq('dedup_key', dedupKey).maybeSingle()
+    if (exErr) { console.warn('[incident] dedup check failed:', exErr.message); return }
+    if (existing) return                              // already generated for this source+event
+
+    // event_date is NOT NULL: stated date when parseable, else the generation date.
+    const eventDate = toDateOnly(rawDate) || nowIso().slice(0, 10)
+
+    // Every column below EXISTS on the real incidents table. source_id is the source link
+    // (the table's existing column); verification is the checked enum (normalizer clamped it).
+    const row = {
+      id: randomUUID(),
+      event_date: eventDate,
+      country,
+      verification: r.incident_verification || 'single-source',
+      title: (r.incident_title ?? '').trim() || null,
+      summary: (r.incident_summary ?? '').trim() || null,
+      location: (r.incident_location ?? '').trim() || null,
+      actor: (r.incident_actor ?? '').trim() || null,
+      actor_type: (r.incident_actor_type ?? '').trim() || null,
+      system: (r.incident_system ?? '').trim() || null,
+      casualties: r.incident_casualties ?? null,      // total for THIS event, or null
+      source_id: articleId,                            // the real source link
+      created_by: actingUserId ?? null,
+      dedup_key: dedupKey,
+    }
+    const { error: insErr } = await cloud.from('incidents').insert(row)
+    if (insErr) { console.warn('[incident] insert failed:', insErr.message); return }
+  } catch (e) {
+    console.warn('[incident] generateIncident crashed (transition already succeeded):', (e as Error)?.message)
+  }
+}
+
 // Entry point (fire-and-forget). For a source that just entered review, generate a
 // text proposal for each REAL placement cell it touches. Reads the source's content +
 // analysis once and reuses across its cells. Swallows all errors — the transition that
 // triggered it has already committed.
-export async function generateProposals(articleId: string, infoPage: string): Promise<void> {
+export async function generateProposals(articleId: string, infoPage: string, actingUserId?: string): Promise<void> {
   try {
     if (!isOnline()) return
     // The cells this source touches now: its review-stage placements. The '' sentinel
@@ -420,10 +504,27 @@ export async function generateProposals(articleId: string, infoPage: string): Pr
       priorAi = aj && typeof aj === 'object' && (aj as any).ai && typeof (aj as any).ai === 'object' ? (aj as any).ai : null
     } catch { priorAi = null }
 
-    // Each cell independent — one cell's error must not stop the rest.
-    for (const cell of touched) {
-      await generateOneProposal(articleId, infoPage, cell.section, cell.geography, sourceText, priorAi)
-    }
+    // The calls are INDEPENDENT — each narrative task writes ONLY its own cell's
+    // proposal_json (distinct (article_id, info_page, section, geography) row), and the
+    // incident task writes ONLY the incidents row. No shared object, so parallel writes
+    // can't clobber each other (unlike the analysis_json RMW handlers). Run them all
+    // CONCURRENTLY and collapse ~40-55s (sequential) to ~13s (slowest single call).
+    //
+    // Incidents Slice 1: ALONGSIDE the narrative proposals, if this source is flagged
+    // INCIDENT, also generate its structured incident record. A source can produce BOTH
+    // (narrative proposals AND an incident), just one, or neither — the gate lives inside
+    // generateIncident (non-incident sources return immediately). Reuses the source
+    // content + analysis already read above.
+    //
+    // allSettled (NOT all): each task already has its own try/catch and never throws, but
+    // allSettled additionally guarantees one hung/rejected task can't abort the batch —
+    // every task resolves independently. This is still fire-and-forget: the transition
+    // does NOT await generateProposals, so nothing here blocks the new->review flip.
+    const tasks: Promise<void>[] = touched.map(cell =>
+      generateOneProposal(articleId, infoPage, cell.section, cell.geography, sourceText, priorAi),
+    )
+    tasks.push(generateIncident(articleId, sourceText, priorAi, actingUserId))
+    await Promise.allSettled(tasks)
   } catch (e) {
     console.warn('[precommit] generateProposals crashed (transition already succeeded):', (e as Error)?.message)
   }

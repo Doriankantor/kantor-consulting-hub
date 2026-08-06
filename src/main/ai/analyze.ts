@@ -30,7 +30,7 @@ const MODEL = 'claude-haiku-4-5'
 // ≈ a full long analytical article. Bump this single const to adjust the window.
 const ANALYSIS_BODY_CAP = 18000
 
-export type AnalyzeTask = 'relevance' | 'reconcile' | 'integrate'
+export type AnalyzeTask = 'relevance' | 'reconcile' | 'integrate' | 'incident'
 
 export interface ProjectConfig {
   name?: string
@@ -97,6 +97,26 @@ export interface AnalyzeResult {
   no_material_change?: boolean
   divergence?: boolean
   divergence_reasoning?: string
+  // 'incident' task (Incidents Slice 1): a STRUCTURED incident record for the discrete
+  // event the source reports. Namespaced with incident_* so they never collide with the
+  // relevance path's summary/title/actors, but each maps 1:1 onto a REAL incidents-table
+  // column (country, location, event_date, title, summary, actor, actor_type, system,
+  // casualties, verification). Populated ONLY on the incident path (via normalizeIncident,
+  // NOT normalizeResult). incident_country is the normalized country-level CONTAINER key
+  // (bare English name or 'REGIONAL'); incident_location is the fine-grained place string
+  // preserved for future incident mapping. casualties is a single TOTAL integer for the
+  // DISCRETE event (not the article's campaign aggregate); verification is the table's
+  // checked enum (single-source | corroborated | disputed).
+  incident_country?: string
+  incident_location?: string
+  incident_event_date?: string
+  incident_title?: string
+  incident_summary?: string
+  incident_actor?: string
+  incident_actor_type?: string
+  incident_system?: string
+  incident_casualties?: number | null
+  incident_verification?: string
 }
 
 export type AnalyzeResponse =
@@ -150,9 +170,11 @@ export async function analyzeWithClaude(opts: AnalyzeOpts): Promise<AnalyzeRespo
       return { ok: false, error: 'AI response could not be parsed.' }
     }
 
-    // integrate has its own tiny contract (proposed_text + flags); the 13-field
-    // relevance normalizer would mangle it, so route it to normalizeIntegrate.
-    const result = opts.task === 'integrate' ? normalizeIntegrate(parsed) : normalizeResult(parsed)
+    // integrate + incident each have their own small contract; the 13-field relevance
+    // normalizer would mangle them, so route each to its dedicated normalizer.
+    const result = opts.task === 'integrate' ? normalizeIntegrate(parsed)
+      : opts.task === 'incident' ? normalizeIncident(parsed)
+      : normalizeResult(parsed)
     return { ok: true, result }
   } catch (e) {
     // Absolute backstop — the helper must never throw to its caller.
@@ -371,6 +393,63 @@ Return ONLY JSON with exactly these keys:
   "divergence": <true if the source contradicts/reverses this section's current reading, else false>,
   "divergence_reasoning": "<one sentence naming the contradiction if divergence is true, else empty string>"
 }`,
+    }
+  }
+
+  if (task === 'incident') {
+    // Incidents Slice 1: extract ONE structured incident record for the DISCRETE event
+    // this source is pegged to. Output maps 1:1 onto the incidents table's real named
+    // columns. The country is the EVENT's own location normalized to a country-level
+    // container key (parallel to subject_countries), NOT the source's section-routing.
+    // Faithful, no fabrication; the record ALWAYS carries a written summary description.
+    return {
+      system,
+      user: `${context}
+
+The following source reports a DISCRETE SECURITY INCIDENT (an attack, strike, seizure, or similar event). Extract ONE structured incident record for the single specific event it is pegged to.
+
+SCOPE — THE SPECIFIC EVENT, NOT THE CAMPAIGN AGGREGATE: extract the one discrete incident the source reports, using ITS OWN details and ITS OWN casualty count. Do NOT use the article's summary/aggregate statistics. For example, if the source reports a Filogringo drone strike that wounded 1 person, set within a broader context of "39 attacks, 7 killed and 32 wounded across H1 2026", the incident is the FILOGRINGO strike with casualties = 1 — NOT the campaign totals (casualties is NOT 39 or 32). The aggregate figures are context only; the incident is the specific reported event.
+${priorStructure}
+Produce these fields:
+
+- "country": the CONTAINER key — the event's country as a BARE English country name, normalized exactly like a place-of-record: "Colombia", "Venezuela", "Brazil", "Argentina", "Mexico", "Panama", or another single country (including supplier/extra-regional nations such as "Iran", "China", "United States" when the event itself happened there). A department, city, municipality, or border area maps to its COUNTRY here (e.g. Norte de Santander -> "Colombia"). If the event is genuinely multi-country or region-wide with no single host country, use "REGIONAL". This is the one country the incident is HOMED to.
+
+- "location": the MOST FINE-GRAINED place string the source gives — town / municipality / department, as precise as stated (e.g. "Filogringo, El Tarra municipality, Norte de Santander"). Preserve maximum specificity; this drives future incident MAPPING. Include coordinates verbatim if the source states them. If the source gives only a country, repeat the country here.
+
+- "event_date": the incident's own date (distinct from the article's publish date). Use ISO "YYYY-MM-DD" when determinable; otherwise the source's stated date or period verbatim (e.g. "late July 2025"). Empty string if the source states no date — do NOT invent one.
+
+- "title": a short headline for the incident (e.g. "Explosive drone strike, Filogringo"). Under ~80 characters.
+
+- "summary": a concise written description of the incident in 2-4 sentences — WHERE it happened, WHAT happened, WHAT platform/weapon was used, WHO was hurt or targeted, and (if relevant) what was targeted. Faithful to the source; state only what the source reports. This description is ALWAYS produced.
+
+- "actor": the PRIMARY perpetrator who carried out the incident, as a short text value (e.g. "ELN", "FARC-EMC"). If multiple groups are jointly responsible, a brief text like "ELN and FARC dissident factions" is fine. Empty string if the perpetrator is not stated.
+
+- "actor_type": the perpetrator's type — one of "VNSA" (armed group / cartel / guerrilla / criminal org), "state" (a government or military), "commercial", or "unknown". Empty string if no actor is stated.
+
+- "system": the drone/weapon platform used (e.g. "explosives-laden FPV drone", "quadcopter with mortar grenade"). Empty string if not stated.
+
+- "casualties": the TOTAL number of people killed AND wounded in THIS specific incident, as a single integer (e.g. killed 2 + wounded 3 -> 5). Count ONLY the discrete event's casualties, never the article's aggregate totals. null if the source states no casualty figure for this event. Do NOT estimate.
+
+- "verification": how well-corroborated the incident is — one of exactly "single-source" (one source / as-reported, the default), "corroborated" (multiple sources or official confirmation cited), or "disputed" (conflicting accounts or a denial noted). Use "single-source" when unsure.
+
+FAITHFULNESS: report ONLY what the source explicitly states. Never infer, estimate, or invent a date, location, casualty figure, system, or actor. Where the source does not state a field, use "" (or null for casualties). Fabricated incident data is far worse than a missing field. Preserve names and numbers VERBATIM.
+
+Return ONLY JSON with exactly these keys:
+{
+  "country": "<bare country name or REGIONAL>",
+  "location": "<most fine-grained place string, or country>",
+  "event_date": "<ISO date, stated date/period, or empty string>",
+  "title": "<short incident headline>",
+  "summary": "<2-4 sentence written description: where, what, platform/weapon, who hurt/targeted>",
+  "actor": "<primary perpetrator, or empty string>",
+  "actor_type": "<VNSA | state | commercial | unknown, or empty string>",
+  "system": "<drone/weapon platform, or empty string>",
+  "casualties": <total integer for THIS event, or null>,
+  "verification": "single-source | corroborated | disputed"
+}
+
+Source:
+${body}`,
     }
   }
 
@@ -676,6 +755,37 @@ function normalizeIntegrate(parsed: Record<string, unknown>): AnalyzeResult {
   out.divergence = parsed.divergence === true
   out.divergence_reasoning = parsed.divergence_reasoning != null
     ? String(parsed.divergence_reasoning).trim().slice(0, 1000) : ''
+  return out
+}
+
+// 'incident' task normalizer — the structured incident-record contract, mapped 1:1 to
+// the incidents table's real named columns. NOT routed through normalizeResult (that
+// coerces the 13-field relevance shape and would drop these). Validate + default
+// defensively; never throw. casualties is a non-negative integer TOTAL or null (null =
+// the source stated no figure); verification is clamped to the table's checked enum.
+function normalizeIncident(parsed: Record<string, unknown>): AnalyzeResult {
+  const out: AnalyzeResult = {}
+  const str = (v: unknown, cap: number): string => (v != null ? String(v).trim().slice(0, cap) : '')
+  const intOrNull = (v: unknown): number | null => {
+    if (v == null || v === '') return null
+    const n = Math.round(Number(v))
+    return Number.isFinite(n) && n >= 0 ? n : null
+  }
+  out.incident_country = str(parsed.country, 60)
+  out.incident_location = str(parsed.location, 500)
+  out.incident_event_date = str(parsed.event_date, 100)
+  out.incident_title = str(parsed.title, 300)
+  out.incident_summary = str(parsed.summary, 4000)
+  out.incident_actor = str(parsed.actor, 200)
+  out.incident_actor_type = str(parsed.actor_type, 60)
+  out.incident_system = str(parsed.system, 200)
+  out.incident_casualties = intOrNull(parsed.casualties)
+  // verification is a CHECK'd enum on the table — only these three values are valid.
+  // Anything else (incl. the model inventing 'reported'/'unverified') falls back to the
+  // column default so the INSERT can never violate the constraint.
+  const VALID_VERIFICATION = new Set(['single-source', 'corroborated', 'disputed'])
+  const ver = str(parsed.verification, 40).toLowerCase()
+  out.incident_verification = VALID_VERIFICATION.has(ver) ? ver : 'single-source'
   return out
 }
 
