@@ -30,7 +30,7 @@ const MODEL = 'claude-haiku-4-5'
 // ≈ a full long analytical article. Bump this single const to adjust the window.
 const ANALYSIS_BODY_CAP = 18000
 
-export type AnalyzeTask = 'relevance' | 'reconcile' | 'integrate' | 'incident'
+export type AnalyzeTask = 'relevance' | 'reconcile' | 'integrate' | 'incident' | 'card'
 
 export interface ProjectConfig {
   name?: string
@@ -63,6 +63,11 @@ export interface AnalyzeOpts {
   // present, lets the prompt resolve RELATIVE date references ("yesterday", "last
   // Tuesday") to an absolute date. Null → no anchor line (unchanged behaviour).
   anchorDate?: string | null
+  // 'card' task (P4c-1): the cell's CURRENT active cards (headline + optional detail),
+  // so the prompt can avoid proposing a duplicate of a card the cell already tracks.
+  // section_key + geography come via cellIdentity (reused from the integrate path).
+  // Absent/empty → treated as a cell with no existing cards.
+  existingCards?: Array<{ headline: string; detail?: string }>
 }
 
 export interface AnalyzeResult {
@@ -122,6 +127,10 @@ export interface AnalyzeResult {
   incident_system?: string
   incident_casualties?: number | null
   incident_verification?: string
+  // 'card' task (P4c-1): proposed key-figure cards for the cell, each mapping 1:1 onto
+  // the cards table's headline/detail/confidence columns. Populated ONLY on the card path
+  // (via normalizeCard). An empty array = the source justifies no new card (the common case).
+  proposed_cards?: Array<{ headline: string; detail: string; confidence: string }>
 }
 
 export type AnalyzeResponse =
@@ -138,7 +147,7 @@ export async function analyzeWithClaude(opts: AnalyzeOpts): Promise<AnalyzeRespo
     if (!apiKey) return { ok: false, error: 'No Anthropic API key configured.' }
 
     const client = new Anthropic({ apiKey })
-    const { system, user } = buildPrompt(opts.task, text, opts.projectConfig, opts.userNotes, opts.existingTags, opts.priorAi, opts.currentText, opts.cellIdentity, opts.anchorDate)
+    const { system, user } = buildPrompt(opts.task, text, opts.projectConfig, opts.userNotes, opts.existingTags, opts.priorAi, opts.currentText, opts.cellIdentity, opts.anchorDate, opts.existingCards)
 
     let raw = ''
     try {
@@ -179,6 +188,7 @@ export async function analyzeWithClaude(opts: AnalyzeOpts): Promise<AnalyzeRespo
     // normalizer would mangle them, so route each to its dedicated normalizer.
     const result = opts.task === 'integrate' ? normalizeIntegrate(parsed)
       : opts.task === 'incident' ? normalizeIncident(parsed)
+      : opts.task === 'card' ? normalizeCard(parsed)
       : normalizeResult(parsed)
     return { ok: true, result }
   } catch (e) {
@@ -307,6 +317,7 @@ function buildPrompt(
   currentText?: string | null,
   cellIdentity?: { geography: string; section_key: string } | null,
   anchorDate?: string | null,
+  existingCards?: Array<{ headline: string; detail?: string }>,
 ): { system: string; user: string } {
   const system =
     'You are an intelligence analyst assistant for a security-focused consultancy. ' +
@@ -399,6 +410,68 @@ Return ONLY JSON with exactly these keys:
   "divergence": <true if the source contradicts/reverses this section's current reading, else false>,
   "divergence_reasoning": "<one sentence naming the contradiction if divergence is true, else empty string>"
 }`,
+    }
+  }
+
+  if (task === 'card') {
+    // P4c-1: propose DURABLE key-figure CARDS this section tracks (a number, count, range,
+    // price, or a named platform/model/capability spec) — NOT news of the day, NOT incident
+    // detail. The DEFAULT is to propose NOTHING; most sources justify zero new cards. The
+    // cell's current cards are passed in so the model can avoid proposing a duplicate.
+    const geo = String(cellIdentity?.geography ?? '').trim() || 'REGIONAL'
+    const sectionKey = String(cellIdentity?.section_key ?? '').trim()
+    const sectionName = SECTION_LABELS[sectionKey] ?? (sectionKey || 'this section')
+    const cards = Array.isArray(existingCards) ? existingCards : []
+    const existingList = cards.length
+      ? cards.map((c, i) => `${i + 1}. ${String(c.headline ?? '').trim()}${c.detail && String(c.detail).trim() ? ` — ${String(c.detail).trim()}` : ''}`).join('\n')
+      : '(this cell currently has no cards)'
+    return {
+      system,
+      user: `${context}
+
+You maintain the KEY-FIGURE CARDS for ONE section of a living intelligence page. Cards are DURABLE,
+at-a-glance facts the section tracks over time — a number, count, range, price, or a named platform/
+model/capability spec — NOT news of the day.
+
+SECTION: "${sectionName}" (geography: ${geo})
+
+CARDS ALREADY IN THIS CELL (do NOT duplicate or restate any of these):
+${existingList}
+
+A NEW SOURCE has been routed to this section. Read it and decide whether it asserts a DURABLE
+key-figure fact this section should track as a NEW card.
+
+NEW SOURCE (full text):
+${body}
+
+RULES — read carefully; the DEFAULT is to propose NOTHING:
+  1. Propose a card ONLY for a DURABLE quantitative or named-specific fact: a number, count, range,
+     price, or a platform/model name or capability spec that THIS section durably tracks.
+  2. The DEFAULT is an EMPTY array. Most sources justify ZERO new cards. Empty is the correct and
+     common answer — never invent a card just to have something to say.
+  3. Do NOT propose a card that duplicates or merely restates any card already in the cell (listed
+     above). If the fact is already tracked, propose nothing for it.
+  4. Distinguish DISCRETE-EVENT details from DURABLE AGGREGATE statistics. A single event's
+     details - the casualties, arrests, or seizures from one incident ("32 wounded in Tuesday's
+     strike", "2 detainees") - belong to the incident record and are BARRED from cards. But a
+     DURABLE AGGREGATE statistic that the section tracks over time - a multi-period trend, a
+     cumulative count, a rate ("5 -> 107 -> 233 -> 260 attacks 2020-2023", "11 drone-attack deaths
+     in five months", "1,000+ monthly border incursions") - IS a valid card when the source states
+     it. The test is shape, not topic: one event = incident (barred); a durable pattern or
+     aggregate = card (allowed).
+  5. Report ONLY what the source explicitly states. Never infer, estimate, or invent a figure, name,
+     or spec. Preserve numbers and names VERBATIM - if the source gives an exact figure, reproduce it
+     EXACTLY as stated; do NOT add "~", "approximately", "roughly", or round it. Only mark a figure as
+     approximate if the SOURCE itself qualifies it that way.
+
+Each proposed card = { "headline": "<the figure/fact, short>", "detail": "<one-line note>",
+"confidence": "high" | "medium" | "low" }.
+
+Return ONLY JSON with exactly this key:
+{
+  "proposed_cards": [ { "headline": "<short figure/fact>", "detail": "<one-line note>", "confidence": "high|medium|low" } ]
+}
+Return { "proposed_cards": [] } when nothing qualifies.`,
     }
   }
 
@@ -769,6 +842,29 @@ function normalizeIntegrate(parsed: Record<string, unknown>): AnalyzeResult {
   out.divergence = parsed.divergence === true
   out.divergence_reasoning = parsed.divergence_reasoning != null
     ? String(parsed.divergence_reasoning).trim().slice(0, 1000) : ''
+  return out
+}
+
+// 'card' task normalizer (P4c-1) — the proposed-cards contract. Keep only well-formed
+// entries: a REQUIRED non-empty headline (capped), an optional detail (capped), and a
+// confidence coerced to the three-value set (default 'medium'). Drop any headline-less
+// entry. Cap the array at 6 proposals — a sane ceiling; the 12-slot cell limit is enforced
+// later at accept (P4c), not here. NOT routed through normalizeResult (wrong shape).
+function normalizeCard(parsed: Record<string, unknown>): AnalyzeResult {
+  const out: AnalyzeResult = {}
+  const CONF = new Set(['high', 'medium', 'low'])
+  const raw = Array.isArray(parsed.proposed_cards) ? parsed.proposed_cards : []
+  out.proposed_cards = (raw as unknown[])
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object')
+    .map(c => {
+      const headline = typeof (c as any).headline === 'string' ? (c as any).headline.trim().slice(0, 200) : ''
+      const detail = typeof (c as any).detail === 'string' ? (c as any).detail.trim().slice(0, 500) : ''
+      const confRaw = typeof (c as any).confidence === 'string' ? (c as any).confidence.trim().toLowerCase() : ''
+      const confidence = CONF.has(confRaw) ? confRaw : 'medium'
+      return { headline, detail, confidence }
+    })
+    .filter(c => !!c.headline)
+    .slice(0, 6)
   return out
 }
 

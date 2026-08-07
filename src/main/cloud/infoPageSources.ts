@@ -336,6 +336,8 @@ function proposalShape(overrides: Record<string, unknown>): Record<string, unkno
     proposed_body: '',
     divergence: false,          // reserved contradiction flag (wired into UI later)
     divergence_reasoning: '',
+    proposed_cards: [],         // P4c-1: card proposals for this cell (INDEPENDENT of the
+                                // narrative status; a cell can carry cards while status is 'nochange')
     error: '',
     generated_at: nowIso(),
     ...overrides,
@@ -390,14 +392,52 @@ export async function setProposalStatus(
   return { ok: true }
 }
 
+// P4c-1: propose key-figure CARDS for ONE cell. Reads the cell's CURRENT active cards
+// (headline + detail, for the model's no-duplicate rule), runs the 'card' analyze task,
+// and returns the normalized proposal array. INDEPENDENT of narrative generation and NEVER
+// throws — any failure yields [] so it can't disturb the integrate proposal. Cloud-direct.
+// (No reusable single-cell card getter existed: publication.ts's activeCardsFor is module-
+// private and headline-only, and getGrid reads all four tables; this narrow read fetches
+// exactly headline+detail for the cell — the fields the dedup rule needs.)
+async function proposeCellCards(
+  section: string, geography: string, sourceText: string,
+): Promise<Array<{ headline: string; detail: string; confidence: string }>> {
+  try {
+    const { data: cards, error } = await cloud.from('cards')
+      .select('headline,detail').eq('geography', geography).eq('section_key', section).eq('active', true)
+    if (error) { console.warn('[precommit] read active cards failed:', error.message); return [] }
+    const existingCards = (Array.isArray(cards) ? cards : []).map(c => ({
+      headline: typeof (c as { headline?: unknown }).headline === 'string' ? (c as { headline: string }).headline : '',
+      detail: typeof (c as { detail?: unknown }).detail === 'string' ? (c as { detail: string }).detail : undefined,
+    }))
+    const res = await analyzeWithClaude({
+      task: 'card',
+      text: sourceText,
+      cellIdentity: { geography, section_key: section },
+      existingCards,
+    })
+    if (!res.ok) { console.warn('[precommit] card generation failed:', res.error); return [] }
+    return res.result.proposed_cards ?? []
+  } catch (e) {
+    console.warn('[precommit] proposeCellCards crashed:', (e as Error)?.message)
+    return []
+  }
+}
+
 // Generate + store the proposal for ONE (section, geography) cell. Marks 'generating',
 // reads the cell's live section text, calls the integrate task, then writes 'ready' /
-// 'nochange' / 'error'. Never throws.
+// 'nochange' / 'error'. P4c-1: card proposals run CONCURRENTLY with the integrate call and
+// are carried in the SAME proposal_json blob (proposed_cards[]) — INDEPENDENT of the
+// narrative status (a cell can be 'nochange' yet still carry proposed cards; P4c-2 decides
+// how the review screen surfaces that). Never throws.
 async function generateOneProposal(
   articleId: string, infoPage: string, section: string, geography: string,
   sourceText: string, priorAi: Record<string, unknown> | null,
 ): Promise<void> {
   await setProposal(articleId, infoPage, section, geography, { status: 'generating' })
+  // Kick off card generation NOW so it runs in parallel with the integrate call below
+  // (both awaited before the single terminal write). proposeCellCards never rejects.
+  const cardsPromise = proposeCellCards(section, geography, sourceText)
   try {
     // 1. the cell's current live section text (canonical live version, English).
     const { data: live, error: lErr } = await cloud.from('section_texts')
@@ -414,7 +454,7 @@ async function generateOneProposal(
       priorAi,
     })
     if (!res.ok) {
-      await setProposal(articleId, infoPage, section, geography, { status: 'error', error: res.error, original_body: originalBody })
+      await setProposal(articleId, infoPage, section, geography, { status: 'error', error: res.error, original_body: originalBody, proposed_cards: await cardsPromise })
       return
     }
     const proposed = res.result.proposed_text ?? ''
@@ -427,9 +467,10 @@ async function generateOneProposal(
       proposed_body: proposed,
       divergence: res.result.divergence === true,
       divergence_reasoning: res.result.divergence_reasoning ?? '',
+      proposed_cards: await cardsPromise,
     })
   } catch (e) {
-    await setProposal(articleId, infoPage, section, geography, { status: 'error', error: (e as Error)?.message ?? String(e) })
+    await setProposal(articleId, infoPage, section, geography, { status: 'error', error: (e as Error)?.message ?? String(e), proposed_cards: await cardsPromise })
   }
 }
 
