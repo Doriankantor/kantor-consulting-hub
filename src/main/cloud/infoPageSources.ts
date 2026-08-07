@@ -452,6 +452,7 @@ function toDateOnly(s: string): string | null {
 async function generateIncident(
   articleId: string, sourceText: string, priorAi: Record<string, unknown> | null,
   priorHuman: Record<string, unknown> | null, actingUserId: string | undefined,
+  publishedAt: string | null,
 ): Promise<void> {
   try {
     // NS Slice 2: gate on the RESOLVED incident flag (human-over-AI), NOT the raw AI flag.
@@ -477,7 +478,11 @@ async function generateIncident(
     }
     if (!sourceText.trim()) return
 
-    const res = await analyzeWithClaude({ task: 'incident', text: sourceText, priorAi })
+    // Fix 1: normalize the article's publish date to an ISO YYYY-MM-DD anchor ONCE (reusing
+    // toDateOnly), for BOTH the prompt (resolve relative dates) and the writer fallback below.
+    const anchorDate = publishedAt ? toDateOnly(publishedAt) : null   // ISO YYYY-MM-DD or null
+
+    const res = await analyzeWithClaude({ task: 'incident', text: sourceText, priorAi, anchorDate })
     if (!res.ok) { console.warn('[incident] extraction failed:', res.error); return }
     const r = res.result
 
@@ -497,8 +502,13 @@ async function generateIncident(
     if (exErr) { console.warn('[incident] dedup check failed:', exErr.message); return }
     if (existing) return                              // already generated for this source+event
 
-    // event_date is NOT NULL: stated date when parseable, else the generation date.
-    const eventDate = toDateOnly(rawDate) || nowIso().slice(0, 10)
+    // event_date is NOT NULL. Fallback chain: the model's stated/resolved date, else the
+    // article's publish date (anchorDate), else (both unparseable) today as the NOT-NULL
+    // floor. today is now the rare last resort, not the routine default.
+    const eventDate =
+      toDateOnly(rawDate)
+      || (anchorDate ?? null)
+      || nowIso().slice(0, 10)
 
     // Every column below EXISTS on the real incidents table. source_id is the source link
     // (the table's existing column); verification is the checked enum (normalizer clamped it).
@@ -543,7 +553,7 @@ export async function generateProposals(articleId: string, infoPage: string, act
 
     // Source content + analysis — read ONCE, shared across the source's cells.
     const { data: src, error: sErr } = await cloud.from('intelligence_sources')
-      .select('content,analysis_json').eq('id', articleId).maybeSingle()
+      .select('content,analysis_json,published_at').eq('id', articleId).maybeSingle()
     if (sErr) { console.warn('[precommit] read source failed:', sErr.message); return }
     const sourceText = typeof src?.content === 'string' ? src.content : ''
     let priorAi: Record<string, unknown> | null = null
@@ -575,7 +585,7 @@ export async function generateProposals(articleId: string, infoPage: string, act
     const tasks: Promise<void>[] = touched.map(cell =>
       generateOneProposal(articleId, infoPage, cell.section, cell.geography, sourceText, priorAi),
     )
-    tasks.push(generateIncident(articleId, sourceText, priorAi, priorHuman, actingUserId))
+    tasks.push(generateIncident(articleId, sourceText, priorAi, priorHuman, actingUserId, (src?.published_at as string | null) ?? null))
     await Promise.allSettled(tasks)
   } catch (e) {
     console.warn('[precommit] generateProposals crashed (transition already succeeded):', (e as Error)?.message)

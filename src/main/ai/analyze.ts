@@ -58,6 +58,11 @@ export interface AnalyzeOpts {
   // integrate path; ignored by relevance/reconcile.
   currentText?: string | null
   cellIdentity?: { geography: string; section_key: string } | null
+  // 'incident' task (Fix 1): the article's publish date as an ISO YYYY-MM-DD anchor
+  // (from intelligence_sources.published_at, already normalized by the caller). When
+  // present, lets the prompt resolve RELATIVE date references ("yesterday", "last
+  // Tuesday") to an absolute date. Null → no anchor line (unchanged behaviour).
+  anchorDate?: string | null
 }
 
 export interface AnalyzeResult {
@@ -133,7 +138,7 @@ export async function analyzeWithClaude(opts: AnalyzeOpts): Promise<AnalyzeRespo
     if (!apiKey) return { ok: false, error: 'No Anthropic API key configured.' }
 
     const client = new Anthropic({ apiKey })
-    const { system, user } = buildPrompt(opts.task, text, opts.projectConfig, opts.userNotes, opts.existingTags, opts.priorAi, opts.currentText, opts.cellIdentity)
+    const { system, user } = buildPrompt(opts.task, text, opts.projectConfig, opts.userNotes, opts.existingTags, opts.priorAi, opts.currentText, opts.cellIdentity, opts.anchorDate)
 
     let raw = ''
     try {
@@ -301,6 +306,7 @@ function buildPrompt(
   priorAi?: Record<string, unknown> | null,
   currentText?: string | null,
   cellIdentity?: { geography: string; section_key: string } | null,
+  anchorDate?: string | null,
 ): { system: string; user: string } {
   const system =
     'You are an intelligence analyst assistant for a security-focused consultancy. ' +
@@ -402,6 +408,14 @@ Return ONLY JSON with exactly these keys:
     // columns. The country is the EVENT's own location normalized to a country-level
     // container key (parallel to subject_countries), NOT the source's section-routing.
     // Faithful, no fabrication; the record ALWAYS carries a written summary description.
+    //
+    // Fix 1: when the article's publish date is known, offer it as an anchor so the model
+    // can resolve RELATIVE date references to an absolute date. Null anchor → empty string
+    // (adds nothing). Does NOT loosen the "never invent a date" rule — it only resolves
+    // references the source actually makes.
+    const anchorLine = anchorDate
+      ? `\nThe article was published on ${anchorDate}. If the source expresses the incident date relatively (e.g. "yesterday", "on Wednesday", "last Tuesday", "three days ago"), resolve it to an absolute ISO YYYY-MM-DD date relative to that publish date. If the source gives an absolute date, use that. Still return empty string if the source gives no date signal at all.`
+      : ''
     return {
       system,
       user: `${context}
@@ -416,7 +430,7 @@ Produce these fields:
 
 - "location": the MOST FINE-GRAINED place string the source gives — town / municipality / department, as precise as stated (e.g. "Filogringo, El Tarra municipality, Norte de Santander"). Preserve maximum specificity; this drives future incident MAPPING. Include coordinates verbatim if the source states them. If the source gives only a country, repeat the country here.
 
-- "event_date": the incident's own date (distinct from the article's publish date). Use ISO "YYYY-MM-DD" when determinable; otherwise the source's stated date or period verbatim (e.g. "late July 2025"). Empty string if the source states no date — do NOT invent one.
+- "event_date": the incident's own date (distinct from the article's publish date). Use ISO "YYYY-MM-DD" when determinable; otherwise the source's stated date or period verbatim (e.g. "late July 2025"). Empty string if the source states no date — do NOT invent one.${anchorLine}
 
 - "title": a short headline for the incident (e.g. "Explosive drone strike, Filogringo"). Under ~80 characters.
 
