@@ -220,6 +220,28 @@ SCHEMA DONE THIS SESSION:
     orphans); accepted for v1, HARDENING (whitelist the incident extraction to the grid vocab) is BACKLOGGED.
     (3) Incident feed renders only for mainGeos + REGIONAL, not supplier-axis geographies.
 
+  • INCIDENTS SLICE 4 (commit 74ea9d9): render the source's proposed incident in Pre-Commit Review, alongside
+    the narrative diffs (READ-ONLY; accept/edit is P4a-2b). New getIncidentBySource getter (by source_id,
+    cloud-direct, board-gated — the review screen shows THIS source's proposed incident, vs Slice 3's
+    getIncidents-by-geography committed feed). Extracted IncidentCard/VerificationBadge to shared
+    incidentCard.tsx (CellGridTab + PreCommitReviewTab render the identical card). Incidents sentinel in the
+    review rail (reimplemented for PreCommit's sectionState model, NOT imported from CellGridTab; shown ONLY
+    when the source has an incident, mirroring how ! markers only appear on changed sections). Canvas renders
+    the incident card read-only when the sentinel is selected. Incident refetch PIGGYBACKED on the existing
+    generating-poll so a still-generating incident converges (sentinel appears) without a manual reselect.
+    Auto-jump: if the source has an incident (resolveIncident sync flag) AND no ready narrative section, opens
+    on the Incidents view (pure-incident sources open on their incident); else the existing section-first jump.
+    VERIFIED in-app: Catatumbo source shows the Incidents sentinel + card in review alongside the narrative
+    diffs; Page Content feed still renders after the extraction. Closes the three-way reconciliation loop
+    (narrative / incident / nothing).
+
+  *** INCIDENTS ARC COMPLETE *** All four slices done: Slice 1 generate (analyze.ts incident task,
+    geography-homed to event country, discrete-event casualty scope, dedup, parallelized), Slice 2 researcher
+    gate (IncidentChip 3-state, human.incident override, gate reads resolved flag + deletes existing row on
+    suppress), Slice 3 Page Content feed (getIncidents by geography, REGIONAL aggregates LATAM, 10th rail
+    sentinel), Slice 4 review-screen surface (this). The original systems-narrative leak that started this arc
+    is resolved: the event lives as a structured, geography-homed, reviewable incident; narratives stay clean.
+
   • KNOWN — NARRATIVE LEAK (model variance, deferred): the integrate (narrative) task and the incident task
     both see the same source; the narrative task sometimes still pulls incident event-statistics into
     narrative prose despite the conservative tuning. Observed BOTH variants on the same Catatumbo source
@@ -244,16 +266,26 @@ SCHEMA DONE THIS SESSION:
     - P2's updated_by writes 'local-admin' (dev acting-user), not a board_members identity — P6
       change-history will need to resolve to real names.
 
-▶ RESUME HERE → INCIDENTS SLICE 4: render/route incident PROPOSALS in Pre-Commit Review. This is the slice
-  that closes the three-way reconciliation loop — a source in review shows, in ONE screen, its proposed
-  narrative changes (the existing diffs) AND its proposed incident, each acceptable/editable. Today the
-  incident GENERATES on new->review (Slice 1) and DISPLAYS in Page Content (Slice 3), but is NOT visible in
-  the Pre-Commit Review screen alongside the narrative diffs. Slice 4 surfaces the incident proposal there
-  (likely as an entry in the section rail / a panel, next to the narrative cells) so the reviewer sees the
-  full picture of what the source changes. After Slice 4 the incidents arc is complete. Then: the
-  narrative-leak tuning (see KNOWN — NARRATIVE LEAK above), then P4a-2b (the accept flow + Layer-1
-  change-record capture into Recent Changes — the functional keystone that makes the review screen actually
-  WRITE). The PUBLICATION ARC SLICE SEQUENCE block below stays the canonical P4-P7 map.
+▶ RESUME HERE → P4a-2b: the ACCEPT FLOW (the functional keystone). Pre-Commit Review is currently READ-ONLY —
+  it DISPLAYS narrative diffs (P4a-2) and the incident (Slice 4) but nothing can be accepted. P4a-2b adds
+  keep-original / accept-edited / AI-review buttons per section, wires accept -> writeSection (versioned
+  write), and builds the Layer-1 CHANGE-RECORD CAPTURE into Recent Changes (every accepted change stored as a
+  structured, source-linked, before/after record carrying the divergence flag — the corpus for future
+  Layer-2/3 trajectory analysis). This is the slice that makes the review screen WRITE instead of display.
+  DESIGN DECISION when we start it: build accept for NARRATIVE first (the spine), then extend to
+  incident/card acceptance — vs build all three at once. LEAN: narrative-first.
+
+  SMALL ITEMS to fold in around P4a-2b:
+  - NARRATIVE-LEAK TUNING (see KNOWN — NARRATIVE LEAK above): one integrate-prompt pass barring
+    event-statistics/casualty-tallies from narrative now that incidents capture them. Reduces the bad-variant
+    frequency; human review (P4a-2b accept/reject) catches the rest.
+  - event_date DEFAULT: incident date falls back to GENERATION date when the source gives no precise date
+    (Catatumbo shows today's date). For the temporal/mappable incident dataset this corrupts timelines —
+    store the source's stated period or null instead. Small analyze.ts/normalizeIncident tuning.
+
+  After P4a-2b: P4b (granular per-hunk accept), P4c (card proposals in review), P5 (publish transaction — the
+  last mile to live), P6/P7 (Recent Changes surface + all-sources search). The PUBLICATION ARC SLICE SEQUENCE
+  block below stays the canonical P4-P7 map.
 
 CONTENT DECISIONS (locked, for the import + later re-index):
   - Citations are SECTION-LEVEL (mostly REGIONAL), NOT per-cell, NOT duplicated. 189 citations, only 60/189
