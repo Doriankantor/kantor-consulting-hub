@@ -335,12 +335,48 @@ BACKLOG -- B-STRUCTURED (intel-stage event_date resolution), its own arc (~4-6 s
   just reads); Fix 1's WRITER FALLBACK STAYS (the defensible floor). B-structured will simplify the anchor out
   of the incident prompt at that time.
 
-▶ RESUME HERE -> P4a-2b done, tuning thread closed. Next candidates, in order:
-  (a) P4b granular per-hunk accept.
-  (b) P4c card proposals in review (extend the accept flow to cards).
-  (c) INCIDENT acceptance (narrative-first lean: after the narrative spine, now proven, extend accept to the
-      incident card).
-  Then: P5 publish transaction (the last mile to live), P6/P7 (Recent Changes surface + all-sources search).
+P4c-1 (card-proposal generation + store) DONE (code commit 6fe6f45; this docs commit):
+  - New 'card' analyze task (AnalyzeTask gains 'card'): a conservative card-worthiness contract --
+    durable quantitative / named-specific figures only, sees the cell's EXISTING active cards (dedup)
+    + section identity, DEFAULT propose-nothing, max 6 per cell. Rule 4 draws the DISCRETE-EVENT
+    (barred -- one incident's casualties/arrests/seizures = incident detail) vs DURABLE-AGGREGATE
+    (allowed -- a trend/rate/cumulative figure) line by SHAPE, not topic. Rule 5 bars model-added
+    approximation (~ / "approximately") on figures the source states exactly.
+  - proposalShape gains proposed_cards[] ({headline, detail, confidence}), default []; carried on ALL
+    terminal write paths (ready / nochange / error) so a card-only proposal survives a nochange
+    narrative. setProposalStatus PRESERVES it (status-only merge). New proposeCellCards -- a narrow
+    inline read (cards headline+detail for the cell, active=true) that feeds the prompt; runs
+    CONCURRENTLY with narrative per cell under the existing Promise.allSettled, INDEPENDENT of it.
+  - VERIFIED in store (SQL-first, no UI): incident sources (Rosario, Catatumbo) correctly proposed
+    ZERO cards; the CSIS source proposed sane durable figures (SkyFend $100k, Dedrone $25M, DJI 70%,
+    the SEDENA attack series, the ACLED death aggregate) across supply/systems/vnsa/external/legal --
+    real page-figures, no incident-detail leak, exact figures (no stray ~). Run-to-run COUNT varies
+    (generative extraction) but quality/shape is stable.
+  - Cross-cell duplication (the same figure proposed to multiple sections) is BY DESIGN (Decision A):
+    sections overlap, a figure can be a supply AND systems AND vnsa fact; the researcher decides
+    per-cell at accept. Cross-cell dedup NOT built -- reachable later as hardening if it proves noisy.
+
+PRINCIPLE -- TRENDS FROM HISTORY (Dorian's architectural call; affects P6/P7 + card design):
+  The rule-4 "durable aggregate" cards (attack series, cumulative counts, rates) are proposed NOW by
+  reading a SINGLE source -- the interim mechanism. But a trend is by definition a number that MOVES
+  OVER TIME, and the authoritative record of how a number moved is publication_changes (the Recent
+  Changes corpus, P6/P7). PRINCIPLE: once Recent Changes exists, trend/aggregate figures should become
+  DERIVED-FROM-HISTORY, not frozen from one source -- the same recompute-and-update-the-note loop the
+  design docs already specify for the hero figures (~667 attacks / ~238 casualties asterisked on the
+  page). When a component figure is corrected, the trend recomputes; that loop IS the change history,
+  not separate from it. So P6/P7 must not merely DISPLAY changes -- it must be the source trends are
+  drawn FROM. Card-generation seeding a trend from one source is the BRIDGE until then. FLAG this at
+  P6/P7 design time.
+
+▶ RESUME HERE -> P4c-1 done. Next candidates, in order:
+  (a) P4c-2 (card-proposal review render + accept): surface proposed_cards[] in the review canvas
+      reusing the CardsBox tile shape; wire accept -> the existing addCard / replaceCard + the 12-slot
+      eviction picker; capture publication_changes with action='card'.
+  (b) P4b granular per-hunk accept.
+  (c) INCIDENT acceptance (narrative-first lean: after the narrative spine, now proven, extend accept
+      to the incident card).
+  Then: P5 publish transaction (the last mile to live), P6/P7 (Recent Changes surface + all-sources
+  search -- where the trends-from-history loop closes).
   SEPARATELY, the incidents-hardening arc (B-structured event_date + country-vocab whitelist +
   event_date-nullable) can slot whenever -- design-first.
   The PUBLICATION ARC SLICE SEQUENCE block below stays the canonical P4-P7 map.
