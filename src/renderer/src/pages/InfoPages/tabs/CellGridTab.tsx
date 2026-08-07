@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { SECTION_LABELS, sectionLabel } from '../../Intelligence/sectionLabels'
 import { sectionColor } from '../../Intelligence/sectionColors'
 import { Box } from './cellPrimitives'
+import { IncidentCard, INCIDENTS_COLOR } from './incidentCard'
 
 interface Props {
   // publication tables are global CS data — no board/page column yet; pageId
@@ -41,7 +42,7 @@ const SECTION_ORDER = Object.keys(SECTION_LABELS)   // canonical 9, in display o
 // deliberately kept OUT of SECTION_ORDER so none of the section-cell machinery (getCell,
 // the auto-jump-to-first-populated search) ever treats it as a real section.
 const INCIDENTS_VIEW = '__incidents__'
-const INCIDENTS_COLOR = '#f43f5e'   // rose-500 — distinct from the 9 section accents
+// INCIDENTS_COLOR imported from ./incidentCard (shared with Pre-Commit Review, Slice 4).
 
 const cellKey = (geography: string, section_key: string) => `${geography}|${section_key}`
 // Sentinel-guarded: the incidents view has no SECTION_ORDER index, so give it a glyph
@@ -713,53 +714,8 @@ function CitationsBox({ citations, geography, color }: { citations: Row[]; geogr
 // ── Slice 3: INCIDENTS FEED (read-only) ───────────────────────────────────────
 // The 10th container rendered in the canvas when the Incidents rail entry is selected.
 // A per-geography chronological feed (event_date desc) of the incidents table's rows.
-// Read-only: no edit / accept / delete controls (routing incidents is a later slice).
-// Verification is a CHECK'd enum on the table (single-source | corroborated | disputed).
-const VERIFICATION_STYLE: Record<string, string> = {
-  corroborated: 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-  disputed:     'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300',
-  'single-source': 'bg-gray-100 dark:bg-white/[0.08] text-gray-500 dark:text-white/50',
-}
-
-function VerificationBadge({ value }: { value: string | null }) {
-  const v = (value || 'single-source').toLowerCase()
-  const cls = VERIFICATION_STYLE[v] ?? VERIFICATION_STYLE['single-source']
-  return <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${cls}`}>{v}</span>
-}
-
-// A single attribute chip — mirrors OutlineBox's attr-chip visual language.
-function IncChip({ k, v }: { k: string; v: string }) {
-  return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/50">
-      <span className="text-gray-400 dark:text-white/30">{k}:</span>{v}
-    </span>
-  )
-}
-
-function IncidentCard({ inc }: { inc: Row }) {
-  const actor = inc.actor
-    ? String(inc.actor) + (inc.actor_type ? ` (${inc.actor_type})` : '')
-    : null
-  return (
-    <div className="rounded-lg border border-l-2 border-gray-100 dark:border-white/[0.06] bg-gray-50/60 dark:bg-white/[0.02] px-3.5 py-3" style={{ borderLeftColor: INCIDENTS_COLOR }}>
-      <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="text-[11px] font-mono tabular-nums text-gray-400 dark:text-white/40">{inc.event_date}</span>
-        {inc.title && <span className="text-sm font-bold leading-snug text-gray-900 dark:text-white/85">{inc.title}</span>}
-        <span className="ml-auto"><VerificationBadge value={inc.verification} /></span>
-      </div>
-      {inc.location && <div className="text-[12px] text-gray-500 dark:text-white/50 mt-1">📍 {inc.location}</div>}
-      {inc.summary && <p className="text-[13px] leading-relaxed text-gray-700 dark:text-white/70 mt-1.5">{inc.summary}</p>}
-      {(actor || inc.system || inc.casualties != null) && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {actor && <IncChip k="actor" v={actor} />}
-          {inc.system && <IncChip k="system" v={String(inc.system)} />}
-          {inc.casualties != null && <IncChip k="casualties" v={String(inc.casualties)} />}
-        </div>
-      )}
-    </div>
-  )
-}
-
+// The card itself (IncidentCard + INCIDENTS_COLOR) was extracted to ./incidentCard in
+// Slice 4 so Pre-Commit Review renders the identical card — imported at the top.
 function IncidentsFeed({ geoLabel, rows, loading, error, onRetry }: {
   geoLabel: string; rows: Row[]; loading: boolean; error: string | null; onRetry: () => void
 }) {

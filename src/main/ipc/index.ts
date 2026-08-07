@@ -3399,6 +3399,10 @@ function registerIntelligenceHandlers(): void {
   ipcMain.handle('publication:getIncidents', (_e, geography: string) =>
     publicationCloud.getIncidents(currentActingUserId, geography))
 
+  // Slice 4: a single source's proposed incident(s) — by source_id, for Pre-Commit Review.
+  ipcMain.handle('publication:getIncidentBySource', (_e, articleId: string) =>
+    publicationCloud.getIncidentBySource(currentActingUserId, articleId))
+
   // Publication write gate (P2/P3) — HEAD-GATED: isOwner (canApprove = isRoot ||
   // isOwner), NOT plain membership — mirrors the reviewCommit gate. Gated against the
   // single Contested Skies board (P1a constant). Shared by every publication writer;

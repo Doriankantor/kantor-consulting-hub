@@ -136,6 +136,26 @@ export async function getIncidents(actingUserId: string | undefined, geography: 
   return (data ?? []) as IncidentRow[]
 }
 
+// Slice 4: THIS SOURCE's proposed incident(s) — the by-source read for Pre-Commit Review
+// (getIncidents queries by geography for the committed feed; this queries by source_id for
+// a single source's proposal). Same board gate. Usually 0 or 1 row — a source describes one
+// event and generateIncident dedups by dedup_key — but a regeneration whose analysis changed
+// the country/date can leave a 2nd orphan row, so this returns ALL rows (newest first), never
+// assumes exactly one. Never throws; failed read → [].
+export async function getIncidentBySource(actingUserId: string | undefined, articleId: string): Promise<IncidentRow[]> {
+  if (!(await isBoardVisibleFor(actingUserId, CONTESTED_SKIES_BOARD_ID))) return []
+  const { data, error } = await cloud.from('incidents')
+    .select(INCIDENT_COLS)
+    .eq('source_id', articleId)
+    .order('event_date', { ascending: false })
+  reportCloudResult(!error)
+  if (error) {
+    console.warn('[publication] cloud read incident by source failed:', error.message)
+    return []
+  }
+  return (data ?? []) as IncidentRow[]
+}
+
 // ── publication WRITE path (P2): versioned direct-edit of section_texts ───────
 // The FIRST slice that writes publication data, and the first use of the dormant
 // versioning columns (version / superseded_by, present since step-1, unused until now).

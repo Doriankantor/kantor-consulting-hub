@@ -3,8 +3,10 @@ import { diffWords } from 'diff'
 import PipelineSourceCard from './PipelineSourceCard'
 import { groupByArticle, type Placement } from './groupByArticle'
 import { Box } from './cellPrimitives'
+import { IncidentCard, INCIDENTS_COLOR } from './incidentCard'
 import { SECTION_LABELS, sectionLabel } from '../../Intelligence/sectionLabels'
 import { sectionColor } from '../../Intelligence/sectionColors'
+import { resolveIncident } from '../../Intelligence/resolveAnalysis'
 
 interface Props {
   pageId: string
@@ -18,7 +20,10 @@ interface Props {
 // P4a-2b. Commit stays (batch stage-flip only).
 
 const SECTION_ORDER = Object.keys(SECTION_LABELS)   // canonical 9, display order
-const sectionNo = (key: string) => String(SECTION_ORDER.indexOf(key) + 1).padStart(2, '0')
+// Slice 4: incidents sentinel — the source's proposed incident as a 10th rail entry, kept
+// OUT of SECTION_ORDER (it's not a (geo x section) cell). Mirrors CellGridTab's sentinel.
+const INCIDENTS_VIEW = '__incidents__'
+const sectionNo = (key: string) => key === INCIDENTS_VIEW ? '⚠' : String(SECTION_ORDER.indexOf(key) + 1).padStart(2, '0')
 
 // The stored per-cell proposal shape (written by the P4a-1 generation hook). Mirror
 // stores it as TEXT, so the row carries a JSON STRING — parse + guard defensively.
@@ -135,6 +140,8 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
   const [activeSection, setActiveSection] = useState<string>(SECTION_ORDER[0])
   const [showFullSource, setShowFullSource] = useState(false)
   const [showArticleText, setShowArticleText] = useState(false)
+  // Slice 4: the SELECTED source's proposed incident(s), by source_id (0..N, newest first).
+  const [incidents, setIncidents] = useState<any[]>([])
 
   const load = useCallback(async (opts?: { background?: boolean }) => {
     if (!opts?.background) setLoading(true)
@@ -197,11 +204,37 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
     const id = setInterval(() => {
       if (++polls > MAX_POLLS) { clearInterval(id); return }
       void load({ background: true })
+      // Slice 4: the incident generates in PARALLEL with the narrative proposals (same
+      // fire-and-forget batch), so piggyback its refetch onto the same poll — the Incidents
+      // sentinel then appears as soon as the row lands, without a manual reselect. Converges
+      // and stops on the same bounded cycle (this effect's cleanup clears the interval).
+      if (selectedArticleId) {
+        void window.api.publication.getIncidentBySource(selectedArticleId)
+          .then(rows => setIncidents(rows)).catch(() => {})
+      }
     }, 3000)
     return () => clearInterval(id)
   }, [anyGenerating, selectedArticleId, load])
 
+  // Slice 4: fetch the SELECTED source's proposed incident(s) by source_id. Keyed on the
+  // source id ONLY (not grouped), so it fetches once per source switch — the poll above
+  // covers the still-generating refetch. Clears first so a prior source's incident (and its
+  // sentinel) never lingers; cancelled flag drops a stale response mid-switch.
+  useEffect(() => {
+    setIncidents([])
+    if (!selectedArticleId) return
+    let cancelled = false
+    window.api.publication.getIncidentBySource(selectedArticleId)
+      .then(rows => { if (!cancelled) setIncidents(rows) })
+      .catch(e => { console.error(e); if (!cancelled) setIncidents([]) })
+    return () => { cancelled = true }
+  }, [selectedArticleId])
+
   // When the source changes, jump the rail to its first ready (else first touched) section.
+  // Slice 4: a source with an incident but NO ready narrative section (a pure-incident source
+  // — routed to a section that proposes no change) opens on its incident instead. The incident
+  // presence uses the RESOLVED flag on the source's own analysis (synchronous, no wait on the
+  // by-source fetch); the sentinel rail entry itself is still gated on actual fetched rows.
   useEffect(() => {
     if (!selectedArticleId) return
     const src = grouped.find(g => g.article_id === selectedArticleId)
@@ -213,7 +246,14 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
       touched[sec] = true
       if (parseProposal(p.proposal_json)?.status === 'ready') ready[sec] = true
     }
-    setActiveSection(SECTION_ORDER.find(s => ready[s]) ?? SECTION_ORDER.find(s => touched[s]) ?? SECTION_ORDER[0])
+    const firstReady = SECTION_ORDER.find(s => ready[s])
+    let isIncident = false
+    try { isIncident = resolveIncident(src.analysis_json ? JSON.parse(src.analysis_json) : {}).isIncident } catch { isIncident = false }
+    setActiveSection(
+      !firstReady && isIncident
+        ? INCIDENTS_VIEW
+        : (firstReady ?? SECTION_ORDER.find(s => touched[s]) ?? SECTION_ORDER[0]),
+    )
     setShowFullSource(false)
     setShowArticleText(false)
   }, [selectedArticleId, grouped])
@@ -316,6 +356,27 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
               </button>
             )
           })}
+
+          {/* Slice 4: INCIDENTS sentinel — the source's proposed incident, a 10th rail entry
+              OUTSIDE the 9. Shown ONLY when this source has >=1 incident row (mirrors how a
+              section only lights when it has a proposed change). Always lit: a present
+              incident IS a proposed change. */}
+          {incidents.length > 0 && (
+            <button
+              onClick={() => setActiveSection(INCIDENTS_VIEW)}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-left border-l-2 mt-1 transition ${
+                activeSection === INCIDENTS_VIEW
+                  ? 'bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white'
+                  : 'border-l-transparent text-gray-600 dark:text-white/60 hover:bg-gray-50/60 dark:hover:bg-white/[0.03]'
+              }`}
+              style={activeSection === INCIDENTS_VIEW ? { borderLeftColor: INCIDENTS_COLOR } : undefined}
+            >
+              <span className="text-[10px] leading-none" style={{ color: INCIDENTS_COLOR }}>⚠</span>
+              <span className="flex-1 text-xs font-medium truncate">Incident{incidents.length > 1 ? `s (${incidents.length})` : ''}</span>
+              <span className="text-[11px] font-bold" style={{ color: INCIDENTS_COLOR }}>!</span>
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: INCIDENTS_COLOR }} />
+            </button>
+          )}
         </div>
 
         {/* CANVAS — full-source expander + the active section's diffs. */}
@@ -369,17 +430,38 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
                 </div>
               )}
 
-              {/* Active section header + its per-geography diffs. */}
-              <div className="flex items-center gap-2.5 pt-1">
-                <span className="text-sm font-mono font-bold tabular-nums" style={{ color: sectionColor(activeSection) }}>{sectionNo(activeSection)}</span>
-                <h3 className="text-sm font-bold text-gray-900 dark:text-white">{sectionLabel(activeSection)}</h3>
-                <span className="ml-auto text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/40">read-only</span>
-              </div>
-
-              {activeCells.length === 0 ? (
-                <p className="text-sm text-gray-400 dark:text-white/30 py-8 text-center">This source has no placement in this section.</p>
+              {/* Slice 4: the sentinel shows the source's proposed incident (read-only card),
+                  not a narrative diff. Otherwise the active section's header + per-geo diffs. */}
+              {activeSection === INCIDENTS_VIEW ? (
+                <>
+                  <div className="flex items-center gap-2.5 pt-1">
+                    <span className="text-sm font-bold" style={{ color: INCIDENTS_COLOR }}>⚠</span>
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">Incident</h3>
+                    <span className="ml-auto text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/40">read-only</span>
+                  </div>
+                  {incidents.length === 0 ? (
+                    <p className="text-sm text-gray-400 dark:text-white/30 py-8 text-center">No incident generated for this source.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {incidents.map(inc => <IncidentCard key={String(inc.id)} inc={inc} />)}
+                    </div>
+                  )}
+                </>
               ) : (
-                activeCells.map(p => <CellProposal key={p.pipeline_id} placement={p} />)
+                <>
+                  {/* Active section header + its per-geography diffs. */}
+                  <div className="flex items-center gap-2.5 pt-1">
+                    <span className="text-sm font-mono font-bold tabular-nums" style={{ color: sectionColor(activeSection) }}>{sectionNo(activeSection)}</span>
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">{sectionLabel(activeSection)}</h3>
+                    <span className="ml-auto text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/40">read-only</span>
+                  </div>
+
+                  {activeCells.length === 0 ? (
+                    <p className="text-sm text-gray-400 dark:text-white/30 py-8 text-center">This source has no placement in this section.</p>
+                  ) : (
+                    activeCells.map(p => <CellProposal key={p.pipeline_id} placement={p} />)
+                  )}
+                </>
               )}
             </div>
           )}

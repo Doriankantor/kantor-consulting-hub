@@ -323,6 +323,7 @@ const api = {
   publication: {
     getGrid: () => ipcRenderer.invoke('publication:getGrid'),
     getIncidents: (geography: string) => ipcRenderer.invoke('publication:getIncidents', geography),
+    getIncidentBySource: (articleId: string) => ipcRenderer.invoke('publication:getIncidentBySource', articleId),
     writeSection: (cell: { geography: string; section_key: string; lang: string; body: string }) => ipcRenderer.invoke('publication:writeSection', cell),
     addCard: (cell: { geography: string; section_key: string; headline: string; detail?: string; confidence?: string }) => ipcRenderer.invoke('publication:addCard', cell),
     editCard: (edit: { id: number; headline: string; detail?: string; confidence?: string }) => ipcRenderer.invoke('publication:editCard', edit),
