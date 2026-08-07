@@ -1,6 +1,7 @@
 import { cloud } from './client'
 import { reportCloudResult, isOnline } from './connection'
 import { isBoardVisibleFor } from './boards'
+import { setProposalStatus } from './infoPageSources'
 
 // ── publication grid: CLOUD-ONLY read path (P1a) ─────────────────────────────
 // The four publication tables (section_texts / cards / section_items /
@@ -207,6 +208,82 @@ export async function writeSection(
     if (supErr) return { ok: false, error: `supersede old row (new row ${inserted.id} written OK): ${supErr.message}` }
   }
   return { ok: true, id: inserted.id }
+}
+
+// ── P4a-2b: the ACCEPT FLOW — the first WRITE off the Pre-Commit Review screen ─
+// acceptProposal turns a reviewer's "accept this edit" into (1) a versioned section
+// write via the EXISTING writeSection (no new write discipline), (2) a Layer-1
+// change-record in publication_changes (the before/after audit corpus), and (3) a
+// terminal proposal flip so the diff can't be re-accepted and collapses on reload.
+//
+// FAILURE ORDERING is deliberate: the section write is the only step that must succeed
+// (its own insert-first/supersede-second keeps content safe). The change-record and the
+// status flip are AUDIT / UI-hygiene — if either fails the PAGE IS STILL CORRECT, so we
+// log loudly and still return ok rather than surfacing a scary error for a written edit.
+// Gating is at the IPC layer (Head-only) — this assumes an authorized caller.
+export async function acceptProposal(
+  actingUserId: string | undefined,
+  input: {
+    article_id: string
+    info_page: string
+    geography: string
+    section_key: string
+    before_body: string | null
+    after_body: string
+    divergence: boolean
+    divergence_reasoning: string | null
+  }
+): Promise<{ ok: boolean; error?: string; section_text_id?: number }> {
+  // 1. Versioned write (insert-first/supersede-second). lang locked 'en' to match generation.
+  const w = await writeSection(actingUserId, {
+    geography: input.geography,
+    section_key: input.section_key,
+    lang: 'en',
+    body: input.after_body
+  })
+  if (!w.ok) return { ok: false, error: w.error ?? 'writeSection failed' }
+
+  // 2. Change-record. If this insert fails, the section IS already written (versioned,
+  //    recoverable) — log loudly but do not fail the accept; the page is correct, only
+  //    the audit row is missing. (Explicit error inspection, not a bare catch.)
+  const rec = await cloud
+    .from('publication_changes')
+    .insert({
+      article_id: input.article_id,
+      info_page: input.info_page,
+      section_key: input.section_key,
+      geography: input.geography,
+      lang: 'en',
+      action: 'accept',
+      before_body: input.before_body,
+      after_body: input.after_body,
+      divergence: input.divergence,
+      divergence_reasoning: input.divergence_reasoning,
+      section_text_id: w.id ?? null,
+      accepted_by: actingUserId ?? 'unknown'
+    })
+  reportCloudResult(!rec.error)
+  if (rec.error) {
+    console.error('[acceptProposal] change-record insert FAILED (section still written ok):', rec.error.message)
+  }
+
+  // 3. Flip the placement's proposal to terminal 'accepted' so it can't be re-accepted
+  //    and the diff collapses on reload.
+  const flip = await setProposalStatus(input.article_id, input.info_page, input.section_key, input.geography, 'accepted')
+  if (!flip.ok) {
+    console.error('[acceptProposal] status flip to accepted FAILED (section + record ok):', flip.error)
+  }
+
+  return { ok: true, section_text_id: w.id }
+}
+
+// Keep original: no section write, no change-record. Just flip the proposal to terminal 'kept'.
+export async function keepProposal(
+  _actingUserId: string | undefined,
+  input: { article_id: string; info_page: string; geography: string; section_key: string }
+): Promise<{ ok: boolean; error?: string }> {
+  const flip = await setProposalStatus(input.article_id, input.info_page, input.section_key, input.geography, 'kept')
+  return flip
 }
 
 // ── publication WRITE path (P3): editable cards, 12-slot replace flow ─────────

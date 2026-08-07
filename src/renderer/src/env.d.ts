@@ -941,6 +941,16 @@ interface Window {
       // Slice 4: a single source's proposed incident(s), by source_id (0..N, newest first).
       getIncidentBySource: (articleId: string) => Promise<any[]>
       writeSection: (cell: { geography: string; section_key: string; lang: string; body: string }) => Promise<{ ok: boolean; error?: string; id?: number }>
+      // P4a-2b: accept a proposed section edit (versioned write + change-record + terminal flip),
+      // or keep the original (flip only). Head-gated in main.
+      acceptProposal: (input: {
+        article_id: string; info_page: string; geography: string; section_key: string
+        before_body: string | null; after_body: string; divergence: boolean
+        divergence_reasoning: string | null
+      }) => Promise<{ ok: boolean; error?: string; section_text_id?: number }>
+      keepProposal: (input: {
+        article_id: string; info_page: string; geography: string; section_key: string
+      }) => Promise<{ ok: boolean; error?: string }>
       addCard: (cell: { geography: string; section_key: string; headline: string; detail?: string; confidence?: string }) => Promise<{ ok: boolean; error?: string; id?: number; full?: boolean }>
       editCard: (edit: { id: number; headline: string; detail?: string; confidence?: string }) => Promise<{ ok: boolean; error?: string; id?: number }>
       replaceCard: (repl: { victimId: number; headline: string; detail?: string; confidence?: string }) => Promise<{ ok: boolean; error?: string; id?: number }>

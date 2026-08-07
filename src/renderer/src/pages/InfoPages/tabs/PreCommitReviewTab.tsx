@@ -28,7 +28,7 @@ const sectionNo = (key: string) => key === INCIDENTS_VIEW ? '⚠' : String(SECTI
 // The stored per-cell proposal shape (written by the P4a-1 generation hook). Mirror
 // stores it as TEXT, so the row carries a JSON STRING — parse + guard defensively.
 interface Proposal {
-  status: 'pending' | 'generating' | 'ready' | 'error' | 'nochange'
+  status: 'pending' | 'generating' | 'ready' | 'error' | 'nochange' | 'accepted' | 'kept'
   original_body?: string
   proposed_body?: string
   divergence?: boolean
@@ -74,8 +74,23 @@ function DiffText({ original, proposed }: { original: string; proposed: string }
   )
 }
 
+// P4a-2b: a stable per-cell key for the in-flight/error tracking. pipeline_id is globally
+// unique per placement row (already this cell's React key), so it disambiguates cells across
+// geographies of the same section without needing article_id (which Placement doesn't carry).
+const cellKey = (p: Placement) => String(p.pipeline_id)
+
 // One touched cell's proposal (one geography of the active section), framed in a <Box>.
-function CellProposal({ placement }: { placement: Placement }) {
+// P4a-2b: the 'ready' box now carries [Keep original] / [Accept edited]; accepted/kept are
+// terminal states with their own minimal note (they must short-circuit BEFORE the ready
+// return, else the fall-through would re-render the diff). busy/cellError are per-cell
+// primitives computed by the parent; onAccept/onKeep call the ② IPC via the parent handlers.
+function CellProposal({ placement, busy, cellError, onAccept, onKeep }: {
+  placement: Placement
+  busy: boolean
+  cellError: string | null
+  onAccept: (p: Placement) => Promise<void>
+  onKeep: (p: Placement) => Promise<void>
+}) {
   const section = placement.section ?? ''
   const geo = placement.geography
   const color = sectionColor(section)
@@ -117,7 +132,25 @@ function CellProposal({ placement }: { placement: Placement }) {
     )
   }
 
-  // status === 'ready' → the before/after diff.
+  // Terminal states (P4a-2b) — short-circuit BEFORE the ready return so an already-resolved
+  // cell reads clearly instead of re-showing the diff + buttons.
+  if (proposal.status === 'accepted') {
+    return (
+      <Box title={title} color={color} meta="accepted">
+        <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">✓ Accepted — page text updated</p>
+      </Box>
+    )
+  }
+
+  if (proposal.status === 'kept') {
+    return (
+      <Box title={title} color={color} meta="kept">
+        <p className="text-xs text-gray-400 dark:text-white/40 italic">Kept original — no change</p>
+      </Box>
+    )
+  }
+
+  // status === 'ready' → the before/after diff + accept/keep controls.
   return (
     <Box title={title} color={color} meta="proposed">
       {proposal.divergence && (
@@ -126,6 +159,19 @@ function CellProposal({ placement }: { placement: Placement }) {
         </p>
       )}
       <DiffText original={proposal.original_body ?? ''} proposed={proposal.proposed_body ?? ''} />
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          onClick={() => onKeep(placement)}
+          disabled={busy}
+          className="px-2 py-1 text-xs rounded border border-gray-500 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+        >Keep original</button>
+        <button
+          onClick={() => onAccept(placement)}
+          disabled={busy}
+          className="px-2 py-1 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50"
+        >{busy ? 'Accepting…' : 'Accept edited'}</button>
+        {cellError && <span className="text-xs text-red-400">{cellError}</span>}
+      </div>
     </Box>
   )
 }
@@ -142,6 +188,10 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
   const [showArticleText, setShowArticleText] = useState(false)
   // Slice 4: the SELECTED source's proposed incident(s), by source_id (0..N, newest first).
   const [incidents, setIncidents] = useState<any[]>([])
+  // P4a-2b: accept/keep in-flight + error, keyed by cellKey (pipeline_id) so the spinner and
+  // the error text show only on the cell being acted on.
+  const [actionBusy, setActionBusy] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<{ key: string; msg: string } | null>(null)
 
   const load = useCallback(async (opts?: { background?: boolean }) => {
     if (!opts?.background) setLoading(true)
@@ -261,6 +311,60 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
   function flash(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(null), 1800)
+  }
+
+  // P4a-2b: accept a cell's proposed edit → ② acceptProposal (versioned write + change-record +
+  // terminal flip). article_id comes from the SELECTED source and info_page IS pageId — neither
+  // lives on Placement (it carries only pipeline_id/section/geography/proposal_json). section_key
+  // is the placement's `section` (NS-2 column). On success, load() refetches; the proposal is now
+  // 'accepted', so this cell's box hits the terminal branch and the diff collapses.
+  const handleAccept = async (placement: Placement) => {
+    const proposal = parseProposal(placement.proposal_json)
+    if (!proposal || proposal.status !== 'ready') return
+    const key = cellKey(placement)
+    const articleId = selected?.article_id
+    if (!articleId) { setActionError({ key, msg: 'No source selected' }); return }
+    setActionError(null); setActionBusy(key)
+    try {
+      const res = await window.api.publication.acceptProposal({
+        article_id: articleId,
+        info_page: pageId,
+        geography: placement.geography ?? '',
+        section_key: placement.section ?? '',
+        before_body: proposal.original_body ?? null,
+        after_body: proposal.proposed_body ?? '',
+        divergence: !!proposal.divergence,
+        divergence_reasoning: proposal.divergence_reasoning ?? null,
+      })
+      if (!res?.ok) { setActionError({ key, msg: res?.error ?? 'Accept failed' }); return }
+      await load()
+    } catch (e) {
+      setActionError({ key, msg: e instanceof Error ? e.message : 'Accept failed' })
+    } finally {
+      setActionBusy(null)
+    }
+  }
+
+  // Keep original → ② keepProposal (terminal flip only, no section write / no change-record).
+  const handleKeep = async (placement: Placement) => {
+    const key = cellKey(placement)
+    const articleId = selected?.article_id
+    if (!articleId) { setActionError({ key, msg: 'No source selected' }); return }
+    setActionError(null); setActionBusy(key)
+    try {
+      const res = await window.api.publication.keepProposal({
+        article_id: articleId,
+        info_page: pageId,
+        geography: placement.geography ?? '',
+        section_key: placement.section ?? '',
+      })
+      if (!res?.ok) { setActionError({ key, msg: res?.error ?? 'Keep failed' }); return }
+      await load()
+    } catch (e) {
+      setActionError({ key, msg: e instanceof Error ? e.message : 'Keep failed' })
+    } finally {
+      setActionBusy(null)
+    }
   }
 
   async function handleCommit() {
@@ -459,7 +563,19 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
                   {activeCells.length === 0 ? (
                     <p className="text-sm text-gray-400 dark:text-white/30 py-8 text-center">This source has no placement in this section.</p>
                   ) : (
-                    activeCells.map(p => <CellProposal key={p.pipeline_id} placement={p} />)
+                    activeCells.map(p => {
+                      const key = cellKey(p)
+                      return (
+                        <CellProposal
+                          key={p.pipeline_id}
+                          placement={p}
+                          busy={actionBusy === key}
+                          cellError={actionError?.key === key ? actionError.msg : null}
+                          onAccept={handleAccept}
+                          onKeep={handleKeep}
+                        />
+                      )
+                    })
                   )}
                 </>
               )}

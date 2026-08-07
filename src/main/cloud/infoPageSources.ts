@@ -357,6 +357,39 @@ async function setProposal(
   await resyncSourceRow(articleId, infoPage)
 }
 
+// P4a-2b: narrow STATUS-ONLY setter for a placement's proposal_json (the accept/keep
+// terminal flip). Unlike setProposal — which rebuilds the whole blob from proposalShape and
+// would clobber the generated bodies — this reads the placement's CURRENT proposal_json
+// cloud-authoritative (never the mirror), merges { status } over it PRESERVING every sibling
+// (original_body / proposed_body / divergence / divergence_reasoning / generated_at), writes it
+// back, then resyncs the mirror row. Same sibling-preserving discipline as setHumanRelevance /
+// setIncidentFlag. Keyed on the composite placement key (article_id, info_page, section,
+// geography) — `section` is the NS-2 column (was `category`). Returns a plain ok/error result.
+export async function setProposalStatus(
+  articleId: string, infoPage: string, section: string, geography: string,
+  status: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isOnline()) return { ok: false, error: 'offline — cannot update proposal status while offline' }
+  const { data: row, error: readErr } = await cloud.from('info_page_sources')
+    .select('proposal_json')
+    .eq('article_id', articleId).eq('info_page', infoPage).eq('section', section).eq('geography', geography)
+    .maybeSingle()
+  if (readErr) return { ok: false, error: `read proposal: ${readErr.message}` }
+  // proposal_json is jsonb → cloud returns a parsed object; tolerate the null / legacy-string cases.
+  const raw = (row as { proposal_json?: unknown } | null)?.proposal_json
+  const current: Record<string, unknown> =
+    raw && typeof raw === 'object' ? { ...(raw as Record<string, unknown>) }
+    : typeof raw === 'string' ? (() => { try { return JSON.parse(raw) as Record<string, unknown> } catch { return {} } })()
+    : {}
+  const merged = { ...current, status, status_at: nowIso() }
+  const { error: wErr } = await cloud.from('info_page_sources')
+    .update({ proposal_json: merged })
+    .eq('article_id', articleId).eq('info_page', infoPage).eq('section', section).eq('geography', geography)
+  if (wErr) return { ok: false, error: `write proposal status: ${wErr.message}` }
+  await resyncSourceRow(articleId, infoPage)
+  return { ok: true }
+}
+
 // Generate + store the proposal for ONE (section, geography) cell. Marks 'generating',
 // reads the cell's live section text, calls the integrate task, then writes 'ready' /
 // 'nochange' / 'error'. Never throws.

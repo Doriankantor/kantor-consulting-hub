@@ -3421,6 +3421,20 @@ function registerIntelligenceHandlers(): void {
     return (await denyIfNotHead('writeSection')) ?? publicationCloud.writeSection(currentActingUserId, cell)
   })
 
+  // Publication accept flow (P4a-2b) — accept a proposed section edit (versioned write +
+  // change-record + terminal proposal flip) or keep the original (flip only). Same Head gate.
+  ipcMain.handle('publication:acceptProposal', async (_e, input: {
+    article_id: string; info_page: string; geography: string; section_key: string
+    before_body: string | null; after_body: string; divergence: boolean; divergence_reasoning: string | null
+  }) => {
+    return (await denyIfNotHead('acceptProposal')) ?? publicationCloud.acceptProposal(currentActingUserId, input)
+  })
+  ipcMain.handle('publication:keepProposal', async (_e, input: {
+    article_id: string; info_page: string; geography: string; section_key: string
+  }) => {
+    return (await denyIfNotHead('keepProposal')) ?? publicationCloud.keepProposal(currentActingUserId, input)
+  })
+
   // Publication cards (P3) — editable 12-slot cards. Same Head gate as writeSection.
   // addCard returns { full:true } when the cell is at 12 → the UI opens the eviction
   // picker and re-submits via replaceCard.
