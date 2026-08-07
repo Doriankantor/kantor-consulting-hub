@@ -35,8 +35,18 @@ interface Cell {
 }
 
 const SECTION_ORDER = Object.keys(SECTION_LABELS)   // canonical 9, in display order
+
+// Slice 3: the incidents feed is a 10th rail entry but NOT a (geo x section) cell —
+// it's a per-geography feed keyed on country. A sentinel activeSection value marks it,
+// deliberately kept OUT of SECTION_ORDER so none of the section-cell machinery (getCell,
+// the auto-jump-to-first-populated search) ever treats it as a real section.
+const INCIDENTS_VIEW = '__incidents__'
+const INCIDENTS_COLOR = '#f43f5e'   // rose-500 — distinct from the 9 section accents
+
 const cellKey = (geography: string, section_key: string) => `${geography}|${section_key}`
-const sectionNo = (key: string) => String(SECTION_ORDER.indexOf(key) + 1).padStart(2, '0')
+// Sentinel-guarded: the incidents view has no SECTION_ORDER index, so give it a glyph
+// rather than "00" (indexOf → -1). Real keys are unchanged.
+const sectionNo = (key: string) => key === INCIDENTS_VIEW ? '⚠' : String(SECTION_ORDER.indexOf(key) + 1).padStart(2, '0')
 
 // number of the four content types present in a cell (0–4)
 function typeCount(c?: Cell): number {
@@ -69,6 +79,13 @@ export default function CellGridTab({ pageId }: Props) {
     return Number.isFinite(v) ? Math.max(56, Math.min(v, 280)) : 208
   })
   const compact = railWidth < 120
+
+  // Slice 3: incident feed for the active geography. Loaded lazily — only fetched while
+  // the Incidents rail entry is selected, refetched when the geography changes under it.
+  // Read-only; cloud-direct via getIncidents (which applies the same board gate as getGrid).
+  const [incidents, setIncidents] = useState<Row[]>([])
+  const [incLoading, setIncLoading] = useState(false)
+  const [incError, setIncError] = useState<string | null>(null)
 
   // Foreground load (tab open) flips to the spinner; a background reload (post-write)
   // refetches WITHOUT touching `loading`, so the canvas subtree stays mounted and its
@@ -130,10 +147,47 @@ export default function CellGridTab({ pageId }: Props) {
     setActiveSection(first)
   }, [activeGeo, mainGeos, supplierGeos, cells])
 
+  // Slice 3: fetch the incident feed for a geography. Read-only, cloud-direct. Guards a
+  // null geo. Returns a promise so Retry can await it; the effect owns staleness dropping.
+  const loadIncidents = useCallback(async (geo: string | null) => {
+    if (!geo) return
+    setIncLoading(true); setIncError(null)
+    try {
+      setIncidents(await window.api.publication.getIncidents(geo) as Row[])
+    } catch (e) {
+      console.error(e)
+      setIncError('Could not load incidents.')
+    }
+    setIncLoading(false)
+  }, [])
+
+  // Load (and reload on geo change) only while the Incidents view is open. The cancelled
+  // flag drops a stale response if the geography changes mid-flight.
+  useEffect(() => {
+    if (activeSection !== INCIDENTS_VIEW || !activeGeo) return
+    let cancelled = false
+    setIncLoading(true); setIncError(null)
+    window.api.publication.getIncidents(activeGeo)
+      .then(rows => { if (!cancelled) setIncidents(rows as Row[]) })
+      .catch(e => { console.error(e); if (!cancelled) setIncError('Could not load incidents.') })
+      .finally(() => { if (!cancelled) setIncLoading(false) })
+    return () => { cancelled = true }
+  }, [activeSection, activeGeo])
+
   // Geo switch: if the current section is empty in the new geography, jump to that
   // geography's first populated section (never land on a blank cell after switching).
   function selectGeo(geo: string) {
     setActiveGeo(geo)
+    // Slice 3: in the Incidents view, STAY on incidents across geo switches (the feed
+    // refetches for the new geo) — EXCEPT supplier-axis geos, which have no incidents
+    // entry, so bounce to a real section there.
+    if (activeSection === INCIDENTS_VIEW) {
+      if (SUPPLIER_AXIS_GEOS.has(geo)) {
+        const first = SECTION_ORDER.find(s => typeCount(getCell(geo, s)) > 0) ?? SECTION_ORDER[0]
+        setActiveSection(first)
+      }
+      return
+    }
     if (typeCount(getCell(geo, activeSection)) === 0) {
       const first = SECTION_ORDER.find(s => typeCount(getCell(geo, s)) > 0)
       if (first) setActiveSection(first)
@@ -157,6 +211,10 @@ export default function CellGridTab({ pageId }: Props) {
   )
 
   const activeCell = getCell(activeGeo, activeSection)
+  // Slice 3: the Incidents rail entry shows only for LATAM geos + REGIONAL, never for the
+  // supplier-axis geos (they're re-index debt with no incident home — per the feed decision).
+  const incidentsVisible = activeGeo != null && !SUPPLIER_AXIS_GEOS.has(activeGeo)
+  const isIncidentsView = activeSection === INCIDENTS_VIEW
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -200,6 +258,28 @@ export default function CellGridTab({ pageId }: Props) {
               </button>
             )
           })}
+
+          {/* Slice 3: INCIDENTS — the 10th rail entry. A geography feed, not a (geo x
+              section) cell, so it lives OUTSIDE the SECTION_ORDER map. Shown only for
+              LATAM geos + REGIONAL; selecting it flips activeSection to the sentinel.
+              Its count is the loaded feed length (only known while the view is open). */}
+          {incidentsVisible && (
+            <button
+              onClick={() => setActiveSection(INCIDENTS_VIEW)}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-left border-l-2 mt-1 transition ${compact ? 'justify-center' : ''} ${
+                isIncidentsView
+                  ? 'bg-gray-50 dark:bg-white/[0.05] text-gray-900 dark:text-white'
+                  : 'border-l-transparent text-gray-600 dark:text-white/60 hover:bg-gray-50/60 dark:hover:bg-white/[0.03]'
+              }`}
+              style={isIncidentsView ? { borderLeftColor: INCIDENTS_COLOR } : undefined}
+              title={compact ? 'Incidents' : undefined}
+            >
+              <span className="text-[10px] leading-none" style={{ color: INCIDENTS_COLOR }}>⚠</span>
+              {!compact && <span className="flex-1 text-xs font-medium truncate">Incidents</span>}
+              {!compact && isIncidentsView && !incLoading && <span className="text-[10px] text-gray-400 dark:text-white/30">{incidents.length}</span>}
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: INCIDENTS_COLOR, opacity: isIncidentsView ? 1 : 0.5 }} />
+            </button>
+          )}
         </div>
 
         {/* Drag handle — resizes the rail; canvas (flex-1) reflows automatically.
@@ -228,6 +308,16 @@ export default function CellGridTab({ pageId }: Props) {
 
         {/* D. CANVAS */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
+          {isIncidentsView ? (
+            <IncidentsFeed
+              geoLabel={geoLabel(activeGeo ?? '')}
+              rows={incidents}
+              loading={incLoading}
+              error={incError}
+              onRetry={() => loadIncidents(activeGeo)}
+            />
+          ) : (
+          <>
           {/* header */}
           <div className="flex items-center gap-2.5 mb-4">
             <span className="text-sm font-mono font-bold tabular-nums" style={{ color: sectionColor(activeSection) }}>{sectionNo(activeSection)}</span>
@@ -260,6 +350,8 @@ export default function CellGridTab({ pageId }: Props) {
               <OutlineBox items={activeCell?.items ?? []} color={sectionColor(activeSection)} />
               <CitationsBox citations={activeCell?.citations ?? []} geography={activeGeo ?? ''} color={sectionColor(activeSection)} />
             </div>
+          )}
+          </>
           )}
         </div>
       </div>
@@ -615,5 +707,88 @@ function CitationsBox({ citations, geography, color }: { citations: Row[]; geogr
         ))}
       </ul>
     </Box>
+  )
+}
+
+// ── Slice 3: INCIDENTS FEED (read-only) ───────────────────────────────────────
+// The 10th container rendered in the canvas when the Incidents rail entry is selected.
+// A per-geography chronological feed (event_date desc) of the incidents table's rows.
+// Read-only: no edit / accept / delete controls (routing incidents is a later slice).
+// Verification is a CHECK'd enum on the table (single-source | corroborated | disputed).
+const VERIFICATION_STYLE: Record<string, string> = {
+  corroborated: 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+  disputed:     'bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300',
+  'single-source': 'bg-gray-100 dark:bg-white/[0.08] text-gray-500 dark:text-white/50',
+}
+
+function VerificationBadge({ value }: { value: string | null }) {
+  const v = (value || 'single-source').toLowerCase()
+  const cls = VERIFICATION_STYLE[v] ?? VERIFICATION_STYLE['single-source']
+  return <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${cls}`}>{v}</span>
+}
+
+// A single attribute chip — mirrors OutlineBox's attr-chip visual language.
+function IncChip({ k, v }: { k: string; v: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/50">
+      <span className="text-gray-400 dark:text-white/30">{k}:</span>{v}
+    </span>
+  )
+}
+
+function IncidentCard({ inc }: { inc: Row }) {
+  const actor = inc.actor
+    ? String(inc.actor) + (inc.actor_type ? ` (${inc.actor_type})` : '')
+    : null
+  return (
+    <div className="rounded-lg border border-l-2 border-gray-100 dark:border-white/[0.06] bg-gray-50/60 dark:bg-white/[0.02] px-3.5 py-3" style={{ borderLeftColor: INCIDENTS_COLOR }}>
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <span className="text-[11px] font-mono tabular-nums text-gray-400 dark:text-white/40">{inc.event_date}</span>
+        {inc.title && <span className="text-sm font-bold leading-snug text-gray-900 dark:text-white/85">{inc.title}</span>}
+        <span className="ml-auto"><VerificationBadge value={inc.verification} /></span>
+      </div>
+      {inc.location && <div className="text-[12px] text-gray-500 dark:text-white/50 mt-1">📍 {inc.location}</div>}
+      {inc.summary && <p className="text-[13px] leading-relaxed text-gray-700 dark:text-white/70 mt-1.5">{inc.summary}</p>}
+      {(actor || inc.system || inc.casualties != null) && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {actor && <IncChip k="actor" v={actor} />}
+          {inc.system && <IncChip k="system" v={String(inc.system)} />}
+          {inc.casualties != null && <IncChip k="casualties" v={String(inc.casualties)} />}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function IncidentsFeed({ geoLabel, rows, loading, error, onRetry }: {
+  geoLabel: string; rows: Row[]; loading: boolean; error: string | null; onRetry: () => void
+}) {
+  return (
+    <>
+      {/* header — mirrors the section-cell header, with the incident accent + glyph */}
+      <div className="flex items-center gap-2.5 mb-4">
+        <span className="text-sm font-bold" style={{ color: INCIDENTS_COLOR }}>⚠</span>
+        <h2 className="text-base font-bold text-gray-900 dark:text-white">Incidents</h2>
+        <span className="text-sm text-gray-400 dark:text-white/30">·</span>
+        <span className="text-sm text-gray-500 dark:text-white/50">{geoLabel}</span>
+        {!loading && !error && <span className="text-[11px] text-gray-400 dark:text-white/30">{rows.length}</span>}
+        <span className="ml-auto text-[10px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/40">read-only</span>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-16"><div className="w-5 h-5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"/></div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <p className="text-sm font-medium text-red-500 dark:text-red-400">{error}</p>
+          <button onClick={onRetry} className="mt-2 text-xs px-2.5 py-1 rounded-lg border border-gray-200 dark:border-white/[0.1] text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition">Retry</button>
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-gray-400 dark:text-white/30 py-8 text-center">No incidents recorded for this geography.</p>
+      ) : (
+        <div className="space-y-3">
+          {rows.map(inc => <IncidentCard key={String(inc.id)} inc={inc} />)}
+        </div>
+      )}
+    </>
   )
 }

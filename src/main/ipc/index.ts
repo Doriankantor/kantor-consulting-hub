@@ -3394,6 +3394,11 @@ function registerIntelligenceHandlers(): void {
   // channel-gated on Contested Skies board membership inside getGrid.
   ipcMain.handle('publication:getGrid', (_e) => publicationCloud.getGrid(currentActingUserId))
 
+  // Slice 3: per-geography incident feed (cloud-only, unmirrored). Same board gate as
+  // getGrid, applied inside getIncidents. Read-only — no incident write path yet.
+  ipcMain.handle('publication:getIncidents', (_e, geography: string) =>
+    publicationCloud.getIncidents(currentActingUserId, geography))
+
   // Publication write gate (P2/P3) — HEAD-GATED: isOwner (canApprove = isRoot ||
   // isOwner), NOT plain membership — mirrors the reviewCommit gate. Gated against the
   // single Contested Skies board (P1a constant). Shared by every publication writer;

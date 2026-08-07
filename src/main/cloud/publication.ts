@@ -21,6 +21,14 @@ import { isBoardVisibleFor } from './boards'
 
 const CONTESTED_SKIES_BOARD_ID = 'board-info-latam'
 
+// Supplier-axis / extra-regional countries — MIRRORS CellGridTab's SUPPLIER_AXIS_GEOS
+// exactly. These are bucketed off the LATAM grid as documented re-index debt, so the
+// REGIONAL ("ALL LATAM") incident aggregate must EXCLUDE them (an incident homed to
+// China/United States is not a LATAM regional event). Kept in sync with the renderer set.
+const SUPPLIER_AXIS_COUNTRIES = [
+  'United States', 'China', 'GLOBAL', 'Ukraine', 'Israel', 'Lebanon', 'Syria', 'Turkey', 'Costa Rica',
+]
+
 export interface PublicationGrid {
   section_texts: Record<string, unknown>[]
   cards: Record<string, unknown>[]
@@ -69,6 +77,63 @@ export async function getGrid(actingUserId?: string): Promise<PublicationGrid> {
     readTable('section_citations'),
   ])
   return { section_texts, cards, section_items, section_citations }
+}
+
+// ── incidents feed: CLOUD-ONLY read path (Slice 3) ───────────────────────────
+// Incidents are the "10th container" — a per-GEOGRAPHY feed (peer to the 9 sections,
+// but keyed on country, not section_key). The table is cloud-only/unmirrored (Slice 1),
+// so this is a cloud-direct read, exactly like getGrid, behind the SAME channel-wide
+// board gate. A parallel getter (NOT folded into getGrid) so the feed loads lazily only
+// when the Incidents rail entry is opened.
+//
+// GEOGRAPHY FILTER (matches the grid's geography vocabulary — bare English country
+// names / 'REGIONAL', see analyze.ts normalizeIncident):
+//   • 'REGIONAL' → AGGREGATE scoped to LATAM: every incident whose country is NOT a
+//     supplier-axis/extra-regional country. Incidents homed literally to 'REGIONAL'
+//     (genuinely region-wide LATAM events) ARE included — 'REGIONAL' is not in the
+//     supplier set. This makes the "ALL LATAM" tab a region-wide feed, not the thin
+//     country='REGIONAL'-only bucket.
+//   • any country (e.g. 'Colombia') → exact country = geography.
+// Ordered event_date desc (newest first). Never throws — a failed read yields [].
+export interface IncidentRow {
+  id: string
+  event_date: string
+  country: string
+  verification: string | null
+  title: string | null
+  summary: string | null
+  location: string | null
+  actor: string | null
+  actor_type: string | null
+  system: string | null
+  casualties: number | null
+  source_id: string | null
+}
+
+const INCIDENT_COLS =
+  'id,event_date,country,verification,title,summary,location,actor,actor_type,system,casualties,source_id'
+
+export async function getIncidents(actingUserId: string | undefined, geography: string): Promise<IncidentRow[]> {
+  // Same channel-wide membership gate as getGrid — incidents belong to the same
+  // Contested Skies board. Non-member (and non-root) → empty feed, not an error.
+  if (!(await isBoardVisibleFor(actingUserId, CONTESTED_SKIES_BOARD_ID))) return []
+
+  let query = cloud.from('incidents').select(INCIDENT_COLS)
+  if (geography === 'REGIONAL') {
+    // country NOT IN (supplier-axis set). PostgREST `in` needs each value quoted so the
+    // multi-word names (e.g. "United States") parse as single list items.
+    const inList = `(${SUPPLIER_AXIS_COUNTRIES.map(c => `"${c}"`).join(',')})`
+    query = query.not('country', 'in', inList)
+  } else {
+    query = query.eq('country', geography)
+  }
+  const { data, error } = await query.order('event_date', { ascending: false })
+  reportCloudResult(!error)
+  if (error) {
+    console.warn('[publication] cloud read incidents failed:', error.message)
+    return []
+  }
+  return (data ?? []) as IncidentRow[]
 }
 
 // ── publication WRITE path (P2): versioned direct-edit of section_texts ───────

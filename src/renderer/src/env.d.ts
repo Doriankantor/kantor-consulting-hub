@@ -936,6 +936,8 @@ interface Window {
     // Loose any[] rows for now; row shapes get typed in P1b when the UI needs them.
     publication: {
       getGrid: () => Promise<{ section_texts: any[]; cards: any[]; section_items: any[]; section_citations: any[] }>
+      // Slice 3: per-geography incident feed (cloud-only). Loose any[] rows, matching getGrid.
+      getIncidents: (geography: string) => Promise<any[]>
       writeSection: (cell: { geography: string; section_key: string; lang: string; body: string }) => Promise<{ ok: boolean; error?: string; id?: number }>
       addCard: (cell: { geography: string; section_key: string; headline: string; detail?: string; confidence?: string }) => Promise<{ ok: boolean; error?: string; id?: number; full?: boolean }>
       editCard: (edit: { id: number; headline: string; detail?: string; confidence?: string }) => Promise<{ ok: boolean; error?: string; id?: number }>
