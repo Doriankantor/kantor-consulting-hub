@@ -199,6 +199,27 @@ SCHEMA DONE THIS SESSION:
     (row deleted). Three states all work: AI-incident+no-override generates; AI-incident+"not an incident"
     skips; AI-not-incident+"mark as incident" forces.
 
+  • INCIDENTS SLICE 3 (commit 3372212): surface incidents in Page Content (READ-ONLY). New getIncidents cloud
+    getter in publication.ts (cloud-direct, behind the SAME isBoardVisibleFor('board-info-latam') gate as
+    getGrid; incidents is cloud-only/unmirrored). Geography filter: REGIONAL AGGREGATES all LATAM incidents
+    (country NOT IN the supplier-axis set — United States, China, GLOBAL, Ukraine, Israel, Lebanon, Syria,
+    Turkey, Costa Rica — so literal-REGIONAL + all LATAM-country incidents show under ALL LATAM); any other
+    geography = exact country match; ordered event_date desc. Wired IPC publication:getIncidents -> preload ->
+    env.d.ts like getGrid. Incidents rendered as a 10TH RAIL SENTINEL in CellGridTab (INCIDENTS_VIEW=
+    '__incidents__', kept OUT of SECTION_ORDER; guarded in sectionNo/sectionColor/typeCount; EXCLUDED from the
+    auto-jump-to-first-populated-section logic so it never auto-lands, only on explicit click; shown only for
+    mainGeos+REGIONAL, never supplier-axis tabs). Canvas branches to an incident FEED panel (chronological,
+    event_date desc) with cards showing date/title/location/actor+type/system/casualties/verification badge/
+    summary, plus loading/empty/error states. VERIFIED in-app: Colombia shows the Catatumbo incident, REGIONAL
+    aggregates it too, supplier tabs have no Incidents entry. Read-only — no edit/accept/delete; editing/
+    routing is Slice 4.
+
+  • DECISIONS LOCKED (Slice 3): (1) REGIONAL = aggregate-scoped-to-LATAM (not literal country='REGIONAL'
+    only). (2) The incidents.country vs grid-geography match is a SOFT CONVENTION (both intend bare English
+    country names / REGIONAL, but nothing enforces it — a country the model spells differently silently
+    orphans); accepted for v1, HARDENING (whitelist the incident extraction to the grid vocab) is BACKLOGGED.
+    (3) Incident feed renders only for mainGeos + REGIONAL, not supplier-axis geographies.
+
   • KNOWN — NARRATIVE LEAK (model variance, deferred): the integrate (narrative) task and the incident task
     both see the same source; the narrative task sometimes still pulls incident event-statistics into
     narrative prose despite the conservative tuning. Observed BOTH variants on the same Catatumbo source
@@ -223,15 +244,16 @@ SCHEMA DONE THIS SESSION:
     - P2's updated_by writes 'local-admin' (dev acting-user), not a board_members identity — P6
       change-history will need to resolve to real names.
 
-▶ RESUME HERE → INCIDENTS SLICE 3: surface incidents in Page Content. Add an incidents box/feed to the
-  cell (the shared Box primitive in cellPrimitives), reading the incidents table cloud-direct (like getGrid
-  reads the publication tables — incidents is cloud-only, unmirrored). Renders a geography's incident feed
-  (structured: date, location, actor, system, casualties, summary). Then Slice 4: render/route incident
-  PROPOSALS in Pre-Commit Review alongside the narrative diffs — the slice that makes incidents VISIBLE in
-  the review screen and closes the three-way reconciliation loop (narrative / incident / nothing). After
-  incidents: the narrative-leak tuning (see KNOWN — NARRATIVE LEAK above), then P4a-2b (the accept flow +
-  Layer-1 change-record capture into Recent Changes — the functional keystone that makes the review screen
-  actually write). The PUBLICATION ARC SLICE SEQUENCE block below stays the canonical P4-P7 map.
+▶ RESUME HERE → INCIDENTS SLICE 4: render/route incident PROPOSALS in Pre-Commit Review. This is the slice
+  that closes the three-way reconciliation loop — a source in review shows, in ONE screen, its proposed
+  narrative changes (the existing diffs) AND its proposed incident, each acceptable/editable. Today the
+  incident GENERATES on new->review (Slice 1) and DISPLAYS in Page Content (Slice 3), but is NOT visible in
+  the Pre-Commit Review screen alongside the narrative diffs. Slice 4 surfaces the incident proposal there
+  (likely as an entry in the section rail / a panel, next to the narrative cells) so the reviewer sees the
+  full picture of what the source changes. After Slice 4 the incidents arc is complete. Then: the
+  narrative-leak tuning (see KNOWN — NARRATIVE LEAK above), then P4a-2b (the accept flow + Layer-1
+  change-record capture into Recent Changes — the functional keystone that makes the review screen actually
+  WRITE). The PUBLICATION ARC SLICE SEQUENCE block below stays the canonical P4-P7 map.
 
 CONTENT DECISIONS (locked, for the import + later re-index):
   - Citations are SECTION-LEVEL (mostly REGIONAL), NOT per-cell, NOT duplicated. 189 citations, only 60/189
