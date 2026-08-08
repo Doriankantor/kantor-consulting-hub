@@ -30,7 +30,7 @@ const MODEL = 'claude-haiku-4-5'
 // ≈ a full long analytical article. Bump this single const to adjust the window.
 const ANALYSIS_BODY_CAP = 18000
 
-export type AnalyzeTask = 'relevance' | 'reconcile' | 'integrate' | 'incident' | 'card'
+export type AnalyzeTask = 'relevance' | 'reconcile' | 'integrate' | 'incident' | 'card' | 'cards_whole'
 
 export interface ProjectConfig {
   name?: string
@@ -68,6 +68,15 @@ export interface AnalyzeOpts {
   // section_key + geography come via cellIdentity (reused from the integrate path).
   // Absent/empty → treated as a cell with no existing cards.
   existingCards?: Array<{ headline: string; detail?: string }>
+  // 'cards_whole' task (P4c-1-redux): the WHOLE-SOURCE coordinated card pass. Instead of
+  // N per-cell 'card' calls (each blind to the other sections → figure spray), ONE call
+  // sees every touched section + geography at once and tags each figure with its home.
+  //   sections               — the menu of touched sections (key + display label)
+  //   geographies            — the touched geographies in play (REGIONAL + countries)
+  //   existingCardsBySection — current active cards keyed by section_key (dedup context)
+  sections?: Array<{ key: string; label: string }>
+  geographies?: string[]
+  existingCardsBySection?: Record<string, Array<{ headline: string; detail?: string }>>
 }
 
 export interface AnalyzeResult {
@@ -130,7 +139,11 @@ export interface AnalyzeResult {
   // 'card' task (P4c-1): proposed key-figure cards for the cell, each mapping 1:1 onto
   // the cards table's headline/detail/confidence columns. Populated ONLY on the card path
   // (via normalizeCard). An empty array = the source justifies no new card (the common case).
-  proposed_cards?: Array<{ headline: string; detail: string; confidence: string }>
+  // P4c-1-redux: the 'cards_whole' path additionally tags each entry with its home_sections
+  // (1-2 section keys) + home_geography, which the caller uses to FAN OUT the flat list into
+  // the per-cell store; those routing fields are stripped before storage. The per-cell 'card'
+  // path leaves them undefined.
+  proposed_cards?: Array<{ headline: string; detail: string; confidence: string; home_sections?: string[]; home_geography?: string }>
 }
 
 export type AnalyzeResponse =
@@ -147,7 +160,7 @@ export async function analyzeWithClaude(opts: AnalyzeOpts): Promise<AnalyzeRespo
     if (!apiKey) return { ok: false, error: 'No Anthropic API key configured.' }
 
     const client = new Anthropic({ apiKey })
-    const { system, user } = buildPrompt(opts.task, text, opts.projectConfig, opts.userNotes, opts.existingTags, opts.priorAi, opts.currentText, opts.cellIdentity, opts.anchorDate, opts.existingCards)
+    const { system, user } = buildPrompt(opts.task, text, opts.projectConfig, opts.userNotes, opts.existingTags, opts.priorAi, opts.currentText, opts.cellIdentity, opts.anchorDate, opts.existingCards, { sections: opts.sections, geographies: opts.geographies, existingCardsBySection: opts.existingCardsBySection })
 
     let raw = ''
     try {
@@ -189,6 +202,7 @@ export async function analyzeWithClaude(opts: AnalyzeOpts): Promise<AnalyzeRespo
     const result = opts.task === 'integrate' ? normalizeIntegrate(parsed)
       : opts.task === 'incident' ? normalizeIncident(parsed)
       : opts.task === 'card' ? normalizeCard(parsed)
+      : opts.task === 'cards_whole' ? normalizeCardsWhole(parsed)
       : normalizeResult(parsed)
     return { ok: true, result }
   } catch (e) {
@@ -301,10 +315,25 @@ function stripHtmlForAnalysis(input: string): string {
 // Canonical nine page-section keys → display labels (main-process copy of the
 // renderer's sectionLabels.ts; keys are NOT always their own label — `legal` →
 // "Regulatory"). Used only to NAME the section in the integrate prompt.
-const SECTION_LABELS: Record<string, string> = {
+export const SECTION_LABELS: Record<string, string> = {
   systems: 'Systems', vnsa: 'VNSA', industry: 'Industry', external: 'External',
   supply: 'Supply', investment: 'Investment', legal: 'Regulatory',
   civilian: 'Civilian', logistics: 'Logistics',
+}
+
+// P4c-1-redux: a one-line note of what each section durably TRACKS, used only to describe
+// the section menu in the whole-source 'cards_whole' prompt so the model can pick the right
+// home. Domain hints for the Contested Skies page — not authoritative routing, just guidance.
+const SECTION_TRACKS: Record<string, string> = {
+  systems: 'counter-UAS and UAS platforms, models, capability specs, and their prices',
+  vnsa: 'violent non-state actors’ drone use — attack counts, trends, and capabilities',
+  industry: 'manufacturers, vendors, and the defense-industrial base',
+  external: 'cross-border and extra-regional actors, incursions, and state involvement',
+  supply: 'procurement, supply chains, component sourcing, and market shares',
+  investment: 'funding, contracts, valuations, and spending figures',
+  legal: 'regulation, registration rules, laws, and legal thresholds',
+  civilian: 'civilian and commercial drone use, adoption, and incidents',
+  logistics: 'logistics, transport, and delivery drone use',
 }
 
 function buildPrompt(
@@ -318,6 +347,11 @@ function buildPrompt(
   cellIdentity?: { geography: string; section_key: string } | null,
   anchorDate?: string | null,
   existingCards?: Array<{ headline: string; detail?: string }>,
+  whole?: {
+    sections?: Array<{ key: string; label: string }>
+    geographies?: string[]
+    existingCardsBySection?: Record<string, Array<{ headline: string; detail?: string }>>
+  },
 ): { system: string; user: string } {
   const system =
     'You are an intelligence analyst assistant for a security-focused consultancy. ' +
@@ -470,6 +504,95 @@ Each proposed card = { "headline": "<the figure/fact, short>", "detail": "<one-l
 Return ONLY JSON with exactly this key:
 {
   "proposed_cards": [ { "headline": "<short figure/fact>", "detail": "<one-line note>", "confidence": "high|medium|low" } ]
+}
+Return { "proposed_cards": [] } when nothing qualifies.`,
+    }
+  }
+
+  if (task === 'cards_whole') {
+    // P4c-1-redux: ONE whole-source coordinated card pass. The model sees EVERY touched
+    // section + geography at once and tags each proposed figure with its home section(s) +
+    // home geography, so a figure lands in the ONE cell where it belongs instead of being
+    // proposed into every section that merely mentions it (the per-cell 'card' spray). The
+    // caller fans the tagged flat list out into the per-cell proposed_cards[] store.
+    const sections = Array.isArray(whole?.sections) ? whole!.sections : []
+    const geos = Array.isArray(whole?.geographies) && whole!.geographies.length ? whole!.geographies : ['REGIONAL']
+    const bySection = whole?.existingCardsBySection ?? {}
+    const menu = sections.length
+      ? sections.map(s => `- ${s.key} ("${s.label}"): ${SECTION_TRACKS[s.key] ?? 'key figures this section tracks'}`).join('\n')
+      : '(no sections)'
+    const existingBlock = sections.length
+      ? sections.map(s => {
+          const cs = Array.isArray(bySection[s.key]) ? bySection[s.key] : []
+          const list = cs.length
+            ? cs.map((c, i) => `    ${i + 1}. ${String(c.headline ?? '').trim()}${c.detail && String(c.detail).trim() ? ` — ${String(c.detail).trim()}` : ''}`).join('\n')
+            : '    (none)'
+          return `  ${s.key} ("${s.label}"):\n${list}`
+        }).join('\n')
+      : '(none)'
+    return {
+      system,
+      user: `${context}
+
+You maintain the KEY-FIGURE CARDS for a multi-section intelligence page. Read the WHOLE source ONCE
+and decide which DURABLE key-figures it asserts, and for EACH, which section and geography is its home.
+Cards are durable, at-a-glance facts a section tracks over time — a number, count, range, price, or a
+named platform/model/capability spec — NOT news of the day.
+
+SECTION MENU (assign each figure to its home section by KEY):
+${menu}
+
+GEOGRAPHIES IN PLAY (assign each figure a home geography from THIS list):
+${geos.join(', ')}
+
+EXISTING CARDS BY SECTION (do NOT duplicate or restate any of these):
+${existingBlock}
+
+NEW SOURCE (full text):
+${body}
+
+RULES — read carefully; the DEFAULT is to propose NOTHING:
+  1. Propose a card ONLY for a DURABLE quantitative or named-specific fact: a number, count, range,
+     price, or a platform/model name or capability spec that a section durably tracks.
+  2. The DEFAULT is an EMPTY array. Most sources justify ZERO new cards. Empty is the correct and
+     common answer — never invent a card just to have something to say.
+  3. Do NOT propose a card that duplicates or merely restates any card already tracked in its home
+     section (listed above). If the fact is already tracked, propose nothing for it.
+  4. Distinguish DISCRETE-EVENT details from DURABLE AGGREGATE statistics. A single event's
+     details - the casualties, arrests, or seizures from one incident ("32 wounded in Tuesday's
+     strike", "2 detainees") - belong to the incident record and are BARRED from cards. But a
+     DURABLE AGGREGATE statistic that a section tracks over time - a multi-period trend, a
+     cumulative count, a rate ("5 -> 107 -> 233 -> 260 attacks 2020-2023", "11 drone-attack deaths
+     in five months", "1,000+ monthly border incursions") - IS a valid card when the source states
+     it. The test is shape, not topic: one event = incident (barred); a durable pattern or
+     aggregate = card (allowed).
+  5. HOME SECTION: assign each figure to the ONE section where it primarily belongs - the section a
+     reader would look in to find it. A figure may have TWO home sections only when genuinely central
+     to both (e.g. a system that is both a platform spec and a supply-chain fact). Do NOT assign a
+     figure to a section just because the source touches both.
+  6. HOME GEOGRAPHY: a figure's home geography is REGIONAL unless the figure describes events,
+     spending, law, or people INSIDE one specific country - then it homes to that country.
+     Cross-border, global, or product-spec figures are ALWAYS REGIONAL. Examples: "1,000+ border
+     incursions" -> REGIONAL (cross-border); "DJI 70% market share" -> REGIONAL (global); a system's
+     price -> REGIONAL (product spec); "11 deaths in Colombia" -> Colombia; "Mexico registration law"
+     -> Mexico; "attacks in Mexico" -> Mexico. Use ONLY geographies from the list provided; if unsure,
+     use REGIONAL.
+  7. Report ONLY what the source explicitly states. Never infer, estimate, or invent a figure, name,
+     or spec. Preserve numbers and names VERBATIM - if the source gives an exact figure, reproduce it
+     EXACTLY as stated; do NOT add "~", "approximately", "roughly", or round it. Only mark a figure as
+     approximate if the SOURCE itself qualifies it that way.
+
+Each proposed card = { "headline": "<the figure/fact, short>", "detail": "<one-line note>",
+"confidence": "high" | "medium" | "low", "home_section": "<section key>", "home_geography":
+"<REGIONAL or a country name from the list>" }. For a genuine dual-home figure, use
+"home_sections": ["<key>", "<key>"] (1-2 keys) INSTEAD of "home_section".
+
+Return ONLY JSON with exactly this key:
+{
+  "proposed_cards": [
+    { "headline": "<short figure/fact>", "detail": "<one-line note>", "confidence": "high|medium|low",
+      "home_section": "<section key>", "home_geography": "<REGIONAL|country name>" }
+  ]
 }
 Return { "proposed_cards": [] } when nothing qualifies.`,
     }
@@ -865,6 +988,40 @@ function normalizeCard(parsed: Record<string, unknown>): AnalyzeResult {
     })
     .filter(c => !!c.headline)
     .slice(0, 6)
+  return out
+}
+
+// 'cards_whole' task normalizer (P4c-1-redux) — the WHOLE-SOURCE tagged contract. Same
+// headline/detail/confidence validation as normalizeCard, PLUS the routing tags the caller
+// fans out on: home_sections (normalized to a 1-2 key string[] from either home_sections[]
+// or a single home_section; entries with NO valid home section are dropped) and home_geography
+// (trimmed, default 'REGIONAL'). Caps the FLAT list at 15 (whole-source ceiling, up from the
+// per-cell 6). Drop headline-less entries. Never throws.
+function normalizeCardsWhole(parsed: Record<string, unknown>): AnalyzeResult {
+  const out: AnalyzeResult = {}
+  const CONF = new Set(['high', 'medium', 'low'])
+  const raw = Array.isArray(parsed.proposed_cards) ? parsed.proposed_cards : []
+  out.proposed_cards = (raw as unknown[])
+    .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object')
+    .map(c => {
+      const headline = typeof (c as any).headline === 'string' ? (c as any).headline.trim().slice(0, 200) : ''
+      const detail = typeof (c as any).detail === 'string' ? (c as any).detail.trim().slice(0, 500) : ''
+      const confRaw = typeof (c as any).confidence === 'string' ? (c as any).confidence.trim().toLowerCase() : ''
+      const confidence = CONF.has(confRaw) ? confRaw : 'medium'
+      // home_sections: prefer the array form, else the single home_section. Trim, drop blanks,
+      // dedupe, keep at most 2 (a figure homes to one section, two only when truly dual-home).
+      const rawHomes = Array.isArray((c as any).home_sections)
+        ? (c as any).home_sections
+        : (c as any).home_section != null ? [(c as any).home_section] : []
+      const home_sections = Array.from(new Set(
+        (rawHomes as unknown[]).map(h => (typeof h === 'string' ? h.trim() : '')).filter(Boolean),
+      )).slice(0, 2)
+      const home_geography = typeof (c as any).home_geography === 'string' && (c as any).home_geography.trim()
+        ? (c as any).home_geography.trim().slice(0, 80) : 'REGIONAL'
+      return { headline, detail, confidence, home_sections, home_geography }
+    })
+    .filter(c => !!c.headline && c.home_sections.length > 0)
+    .slice(0, 15)
   return out
 }
 

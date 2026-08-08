@@ -35,6 +35,11 @@ interface Proposal {
   divergence_reasoning?: string
   error?: string
   generated_at?: string
+  // P4c-1 writes this into the same blob (INDEPENDENT of narrative status — a cell can be
+  // 'nochange' yet carry proposed cards). parseProposal already returns it at runtime; this
+  // declaration just makes it type-visible. `id` is optional — P4c-1 didn't stamp per-card ids
+  // (that lands in 2b, the accept flow); optional keeps this compile-clean against current data.
+  proposed_cards?: Array<{ id?: string; headline: string; detail?: string; confidence?: string }>
 }
 
 function parseProposal(raw: string | null | undefined): Proposal | null {
@@ -97,82 +102,125 @@ function CellProposal({ placement, busy, cellError, onAccept, onKeep }: {
   const title = `${sectionLabel(section)} · ${geoLabel(geo)}`
   const proposal = parseProposal(placement.proposal_json)
 
-  if (!proposal) {
-    return (
-      <Box title={title} color={color}>
-        <p className="text-xs text-gray-400 dark:text-white/30 italic">No proposal for this section.</p>
-      </Box>
-    )
-  }
+  // The NARRATIVE sub-region — the status switch (unchanged). Returns one <Box> per status.
+  // P4c-2a: pulled into a closure so the proposed-cards block can render AFTER it on EVERY
+  // status path — a card-only cell has status 'nochange' yet must still show its cards.
+  const renderNarrative = () => {
+    if (!proposal) {
+      return (
+        <Box title={title} color={color}>
+          <p className="text-xs text-gray-400 dark:text-white/30 italic">No proposal for this section.</p>
+        </Box>
+      )
+    }
 
-  if (proposal.status === 'generating' || proposal.status === 'pending') {
+    if (proposal.status === 'generating' || proposal.status === 'pending') {
+      return (
+        <Box title={title} color={color} meta={proposal.status}>
+          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-white/50">
+            <span className="w-3.5 h-3.5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+            Analyzing…
+          </div>
+        </Box>
+      )
+    }
+
+    if (proposal.status === 'error') {
+      return (
+        <Box title={title} color={color} meta="error">
+          <p className="text-xs text-red-500 dark:text-red-400">{proposal.error || 'Proposal generation failed.'}</p>
+        </Box>
+      )
+    }
+
+    if (proposal.status === 'nochange') {
+      return (
+        <Box title={title} color={color} meta="no change">
+          <p className="text-xs text-gray-400 dark:text-white/40 italic">No material change proposed for this section.</p>
+        </Box>
+      )
+    }
+
+    // Terminal states (P4a-2b) — short-circuit BEFORE the ready return so an already-resolved
+    // cell reads clearly instead of re-showing the diff + buttons.
+    if (proposal.status === 'accepted') {
+      return (
+        <Box title={title} color={color} meta="accepted">
+          <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">✓ Accepted — page text updated</p>
+        </Box>
+      )
+    }
+
+    if (proposal.status === 'kept') {
+      return (
+        <Box title={title} color={color} meta="kept">
+          <p className="text-xs text-gray-400 dark:text-white/40 italic">Kept original — no change</p>
+        </Box>
+      )
+    }
+
+    // status === 'ready' → the before/after diff + accept/keep controls.
     return (
-      <Box title={title} color={color} meta={proposal.status}>
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-white/50">
-          <span className="w-3.5 h-3.5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
-          Analyzing…
+      <Box title={title} color={color} meta="proposed">
+        {proposal.divergence && (
+          <p className="mb-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 px-2 py-1.5 rounded-lg">
+            ⚠ Contradicts current text{proposal.divergence_reasoning ? `: ${proposal.divergence_reasoning}` : ''}
+          </p>
+        )}
+        <DiffText original={proposal.original_body ?? ''} proposed={proposal.proposed_body ?? ''} />
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            onClick={() => onKeep(placement)}
+            disabled={busy}
+            className="px-2 py-1 text-xs rounded border border-gray-500 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+          >Keep original</button>
+          <button
+            onClick={() => onAccept(placement)}
+            disabled={busy}
+            className="px-2 py-1 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50"
+          >{busy ? 'Accepting…' : 'Accept edited'}</button>
+          {cellError && <span className="text-xs text-red-400">{cellError}</span>}
         </div>
       </Box>
     )
   }
 
-  if (proposal.status === 'error') {
+  // P4c-2a: the PROPOSED CARDS block — READ-ONLY, renders on EVERY status path (independent of
+  // narrative status). Each card is a tile reusing the CardsBox SHAPE (headline bold + detail +
+  // confidence) but with a DASHED outline to read as "proposed, not yet committed" and NO
+  // edit/accept controls (accept is 2b). Returns null when the cell carries no proposed cards.
+  const renderProposedCards = () => {
+    const cards = proposal?.proposed_cards
+    if (!Array.isArray(cards) || cards.length === 0) return null
     return (
-      <Box title={title} color={color} meta="error">
-        <p className="text-xs text-red-500 dark:text-red-400">{proposal.error || 'Proposal generation failed.'}</p>
-      </Box>
-    )
-  }
-
-  if (proposal.status === 'nochange') {
-    return (
-      <Box title={title} color={color} meta="no change">
-        <p className="text-xs text-gray-400 dark:text-white/40 italic">No material change proposed for this section.</p>
-      </Box>
-    )
-  }
-
-  // Terminal states (P4a-2b) — short-circuit BEFORE the ready return so an already-resolved
-  // cell reads clearly instead of re-showing the diff + buttons.
-  if (proposal.status === 'accepted') {
-    return (
-      <Box title={title} color={color} meta="accepted">
-        <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">✓ Accepted — page text updated</p>
-      </Box>
-    )
-  }
-
-  if (proposal.status === 'kept') {
-    return (
-      <Box title={title} color={color} meta="kept">
-        <p className="text-xs text-gray-400 dark:text-white/40 italic">Kept original — no change</p>
-      </Box>
-    )
-  }
-
-  // status === 'ready' → the before/after diff + accept/keep controls.
-  return (
-    <Box title={title} color={color} meta="proposed">
-      {proposal.divergence && (
-        <p className="mb-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 px-2 py-1.5 rounded-lg">
-          ⚠ Contradicts current text{proposal.divergence_reasoning ? `: ${proposal.divergence_reasoning}` : ''}
-        </p>
-      )}
-      <DiffText original={proposal.original_body ?? ''} proposed={proposal.proposed_body ?? ''} />
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          onClick={() => onKeep(placement)}
-          disabled={busy}
-          className="px-2 py-1 text-xs rounded border border-gray-500 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
-        >Keep original</button>
-        <button
-          onClick={() => onAccept(placement)}
-          disabled={busy}
-          className="px-2 py-1 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50"
-        >{busy ? 'Accepting…' : 'Accept edited'}</button>
-        {cellError && <span className="text-xs text-red-400">{cellError}</span>}
+      <div className="rounded-xl border border-dashed border-gray-300 dark:border-white/[0.15] px-3 py-2.5">
+        <div className="flex items-center gap-1.5 mb-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color }}>Proposed cards</span>
+          <span className="text-[10px] font-mono tabular-nums text-gray-400 dark:text-white/30">{cards.length}</span>
+          <span className="ml-auto text-[9px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/40">read-only</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {cards.map((cd, i) => (
+            <div
+              key={cd.id ?? i}
+              className="rounded-lg border border-l-2 border-dashed border-gray-200 dark:border-white/[0.12] bg-gray-50/40 dark:bg-white/[0.02] px-3 py-2"
+              style={{ borderLeftColor: color }}
+            >
+              <div className="text-sm font-bold leading-snug text-gray-900 dark:text-white/85">{cd.headline}</div>
+              {cd.detail && <div className="text-[12px] leading-snug text-gray-600 dark:text-white/55 mt-0.5">{cd.detail}</div>}
+              {cd.confidence && <div className="text-[10px] text-gray-400 dark:text-white/30 mt-1">confidence: {cd.confidence}</div>}
+            </div>
+          ))}
+        </div>
       </div>
-    </Box>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {renderNarrative()}
+      {renderProposedCards()}
+    </div>
   )
 }
 
@@ -215,16 +263,20 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
   }, [grouped, selectedArticleId])
 
   // Per-section state for the SELECTED source: touched (has a real placement), ready
-  // (at least one geography has a 'ready' proposal), and the placement count.
+  // (at least one geography has a 'ready' proposal), hasCards (P4c-2a: at least one
+  // geography carries proposed_cards[] — INDEPENDENT of narrative status, so a 'nochange'
+  // cell with cards still flags), and the placement count.
   const sectionState = useMemo(() => {
-    const m: Record<string, { touched: boolean; ready: boolean; count: number }> = {}
-    for (const sec of SECTION_ORDER) m[sec] = { touched: false, ready: false, count: 0 }
+    const m: Record<string, { touched: boolean; ready: boolean; hasCards: boolean; count: number }> = {}
+    for (const sec of SECTION_ORDER) m[sec] = { touched: false, ready: false, hasCards: false, count: 0 }
     for (const p of selected?.placements ?? []) {
       const sec = p.section ?? ''
       if (!sec || !(sec in m)) continue
       m[sec].touched = true
       m[sec].count++
-      if (parseProposal(p.proposal_json)?.status === 'ready') m[sec].ready = true
+      const prop = parseProposal(p.proposal_json)
+      if (prop?.status === 'ready') m[sec].ready = true
+      if (Array.isArray(prop?.proposed_cards) && prop.proposed_cards.length > 0) m[sec].hasCards = true
     }
     return m
   }, [selected])
@@ -289,20 +341,25 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
     if (!selectedArticleId) return
     const src = grouped.find(g => g.article_id === selectedArticleId)
     if (!src) return
-    const touched: Record<string, boolean> = {}, ready: Record<string, boolean> = {}
+    const touched: Record<string, boolean> = {}, ready: Record<string, boolean> = {}, hasCards: Record<string, boolean> = {}
     for (const p of src.placements) {
       const sec = p.section ?? ''
       if (!sec) continue
       touched[sec] = true
-      if (parseProposal(p.proposal_json)?.status === 'ready') ready[sec] = true
+      const prop = parseProposal(p.proposal_json)
+      if (prop?.status === 'ready') ready[sec] = true
+      // P4c-2a: a card-only cell (nochange narrative + proposed cards) is a valid landing target.
+      if (Array.isArray(prop?.proposed_cards) && prop.proposed_cards.length > 0) hasCards[sec] = true
     }
-    const firstReady = SECTION_ORDER.find(s => ready[s])
+    // First section worth landing on = a 'ready' edit OR proposed cards. Incident precedence
+    // (below) is unchanged: the sentinel wins only when NO section is landable.
+    const firstLandable = SECTION_ORDER.find(s => ready[s] || hasCards[s])
     let isIncident = false
     try { isIncident = resolveIncident(src.analysis_json ? JSON.parse(src.analysis_json) : {}).isIncident } catch { isIncident = false }
     setActiveSection(
-      !firstReady && isIncident
+      !firstLandable && isIncident
         ? INCIDENTS_VIEW
-        : (firstReady ?? SECTION_ORDER.find(s => touched[s]) ?? SECTION_ORDER[0]),
+        : (firstLandable ?? SECTION_ORDER.find(s => touched[s]) ?? SECTION_ORDER[0]),
     )
     setShowFullSource(false)
     setShowArticleText(false)
@@ -440,8 +497,9 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
             const st = sectionState[sec]
             const active = sec === activeSection
             const color = sectionColor(sec)
-            // Dimmed unless the source proposes a change here (touched + ready).
-            const lit = st.touched && st.ready
+            // Dimmed unless the source proposes a change here: a 'ready' narrative edit OR
+            // (P4c-2a) proposed cards for this cell (a card-only 'nochange' cell still lights).
+            const lit = st.touched && (st.ready || st.hasCards)
             return (
               <button
                 key={sec}

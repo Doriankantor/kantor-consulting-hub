@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import { cloud } from './client'
 import { isOnline } from './connection'
 import { getDatabase } from '../db'
-import { analyzeWithClaude } from '../ai/analyze'
+import { analyzeWithClaude, SECTION_LABELS } from '../ai/analyze'
 
 // ── info_page_sources: cloud-authoritative with a local offline MIRROR (Phase B2) ──
 // Second info-page tier migrated to cloud (after info_page_owners in B1). Cloud
@@ -392,52 +392,106 @@ export async function setProposalStatus(
   return { ok: true }
 }
 
-// P4c-1: propose key-figure CARDS for ONE cell. Reads the cell's CURRENT active cards
-// (headline + detail, for the model's no-duplicate rule), runs the 'card' analyze task,
-// and returns the normalized proposal array. INDEPENDENT of narrative generation and NEVER
-// throws — any failure yields [] so it can't disturb the integrate proposal. Cloud-direct.
-// (No reusable single-cell card getter existed: publication.ts's activeCardsFor is module-
-// private and headline-only, and getGrid reads all four tables; this narrow read fetches
-// exactly headline+detail for the cell — the fields the dedup rule needs.)
-async function proposeCellCards(
-  section: string, geography: string, sourceText: string,
-): Promise<Array<{ headline: string; detail: string; confidence: string }>> {
+// P4c-1-redux: propose key-figure cards for the WHOLE SOURCE in ONE coordinated pass. Replaces
+// the per-cell proposeCellCards (N isolated 'card' calls, each blind to the other sections → the
+// same figure sprayed across every section that merely mentions it). This pass sees ALL touched
+// sections + geographies at once and tags each figure with its home_section(s) + home_geography;
+// fanOutCards then distributes the flat tagged list into the per-cell store. Existing cards for
+// all touched sections are batch-read in ONE query (the dedup context). NEVER throws — any failure
+// yields [] so it can't disturb the narrative proposals. Cloud-direct. (The old per-cell
+// proposeCellCards + its single-cell 'card' analyze task are retired here; the 'card' task is
+// left defined in analyze.ts but unused.)
+type TaggedCard = { headline: string; detail: string; confidence: string; home_sections: string[]; home_geography: string }
+
+async function proposeWholeSourceCards(
+  touched: { section: string; geography: string }[], sourceText: string,
+): Promise<TaggedCard[]> {
   try {
+    const sectionKeys = Array.from(new Set(touched.map(c => c.section).filter(Boolean)))
+    if (!sectionKeys.length) return []
+    const sections = sectionKeys.map(k => ({ key: k, label: SECTION_LABELS[k] ?? k }))
+    const geographies = Array.from(new Set(['REGIONAL', ...touched.map(c => c.geography).filter(Boolean)]))
+    // Batch-read existing active cards for ALL touched sections (one query, grouped by section).
     const { data: cards, error } = await cloud.from('cards')
-      .select('headline,detail').eq('geography', geography).eq('section_key', section).eq('active', true)
-    if (error) { console.warn('[precommit] read active cards failed:', error.message); return [] }
-    const existingCards = (Array.isArray(cards) ? cards : []).map(c => ({
-      headline: typeof (c as { headline?: unknown }).headline === 'string' ? (c as { headline: string }).headline : '',
-      detail: typeof (c as { detail?: unknown }).detail === 'string' ? (c as { detail: string }).detail : undefined,
-    }))
+      .select('headline,detail,section_key').in('section_key', sectionKeys).eq('active', true)
+    if (error) { console.warn('[precommit] batch read active cards failed:', error.message) }
+    const existingCardsBySection: Record<string, Array<{ headline: string; detail?: string }>> = {}
+    for (const c of (Array.isArray(cards) ? cards : []) as Array<Record<string, unknown>>) {
+      const key = typeof c.section_key === 'string' ? c.section_key : ''
+      if (!key) continue
+      ;(existingCardsBySection[key] ??= []).push({
+        headline: typeof c.headline === 'string' ? c.headline : '',
+        detail: typeof c.detail === 'string' ? c.detail : undefined,
+      })
+    }
     const res = await analyzeWithClaude({
-      task: 'card',
+      task: 'cards_whole',
       text: sourceText,
-      cellIdentity: { geography, section_key: section },
-      existingCards,
+      sections,
+      geographies,
+      existingCardsBySection,
     })
-    if (!res.ok) { console.warn('[precommit] card generation failed:', res.error); return [] }
-    return res.result.proposed_cards ?? []
+    if (!res.ok) { console.warn('[precommit] whole-source card generation failed:', res.error); return [] }
+    return (res.result.proposed_cards ?? []).map(c => ({
+      headline: c.headline, detail: c.detail, confidence: c.confidence,
+      home_sections: Array.isArray(c.home_sections) ? c.home_sections : [],
+      home_geography: typeof c.home_geography === 'string' && c.home_geography ? c.home_geography : 'REGIONAL',
+    }))
   } catch (e) {
-    console.warn('[precommit] proposeCellCards crashed:', (e as Error)?.message)
+    console.warn('[precommit] proposeWholeSourceCards crashed:', (e as Error)?.message)
     return []
   }
 }
 
+// P4c-1-redux: FAN OUT the flat tagged list into a per-cell map keyed `${section}|${geography}`.
+// A card lands in EACH of its home_sections, at its home_geography when that (section, geography)
+// cell is actually touched; otherwise the section's REGIONAL cell, else any touched geo of the
+// section — so a geo mismatch NEVER drops a good card. Cards whose home_section isn't a touched
+// section at all are skipped (the model named a section off the menu). The stored card is stripped
+// back to {headline, detail, confidence} — the shape the per-cell store + review render expect.
+function fanOutCards(
+  flat: TaggedCard[], touched: { section: string; geography: string }[],
+): Map<string, Array<{ headline: string; detail: string; confidence: string }>> {
+  const cellKey = (section: string, geography: string) => `${section}|${geography}`
+  // section → the set of geographies actually touched for it (its valid landing cells).
+  const geosForSection = new Map<string, Set<string>>()
+  for (const c of touched) {
+    if (!c.section) continue
+    let set = geosForSection.get(c.section)
+    if (!set) { set = new Set(); geosForSection.set(c.section, set) }
+    set.add(c.geography)
+  }
+  const out = new Map<string, Array<{ headline: string; detail: string; confidence: string }>>()
+  for (const card of flat) {
+    const stored = { headline: card.headline, detail: card.detail, confidence: card.confidence }
+    for (const hs of card.home_sections) {
+      const geoSet = geosForSection.get(hs)
+      if (!geoSet || geoSet.size === 0) continue   // model named a non-touched section → skip
+      const target = geoSet.has(card.home_geography) ? card.home_geography
+        : geoSet.has('REGIONAL') ? 'REGIONAL'
+        : [...geoSet][0]
+      const key = cellKey(hs, target)
+      let arr = out.get(key)
+      if (!arr) { arr = []; out.set(key, arr) }
+      arr.push(stored)
+    }
+  }
+  return out
+}
+
 // Generate + store the proposal for ONE (section, geography) cell. Marks 'generating',
 // reads the cell's live section text, calls the integrate task, then writes 'ready' /
-// 'nochange' / 'error'. P4c-1: card proposals run CONCURRENTLY with the integrate call and
-// are carried in the SAME proposal_json blob (proposed_cards[]) — INDEPENDENT of the
-// narrative status (a cell can be 'nochange' yet still carry proposed cards; P4c-2 decides
-// how the review screen surfaces that). Never throws.
+// 'nochange' / 'error'. P4c-1-redux: card proposals are NO LONGER generated per-cell here —
+// the caller (generateProposals) runs ONE whole-source card pass and hands each cell its
+// already-computed slice via `cardsForCell`. The cards are still carried in the SAME
+// proposal_json blob (proposed_cards[]) on every terminal write — INDEPENDENT of the narrative
+// status (a cell can be 'nochange', or even card-only, yet still carry proposed cards). Never throws.
 async function generateOneProposal(
   articleId: string, infoPage: string, section: string, geography: string,
   sourceText: string, priorAi: Record<string, unknown> | null,
+  cardsForCell: Array<{ headline: string; detail: string; confidence: string }>,
 ): Promise<void> {
   await setProposal(articleId, infoPage, section, geography, { status: 'generating' })
-  // Kick off card generation NOW so it runs in parallel with the integrate call below
-  // (both awaited before the single terminal write). proposeCellCards never rejects.
-  const cardsPromise = proposeCellCards(section, geography, sourceText)
   try {
     // 1. the cell's current live section text (canonical live version, English).
     const { data: live, error: lErr } = await cloud.from('section_texts')
@@ -454,7 +508,7 @@ async function generateOneProposal(
       priorAi,
     })
     if (!res.ok) {
-      await setProposal(articleId, infoPage, section, geography, { status: 'error', error: res.error, original_body: originalBody, proposed_cards: await cardsPromise })
+      await setProposal(articleId, infoPage, section, geography, { status: 'error', error: res.error, original_body: originalBody, proposed_cards: cardsForCell })
       return
     }
     const proposed = res.result.proposed_text ?? ''
@@ -467,10 +521,10 @@ async function generateOneProposal(
       proposed_body: proposed,
       divergence: res.result.divergence === true,
       divergence_reasoning: res.result.divergence_reasoning ?? '',
-      proposed_cards: await cardsPromise,
+      proposed_cards: cardsForCell,
     })
   } catch (e) {
-    await setProposal(articleId, infoPage, section, geography, { status: 'error', error: (e as Error)?.message ?? String(e), proposed_cards: await cardsPromise })
+    await setProposal(articleId, infoPage, section, geography, { status: 'error', error: (e as Error)?.message ?? String(e), proposed_cards: cardsForCell })
   }
 }
 
@@ -623,8 +677,18 @@ export async function generateProposals(articleId: string, infoPage: string, act
     // allSettled additionally guarantees one hung/rejected task can't abort the batch —
     // every task resolves independently. This is still fire-and-forget: the transition
     // does NOT await generateProposals, so nothing here blocks the new->review flip.
+    //
+    // P4c-1-redux: ONE whole-source coordinated card pass, run BEFORE the per-cell narrative
+    // batch so each cell's terminal write carries its already-computed slice. The pass sees every
+    // touched section + geography at once and tags each figure with its home; fanOutCards then
+    // distributes the flat list into a per-cell map keyed `${section}|${geography}`. Never throws
+    // (→ empty map on failure), so a card-pass miss can't disturb the narrative proposals. Every
+    // touched cell still gets a generateOneProposal below (its slice may be []), so a card-only
+    // cell — cards but no narrative change — is written just like any other.
+    const taggedCards = await proposeWholeSourceCards(touched, sourceText)
+    const cellCardMap = fanOutCards(taggedCards, touched)
     const tasks: Promise<void>[] = touched.map(cell =>
-      generateOneProposal(articleId, infoPage, cell.section, cell.geography, sourceText, priorAi),
+      generateOneProposal(articleId, infoPage, cell.section, cell.geography, sourceText, priorAi, cellCardMap.get(`${cell.section}|${cell.geography}`) ?? []),
     )
     tasks.push(generateIncident(articleId, sourceText, priorAi, priorHuman, actingUserId, (src?.published_at as string | null) ?? null))
     await Promise.allSettled(tasks)
