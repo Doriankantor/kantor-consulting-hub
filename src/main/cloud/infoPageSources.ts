@@ -402,6 +402,9 @@ export async function setProposalStatus(
 // proposeCellCards + its single-cell 'card' analyze task are retired here; the 'card' task is
 // left defined in analyze.ts but unused.)
 type TaggedCard = { headline: string; detail: string; confidence: string; home_sections: string[]; home_geography: string }
+// P4c-2b: the per-cell stored shape carries a stable `id` (minted per card x cell in fanOutCards),
+// so a proposed card can be targeted for accept/dismiss and its handled-state survives reloads.
+type CellCard = { id: string; headline: string; detail: string; confidence: string }
 
 async function proposeWholeSourceCards(
   touched: { section: string; geography: string }[], sourceText: string,
@@ -451,7 +454,7 @@ async function proposeWholeSourceCards(
 // back to {headline, detail, confidence} — the shape the per-cell store + review render expect.
 function fanOutCards(
   flat: TaggedCard[], touched: { section: string; geography: string }[],
-): Map<string, Array<{ headline: string; detail: string; confidence: string }>> {
+): Map<string, CellCard[]> {
   const cellKey = (section: string, geography: string) => `${section}|${geography}`
   // section → the set of geographies actually touched for it (its valid landing cells).
   const geosForSection = new Map<string, Set<string>>()
@@ -461,15 +464,17 @@ function fanOutCards(
     if (!set) { set = new Set(); geosForSection.set(c.section, set) }
     set.add(c.geography)
   }
-  const out = new Map<string, Array<{ headline: string; detail: string; confidence: string }>>()
+  const out = new Map<string, CellCard[]>()
   for (const card of flat) {
-    const stored = { headline: card.headline, detail: card.detail, confidence: card.confidence }
     for (const hs of card.home_sections) {
       const geoSet = geosForSection.get(hs)
       if (!geoSet || geoSet.size === 0) continue   // model named a non-touched section → skip
       const target = geoSet.has(card.home_geography) ? card.home_geography
         : geoSet.has('REGIONAL') ? 'REGIONAL'
         : [...geoSet][0]
+      // P4c-2b: mint the id PER (card x cell) — a dual-home card fans into two cells that are
+      // independent accept decisions, so each gets its OWN object + distinct id (not a shared ref).
+      const stored: CellCard = { id: randomUUID(), headline: card.headline, detail: card.detail, confidence: card.confidence }
       const key = cellKey(hs, target)
       let arr = out.get(key)
       if (!arr) { arr = []; out.set(key, arr) }
@@ -489,7 +494,7 @@ function fanOutCards(
 async function generateOneProposal(
   articleId: string, infoPage: string, section: string, geography: string,
   sourceText: string, priorAi: Record<string, unknown> | null,
-  cardsForCell: Array<{ headline: string; detail: string; confidence: string }>,
+  cardsForCell: CellCard[],
 ): Promise<void> {
   await setProposal(articleId, infoPage, section, geography, { status: 'generating' })
   try {
