@@ -955,6 +955,14 @@ interface Window {
       editCard: (edit: { id: number; headline: string; detail?: string; confidence?: string }) => Promise<{ ok: boolean; error?: string; id?: number }>
       replaceCard: (repl: { victimId: number; headline: string; detail?: string; confidence?: string }) => Promise<{ ok: boolean; error?: string; id?: number }>
       deleteCard: (del: { id: number }) => Promise<{ ok: boolean; error?: string }>
+      acceptCard: (input: {
+        article_id: string; info_page: string; geography: string; section_key: string
+        card_id: string; headline: string; detail?: string; confidence?: string; victim_id?: number
+      }) => Promise<{ ok: boolean; error?: string; full?: boolean; card_db_id?: number }>
+      dismissCard: (input: {
+        article_id: string; info_page: string; geography: string; section_key: string; card_id: string
+      }) => Promise<{ ok: boolean; error?: string }>
+      getCellCards: (input: { geography: string; section_key: string }) => Promise<{ ok: boolean; error?: string; cards?: Array<{ id: number; headline: string; detail: string; confidence?: string; position: number }> }>
     }
     intelligence: {
       getSources:           (params?: { type?: string; status?: string; confidence?: string; category?: string; search?: string; limit?: number; offset?: number; project?: string; excludeStatus?: string }) => Promise<IntelligenceSource[]>

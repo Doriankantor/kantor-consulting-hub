@@ -392,6 +392,43 @@ export async function setProposalStatus(
   return { ok: true }
 }
 
+// P4c-2b: per-CARD terminal setter — the card analogue of setProposalStatus. Stamps one entry in
+// the placement's proposed_cards[] as handled ('accepted' | 'dismissed'), WITHOUT touching the
+// top-level narrative `status` (card handled-state is per-card and independent of the narrative
+// accept). Same discipline: cloud-authoritative read of proposal_json (never the mirror), merge
+// PRESERVING every sibling incl. the other cards + the narrative status, write back, resync. The
+// card is found by its stable UUID (minted per card x cell in fanOutCards). On accept, cardDbId is
+// the newly-written cards.id (from addCard/replaceCard) so the change can be traced to the live card.
+export async function setCardHandled(
+  articleId: string, infoPage: string, section: string, geography: string,
+  cardId: string, handled: 'accepted' | 'dismissed', cardDbId?: number,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isOnline()) return { ok: false, error: 'offline — cannot update card while offline' }
+  const { data: row, error: readErr } = await cloud.from('info_page_sources')
+    .select('proposal_json')
+    .eq('article_id', articleId).eq('info_page', infoPage).eq('section', section).eq('geography', geography)
+    .maybeSingle()
+  if (readErr) return { ok: false, error: `read proposal: ${readErr.message}` }
+  const raw = (row as { proposal_json?: unknown } | null)?.proposal_json
+  const current: Record<string, unknown> =
+    raw && typeof raw === 'object' ? { ...(raw as Record<string, unknown>) }
+    : typeof raw === 'string' ? (() => { try { return JSON.parse(raw) as Record<string, unknown> } catch { return {} } })()
+    : {}
+  const cards = Array.isArray(current.proposed_cards)
+    ? [...(current.proposed_cards as Array<Record<string, unknown>>)] : []
+  const i = cards.findIndex(c => c && typeof c === 'object' && (c as { id?: unknown }).id === cardId)
+  if (i < 0) return { ok: false, error: 'card not found' }
+  cards[i] = { ...cards[i], handled, handled_at: nowIso(), ...(cardDbId != null ? { card_db_id: cardDbId } : {}) }
+  // Merge back the WHOLE blob with only proposed_cards replaced — top-level status untouched.
+  const merged = { ...current, proposed_cards: cards }
+  const { error: wErr } = await cloud.from('info_page_sources')
+    .update({ proposal_json: merged })
+    .eq('article_id', articleId).eq('info_page', infoPage).eq('section', section).eq('geography', geography)
+  if (wErr) return { ok: false, error: `write card handled: ${wErr.message}` }
+  await resyncSourceRow(articleId, infoPage)
+  return { ok: true }
+}
+
 // P4c-1-redux: propose key-figure cards for the WHOLE SOURCE in ONE coordinated pass. Replaces
 // the per-cell proposeCellCards (N isolated 'card' calls, each blind to the other sections → the
 // same figure sprayed across every section that merely mentions it). This pass sees ALL touched

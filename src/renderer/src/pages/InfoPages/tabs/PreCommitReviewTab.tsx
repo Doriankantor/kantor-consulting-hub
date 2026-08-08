@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { diffWords } from 'diff'
 import PipelineSourceCard from './PipelineSourceCard'
 import { groupByArticle, type Placement } from './groupByArticle'
@@ -25,6 +25,15 @@ const SECTION_ORDER = Object.keys(SECTION_LABELS)   // canonical 9, display orde
 const INCIDENTS_VIEW = '__incidents__'
 const sectionNo = (key: string) => key === INCIDENTS_VIEW ? '⚠' : String(SECTION_ORDER.indexOf(key) + 1).padStart(2, '0')
 
+// A single proposed card entry inside proposal_json.proposed_cards[]. `id` is the per-(card x
+// cell) UUID minted in fanOutCards (P4c-2b-i) — the stable handle the accept/dismiss setters
+// key on. `handled` is the per-card terminal state (P4c-2b-ii, setCardHandled), INDEPENDENT of
+// the narrative `status`. Both optional: pre-2b data carried neither.
+type ProposedCard = { id?: string; headline: string; detail?: string; confidence?: string; handled?: 'accepted' | 'dismissed' }
+// A live card already on the cell (getCellCards) — the eviction-picker victim shape. DB `id`
+// is numeric (cards table PK), distinct from ProposedCard's string uuid.
+type CellCard = { id: number; headline: string; detail: string; confidence?: string; position: number }
+
 // The stored per-cell proposal shape (written by the P4a-1 generation hook). Mirror
 // stores it as TEXT, so the row carries a JSON STRING — parse + guard defensively.
 interface Proposal {
@@ -37,9 +46,8 @@ interface Proposal {
   generated_at?: string
   // P4c-1 writes this into the same blob (INDEPENDENT of narrative status — a cell can be
   // 'nochange' yet carry proposed cards). parseProposal already returns it at runtime; this
-  // declaration just makes it type-visible. `id` is optional — P4c-1 didn't stamp per-card ids
-  // (that lands in 2b, the accept flow); optional keeps this compile-clean against current data.
-  proposed_cards?: Array<{ id?: string; headline: string; detail?: string; confidence?: string }>
+  // declaration just makes it type-visible.
+  proposed_cards?: ProposedCard[]
 }
 
 function parseProposal(raw: string | null | undefined): Proposal | null {
@@ -89,12 +97,20 @@ const cellKey = (p: Placement) => String(p.pipeline_id)
 // terminal states with their own minimal note (they must short-circuit BEFORE the ready
 // return, else the fall-through would re-render the diff). busy/cellError are per-cell
 // primitives computed by the parent; onAccept/onKeep call the ② IPC via the parent handlers.
-function CellProposal({ placement, busy, cellError, onAccept, onKeep }: {
+function CellProposal({ placement, busy, cellError, onAccept, onKeep, cardBusy, cardError, onAcceptCard, onDismissCard }: {
   placement: Placement
   busy: boolean
   cellError: string | null
   onAccept: (p: Placement) => Promise<void>
   onKeep: (p: Placement) => Promise<void>
+  // P4c-2b-iii: per-card action wiring. cardBusy/cardError are GLOBAL (the busy card's id and
+  // the errored card's id+msg) — each tile matches on its own card.id. The two handlers live in
+  // the parent (they need selected.article_id + pageId, neither on Placement), mirroring
+  // onAccept/onKeep.
+  cardBusy: string | null
+  cardError: { id: string; msg: string } | null
+  onAcceptCard: (p: Placement, card: ProposedCard) => void
+  onDismissCard: (p: Placement, card: ProposedCard) => void
 }) {
   const section = placement.section ?? ''
   const geo = placement.geography
@@ -185,32 +201,67 @@ function CellProposal({ placement, busy, cellError, onAccept, onKeep }: {
     )
   }
 
-  // P4c-2a: the PROPOSED CARDS block — READ-ONLY, renders on EVERY status path (independent of
-  // narrative status). Each card is a tile reusing the CardsBox SHAPE (headline bold + detail +
-  // confidence) but with a DASHED outline to read as "proposed, not yet committed" and NO
-  // edit/accept controls (accept is 2b). Returns null when the cell carries no proposed cards.
+  // P4c-2b-iii: the PROPOSED CARDS block. Renders on EVERY status path (independent of narrative
+  // status — a 'nochange' cell can still carry cards). Each tile is driven by card.handled:
+  //   undefined  -> dashed "proposed" tile + [Add to page] / [Dismiss] controls
+  //   'accepted' -> solid tile + green "Added to page" chip (no buttons)
+  //   'dismissed'-> muted tile + "Dismissed" chip (no buttons)
+  // The accept/dismiss WRITE is P4c-2b-ii (main process); this only wires the controls. A card
+  // with no id (pre-2b data) can't be keyed for busy/error, so it stays read-only.
   const renderProposedCards = () => {
     const cards = proposal?.proposed_cards
     if (!Array.isArray(cards) || cards.length === 0) return null
     return (
       <div className="rounded-xl border border-dashed border-gray-300 dark:border-white/[0.15] px-3 py-2.5">
         <div className="flex items-center gap-1.5 mb-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color }}>Proposed cards</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-white/50">Proposed cards</span>
           <span className="text-[10px] font-mono tabular-nums text-gray-400 dark:text-white/30">{cards.length}</span>
-          <span className="ml-auto text-[9px] font-medium uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/40">read-only</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {cards.map((cd, i) => (
-            <div
-              key={cd.id ?? i}
-              className="rounded-lg border border-l-2 border-dashed border-gray-200 dark:border-white/[0.12] bg-gray-50/40 dark:bg-white/[0.02] px-3 py-2"
-              style={{ borderLeftColor: color }}
-            >
-              <div className="text-sm font-bold leading-snug text-gray-900 dark:text-white/85">{cd.headline}</div>
-              {cd.detail && <div className="text-[12px] leading-snug text-gray-600 dark:text-white/55 mt-0.5">{cd.detail}</div>}
-              {cd.confidence && <div className="text-[10px] text-gray-400 dark:text-white/30 mt-1">confidence: {cd.confidence}</div>}
-            </div>
-          ))}
+          {cards.map((cd, i) => {
+            const resolved = cd.handled === 'accepted' || cd.handled === 'dismissed'
+            const thisBusy = !!cd.id && cardBusy === cd.id
+            const thisErr = cardError && cardError.id === cd.id ? cardError.msg : null
+            return (
+              <div
+                key={cd.id ?? i}
+                className={`rounded-lg border border-l-2 px-3 py-2 ${
+                  cd.handled === 'accepted'
+                    ? 'border-emerald-200 dark:border-emerald-500/25 bg-emerald-50/40 dark:bg-emerald-500/[0.06]'
+                    : cd.handled === 'dismissed'
+                    ? 'border-gray-200 dark:border-white/[0.08] bg-gray-50/60 dark:bg-white/[0.015] opacity-60'
+                    : 'border-dashed border-gray-200 dark:border-white/[0.12] bg-gray-50/40 dark:bg-white/[0.02]'
+                }`}
+                style={{ borderLeftColor: color }}
+              >
+                <div className="text-sm font-bold leading-snug text-gray-900 dark:text-white/85">{cd.headline}</div>
+                {cd.detail && <div className="text-[12px] leading-snug text-gray-600 dark:text-white/55 mt-0.5">{cd.detail}</div>}
+                {cd.confidence && <div className="text-[10px] text-gray-400 dark:text-white/30 mt-1">confidence: {cd.confidence}</div>}
+
+                {cd.handled === 'accepted' && (
+                  <div className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">✓ Added to page</div>
+                )}
+                {cd.handled === 'dismissed' && (
+                  <div className="mt-2 inline-flex items-center gap-1 text-[11px] text-gray-400 dark:text-white/40 italic">Dismissed</div>
+                )}
+                {!resolved && cd.id && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      onClick={() => onAcceptCard(placement, cd)}
+                      disabled={thisBusy}
+                      className="px-2 py-1 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50"
+                    >{thisBusy ? 'Adding…' : 'Add to page'}</button>
+                    <button
+                      onClick={() => onDismissCard(placement, cd)}
+                      disabled={thisBusy}
+                      className="px-2 py-1 text-xs rounded border border-gray-400 dark:border-white/[0.15] text-gray-700 dark:text-white/60 hover:bg-gray-100 dark:hover:bg-white/[0.06] disabled:opacity-50"
+                    >Dismiss</button>
+                    {thisErr && <span className="text-xs text-red-400">{thisErr}</span>}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
     )
@@ -240,6 +291,12 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
   // the error text show only on the cell being acted on.
   const [actionBusy, setActionBusy] = useState<string | null>(null)
   const [actionError, setActionError] = useState<{ key: string; msg: string } | null>(null)
+  // P4c-2b-iii: per-CARD accept/dismiss state, keyed on the card's uuid (not pipeline_id — cards
+  // are finer-grained than cells). cardError carries the card id + message; evictState holds the
+  // open eviction picker (null = closed) when a target cell is already at its 12-card ceiling.
+  const [cardBusy, setCardBusy] = useState<string | null>(null)
+  const [cardError, setCardError] = useState<{ id: string; msg: string } | null>(null)
+  const [evictState, setEvictState] = useState<{ card: ProposedCard; placement: Placement; victims: CellCard[] } | null>(null)
 
   const load = useCallback(async (opts?: { background?: boolean }) => {
     if (!opts?.background) setLoading(true)
@@ -337,10 +394,21 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
   // — routed to a section that proposes no change) opens on its incident instead. The incident
   // presence uses the RESOLVED flag on the source's own analysis (synchronous, no wait on the
   // by-source fetch); the sentinel rail entry itself is still gated on actual fetched rows.
+  //
+  // P4c-2b-iii: this effect is keyed on `grouped`, which gets a FRESH reference on every
+  // background reload (accept/dismiss/keep/poll all call load() -> setRows -> new array -> the
+  // useMemo recomputes). Without a guard it re-lands the rail on `firstLandable` (Systems) after
+  // every card/narrative action, yanking the user off the section they are reviewing. The ref
+  // pins the landing to ONCE per source SELECTION: we only land when landedForRef !== the current
+  // source id, and we set the ref only after a successful land (src present). A mere reload of the
+  // SAME source is now a no-op here — the rail stays where the user left it.
+  const landedForRef = useRef<string | null>(null)
   useEffect(() => {
     if (!selectedArticleId) return
+    if (landedForRef.current === selectedArticleId) return   // same source, just a reload reref — don't re-land
     const src = grouped.find(g => g.article_id === selectedArticleId)
-    if (!src) return
+    if (!src) return   // data not in yet; ref stays unset so we land once it arrives
+    landedForRef.current = selectedArticleId
     const touched: Record<string, boolean> = {}, ready: Record<string, boolean> = {}, hasCards: Record<string, boolean> = {}
     for (const p of src.placements) {
       const sec = p.section ?? ''
@@ -394,7 +462,7 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
         divergence_reasoning: proposal.divergence_reasoning ?? null,
       })
       if (!res?.ok) { setActionError({ key, msg: res?.error ?? 'Accept failed' }); return }
-      await load()
+      await load({ background: true })   // silent refetch — no spinner remount / scroll-jump (see card handlers)
     } catch (e) {
       setActionError({ key, msg: e instanceof Error ? e.message : 'Accept failed' })
     } finally {
@@ -416,12 +484,87 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
         section_key: placement.section ?? '',
       })
       if (!res?.ok) { setActionError({ key, msg: res?.error ?? 'Keep failed' }); return }
-      await load()
+      await load({ background: true })   // silent refetch — no spinner remount / scroll-jump (see card handlers)
     } catch (e) {
       setActionError({ key, msg: e instanceof Error ? e.message : 'Keep failed' })
     } finally {
       setActionBusy(null)
     }
+  }
+
+  // P4c-2b-iii: accept a proposed card -> ② acceptCard (write to cards table + publication_changes
+  // action='card' + per-card handled='accepted' flip). Mirrors handleAccept's threading:
+  // article_id from the selected source, info_page IS pageId, geography/section from the placement.
+  // If the target cell is at its 12-card ceiling the writer returns { full: true } (NOT an error) —
+  // we then fetch the cell's live cards and open the eviction picker; the retry passes victim_id.
+  const handleAcceptCard = async (placement: Placement, card: ProposedCard, victimId?: number) => {
+    if (!card.id) return
+    const articleId = selected?.article_id
+    if (!articleId) { setCardError({ id: card.id, msg: 'No source selected' }); return }
+    setCardError(null); setCardBusy(card.id)
+    try {
+      const res = await window.api.publication.acceptCard({
+        article_id: articleId,
+        info_page: pageId,
+        geography: placement.geography ?? '',
+        section_key: placement.section ?? '',
+        card_id: card.id,
+        headline: card.headline,
+        detail: card.detail,
+        confidence: card.confidence,
+        victim_id: victimId,
+      })
+      if (res?.full) {
+        // Cell full — load its live cards and open the picker. Do NOT surface as an error.
+        const cells = await window.api.publication.getCellCards({
+          geography: placement.geography ?? '',
+          section_key: placement.section ?? '',
+        })
+        if (!cells?.ok) { setCardError({ id: card.id, msg: cells?.error ?? 'Could not load cards to replace' }); return }
+        setEvictState({ card, placement, victims: cells.cards ?? [] })
+        return
+      }
+      if (!res?.ok) { setCardError({ id: card.id, msg: res?.error ?? 'Accept failed' }); return }
+      // Background reload (no spinner) so the tile flips to its terminal chip WITHOUT remounting
+      // the canvas — the plain load() early-returns to the spinner, resetting scroll + jumping the
+      // active section back to Systems (the P3 scroll-jump). {background:true} refetches silently.
+      await load({ background: true })
+    } catch (e) {
+      setCardError({ id: card.id, msg: e instanceof Error ? e.message : 'Accept failed' })
+    } finally {
+      setCardBusy(null)
+    }
+  }
+
+  // Dismiss a proposed card -> ② dismissCard (per-card handled='dismissed' flip only, no writes).
+  const handleDismissCard = async (placement: Placement, card: ProposedCard) => {
+    if (!card.id) return
+    const articleId = selected?.article_id
+    if (!articleId) { setCardError({ id: card.id, msg: 'No source selected' }); return }
+    setCardError(null); setCardBusy(card.id)
+    try {
+      const res = await window.api.publication.dismissCard({
+        article_id: articleId,
+        info_page: pageId,
+        geography: placement.geography ?? '',
+        section_key: placement.section ?? '',
+        card_id: card.id,
+      })
+      if (!res?.ok) { setCardError({ id: card.id, msg: res?.error ?? 'Dismiss failed' }); return }
+      await load({ background: true })   // silent refetch — see handleAcceptCard (no scroll-jump)
+    } catch (e) {
+      setCardError({ id: card.id, msg: e instanceof Error ? e.message : 'Dismiss failed' })
+    } finally {
+      setCardBusy(null)
+    }
+  }
+
+  // Eviction picker resolves -> close it, then retry the accept with the chosen victim's DB id.
+  const handleEvictPick = async (victimId: number) => {
+    if (!evictState) return
+    const { card, placement } = evictState
+    setEvictState(null)
+    await handleAcceptCard(placement, card, victimId)
   }
 
   async function handleCommit() {
@@ -464,6 +607,47 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
       {toast && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 px-3.5 py-2 rounded-xl bg-gray-900 dark:bg-white text-white dark:text-gray-900 text-xs font-medium shadow-2xl">
           {toast}
+        </div>
+      )}
+
+      {/* P4c-2b-iii: the EVICTION PICKER. Opens when acceptCard returns { full: true } — the
+          target cell is at its 12-card ceiling, so the user must pick one live card to replace.
+          Review-local state (evictState) reimplemented here, NOT imported from CardsBox (whose
+          picker is tangled into its own grid state — same call we made for the incidents sentinel).
+          Picking a victim retries the accept with victim_id (-> replaceCard); Cancel closes. */}
+      {evictState && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 px-6" onClick={() => setEvictState(null)}>
+          <div
+            className="w-full max-w-2xl max-h-[80%] overflow-y-auto rounded-2xl border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-gray-900 shadow-2xl p-5"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-3">
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white">Cell is full — choose a card to replace</h3>
+                <p className="text-xs text-gray-500 dark:text-white/50 mt-1">
+                  This cell already has {evictState.victims.length} cards. Pick one to replace with{' '}
+                  <span className="font-semibold text-gray-700 dark:text-white/80">“{evictState.card.headline}”</span>.
+                </p>
+              </div>
+              <button
+                onClick={() => setEvictState(null)}
+                className="shrink-0 px-2 py-1 text-xs rounded border border-gray-300 dark:border-white/[0.15] text-gray-500 dark:text-white/50 hover:bg-gray-50 dark:hover:bg-white/[0.06]"
+              >Cancel</button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {evictState.victims.map(v => (
+                <button
+                  key={v.id}
+                  onClick={() => handleEvictPick(v.id)}
+                  className="text-left rounded-lg border border-gray-200 dark:border-white/[0.12] bg-gray-50/60 dark:bg-white/[0.02] px-3 py-2 hover:border-red-300 dark:hover:border-red-500/40 hover:bg-red-50/40 dark:hover:bg-red-500/[0.06] transition"
+                >
+                  <div className="text-sm font-bold leading-snug text-gray-900 dark:text-white/85">{v.headline}</div>
+                  {v.detail && <div className="text-[12px] leading-snug text-gray-600 dark:text-white/55 mt-0.5">{v.detail}</div>}
+                  {v.confidence && <div className="text-[10px] text-gray-400 dark:text-white/30 mt-1">confidence: {v.confidence}</div>}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -631,6 +815,10 @@ export default function PreCommitReviewTab({ pageId, onMoved }: Props) {
                           cellError={actionError?.key === key ? actionError.msg : null}
                           onAccept={handleAccept}
                           onKeep={handleKeep}
+                          cardBusy={cardBusy}
+                          cardError={cardError}
+                          onAcceptCard={handleAcceptCard}
+                          onDismissCard={handleDismissCard}
                         />
                       )
                     })

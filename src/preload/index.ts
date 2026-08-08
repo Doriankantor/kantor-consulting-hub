@@ -331,6 +331,9 @@ const api = {
     editCard: (edit: { id: number; headline: string; detail?: string; confidence?: string }) => ipcRenderer.invoke('publication:editCard', edit),
     replaceCard: (repl: { victimId: number; headline: string; detail?: string; confidence?: string }) => ipcRenderer.invoke('publication:replaceCard', repl),
     deleteCard: (del: { id: number }) => ipcRenderer.invoke('publication:deleteCard', del),
+    acceptCard: (input: { article_id: string; info_page: string; geography: string; section_key: string; card_id: string; headline: string; detail?: string; confidence?: string; victim_id?: number }) => ipcRenderer.invoke('publication:acceptCard', input),
+    dismissCard: (input: { article_id: string; info_page: string; geography: string; section_key: string; card_id: string }) => ipcRenderer.invoke('publication:dismissCard', input),
+    getCellCards: (input: { geography: string; section_key: string }) => ipcRenderer.invoke('publication:getCellCards', input),
   },
   intelligence: {
     getSources:           (params?: Record<string, unknown>) => ipcRenderer.invoke('intelligence:getSources', params),

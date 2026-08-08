@@ -1,7 +1,7 @@
 import { cloud } from './client'
 import { reportCloudResult, isOnline } from './connection'
 import { isBoardVisibleFor } from './boards'
-import { setProposalStatus } from './infoPageSources'
+import { setProposalStatus, setCardHandled } from './infoPageSources'
 
 // ── publication grid: CLOUD-ONLY read path (P1a) ─────────────────────────────
 // The four publication tables (section_texts / cards / section_items /
@@ -286,6 +286,59 @@ export async function keepProposal(
   return flip
 }
 
+// ── P4c-2b: card accept / dismiss ─────────────────────────────────────────────
+// The card analogue of acceptProposal/keepProposal. acceptCard mirrors acceptProposal's THREE-STEP
+// shape: (1) the card WRITE (addCard, or replaceCard when the user picked a victim on a full cell),
+// (2) a best-effort publication_changes record (action='card', card_* columns populated, body columns
+// null), (3) the per-card terminal flip via setCardHandled. Failure ordering matches acceptProposal:
+// only the write must succeed; the change-record + flip are audit/UI-hygiene, logged-and-continued so
+// a written card never surfaces a scary error. addCard's {full:true} ceiling is propagated (NOT an
+// error) so the UI opens the eviction picker and re-submits with a victim_id. Head-gated at the IPC.
+export async function acceptCard(
+  actingUserId: string | undefined,
+  input: {
+    article_id: string; info_page: string; geography: string; section_key: string
+    card_id: string                              // the proposal's UUID (targets setCardHandled)
+    headline: string; detail?: string; confidence?: string
+    victim_id?: number                           // present => replaceCard (eviction); absent => addCard
+  }
+): Promise<{ ok: boolean; error?: string; full?: boolean; card_db_id?: number }> {
+  // 1. WRITE — replaceCard if a victim was picked (full cell), else addCard.
+  const write = input.victim_id != null
+    ? await replaceCard(actingUserId, { victimId: input.victim_id, headline: input.headline, detail: input.detail, confidence: input.confidence })
+    : await addCard(actingUserId, { geography: input.geography, section_key: input.section_key, headline: input.headline, detail: input.detail, confidence: input.confidence })
+  if (!write.ok) {
+    // addCard ceiling: propagate {full:true} so the UI opens the eviction picker. NOT an error.
+    if ((write as { full?: boolean }).full) return { ok: false, full: true }
+    return { ok: false, error: write.error ?? 'card write failed' }
+  }
+  const cardDbId = write.id
+
+  // 2. CHANGE-RECORD (best-effort, log-and-continue). action='card', card_* populated, body cols null.
+  const rec = await cloud.from('publication_changes').insert({
+    article_id: input.article_id, info_page: input.info_page,
+    section_key: input.section_key, geography: input.geography, lang: 'en',
+    action: 'card', card_id: cardDbId ?? null, card_headline: input.headline,
+    card_detail: input.detail ?? null, accepted_by: actingUserId ?? 'unknown',
+  })
+  reportCloudResult(!rec.error)
+  if (rec.error) console.error('[acceptCard] change-record insert FAILED (card still written ok):', rec.error.message)
+
+  // 3. per-card terminal flip -> 'accepted' (best-effort; card + record already ok).
+  const flip = await setCardHandled(input.article_id, input.info_page, input.section_key, input.geography, input.card_id, 'accepted', cardDbId)
+  if (!flip.ok) console.error('[acceptCard] setCardHandled failed (card + record ok):', flip.error)
+
+  return { ok: true, card_db_id: cardDbId }
+}
+
+// Dismiss a proposed card: flip-only, no card write, no change-record (the mirror of keepProposal).
+export async function dismissCard(
+  _actingUserId: string | undefined,
+  input: { article_id: string; info_page: string; geography: string; section_key: string; card_id: string }
+): Promise<{ ok: boolean; error?: string }> {
+  return setCardHandled(input.article_id, input.info_page, input.section_key, input.geography, input.card_id, 'dismissed')
+}
+
 // ── publication WRITE path (P3): editable cards, 12-slot replace flow ─────────
 // The second write slice. Turns on the dormant active / replaced_by columns for
 // cards (the analogue of section_texts' version / superseded_by). Slots are
@@ -309,6 +362,30 @@ async function activeCardsFor(
     .eq('geography', geography).eq('section_key', section_key).eq('active', true)
     .order('position')
   return { rows: (data ?? []) as { id: number; position: number; headline: string }[], error: error?.message ?? null }
+}
+
+// P4c-2b: the eviction-picker victim list — a cell's live (active) cards with the full display shape
+// (detail + confidence, which the writer-internal activeCardsFor omits) plus the real DB id + position
+// used as replaceCard's victimId. READ-tier gate (isBoardVisibleFor, membership), NOT Head-gated —
+// viewing the current cards is a read, matching getGrid/getIncidents; only the accept WRITE is Head-only.
+export async function getCellCards(
+  actingUserId: string | undefined,
+  input: { geography: string; section_key: string }
+): Promise<{ ok: boolean; error?: string; cards?: Array<{ id: number; headline: string; detail: string; confidence?: string; position: number }> }> {
+  if (!(await isBoardVisibleFor(actingUserId, CONTESTED_SKIES_BOARD_ID))) return { ok: false, error: 'not authorized' }
+  const { data, error } = await cloud.from('cards')
+    .select('id,headline,detail,confidence,position')
+    .eq('geography', input.geography).eq('section_key', input.section_key).eq('active', true)
+    .order('position')
+  if (error) return { ok: false, error: `read cell cards: ${error.message}` }
+  const cards = (data ?? []).map(c => ({
+    id: c.id as number,
+    headline: (c.headline as string) ?? '',
+    detail: (c.detail as string | null) ?? '',
+    confidence: (c.confidence as string | null) ?? undefined,
+    position: (c.position as number) ?? 0,
+  }))
+  return { ok: true, cards }
 }
 
 // 1a. addCard — append a new card at the next free position. HARD CEILING at 12:

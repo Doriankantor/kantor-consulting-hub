@@ -3451,6 +3451,26 @@ function registerIntelligenceHandlers(): void {
     return (await denyIfNotHead('deleteCard')) ?? publicationCloud.deleteCard(currentActingUserId, del)
   })
 
+  // Publication card accept flow (P4c-2b). acceptCard = card write (addCard, or replaceCard when a
+  // victim was picked on a full cell) + publication_changes(action='card') + per-card terminal flip;
+  // returns {full:true} to open the eviction picker. dismissCard = flip-only. Both Head-gated, same as
+  // the narrative accept. getCellCards is the eviction-picker victim list — a READ, so it uses the
+  // membership tier (getCellCards gates internally via isBoardVisibleFor), NOT denyIfNotHead.
+  ipcMain.handle('publication:acceptCard', async (_e, input: {
+    article_id: string; info_page: string; geography: string; section_key: string
+    card_id: string; headline: string; detail?: string; confidence?: string; victim_id?: number
+  }) => {
+    return (await denyIfNotHead('acceptCard')) ?? publicationCloud.acceptCard(currentActingUserId, input)
+  })
+  ipcMain.handle('publication:dismissCard', async (_e, input: {
+    article_id: string; info_page: string; geography: string; section_key: string; card_id: string
+  }) => {
+    return (await denyIfNotHead('dismissCard')) ?? publicationCloud.dismissCard(currentActingUserId, input)
+  })
+  ipcMain.handle('publication:getCellCards', async (_e, input: { geography: string; section_key: string }) => {
+    return publicationCloud.getCellCards(currentActingUserId, input)
+  })
+
   // Mark a news article as a duplicate. Removes it from the review queue WITHOUT any
   // learning signal (no verdict to cs_articles, no decision log) - a duplicate is
   // relevant-but-redundant, not a relevance rejection. Optionally links to the original.
