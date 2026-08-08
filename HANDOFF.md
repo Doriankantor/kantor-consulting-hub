@@ -4,6 +4,57 @@ _Last updated: 2026-08-07 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
+▶ RESUME HERE (CURRENT, 2026-08-08 -- SUPERSEDES the import-first geography framing below) -> RECONCILIATION DIAGNOSE DONE. VERDICT: NO IMPORT.
+
+WHAT THE DIAGNOSE SETTLED (six-part reconciliation + full JSON + live SQL, 2026-08-08):
+  - The country content grid ALREADY EXISTS. Live section_texts by geography:
+    Colombia 9 / Mexico 9 / Brazil 7 / Argentina 5 / Venezuela 4 / REGIONAL 9 = 43 live cells.
+    Cards (73), outline (344), citations (189) all reconcile EXACTLY to contested-skies-cells-full.json.
+    => P0 committed the FULL 55-cell country file, geography-preserved. It was NOT REGIONAL-only.
+  - THE "P0 only imported REGIONAL / flattened" PREMISE (in the kickoff-findings + resume blocks
+    below) IS WRONG and is CORRECTED here. Nothing was ever flattened at seed time. The seed
+    (scripts/p0-seed-publication.mjs:86) carries cell.geography verbatim.
+  - THE REAL GAP IS ROUTING, NOT CONTENT. routeToNew + syncPlacements (infoPageSources.ts:92,159)
+    hardcode geography='REGIONAL' -- a leftover placeholder from before country cells existed, NOT a
+    design choice. A NEW incoming source can never be PLACED into an existing country cell; every
+    info_page_sources placement is section|REGIONAL (confirmed: zero non-REGIONAL placements). The
+    country drawers exist; the mail sorter only knows the REGIONAL drawer. Content grid != placement layer.
+  - SEED IS DESTRUCTIVE, NEVER RE-RUN IT: p0-seed's --commit path clearTable()s all four tables
+    (:206-210) then re-inserts. Re-running it would WIPE the live store (P2/P3/P4c edits included).
+    Moot now (no import) but recorded as a permanent guardrail.
+
+CONSEQUENCES:
+  - THE IMPORT SLICE IS DELETED. contested-skies-cells-full.json comes OFF the plan (kept as the
+    seed's reference artifact only). Kickoff-findings items 2-5 and the resume-(1) import block below
+    are SUPERSEDED by this verdict.
+  - DECISION (b) [replace REGIONAL cards] DISSOLVED -- no import, so nothing to delete/replace.
+    REGIONAL stays exactly as the app has edited it since P2 (the JSON's REGIONAL is now the STALER copy).
+  - DECISION (a) [fold extra-regional into REGIONAL] still POLICY but DEFERRED and re-scoped: the
+    extra-regional content in-store is outline rows (China/Israel/Ukraine/US/GLOBAL/CostaRica/Syria/
+    Lebanon/Turkey) + 1 Panama/logistics card + 0 narratives + 0 citations. Folding = a RE-KEY of
+    existing rows to REGIONAL, NOT an import. Belongs with the deferred supply-axis re-index (design
+    doc 7.4), not this arc. Low priority (outline not edit-surfaced yet).
+  - REGIONAL test-card cleanup: LEAVE AS-IS (decided B). 3 local-admin REGIONAL cards from P2/P3/P4c
+    verification: vnsa pos4 "5->107->233->260 drone attacks in Mexico" (an ADDITION, +1 vs seed; a
+    MEXICO figure that will RE-HOME to Mexico/vnsa in the arc, not be deleted), and legal pos8 "250 g"
+    + systems pos3 "-22F to 122F" (in-place EDITS over seed cards -- restore-or-leave is a per-card
+    editorial call, not a mechanical purge). Reconcile in-context when the review/CellGrid screen
+    surfaces REGIONAL.
+
+THE GEOGRAPHY ARC, RESHAPED (import gone; DESIGN-FIRST / MOCKUP-FIRST; needs its OWN routing-layer
+diagnose of routeToNew/syncPlacements + the subject_countries field BEFORE any build):
+  (1) ROUTING FLIP [FOUNDATION]: routeToNew/syncPlacements read the source's subject_countries and
+      seed country placements (section|Colombia etc.) instead of hardcoded section|REGIONAL. Open
+      design Qs for the diagnose+mockup: does a Colombia+Mexico source place into BOTH country cells?
+      does it ALSO place into REGIONAL, or does REGIONAL DERIVE later per the synthesis-layer spine?
+      what vocabulary does subject_countries use, and does it match the grid's country names?
+  (2) RULE-6 FLIP: in cards_whole, "REGIONAL unless country-specific" -> "COUNTRY unless genuinely
+      cross-country / aggregate". INERT until (1) lands.
+  (3) REVIEW-SCREEN COUNTRY TABS: pre-commit review gains the geography axis so a Colombia source
+      shows a Colombia tab. DEPENDS on (1).
+  Then: per-card UNDO (backlogged), P4b (per-hunk narrative accept), INCIDENT acceptance, P5 (publish
+  transaction), P6/P7 (Recent Changes + all-sources search -- the ledger derivations per the UNIFIED SPINE).
+
 **★ ACTIVE: DOWNSTREAM PUBLICATION ARC — P0 (seed) mid-flight**
 
 CONTEXT: NS-2 complete (New Sources sectioning works end-to-end). The intel→page pipeline is done;
