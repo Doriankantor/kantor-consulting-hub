@@ -489,6 +489,66 @@ Built on 2b-i (350cd90 SQL card-cols + ba26426 per-card-id). What shipped:
   accept), INCIDENT acceptance, P5 (publish transaction), P6/P7 (Recent Changes + all-sources search --
   where the ledger derivations, regional roll-up AND trends-from-history, close per the UNIFIED SPINE).
 
+==============================================================================
+GEOGRAPHY ARC -- KICKOFF FINDINGS (investigation 2026-08-08, before any build)
+==============================================================================
+(ENRICHES the resume pointer above -- the arc is still "geography next"; this records what we learned
+scoping it. The FIRST concrete slice is now known: IMPORT the full country JSON, geography-preserved.)
+
+1. WORLD B2 CONFIRMED (Dorian directly). The PUBLISHED Contested Skies page is COUNTRY-STRUCTURED: each
+   country (Colombia, Mexico, etc.) has its OWN full 9-section page + country-specific incidents /
+   investment / regulatory, selectable from the map (verified via a saved Colombia PDF: 313 incidents,
+   215 casualties, ELN / FARC-EMC / Segunda Marquetalia, CIAC / CODALTEC / INDUMIL, COP 500bn, RAC 100).
+   Dorian AUTHORED this via a COWORK session -- it NEVER passed through KC Hub's placement model. So the
+   country content is PUBLISHED but NOT in the app's editable cells. The gap is NOT "add country structure
+   to a regional page" -- the page already HAS it; the APP's routing (hardcoded geography='REGIONAL') is
+   what cannot address it. THE APP MUST CATCH UP TO THE PAGE.
+
+2. THE FULL COUNTRY CONTENT EXISTS AS A JSON (Dorian has it: contested-skies-cells-full.json, ~283KB, 55
+   cells). Shape: array of { geography, section, narrative, cards[], citations, outline }. This maps
+   DIRECTLY onto section_texts(narrative) + cards + section_citations + section_items(outline), keyed by
+   the SAME (section, geography) as the placement PK. Geography coverage:
+     REGIONAL:  all 9 sections (the cross-country SYNTHESIS view, ~2500-2900 chars each)
+     Colombia:  all 9 sections (~600-940 chars);  Mexico: all 9
+     Brazil:    7 sections;  Argentina: 5;  Venezuela: 4
+     12 single-cell EXTRA-REGIONAL stubs (China, Israel, Ukraine, Turkey, Syria, Lebanon, US, GLOBAL,
+       Costa Rica, Panama) -- mostly EMPTY narrative, supplier / actor mentions in supply / external / vnsa.
+     73 cards total (REGIONAL 29, Colombia 16, Brazil 10, Mexico 10, Argentina 4, Venezuela 3, Panama 1).
+   THE ARC OPENS WITH IMPORTING THIS JSON, geography-preserved -- a re-run of the P0 seed done RIGHT (P0
+   only imported REGIONAL / flattened). NOT re-asking Cowork (this IS the full correct export), NOT
+   disentangling flattened rows.
+
+3. OPEN DECISIONS the import waits on (Dorian to decide in the new chat):
+   (a) EXTRA-REGIONAL single-cells (China / Israel / Ukraine / etc): import as their OWN geography cells,
+       or FOLD into REGIONAL / the relevant country's supply section? Claude's lean: FOLD IN -- these are
+       suppliers / actors that appear IN the supply / external story (China=DJI, Israel=Elbit), not
+       Contested Skies geographies you would publish a country page for. Import vocabulary likely =
+       REGIONAL + the 5 LATAM countries.
+   (b) REGIONAL-CARDS COLLISION: the JSON has 29 REGIONAL cards; the app's cards table has our P4c-TEST
+       accepted cards in vnsa / REGIONAL (79 / 80 / 81 seed + 164 etc from testing). The import's REGIONAL
+       cards must either REPLACE (JSON is authoritative seed) or SKIP (keep accepted). Likely REPLACE
+       since P4c cards were test data -- but confirm, and CLEAN OUT the P4c test cards first.
+
+4. THE SIX-PART RECONCILIATION DIAGNOSE WAS RUN but its output did not reach Claude (empty upload, twice).
+   RE-RUN IT in the new chat. It must establish: (1) section_texts current inventory -- is narrative empty
+   or does it have REGIONAL rows (determines clean-insert vs merge); (2) cards inventory -- which exist,
+   seed vs P4c-test; (3) how the P0 seed assigned geography (hardcoded REGIONAL or aware); (4) citations +
+   outline inventory by geography; (5) the INSERT PATH for a FRESH country cell -- writeSection does
+   insert-then-supersede which assumes a prior version exists; a new country cell has none, so likely need
+   a direct seed insert like the original P0 script, NOT the versioned writer; (6) clobber check -- does
+   re-importing REGIONAL overwrite anything already edited.
+   [NOTE for the re-run: this environment has NO cloud execution path, so items (1)/(2)/(4)/(6)-live must
+   be run as SQL in Supabase by Dorian; the JSON side, the seed behavior, and the write-path code (3)/(5)
+   are answerable from disk. The P0 seed is ALREADY geography-aware (carries cell.geography verbatim); its
+   --commit path CLEARS all four tables then re-inserts, so re-running the SEED as-is would WIPE the live
+   store -- the import must be an ADDITIVE, REGIONAL-SKIPPING variant, never clearTable.]
+
+5. STILL DESIGN-FIRST after the import. Once country cells EXIST (imported), the ROUTING change (seed
+   country placements from subject_countries in routeToNew / syncPlacements) + rule-6 FLIP (country-default)
+   + the review-screen country-tab UI (mockup-first) follow. The import is the FIRST concrete slice; the
+   routing / rule / UI changes come after, per the country-default model + change-ledger spine already in
+   HANDOFF above.
+
 OPEN ITEMS from the card arc (both BACKLOGGED, non-blocking to geography):
   - NO UNDO on the review screen (near-term): accept / dismiss (and narrative accept / keep) are TERMINAL
     in the UI -- no in-app reverse. Not a data trap (P3 CardsBox in the CellGrid can delete / replace an
