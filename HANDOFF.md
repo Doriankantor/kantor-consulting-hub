@@ -4,6 +4,87 @@ _Last updated: 2026-08-07 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
+▶ RESUME HERE (CURRENT, 2026-08-09 late -- EXTENDS the slice-1+2a block below; locks the geography SELECTION model + reshapes the queue) -> NEXT BUILD = PIECE B (geography-aware syncPlacements + gate).
+
+GEOGRAPHY SELECTION MODEL (locked with Dorian 2026-08-09, supersedes the "[REGIONAL] empty-fallback" framing):
+  - GEOGRAPHY IS A HARD GATE, NOT A FALLBACK. No source advances from New Sources to Pre-Commit Review
+    unless it carries >=1 geography -- exactly parallel to the existing section gate ("cannot leave New
+    Sources without >=1 section"). Empty geography BLOCKS advance; it is NOT silently defaulted.
+  - REMOVE slice-1's [REGIONAL] empty-fallback in resolvePlacementGeographies (src/main/geography.ts):
+    empty resolve now stays EMPTY (-> blocked by the gate), never coerced to REGIONAL. Unmapped-only
+    sources (e.g. Narnia) are BLOCKED -> researcher must select a real geography; the unmapped country
+    surfaces (slice-1 already surfaces, does not swallow).
+  - THE VOCABULARY / SELECTOR IS UNIFIED. One country typeahead searches the FULL world country list;
+    region is DERIVED from the pick (Colombia->LATAM, China->Asia, Germany->Europe). There is NO
+    LATAM-vs-extra-LATAM split in the UI -- picking Colombia is the same action as picking Germany.
+    REGIONAL and GLOBAL are two special selectable toggles alongside the country typeahead (a chip you
+    click, not a country you type). So a source's geography set = typed countries + optionally REGIONAL
+    and/or GLOBAL, any combination (e.g. {Colombia, Venezuela, REGIONAL}).
+  - REGIONAL and GLOBAL are AGGREGATION LEVELS, not sentinels:
+      REGIONAL = all-LATAM. Driven (LATER) by region-level sources AND country-level analyses rolling up
+        AND the change log (to see how the region trends). Selectable by researcher/AI as "the larger box
+        that contains all boxes" -- a source can be {Colombia, REGIONAL} at once.
+      GLOBAL = all extra-regional (and eventually all-regions rolled up). A periodic aggregate of all
+        regions. Turned on LATER. When collection for other regions is on, regional-level meta-analyses
+        get driven by their country-level analyses, same pattern as LATAM.
+    NOTE: none of this roll-up/meta-analysis machinery is in Piece B -- for PLACEMENT purposes REGIONAL
+    and GLOBAL are just geography VALUES like any country; the roll-up is the "turn on later" work.
+  - FREQUENCY-RANKED TYPEAHEAD: typing "C" ranks matches by how often that country already appears in
+    subject_countries across the corpus, so Contested Skies covers (Colombia/Chile/China) float above
+    rare ones (Chad/Comoros). This is what lets ONE ~195-country list serve both the constant LATAM five
+    and the occasional Germany without a mode switch. Pick-from-list also RETIRES the normalizeCountry
+    hyphen/particle edge case for this path (Cote d'Ivoire is selected canonically, not typed-and-hoped).
+  - THE FULL COUNTRY->REGION TABLE IS NOW MANDATORY (was "deferred, grow one line at a time"). Unifying
+    LATAM + extra-LATAM selection through one typeahead requires the whole ~195-country list up front;
+    a five-country autocomplete is pointless. Bounded static reference data; regions = LATAM / North
+    America / Europe / Middle East (MENA) / Russia / Asia / (Africa) / GLOBAL. (Confirm the exact Tier-1
+    region set when building -- Dorian named Europe, MENA, North America, Asia, Russia, LATAM, GLOBAL;
+    Africa is implied by Chad/Cote d'Ivoire examples.)
+
+RESHAPED GEOGRAPHY-ARC QUEUE (2a done; sequence locked):
+  1. PIECE B [NEXT] -- geography-aware syncPlacements + the advance-to-review GEOGRAPHY GATE + remove the
+     [REGIONAL] empty-fallback. Pure backend, indifferent to selector/vocabulary size. Signature becomes
+     syncPlacements(articleId, infoPage, confirmedSections, confirmedGeographies): reconcile placements to
+     the confirmedSections x confirmedGeographies CROSS PRODUCT (the edit-time twin of routeToNew's
+     route-time cross product), STAGE-LOCKED per (section, geography) -- never delete/move review or
+     committed rows. The section-only diff/delete/empty-floor all move from section-keyed to
+     (section,geography)-keyed. Thread the new geographies arg through 4 declarations in lockstep (backend
+     sig infoPageSources.ts:133, IPC handler ipc:4763 + pass-through 4768, preload index.ts:429, env.d.ts:929)
+     + the renderer call site (NewSourcesTab handleConfirmSections:64). TEST SYNTHETICALLY AT SQL LEVEL
+     (hand-set confirmed inputs, verify the right (section,geography) rows move, review/committed untouched)
+     BEFORE any chip UI drives it.
+  2. COUNTRY->REGION TABLE -- full ~195-country static reference + region mapping + the frequency-count
+     query over subject_countries. Foundation for the unified selector. (Its own slice; does NOT block B.)
+  3. PIECE A -- the chips + unified frequency-ranked country typeahead + REGIONAL/GLOBAL toggles, wired to
+     handleConfirmSections and the gate. Reuse the EXISTING GeographyChips.tsx component (self-contained,
+     props-in/onChange-out, liftable as-is per the 2b diagnose) -- do NOT build a new chip control. Also
+     FOLD IN the "re-read the whole article in New Sources" UI ask (open the card to see full piece text).
+     Wiring work: widen getSourcePipeline + the row type to carry subject_countries/mentioned/subGeo; add
+     the parent handler in NewSourcesTab (mirrors existing onConfirmSections/onSetIncident prop pattern);
+     edit writes subject_countries (via existing updateCountries) AND re-runs geography-aware syncPlacements
+     (Option 1, locked) so chips and placements stay coherent; keep it optimistic (no remount, per standing rule).
+
+KEY 2b DIAGNOSE FACTS (already gathered, still valid):
+  - New Sources card = PipelineSourceCard.tsx (shared New Sources / Pre-Commit / All Sources); geography is
+    a READ-ONLY pill "PIN {row.geography}" reading the legacy intelligence_sources.geography scalar -- NOT
+    subject_countries, NOT the placement rows. SectionChips + IncidentChip on this card are already editable
+    (gated on stage==='new'); geography has no such control.
+  - GeographyChips.tsx (Intel) is reusable as-is; only parent plumbing is Intel-specific (data not fed in yet;
+    onChange handler + optimistic state live in the parent; aiUnconfirmed/countriesTouched is NewsTab-local).
+  - updateCountries (intel.ts:752) writes ONLY the three intel columns (subject/mentioned/sub_geographies),
+    never placements. No existing writer turns a New Sources geography edit into placement rows -- that is
+    exactly what Piece B's geography-aware syncPlacements provides.
+  - handleConfirmSections (NewSourcesTab:64) currently does setRoutingConfirmed(sections) [a parallel
+    section-only confirmed store on the intel row] + syncPlacements(sections) + optimistic setRows. Both
+    section-keyed today. syncPlacements confirmed unchanged: reads select('section,stage'), section-keyed
+    diff, geography-blind delete, geography:'REGIONAL' hardcoded add, stage-locks via toDelete-from-new-only
+    + !lockedSections.has(s) (review+committed).
+
+STILL DEFERRED (unchanged): review-stage REGIONAL backfill (pre-flip rows, e.g. fa96eea5 Argentina); rule-6
+  cards_whole flip (now unblocked by 2a); two-level dynamic tab bar; REGIONAL->LATAM rename; country-as-actor
+  as geography + actor-role classification (folded into supply-axis re-index); Pre-Commit Review PER-CELL
+  (section x geography) geography divergence (the granular "layer 3" -- New Sources stays source-level per (i)).
+
 ▶ RESUME HERE (CURRENT, 2026-08-09 pm -- EXTENDS the geography-model block below; records slice progress) -> SLICE 1 + 2a DONE AND COMMITTED. Country routing is LIVE and proven in the authoritative store.
 
 DONE THIS SESSION:
