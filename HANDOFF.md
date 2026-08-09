@@ -4,6 +4,92 @@ _Last updated: 2026-08-07 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
+▶ RESUME HERE (CURRENT, 2026-08-09 -- EXTENDS the 2026-08-08 verdict below; supersedes only its three-slice arc SHAPE) -> GEOGRAPHY MODEL LOCKED. Design arc, not a string-flip.
+
+WHAT STILL HOLDS from 2026-08-08 (unchanged): no import; the country content grid exists
+(Colombia/Mexico/Brazil/Argentina/Venezuela + REGIONAL = 43 live cells); the real gap is ROUTING
+(routeToNew/syncPlacements hardcode geography='REGIONAL'); seed is destructive, never re-run.
+WHAT CHANGES: the FIX is no longer "flip a string" -- geography becomes a multi-region tree, and
+the arc reorders. The "reshaped geography arc: routing flip -> rule-6 -> tabs" three-slice framing
+in the block below is SUPERSEDED by the arc order at the bottom of THIS block.
+
+THE GEOGRAPHY MODEL (locked with Dorian 2026-08-09):
+  - Geography is a TWO-LEVEL TREE: REGION -> optional COUNTRY. A placement is region+optional-country.
+    Examples: LATAM/Colombia (country-specific), LATAM (whole-region), Europe/Germany, Europe (whole-region).
+  - EVERY REGION OWNS A SYNTHESIS CELL (a region-level "REGIONAL" cell), driven either by its countries'
+    content rolling up OR by whole-region sources filed directly at region level -- same dual model LATAM
+    has today. Each region also gets its OWN PAGE eventually (region-level description like LATAM's).
+  - TIER-1 REGIONS: LATAM, North America, Europe, Middle East, Russia, Asia, + GLOBAL (GLOBAL reserved
+    now, for a future country/region -> Global aggregator page). LATAM is the focus region; EVERYTHING
+    ELSE IS EXTRA-LATAM. "EXTRA-LATAM" = defined by not-being-the-focus-region, NOT by section-04
+    "extra-regional influence" (distinct concept).
+  - REGION IS DERIVED FROM COUNTRY VIA A CODE-SIDE LOOKUP, not stored. Placement geography stays the
+    country string (e.g. 'Germany'); a canonical countryToRegion map in code yields the region (Europe).
+    NO region column (would be redundant + can desync; region is always a deterministic function of country).
+    Adding a country later = one line in the map, no migration.
+  - CANONICAL COUNTRY VOCABULARY is the foundation: subject_countries is currently UNENFORCED FREE TEXT
+    (cleanCountryList only trims/dedupes/caps -- no alias map, no whitelist). The model needs a canonical
+    country list with region baked in; anything unmatched must SURFACE as "unmapped", never silently vanish.
+  - TAB BAR IS DYNAMIC / POPULATED-ONLY: tabs render only where placements exist (the tree is the POSSIBLE
+    structure; tabs show the POPULATED structure). Page-content geography axis: EXTRA-LATAM selected ->
+    shows populated sub-regions (North America/Europe/Middle East/Russia/Asia) -> click opens populated
+    countries -> same NINE sections. ALL LATAM selected -> shows populated LATAM countries.
+  - "NO GEOGRAPHY" DISSOLVES: almost everything is SOME geography once the world is in the tree (a global
+    CUAS piece = GLOBAL/EXTRA-LATAM, not nowhere). Genuinely placeless reference (e.g. drone physics) stays
+    the design-doc section-3 "relevant source, no page change, lands in archive" case -- NO null-geography
+    value is introduced.
+  - SECTIONS = NINE (Systems, VNSA, Industry, External, Supply, Investment, Regulatory, Civilian, Logistics).
+    INCIDENTS stay a PARALLEL structured table (own country column, getIncidents publication.ts:123), NOT a
+    tenth section. (Dorian's "10th = incident" is the parallel table, already modeled.)
+
+GEOGRAPHY IS SET ON THE INTELLIGENCE SIDE, not in the publication pipeline (corrects earlier framing):
+  - AI proposes geography at capture; researcher reviews/corrects on the item card (News has geo + sub-region
+    selection today; Social/Documents/Interviews MUST get the same, uniform). By the time a source is ROUTED,
+    geography is DECIDED. New Sources = last editable seam. Pre-Commit Review = geography LOCKED (tabs set,
+    no geo editing there).
+  - So the flip does NOT build a geo control in publication -- it (a) ensures AI proposes REGIONAL + EXTRA-LATAM
+    candidates (AI likely does not check REGIONAL today), (b) unifies the geo+sub-region control across all four
+    capture types, (c) routing consumes the already-set set.
+
+ROUTING FACTS (from 2026-08-09 diagnose, still valid):
+  - subject_countries = top-level JSON string[] column on intelligence_sources (NOT in analysis_json); mirrored;
+    "only subject_countries generate placements; mentioned = metadata" (db.ts:987).
+  - THREE edit sites, no shared helper: routeToNewSources (ipc:3301, currently selects only id/type/analysis_json
+    -- must also select+parse subject_countries), routeToNew (infoPageSources.ts:92), syncPlacements (:159). The
+    hardcode geography:'REGIONAL' is duplicated in the latter two.
+  - SCHEMA ALREADY SUPPORTS multi-geography: info_page_sources UNIQUE(article_id,info_page,section,geography) --
+    geography is IN the key, so vnsa|Colombia + vnsa|REGIONAL for one source are two legal rows. NO migration to
+    write country/region placements. (Confirm cloud carries the same unique index -- SQL pending.)
+  - NO derivation exists anywhere: REGIONAL is a directly-authored placement target; nothing rolls country changes
+    up into it. The region-synthesis roll-up is design-doc spine, NOT in code -- a later slice.
+
+RESOLVER RULE (locked): placements = confirmed-geography-set x sections. AI pre-proposes matched countries (+ their
+regions via lookup) + REGIONAL/EXTRA-LATAM candidates; researcher edits (Intelligence side); each confirmed geography
+is a normal toggle, never a silent fallback. A source may carry country geographies AND region-level geographies at
+once (e.g. LATAM/Colombia + LATAM/Venezuela + LATAM regional).
+
+REORDERED ARC (dependency order -- vocabulary is now the foundation, NOT the routing flip):
+  1. GEOGRAPHY VOCABULARY + REGION TREE (code lookup: canonical country list, countryToRegion map, GLOBAL reserved,
+     "unmapped" surfacing). Foundation, no UI. Seeded from the live distinct subject_countries set (SQL below).
+  2. RESOLVER + ROUTING FLIP (three sites above; consumes the vocabulary; expands sections x confirmed-geographies).
+     Country routing tested end-to-end in cloud SQL before commit.
+  3. INTELLIGENCE CAPTURE-CARD GEOGRAPHY (design-first / mockup-first): unified geo+sub-region across News/Social/
+     Documents/Interviews; AI proposes LATAM countries + EXTRA-LATAM regions/countries + REGIONAL.
+  4. TWO-LEVEL DYNAMIC TAB BAR on page content (region tier -> populated countries; nine-section rail unchanged).
+  5. TAIL: rule-6 flip (cards_whole COUNTRY-unless-cross-country, inert until routing lands); New Sources CARD-EXPAND
+     (chevron to open full card + original piece text, same as Pre-Commit Review -- additive); then P4b/incidents/
+     P5 publish/P6-P7 ledger per the unified spine.
+
+KNOWN FUTURE NORMALIZATIONS (noted, NOT current tasks):
+  - RENAME geography='REGIONAL' -> 'LATAM' (today's REGIONAL literally means LATAM-regional). Deferred: 43 cells +
+    20 placements say REGIONAL; keep that meaning until there's reason to generalize. Dorian: "regional must be
+    renamed to LATAM eventually."
+  - Extra-regional sub-labels + the supply-axis (CN/IL/TR/US) re-index (design doc 7.4) get designed TOGETHER with
+    the EXTRA-LATAM tree, same shape of problem.
+
+FIRST CONCRETE STEP: run the two SQLs -- (i) confirm cloud UNIQUE constraint on info_page_sources; (ii) DISTINCT
+subject_countries (doubles as the seed inventory for the canonical country vocabulary). Then slice 1 (vocabulary+tree).
+
 ▶ RESUME HERE (CURRENT, 2026-08-08 -- SUPERSEDES the import-first geography framing below) -> RECONCILIATION DIAGNOSE DONE. VERDICT: NO IMPORT.
 
 WHAT THE DIAGNOSE SETTLED (six-part reconciliation + full JSON + live SQL, 2026-08-08):
