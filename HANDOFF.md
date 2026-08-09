@@ -5789,3 +5789,18 @@ INTEL to edit. Full statement + the unverified plumbing hypothesis are under **K
   patch` → `npm run release` → `git push && git push --tags` (push before release).
 - The canonical working copy is `~/newsroom-pm`. The old iCloud copy is
   stale/deprecated — don't work from it.
+- CHECK EXISTING UI + ARCHITECTURE FIRST. Before designing, mocking, or building anything,
+  read the actual component/code as it exists today -- never design against a mental model of
+  it. This extends "read-only diagnose before build" to UI/design work: a mockup of a screen
+  that already exists is wasted work. (Learned: mocked New Sources geography chips that already
+  existed on the Intel card.)
+- NO VIEW REMOUNTS ON ACTIONS -- views freeze where last used until app restart. Every action's
+  success path must be a BACKGROUND update (load({background:true}) or optimistic setState),
+  never a full reload that unmounts the list/canvas or resets scroll. This is a GLOBAL invariant,
+  checked proactively on every slice that touches a view -- part of the pre-commit test like
+  drag-and-drop. (Hit repeatedly: NewSourcesTab scroll-jump, PreCommitReview canvas-unmount.)
+- TOKEN-EFFICIENT AI ALWAYS. AI runs only on explicit user action, never speculatively or
+  repeatedly on unchanged content; guard/cache against re-analysis of already-processed sources;
+  prefer the cheapest model that does the job (Haiku won the A/B over Luna/GPT-5.6 for structured
+  extraction). Any slice that calls AI gets a "does this re-process anything already processed?"
+  check. (Reference waste: intel sources being scanned and re-scanned repeatedly.)
