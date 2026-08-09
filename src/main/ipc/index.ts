@@ -7,7 +7,7 @@ import { join, basename, extname } from 'path'
 import { randomBytes, createHash, createHmac } from 'crypto'
 import { getDatabase, hashPassword } from '../db'
 import { CLOUD_ADMIN_EMAIL, PERMISSION_KEYS } from '../constants'
-import { resolvePlacementGeographies } from '../geography'
+import { resolvePlacementGeographies, getCountryUsageCounts } from '../geography'
 import { cloud } from '../cloud/client'
 import { driveSync } from '../google/drive'
 import { sendEmail, inviteEmailHtml } from '../google/gmail'
@@ -4770,6 +4770,19 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
     // GEO 2b: reconcile to the (section × geography) cross product. `geographies` is the
     // researcher's edited/current geography set (see NewSourcesTab.handleConfirmSections).
     return infoPageSourcesCloud.syncPlacements(articleId, pageId, sections, geographies)
+  })
+
+  // GEO 2b Piece A: per-country usage counts across the whole corpus, so the
+  // geography picker can rank its typeahead by frequency. Reads the LOCAL MIRROR
+  // (subject_countries) -- corpus-wide aggregate metadata, not board-scoped, so no
+  // per-board membership gate (there is nothing page-specific to authorize).
+  ipcMain.handle('infoPages:getCountryUsageCounts', async () => {
+    try {
+      return { ok: true, counts: getCountryUsageCounts() }
+    } catch (e) {
+      console.warn('[GEO 2b] getCountryUsageCounts failed:', e)
+      return { ok: false, counts: {}, error: e instanceof Error ? e.message : String(e) }
+    }
   })
 
   // Commit all 'review' items to 'committed'. Saves design_notes onto each row.

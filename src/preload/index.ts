@@ -427,6 +427,7 @@ const api = {
     backSourceToNew:      (pageId: string, articleId: string)        => ipcRenderer.invoke('infoPages:backSourceToNew', pageId, articleId),
     moveBackToIntel:      (pageId: string, articleId: string)        => ipcRenderer.invoke('infoPages:moveBackToIntel', pageId, articleId),
     syncPlacements:       (pageId: string, articleId: string, sections: string[], geographies: string[]) => ipcRenderer.invoke('infoPages:syncPlacements', pageId, articleId, sections, geographies),
+    getCountryUsageCounts: ()                                        => ipcRenderer.invoke('infoPages:getCountryUsageCounts'),
     commitSources:        (pageId: string, designNotes: string)      => ipcRenderer.invoke('infoPages:commitSources', pageId, designNotes),
     saveReviewNotes:      (pageId: string, designNotes: string)      => ipcRenderer.invoke('infoPages:saveReviewNotes', pageId, designNotes),
     getSourceChanges:     (pageId: string)                           => ipcRenderer.invoke('infoPages:getSourceChanges', pageId),

@@ -927,6 +927,7 @@ interface Window {
       backSourceToNew:      (pageId: string, articleId: string) => Promise<{ ok: boolean }>
       moveBackToIntel:      (pageId: string, articleId: string) => Promise<{ ok: boolean; movedBack: boolean }>
       syncPlacements:       (pageId: string, articleId: string, sections: string[], geographies: string[]) => Promise<{ ok: boolean; added?: number; deleted?: number; blocked?: boolean; error?: string; lockedConflicts?: { section: string; geography: string; stage: string }[] }>
+      getCountryUsageCounts: () => Promise<{ ok: boolean; counts: Record<string, number>; error?: string }>
       commitSources:        (pageId: string, designNotes: string) => Promise<{ ok: boolean; committed: number }>
       saveReviewNotes:      (pageId: string, designNotes: string) => Promise<{ ok: boolean; saved: number }>
       getSourceChanges:     (pageId: string) => Promise<InfoPageChangeRow[]>
