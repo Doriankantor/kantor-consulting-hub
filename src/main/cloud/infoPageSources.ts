@@ -81,16 +81,24 @@ export async function resyncSourceRow(articleId: string, infoPage: string): Prom
 // per pair, not per section). Errors propagate; local is touched only by the resync.
 export async function routeToNew(
   articleId: string, infoPage: string, sourceType: string | null, sections: string[],
+  geographies: string[] = ['REGIONAL'],
 ): Promise<{ ok: boolean; inserted?: boolean; count?: number; error?: string }> {
   if (!isOnline()) return { ok: false, error: 'offline — cannot route sources while offline' }
   const now = nowIso()
   // Dedupe + drop blanks; empty proposal → single sentinel presence row (section='').
   const keys = Array.from(new Set((sections ?? []).filter(s => typeof s === 'string' && s.length > 0)))
   const seedSections = keys.length ? keys : ['']
-  const rows = seedSections.map(section => ({
+  // Geo slice 2a: geographies come from the caller's resolved subject_countries (country-name
+  // strings). Floor to ['REGIONAL'] if empty so a source that resolved to nothing still gets a
+  // home (the caller's module already guarantees non-empty; this is belt-and-suspenders).
+  const geos = (geographies && geographies.length) ? geographies : ['REGIONAL']
+  // Seed the CROSS PRODUCT of sections x geographies: one placement per (section, geography).
+  // A single-country source yields one row per section at that country; a two-country source
+  // yields two rows per section. The '' section sentinel still pairs with each geography.
+  const rows = seedSections.flatMap(section => geos.map(geo => ({
     article_id: articleId, info_page: infoPage, stage: 'new',
-    source_type: sourceType ?? null, section, geography: 'REGIONAL', added_at: now,
-  }))
+    source_type: sourceType ?? null, section, geography: geo, added_at: now,
+  })))
   const { data, error } = await cloud.from('info_page_sources')
     .upsert(rows, { onConflict: 'article_id,info_page,section,geography', ignoreDuplicates: true })
     .select()

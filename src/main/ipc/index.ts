@@ -7,6 +7,7 @@ import { join, basename, extname } from 'path'
 import { randomBytes, createHash, createHmac } from 'crypto'
 import { getDatabase, hashPassword } from '../db'
 import { CLOUD_ADMIN_EMAIL, PERMISSION_KEYS } from '../constants'
+import { resolvePlacementGeographies } from '../geography'
 import { cloud } from '../cloud/client'
 import { driveSync } from '../google/drive'
 import { sendEmail, inviteEmailHtml } from '../google/gmail'
@@ -3314,7 +3315,7 @@ async function routeToNewSources(
     console.warn(`[0a-4] deny routeToNewSources — actor=${currentActingUserId} pageId=${bid} sourceId=${intelSourceId}`)
     return { ok: false, error: 'Not authorized' }
   }
-  const src = db.prepare('SELECT id, type, analysis_json FROM intelligence_sources WHERE id=?').get(intelSourceId) as { id: string; type: string; analysis_json?: string } | undefined
+  const src = db.prepare('SELECT id, type, analysis_json, subject_countries FROM intelligence_sources WHERE id=?').get(intelSourceId) as { id: string; type: string; analysis_json?: string; subject_countries?: string } | undefined
   if (!src) return { ok: false, error: 'Source not found.' }
   const board = db.prepare("SELECT name FROM workspace_boards WHERE id=? AND board_type='info-page'").get(bid) as { name?: string } | undefined
   // NS-2 4b-i: seed placements from the AI's proposed sections. Extract just the section
@@ -3330,7 +3331,23 @@ async function routeToNewSources(
         .filter((s: unknown): s is string => typeof s === 'string' && s.length > 0)
     }
   } catch { proposedSections = [] }
-  const res = await infoPageSourcesCloud.routeToNew(intelSourceId, bid, src.type ?? null, proposedSections)
+  // Geo slice 2a: resolve the source's subject_countries into placement geographies
+  // (country-name strings, region derived at read time). subject_countries is a top-level
+  // JSON string[] column on intelligence_sources — parse it with the same try/catch idiom
+  // used for categories_json above, and defend against a non-array payload.
+  let subjectCountries: string[] = []
+  try {
+    const parsed = JSON.parse(src.subject_countries || '[]')
+    subjectCountries = Array.isArray(parsed) ? parsed.filter((s: unknown): s is string => typeof s === 'string') : []
+  } catch { subjectCountries = [] }
+  const { geographies, unmapped } = resolvePlacementGeographies(subjectCountries)
+  // Surface unrecognized countries so a bad/unknown country name never silently vanishes.
+  // This is the "researcher made aware" hook; routing still proceeds on whatever resolved
+  // (the module falls back to [REGIONAL] only when NOTHING resolved).
+  if (unmapped.length > 0) {
+    console.warn(`[geo] routeToNewSources unmapped subject_countries for source=${intelSourceId}:`, unmapped)
+  }
+  const res = await infoPageSourcesCloud.routeToNew(intelSourceId, bid, src.type ?? null, proposedSections, geographies)
   if (!res.ok) return { ok: false, error: res.error }
   return { ok: true, pageName: board?.name ?? bid }
 }
