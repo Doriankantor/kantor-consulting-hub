@@ -4,6 +4,60 @@ _Last updated: 2026-08-07 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
+▶ RESUME HERE (CURRENT, 2026-08-09 pm -- EXTENDS the geography-model block below; records slice progress) -> SLICE 1 + 2a DONE AND COMMITTED. Country routing is LIVE and proven in the authoritative store.
+
+DONE THIS SESSION:
+  - SLICE 1 (committed): src/main/geography.ts -- main-side geography vocabulary. COUNTRY_TO_REGION
+    map (LATAM: Colombia/Mexico/Brazil/Argentina/Venezuela/Bolivia; Europe: Romania; other tier-1
+    regions valid but unseeded), normalizeCountry (trim/collapse/title-case, match-normalization
+    only -- NOT an alias map), COUNTRY_ALIASES (seeded EMPTY), resolveRegion, resolvePlacementGeographies.
+    Decisions baked in: region derived not stored; placement stores COUNTRY NAME (decision A); REGIONAL
+    is a deliberate selection, never an implied add; unmapped countries SURFACED not swallowed; empty-input
+    fallback = [REGIONAL] ONLY when nothing resolves (unmapped-only stays empty geographies + surfaces the
+    miss). KNOWN edge (decided leave-it): normalizeCountry title-cases on spaces only, so hyphen/particle
+    countries (Guinea-Bissau, "and"/"of") need their COUNTRY_TO_REGION key written in exact normalized
+    form or a COUNTRY_ALIASES entry -- documented, harmless with today's single-word vocab.
+  - SLICE 2a (committed): the ROUTE FLIP. routeToNewSources (ipc/index.ts) now selects + parses
+    subject_countries (categories_json try/catch idiom) and calls resolvePlacementGeographies; routeToNew
+    (cloud/infoPageSources.ts) gained a geographies param (default ['REGIONAL']) and writes the
+    seedSections x geographies CROSS PRODUCT instead of hardcoded 'REGIONAL'. Unmapped countries -> console.warn
+    (interim "researcher made aware" hook; real UI surface comes with the New Sources chips, below). onConflict
+    unchanged (geography already in PK). syncPlacements LEFT UNTOUCHED (still REGIONAL-hardcoded, section-keyed).
+
+  PROVEN IN CLOUD SQL (authoritative store, all cases): single LATAM country -> country rows (Colombia, Brazil);
+  TWO countries -> full cross product, both country rows per section (Mexico+Colombia Guardian piece); EXTRA-LATAM
+  -> Romania rows (Ukraine in same source correctly dropped as unmapped); unmapped-only (Narnia) -> REGIONAL
+  fallback. The code was never buggy: the early "REGIONAL" failures were STALE PRE-FLIP rows (added_at 2026-08-07)
+  that ignoreDuplicates:true refused to overwrite -- fixed by move-back-to-intel + re-route (app-own writer).
+  LESSON: onConflict ignoreDuplicates:true means re-routing an already-placed source will NOT rewrite its
+  geography; to re-test routing on a source, back it out to intel (or clear its 'new' rows) first.
+
+NEW OBSERVATIONS THIS SESSION (both queued, neither built):
+  - NEW SOURCES GEOGRAPHY MUST BECOME EDITABLE CHIPS (feeds SLICE 2b). Today the New Sources card shows a
+    SINGLE cosmetic "primary geography" pill that is NOT wired to the real placement rows. Locked spec: REPLACE
+    that single pill with editable per-geography CHIPS that ARE the placement geographies -- add/remove rewrites
+    info_page_sources. This is the geography-editing SEAM, and it is exactly the contract SLICE 2b's syncPlacements
+    rewrite needs (its 'confirmed' input becomes (section, geography) pairs sourced from these chips). Display and
+    truth become the same thing. Design-first / mockup-first (new UI surface).
+  - BUG: MOVE-BACK-TO-INTEL SCROLL JUMP. Moving an article back to intel reloads the page and jumps to top.
+    Almost certainly the documented success-path-reload failure mode (canvas/list unmounts on a full load()
+    instead of load({background:true})). Small fix expected, but needs a READ-ONLY DIAGNOSE of the move-back
+    handler's reload path first (is it load() without background? a remount? the removeAllListeners trap?).
+
+QUEUE (recommended order):
+  (a) [NEXT, quick] Move-back-to-intel scroll-jump fix. Diagnose-then-fix; known bug class.
+  (b) SLICE 2b + New Sources editable geography chips (the big one; design-first/mockup-first): multi-geography
+      syncPlacements (read + partition + toAdd/toDelete + delete filter + empty-floor all move from section-keyed
+      to (section,geography)-keyed; 'confirmed' carries geography) WIRED to the chip UI above.
+  (c) COUNTRY-AS-ACTOR modeling thread (Dorian-raised): actor chips list COUNTRIES (Russia, US, EU, NATO)
+      distinct from subject_countries. Question: should a country-as-ACTOR (supplier/intervenor) influence
+      routing or the EXTRA-LATAM tree, vs staying pure metadata? Feeds the deferred supply-axis re-index.
+  DEFERRED (still): backfill of REVIEW-STAGE REGIONAL rows -- sources routed pre-flip, stuck at REGIONAL/review
+      (e.g. fa96eea5 ["Argentina"], 354fbbfe/8e982771 ["Colombia"]); a later slice re-homes 'new'-safe rows to
+      their country (must respect stage: never touch review/committed without a deliberate migration). Rule-6 flip
+      (cards_whole COUNTRY-unless-cross-country) still inert-until-routing, now UNBLOCKED by 2a. Two-level dynamic
+      tab bar (slice 4). REGIONAL -> LATAM rename (future normalization).
+
 ▶ RESUME HERE (CURRENT, 2026-08-09 -- EXTENDS the 2026-08-08 verdict below; supersedes only its three-slice arc SHAPE) -> GEOGRAPHY MODEL LOCKED. Design arc, not a string-flip.
 
 WHAT STILL HOLDS from 2026-08-08 (unchanged): no import; the country content grid exists
