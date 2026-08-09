@@ -22,13 +22,13 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
     setTimeout(() => setToast(null), 3200)
   }
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (opts?: { background?: boolean }) => {
+    if (!opts?.background) setLoading(true)
     try {
       const all = await window.api.infoPages.getSourcePipeline(pageId)
       setRows(all.filter(r => r.stage === 'new'))
     } catch (e) { console.error(e) }
-    setLoading(false)
+    if (!opts?.background) setLoading(false)
   }, [pageId])
 
   useEffect(() => { load() }, [load])
@@ -53,7 +53,7 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
       // Keep the selection on failure so the researcher can confirm sections and retry.
       if (!res.ok) flash(res.error || 'Could not send to review.')
       else setChecked(new Set())
-      await load()   // reflect any partial batch that DID advance before the block
+      await load({ background: true })   // reflect any partial batch that DID advance before the block (silent — no spinner remount / scroll-jump)
       onMoved?.()
     } finally { setSending(false) }
   }
@@ -102,7 +102,7 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
   // 3c-2b: remove this source from the pipeline and return it to the intel queue.
   const handleMoveBack = async (articleId: string) => {
     await window.api.infoPages.moveBackToIntel(pageId, articleId)
-    await load()
+    await load({ background: true })   // silent refetch — no spinner remount / scroll-jump (see PreCommitReviewTab card handlers)
     onMoved?.()
     notifyIntelChanged()   // intel row reverts to 'unreviewed' (+1 pending) — refresh the Sidebar badge now
   }
