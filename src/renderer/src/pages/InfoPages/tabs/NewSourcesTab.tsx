@@ -63,13 +63,27 @@ export default function NewSourcesTab({ pageId, onMoved }: Props) {
   // reflect the choice immediately. NO info_page_sources / placement write (that's NS-2).
   const handleConfirmSections = async (articleId: string, sections: string[]) => {
     await window.api.intelligence.setRoutingConfirmed(articleId, sections)
-    // NS-2 4b-ii: reconcile the physical placement rows to the confirmed set (stage-safe
-    // diff). Runs AFTER the confirmed write — a placement-sync failure must not lose it,
-    // so we log and continue rather than revert. No placement-view refresh needed yet
-    // (New Sources doesn't render placement rows until the Step-5 UI re-key).
+    // NS-2 4b-ii / GEO 2b: reconcile the physical placement rows to the confirmed set — now a
+    // (section × geography) cross-product diff. The chip picker is Piece A; for NOW derive the
+    // source's CURRENT geographies from its existing new-stage placement rows so the section
+    // edit preserves geography (a section add/remove applies across the source's current geos,
+    // never wiping the geography axis). Runs AFTER the confirmed write — a placement-sync failure
+    // must not lose it, so we log and continue rather than revert.
+    const geographies = Array.from(new Set(
+      rows.filter(r => r.article_id === articleId && r.stage === 'new' && !!r.placement_geography)
+          .map(r => r.placement_geography as string)
+    ))
     try {
-      const res = await window.api.infoPages.syncPlacements(pageId, articleId, sections)
-      if (!res.ok) console.warn('[NS-2 4b-ii] syncPlacements failed:', res.error)
+      // Guard: if the source somehow has no current geography, do NOT run the sync — an empty
+      // geography set would make the cross product empty and delete all its new rows. Nothing to
+      // reconcile in that case anyway (no new rows carry a geography).
+      if (geographies.length === 0) {
+        console.warn('[GEO 2b] no current geographies for source; skipping placement sync', articleId)
+      } else {
+        const res = await window.api.infoPages.syncPlacements(pageId, articleId, sections, geographies)
+        if (res.blocked) console.warn('[GEO 2b] syncPlacements blocked by locked (review/committed) placements:', res.lockedConflicts)
+        else if (!res.ok) console.warn('[NS-2 4b-ii] syncPlacements failed:', res.error)
+      }
     } catch (e) { console.warn('[NS-2 4b-ii] syncPlacements threw:', e) }
     setRows(prev => prev.map(r => {
       if (r.article_id !== articleId) return r

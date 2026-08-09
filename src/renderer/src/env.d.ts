@@ -926,7 +926,7 @@ interface Window {
       sendToReview:         (pageId: string, articleIds: string[]) => Promise<{ ok: boolean; moved: number; error?: string }>
       backSourceToNew:      (pageId: string, articleId: string) => Promise<{ ok: boolean }>
       moveBackToIntel:      (pageId: string, articleId: string) => Promise<{ ok: boolean; movedBack: boolean }>
-      syncPlacements:       (pageId: string, articleId: string, sections: string[]) => Promise<{ ok: boolean; added?: number; deleted?: number; error?: string }>
+      syncPlacements:       (pageId: string, articleId: string, sections: string[], geographies: string[]) => Promise<{ ok: boolean; added?: number; deleted?: number; blocked?: boolean; error?: string; lockedConflicts?: { section: string; geography: string; stage: string }[] }>
       commitSources:        (pageId: string, designNotes: string) => Promise<{ ok: boolean; committed: number }>
       saveReviewNotes:      (pageId: string, designNotes: string) => Promise<{ ok: boolean; saved: number }>
       getSourceChanges:     (pageId: string) => Promise<InfoPageChangeRow[]>

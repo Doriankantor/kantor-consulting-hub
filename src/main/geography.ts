@@ -117,14 +117,18 @@ export function resolveRegion(
 //                  geography (decision A: store the country, derive the region).
 //   unmapped    -- inputs that matched no region, surfaced and NEVER dropped.
 //
-// FALLBACK RULE: if subjectCountries yields NO resolved countries AND NO unmapped
-// inputs (i.e. the source names no countries at all), fall back to
-// [REGIONAL_SENTINEL] -- a source about the region generally. This fallback fires
-// ONLY on the empty case. When countries DO resolve, REGIONAL is NOT auto-added:
-// per the locked model REGIONAL is a deliberate selection, not an implied
-// addition. If there are unmapped inputs but no resolved countries, geographies
-// stays empty (the misses are surfaced for a human to map) -- the fallback does
-// not mask unmapped inputs.
+// GATE, NOT FALLBACK (model locked 2026-08-09, slice 2b): if subjectCountries
+// yields NO resolved countries, geographies stays EMPTY -- it is NEVER coerced to
+// [REGIONAL]. Emptiness is caught DOWNSTREAM by the advance-to-review geography
+// gate (a source must carry >=1 geography to advance, parallel to the >=1 section
+// gate); a source with no geography is BLOCKED, not silently defaulted. When
+// countries DO resolve, REGIONAL is still NOT auto-added -- per the locked model
+// REGIONAL is a deliberate selection, not an implied addition. Unmapped inputs are
+// surfaced in unmapped[] and never dropped; an unmapped-only source resolves to
+// empty geographies + its misses, so a human must map/select a real geography
+// before it can advance.
+// NOTE: routeToNew keeps its OWN ['REGIONAL'] default param for the route-time
+// seed path, so removing the fallback here does NOT change routing (see 2a).
 export function resolvePlacementGeographies(subjectCountries: string[]): {
   geographies: string[]
   unmapped: string[]
@@ -145,8 +149,7 @@ export function resolvePlacementGeographies(subjectCountries: string[]): {
     }
   }
 
-  if (geographies.length === 0 && unmapped.length === 0) {
-    return { geographies: [REGIONAL_SENTINEL], unmapped }
-  }
+  // Empty resolve -> empty geographies (blocked by the advance-to-review gate),
+  // never coerced to REGIONAL. Unmapped misses are already surfaced above.
   return { geographies, unmapped }
 }

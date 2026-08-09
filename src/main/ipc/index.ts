@@ -3342,8 +3342,10 @@ async function routeToNewSources(
   } catch { subjectCountries = [] }
   const { geographies, unmapped } = resolvePlacementGeographies(subjectCountries)
   // Surface unrecognized countries so a bad/unknown country name never silently vanishes.
-  // This is the "researcher made aware" hook; routing still proceeds on whatever resolved
-  // (the module falls back to [REGIONAL] only when NOTHING resolved).
+  // This is the "researcher made aware" hook; routing still proceeds on whatever resolved.
+  // The module no longer coerces empty -> [REGIONAL] (that gate moved downstream); routeToNew
+  // keeps its own ['REGIONAL'] default param, so a source that resolved to nothing still gets
+  // a home row at route time and the researcher fixes geography before advancing to review.
   if (unmapped.length > 0) {
     console.warn(`[geo] routeToNewSources unmapped subject_countries for source=${intelSourceId}:`, unmapped)
   }
@@ -4760,12 +4762,14 @@ Preserve all existing HTML structure, CSS, and visual design exactly. Only add t
   // NS-2 4b-ii: reconcile placement rows to the researcher's confirmed sections (a
   // stage-safe diff). Called from the New Sources card's confirm/trim, right after
   // intelligence:setRoutingConfirmed. Board-scoped → one membership gate on pageId.
-  ipcMain.handle('infoPages:syncPlacements', async (_e, pageId: string, articleId: string, sections: string[]) => {
+  ipcMain.handle('infoPages:syncPlacements', async (_e, pageId: string, articleId: string, sections: string[], geographies: string[]) => {
     if (!(await boardsCloud.isBoardVisibleFor(currentActingUserId, pageId))) {
       console.warn(`[0a-4] deny infoPages:syncPlacements — actor=${currentActingUserId} pageId=${pageId}`)
       return { ok: false, error: 'Not authorized' }
     }
-    return infoPageSourcesCloud.syncPlacements(articleId, pageId, sections)
+    // GEO 2b: reconcile to the (section × geography) cross product. `geographies` is the
+    // researcher's edited/current geography set (see NewSourcesTab.handleConfirmSections).
+    return infoPageSourcesCloud.syncPlacements(articleId, pageId, sections, geographies)
   })
 
   // Commit all 'review' items to 'committed'. Saves design_notes onto each row.

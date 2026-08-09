@@ -113,65 +113,107 @@ export async function routeToNew(
   return { ok: true, inserted, count: Array.isArray(data) ? data.length : 0 }
 }
 
-// WRITER 1b — NS-2 Step 4b-ii: reconcile the placement rows for one (article_id,
-// info_page) to the researcher's CONFIRMED section set, as a STAGE-SAFE diff. Runs
-// right after setRoutingConfirmed (which writes routing.confirmed on the intel row);
-// this brings the physical placement rows into line with that choice.
+// WRITER 1b — NS-2 Step 4b-ii / GEO slice 2b: reconcile the placement rows for one
+// (article_id, info_page) to the researcher's CONFIRMED set, as a STAGE-SAFE diff.
+// GEO 2b: the reconcile is now (section, geography)-KEYED, not section-keyed. The
+// desired placement set is the CROSS PRODUCT confirmedSections × confirmedGeographies
+// (the edit-time twin of routeToNew's route-time cross product). Every partition, diff,
+// delete and floor operates on the composite key `${section}\0${geography}`.
 //
-// STAGE-SAFE is the core invariant: rows already advanced to 'review'/'committed' are
-// LOCKED — never deleted (don't destroy downstream work) and never re-added as a fresh
-// 'new' duplicate. Only stage='new' rows are reconcilable.
-//   toDelete = newSections − confirmed                  (unchecked 'new' rows, incl. a stale '' sentinel)
-//   toAdd    = confirmed − newSections − lockedSections (confirmed sections not already present)
-// EMPTY FLOOR: if the result would leave the pair with ZERO rows (confirmed empty AND
-// no locked rows), re-seed one '' sentinel so the source never vanishes from New Sources
-// (the interim safety until the 4b-iii ≥1-section gate). If locked rows exist, the source
-// is still present via them — no sentinel needed.
+// STAGE-SAFE is the core invariant, now PER PAIR: rows already advanced to
+// 'review'/'committed' are LOCKED — never deleted and never re-added as a fresh 'new'
+// duplicate. Only stage='new' pairs are reconcilable.
+//   toDelete = current NEW pairs whose key is NOT in the desired set   (unchecked 'new' rows, incl. a stale '' sentinel)
+//   toAdd    = desired pairs not already present as new OR locked      (confirmed pairs to seed)
+//
+// DECISION B — LOCKED-COLLISION BLOCK: if the confirmed set would DROP a pair that is
+// already 'review'/'committed' (a locked pair not in the desired set), the whole call is
+// BLOCKED (nothing deleted/added) and returns { blocked:true, lockedConflicts }. The
+// renderer surfaces a stage-specific message ("go back through the proper process" as a
+// hard block, not a silent divergence). Adds, and edits that keep every locked pair in
+// the desired set, proceed normally.
+//
+// EMPTY FLOOR (composite units): if the result would leave the pair with ZERO rows
+// (nothing desired AND no locked pairs), re-seed one sentinel row (section='' at the
+// 'REGIONAL' geography — a placeless all-LATAM presence row) so the source never vanishes
+// from New Sources. With the advance-to-review geography+section gates in place this path
+// should rarely fire, but it stays as the floor.
 //
 // Cloud-authoritative READ (never the mirror). Never throws — setRoutingConfirmed has
-// already persisted the confirmed set, so a placement-sync failure must not lose it.
+// already persisted the confirmed section set, so a placement-sync failure must not lose it.
 export async function syncPlacements(
-  articleId: string, infoPage: string, confirmedSections: string[],
-): Promise<{ ok: boolean; added?: number; deleted?: number; error?: string }> {
+  articleId: string, infoPage: string, confirmedSections: string[], confirmedGeographies: string[],
+): Promise<{ ok: boolean; added?: number; deleted?: number; blocked?: boolean; error?: string; lockedConflicts?: { section: string; geography: string; stage: string }[] }> {
   if (!isOnline()) return { ok: false, error: 'offline — cannot sync placements while offline' }
   try {
-    const confirmed = Array.from(new Set((confirmedSections ?? []).filter(s => typeof s === 'string' && s.length > 0)))
-    // a. cloud-authoritative read of the pair's current placements (N rows, no maybeSingle)
-    const { data, error } = await cloud.from('info_page_sources').select('section,stage')
+    const SEP = '\u0000'   // null-byte join -- a separator that can never appear in a section key or country name
+    const keyOf = (section: string, geography: string): string => `${section}${SEP}${geography}`
+    const sections    = Array.from(new Set((confirmedSections ?? []).filter(s => typeof s === 'string' && s.length > 0)))
+    const geographies = Array.from(new Set((confirmedGeographies ?? []).filter(g => typeof g === 'string' && g.length > 0)))
+    // a. cloud-authoritative read of the pair's current placements, INCL. geography (N rows).
+    const { data, error } = await cloud.from('info_page_sources').select('section,geography,stage')
       .eq('article_id', articleId).eq('info_page', infoPage)
     if (error) return { ok: false, error: `syncPlacements read failed: ${error.message}` }
-    const cur = (Array.isArray(data) ? data : []) as { section: string; stage: string }[]
-    // b. partition current sections by stage
-    const newSections    = cur.filter(r => r.stage === 'new').map(r => r.section)
-    const lockedSections = new Set(cur.filter(r => r.stage === 'review' || r.stage === 'committed').map(r => r.section))
-    // c. stage-safe diff (locked sections invisible to delete AND skipped for add)
-    const confirmedSet = new Set(confirmed)
-    const newSet = new Set(newSections)
-    const toDelete = newSections.filter(s => !confirmedSet.has(s))                       // unchecked 'new' rows (incl. '' sentinel)
-    const toAdd    = confirmed.filter(s => !newSet.has(s) && !lockedSections.has(s))      // confirmed but not already present
-    // d. empty floor: would the pair end with zero rows? (all 'new' deleted, nothing added, none locked)
-    const remainingNew = newSections.length - toDelete.length + toAdd.length
-    const needsSentinel = remainingNew === 0 && lockedSections.size === 0
-    // e. apply — deletes first, then adds, then optional sentinel re-seed
+    const cur = (Array.isArray(data) ? data : []) as { section: string; geography: string; stage: string }[]
+    // b. partition current (section, geography) pairs by stage (composite-keyed)
+    const newPairs    = new Map<string, { section: string; geography: string }>()
+    const lockedPairs = new Map<string, { section: string; geography: string; stage: string }>()
+    for (const r of cur) {
+      const k = keyOf(r.section, r.geography)
+      if (r.stage === 'new') newPairs.set(k, { section: r.section, geography: r.geography })
+      else if (r.stage === 'review' || r.stage === 'committed') lockedPairs.set(k, { section: r.section, geography: r.geography, stage: r.stage })
+    }
+    // c. desired set = CROSS PRODUCT confirmedSections × confirmedGeographies (empty inputs → empty
+    //    desired set → "delete all new pairs", same safe shape as the old confirmed=[] behavior).
+    const desiredPairs = new Map<string, { section: string; geography: string }>()
+    for (const section of sections) for (const geography of geographies) desiredPairs.set(keyOf(section, geography), { section, geography })
+    // d. DECISION B — locked-collision block. If any locked pair would be DROPPED (not in the
+    //    desired set), block the whole call BEFORE mutating anything. Only removals of a locked
+    //    pair block; adds and edits that keep every locked pair in the desired set proceed.
+    const lockedConflicts: { section: string; geography: string; stage: string }[] = []
+    for (const [k, lp] of lockedPairs) {
+      if (!desiredPairs.has(k)) lockedConflicts.push({ section: lp.section, geography: lp.geography, stage: lp.stage })
+    }
+    if (lockedConflicts.length > 0) {
+      const msgs = lockedConflicts.map(c => {
+        const where = c.section === '' ? 'its presence row' : c.section
+        return c.stage === 'committed'
+          ? `${c.geography} has committed content in ${where}; remove it through the publication un-commit path first.`
+          : `${c.geography} is in review for ${where}; move it back to intel before removing.`
+      })
+      return { ok: false, blocked: true, error: msgs.join(' '), lockedConflicts }
+    }
+    // e. stage-safe diff on composite keys (locked pairs invisible to delete AND skipped for add)
+    const toDelete: { section: string; geography: string }[] = []
+    for (const [k, np] of newPairs) if (!desiredPairs.has(k)) toDelete.push(np)                 // unchecked 'new' pairs (incl. '' sentinel)
+    const toAdd: { section: string; geography: string }[] = []
+    for (const [k, dp] of desiredPairs) if (!newPairs.has(k) && !lockedPairs.has(k)) toAdd.push(dp)  // desired pairs not already present
+    // f. empty floor (composite units): would the pair end with zero rows? (all new deleted, nothing added, none locked)
+    const remainingNew = newPairs.size - toDelete.length + toAdd.length
+    const needsSentinel = remainingNew === 0 && lockedPairs.size === 0
+    // g. apply — per-(section,geography) deletes first (the .eq('geography',...) is the critical
+    //    narrowing: removing ONE geography of a section leaves the section's OTHER geographies intact).
     let deleted = 0
-    for (const section of toDelete) {
+    for (const { section, geography } of toDelete) {
       const { data: del, error: dErr } = await cloud.from('info_page_sources').delete()
-        .eq('article_id', articleId).eq('info_page', infoPage).eq('section', section).eq('stage', 'new').select()
+        .eq('article_id', articleId).eq('info_page', infoPage).eq('section', section).eq('geography', geography).eq('stage', 'new').select()
       if (dErr) return { ok: false, error: `syncPlacements delete failed: ${dErr.message}` }
       deleted += Array.isArray(del) ? del.length : 0
     }
+    // h. add-upsert — each row carries its REAL geography (no hardcoded 'REGIONAL'); the empty-floor
+    //    sentinel is the one exception (section='' at REGIONAL). needsSentinel implies toAdd is [].
     let added = 0
-    const addRows = needsSentinel ? [''] : toAdd   // empty floor takes precedence over adds (toAdd is [] when confirmed is [])
+    const addRows = needsSentinel ? [{ section: '', geography: 'REGIONAL' }] : toAdd
     if (addRows.length) {
-      const rows = addRows.map(section => ({
-        article_id: articleId, info_page: infoPage, stage: 'new', section, geography: 'REGIONAL', added_at: nowIso(),
+      const rows = addRows.map(({ section, geography }) => ({
+        article_id: articleId, info_page: infoPage, stage: 'new', section, geography, added_at: nowIso(),
       }))
       const { data: ins, error: aErr } = await cloud.from('info_page_sources')
         .upsert(rows, { onConflict: 'article_id,info_page,section,geography', ignoreDuplicates: true }).select()
       if (aErr) return { ok: false, error: `syncPlacements add failed: ${aErr.message}` }
       added = Array.isArray(ins) ? ins.length : 0
     }
-    // f. reconcile the mirror once (N-row capable)
+    // i. reconcile the mirror once (N-row capable)
     await resyncSourceRow(articleId, infoPage)
     return { ok: true, added, deleted }
   } catch (e) {
@@ -225,6 +267,22 @@ async function countRealPlacements(
   return { ok: true, count: count ?? 0 }
 }
 
+// GEO slice 2b — the geography twin of the ≥1-section gate. Forward advancement is only
+// allowed when the source carries at least one REAL (non-sentinel section, non-empty
+// geography) placement. REGIONAL and GLOBAL are legitimate geography VALUES here (selectable
+// aggregation levels), so they COUNT — the only thing excluded is the '' section sentinel and
+// an empty geography string. Same fail-closed shape as countRealPlacements: a read error
+// blocks the advance. Backward transitions (→new) never call this.
+async function countGeographyPlacements(
+  articleId: string, infoPage: string,
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const { count, error } = await cloud.from('info_page_sources')
+    .select('*', { count: 'exact', head: true })
+    .eq('article_id', articleId).eq('info_page', infoPage).neq('section', '').neq('geography', '')
+  if (error) return { ok: false, error: `geography-gate read failed: ${error.message}` }
+  return { ok: true, count: count ?? 0 }
+}
+
 // WRITER 3 — new -> review. Guarded on stage='new'; companion change ('new'->'review')
 // only when a row moved. Returns whether it moved (the handler sums the batch).
 // 4b-iii: gated — refuses to advance a source with no real (non-sentinel) placement.
@@ -236,6 +294,10 @@ export async function sendSourceToReview(
   const gate = await countRealPlacements(articleId, infoPage)
   if (!gate.ok) return { ok: false, error: gate.error }
   if ((gate.count ?? 0) < 1) return { ok: false, error: 'Confirm at least one section before sending to review.' }
+  // GEO 2b: ≥1-geography gate (forward transition), parallel to the section gate above.
+  const geoGate = await countGeographyPlacements(articleId, infoPage)
+  if (!geoGate.ok) return { ok: false, error: geoGate.error }
+  if ((geoGate.count ?? 0) < 1) return { ok: false, error: 'Select at least one geography before sending to review.' }
   const now = nowIso()
   const { data, error } = await cloud.from('info_page_sources')
     .update({ stage: 'review' })
@@ -297,6 +359,10 @@ export async function commitSourceRow(
   const gate = await countRealPlacements(articleId, infoPage)
   if (!gate.ok) return { ok: false, error: gate.error }
   if ((gate.count ?? 0) < 1) return { ok: false, error: 'Confirm at least one section before committing this source.' }
+  // GEO 2b: ≥1-geography gate, defense-in-depth twin (same reasoning as the section re-check).
+  const geoGate = await countGeographyPlacements(articleId, infoPage)
+  if (!geoGate.ok) return { ok: false, error: geoGate.error }
+  if ((geoGate.count ?? 0) < 1) return { ok: false, error: 'Select at least one geography before committing this source.' }
   const { data, error } = await cloud.from('info_page_sources')
     .update({ stage: 'committed', committed_at: committedAt, design_notes: designNotes ?? null })
     .eq('article_id', articleId).eq('info_page', infoPage).eq('stage', 'review')
