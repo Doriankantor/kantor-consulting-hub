@@ -919,7 +919,14 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   // sub-geo). Lists-only column write via updateCountries — scalar geography stays gate-set.
   // Optimistic: store the three columns as JSON strings on the row (matching the mirror format).
   async function handleCountries(id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>) {
-    await window.api.intelligence.updateCountries(id, subject, mentioned, subGeo)
+    // Honor the write result: updateCountries returns { ok, error } and no-ops (ok:false) when
+    // offline. Do NOT optimistically patch state on failure — a false chip that never persisted is
+    // worse than showing the true (unwritten) state. No toast UI in this file, so log + bail.
+    const res = await window.api.intelligence.updateCountries(id, subject, mentioned, subGeo)
+    if (!res?.ok) {
+      console.error('[NewsTab] updateCountries failed — state not updated:', res?.error ?? 'no result')
+      return
+    }
     setSources(prev => prev.map(s => s.id === id ? {
       ...s,
       subject_countries: JSON.stringify(subject),
