@@ -10,7 +10,9 @@ import SectionProposalBadge from './SectionProposalBadge'
 import GeographyChips from './GeographyChips'
 import ActorChips from './ActorChips'
 import { actorTypeClass } from './actorTypeClass'
-import { resolveFacts, resolveCaps, type ResolvedFact, type ResolvedCap } from './resolveAnalysis'
+import { resolveFacts, resolveCaps, resolveIncident, type ResolvedFact, type ResolvedCap } from './resolveAnalysis'
+import { lookupCountry } from './geographyVocab'
+import { SECTION_LABELS } from './sectionLabels'
 import { parseConfig } from './frameworkConfig'
 import { notifyIntelChanged } from '../../utils/intelEvents'
 
@@ -33,11 +35,24 @@ const STATUS_LABELS: Record<string, string> = {
   imported: 'Imported — needs confirmation',
 }
 
-const ALL_CATEGORIES = [
-  'Incident', 'Investment & Procurement', 'Innovation & Technology',
-  'Policy & Regulation', 'Criminal & VNSA Activity', 'Counter-drone / C-UAS',
-  'State Military Activity', 'Finance & Sanctions', 'Extra-regional Supplier',
-]
+// Slice Y1 region filter: classify a source's geography from its subject_countries. A value resolves
+// LATAM-side (a region==='LATAM' country via geographyVocab, or the 'REGIONAL' sentinel) or
+// extra-LATAM-side (any other known country, or the 'GLOBAL' sentinel); a value not in the vocab
+// counts as neither. hasLatam/hasExtra can BOTH be true — a genuinely mixed source.
+function classifyGeo(subjectCountries: string[]): { hasLatam: boolean; hasExtra: boolean } {
+  let hasLatam = false, hasExtra = false
+  for (const v of subjectCountries) {
+    const u = v.trim().toUpperCase()
+    if (u === 'REGIONAL') { hasLatam = true; continue }
+    if (u === 'GLOBAL')   { hasExtra = true; continue }
+    const c = lookupCountry(v)
+    if (!c) continue
+    if (c.isLatam) hasLatam = true; else hasExtra = true
+  }
+  return { hasLatam, hasExtra }
+}
+// Sentinel value for the section dropdown's "Incidents" option — distinct from every section key.
+const INCIDENTS_FILTER = '__incidents__'
 
 // Short labels for the gate's proposed relevance type.
 const REL_TYPE_LABELS: Record<string, string> = {
@@ -138,6 +153,12 @@ function toDateInput(s?: string): string {
 // Paging: how many rows a page fetches. Passed explicitly to getSources; the
 // main-side default (limit ?? 100) is left untouched for other callers.
 const PAGE_SIZE = 50
+// Slice Y1 fix: the region + section filters are client-side (they run over the loaded array in the
+// `visible` memo), so a 50-row page hides off-page matches — e.g. older extra-LATAM rows sit past
+// page one, making the region filter show 0. When either filter is active we fetch the WHOLE result
+// set in one page instead. Sized above the current corpus and at Supabase's default max-rows ceiling;
+// if the corpus ever outgrows this, region/section filtering must move server-side (Slice Y2).
+const FULL_FETCH_LIMIT = 1000
 
 export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   const { localUser, isRoot, can } = useAuth()
@@ -148,7 +169,12 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   // Phase 3: default to 'unreviewed' so the queue shows only items needing action.
   const [statusFilter, setStatusFilter] = useState('unreviewed')
   const [confidenceFilter, setConfidenceFilter] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('')
+  // Slice Y1: the section filter (canonical CS sections + Incidents) replaces the old freeform
+  // ai_category filter, and the region filter classifies by subject_countries. BOTH are CLIENT-SIDE
+  // (applied in the `visible` memo below), so neither is part of load()'s server query or deps —
+  // changing them re-runs the memo over the loaded array, never a refetch.
+  const [sectionFilter, setSectionFilter] = useState('')    // '' = all; else a section KEY or INCIDENTS_FILTER
+  const [regionFilter, setRegionFilter] = useState('all')   // 'all' | 'latam' | 'extra' | 'both'
   const [minRelevance, setMinRelevance] = useState(0)
   // Display-order toggle (client-only; does NOT touch the server query's added_at DESC
   // paging order). 'relevance' = current behaviour; 'date' = published_at DESC. Persisted
@@ -456,6 +482,11 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     } catch { /* ignore */ }
   }, [selectedProjectId])
 
+  // Slice Y1 fix: when a client-side region/section filter is active, a fresh load must fetch the
+  // whole result set (not one page) so off-page matches enter the `visible` predicate. Keyed on the
+  // active/inactive boolean (not the specific values) so switching latam<->extra or between sections
+  // re-runs only the memo, never a redundant refetch.
+  const filtersActive = regionFilter !== 'all' || sectionFilter !== ''
   const load = useCallback(async (opts?: { background?: boolean; append?: boolean }) => {
     // Three modes:
     //  fresh (default) — filter/project change: offset 0, one page, REPLACE, spinner.
@@ -472,11 +503,16 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     const filters: { type: string; status?: string; confidence?: string; category?: string; search?: string; project?: string } = { type: 'article' }
     if (statusFilter)     filters.status     = statusFilter
     if (confidenceFilter) filters.confidence = confidenceFilter
-    if (categoryFilter)   filters.category   = categoryFilter
+    // Slice Y1: section + region filters are client-side (see the `visible` memo) — NOT sent here.
     if (search)           filters.search     = search
     if (project)          filters.project    = project
     const offset = append ? loadedCountRef.current : 0
-    const limit = background ? Math.max(loadedCountRef.current, PAGE_SIZE) : PAGE_SIZE
+    // Fresh load with a region/section filter active → fetch everything (FULL_FETCH_LIMIT) so the
+    // client-side predicate sees off-page rows. append/background keep their existing paging depth.
+    const limit = background ? Math.max(loadedCountRef.current, PAGE_SIZE)
+      : append ? PAGE_SIZE
+      : filtersActive ? FULL_FETCH_LIMIT
+      : PAGE_SIZE
     try {
       const data = await window.api.intelligence.getSources({ ...filters, limit, offset })
       // Framework references (Kantor Consulting + FIU publications) are FIXED
@@ -501,7 +537,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     if (!append) window.api.intelligence.getSourcesCount(filters).then(setTotal).catch(() => {})
     refreshImportedCount()
     refreshStatusCounts()
-  }, [statusFilter, confidenceFilter, categoryFilter, search, selectedProjectId, refreshImportedCount, refreshStatusCounts])
+  }, [statusFilter, confidenceFilter, search, selectedProjectId, filtersActive, refreshImportedCount, refreshStatusCounts])
 
   useEffect(() => { load() }, [load])
 
@@ -1017,13 +1053,37 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   }, [newsSort])
 
   // Client-side filters (combine with the server-side status/search filters already
-  // applied in load()): minimum-relevance AND selected project. Then sort by the display
-  // toggle — 'relevance': relevance_score DESC (NULL last), then published_at DESC;
+  // applied in load()): minimum-relevance, selected project, Slice Y1 region + section. Then sort
+  // by the display toggle — 'relevance': relevance_score DESC (NULL last), then published_at DESC;
   // 'date': published_at DESC only (NULL last). Neither touches the server paging order.
   const visible = useMemo(() => {
     let filtered = sources
     if (minRelevance > 0) filtered = filtered.filter(s => (s.relevance_score ?? -1) >= minRelevance)
     if (projectScoped) filtered = filtered.filter(s => s.project_board_id === selectedProjectId)
+    // Slice Y1 region filter (from subject_countries): 'latam'/'extra' are INCLUSIVE — a mixed source
+    // passes each side it touches; 'both' is the narrower "is mixed" test. Empty-geography sources have
+    // neither flag, so they appear only under 'all'.
+    if (regionFilter !== 'all') filtered = filtered.filter(s => {
+      const { hasLatam, hasExtra } = classifyGeo(readTags(s.subject_countries ?? null))
+      return regionFilter === 'latam' ? hasLatam
+        : regionFilter === 'extra' ? hasExtra
+        : hasLatam && hasExtra   // 'both'
+    })
+    // Slice Y1 section filter: a canonical CS section (match a proposed_sections KEY, array-includes) or
+    // Incidents (resolveIncident). Single-select; '' = all. Reads analysis_json client-side, no refetch.
+    if (sectionFilter) filtered = filtered.filter(s => {
+      const analysis = parseAnalysis(s.analysis_json)
+      if (sectionFilter === INCIDENTS_FILTER) return resolveIncident(analysis).isIncident
+      const routing = ((analysis as any).routing ?? {}) as Record<string, any>
+      // Match the lit/selected chips, not the raw AI proposal: routing.confirmed is authoritative
+      // once the researcher has touched it (even if []), else fall back to proposed_sections — the
+      // same `confirmed ?? proposed` rule PipelineSourceCard/SectionChips use. confirmed is a string[]
+      // of section KEYS; proposed_sections is {section,confidence}[] — the normalizer handles both.
+      const sections = Array.isArray(routing.confirmed) ? routing.confirmed
+        : Array.isArray(routing.proposed_sections) ? routing.proposed_sections
+        : []
+      return sections.some((el: any) => (typeof el === 'string' ? el : el?.section) === sectionFilter)
+    })
     if (newsSort === 'date') {
       return [...filtered].sort((a, b) => {
         // published_at DESC. NULL → 0, which sorts LAST in DESC — the exact nulls-last
@@ -1042,7 +1102,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       const tb = b.published_at ? new Date(b.published_at).getTime() : 0
       return tb - ta
     })
-  }, [sources, minRelevance, projectScoped, selectedProjectId, newsSort])
+  }, [sources, minRelevance, projectScoped, selectedProjectId, newsSort, regionFilter, sectionFilter])
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -1077,13 +1137,28 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           <option value="medium">Medium</option>
           <option value="low">Low</option>
         </select>
+        {/* Slice Y1: filters on the canonical CS sections (proposed_sections) + Incidents, NOT the
+            old freeform ai_category. Section KEY is the option value; label is shown. */}
         <select
-          value={categoryFilter}
-          onChange={e => setCategoryFilter(e.target.value)}
+          value={sectionFilter}
+          onChange={e => setSectionFilter(e.target.value)}
           className="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-transparent text-sm text-gray-700 dark:text-white/80 focus:outline-none"
         >
           <option value="">All categories</option>
-          {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          {Object.entries(SECTION_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          <option value={INCIDENTS_FILTER}>Incidents</option>
+        </select>
+        {/* Slice Y1: region filter over subject_countries — LATAM/extra are inclusive, Both = mixed. */}
+        <select
+          value={regionFilter}
+          onChange={e => setRegionFilter(e.target.value)}
+          className="px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-transparent text-sm text-gray-700 dark:text-white/80 focus:outline-none"
+          title="Filter by geography region (LATAM / extra-LATAM / both)"
+        >
+          <option value="all">All regions</option>
+          <option value="latam">LATAM</option>
+          <option value="extra">extra-LATAM</option>
+          <option value="both">Both</option>
         </select>
         <select
           value={minRelevance}
@@ -1333,7 +1408,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
             <p className="text-xs text-gray-400 dark:text-white/25 mt-1">
               {projectScoped
                 ? 'Switch the project dropdown to “All sources” to see every article.'
-                : statusFilter || confidenceFilter || categoryFilter || search || minRelevance > 0
+                : statusFilter || confidenceFilter || sectionFilter || regionFilter !== 'all' || search || minRelevance > 0
                 ? 'Try adjusting your filters'
                 : 'Click "Refresh now" to fetch the latest news'}
             </p>
