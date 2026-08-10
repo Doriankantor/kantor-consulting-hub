@@ -358,6 +358,16 @@ export function normalizeCountry(raw: string): string {
 export function resolveRegion(
   country: string
 ): { region: Region; country: string } | { unmapped: true; input: string } {
+  // PLACEMENT SENTINELS (slice 2b Piece A): 'REGIONAL' (today's LATAM aggregation
+  // level) and 'GLOBAL' are VALID non-country geographies, not unmapped countries --
+  // they pass through routing/resolution unchanged, as they always have. Match on the
+  // raw upper-cased value (the stored form is upper-case; normalizeCountry would
+  // title-case them to 'Regional'/'Global'). REGIONAL resolves to the LATAM region it
+  // aggregates; GLOBAL is its own Region value. The stored country string stays the
+  // sentinel itself (the deferred REGIONAL->LATAM rename is a separate future slice).
+  const sentinel = country.trim().toUpperCase()
+  if (sentinel === 'REGIONAL') return { region: 'LATAM', country: 'REGIONAL' }
+  if (sentinel === 'GLOBAL') return { region: 'GLOBAL', country: 'GLOBAL' }
   const normalized = normalizeCountry(country)
   const canonical = COUNTRY_ALIASES[normalized] ?? normalized
   const region = COUNTRY_TO_REGION[canonical]
