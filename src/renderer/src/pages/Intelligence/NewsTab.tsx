@@ -1498,12 +1498,12 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                     <span className="text-xs text-gray-400 dark:text-white/30">{formatDate(source.published_at)}</span>
 
                     {/* Geography — Geo-2 nested country + sub-geo chips (replaces the scalar editor).
-                        Scalar source.geography survives as the empty-list read-through fallback. */}
+                        Slice X: the scalar source.geography column is no longer rendered as a fallback
+                        pill; an empty subject shows the picker's empty-state prompt instead. */}
                     <GeographyChips
                       subject={subjectCountries}
                       mentioned={mentionedCountries}
                       subGeo={subGeographies}
-                      scalarFallback={source.geography}
                       aiUnconfirmed={geoAiUnconfirmed}
                       onChange={(subject, mentioned, subGeo) => handleCountries(source.id, subject, mentioned, subGeo)}
                     />
