@@ -1606,14 +1606,11 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                     <p className="text-xs text-gray-500 dark:text-white/50 mt-1 line-clamp-2">{source.snippet}</p>
                   )}
 
-                  {/* Category badges */}
-                  {cats.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {cats.map(cat => (
-                        <span key={cat} className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-medium">{cat}</span>
-                      ))}
-                    </div>
-                  )}
+                  {/* ai_category pills removed (display-only): the category filter now reads the CS
+                      SECTION set (routing.confirmed), so the freeform ai_category labels are dead
+                      cruft on this card. The ai_category / categories_json FIELD is retained (revisit
+                      in AI-retune); the separate article_type "INCIDENT" marker lives in the AI block
+                      below and is unaffected. */}
 
                   {/* A2: read-only AI section-routing proposal (own row, above PROJECT/TOPIC). */}
                   {/* TODO: derive project abbrev when multi-project intel lands */}
