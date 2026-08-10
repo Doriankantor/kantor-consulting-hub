@@ -4,6 +4,138 @@ _Last updated: 2026-08-07 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
+▶ RESUME HERE (CURRENT, 2026-08-10 -- geography PICKER + BACKFILL shipped; next = Slice Y filters) -> A1 picker, scalar backfill, and the picker fixes are DONE and COMMITTED. The geography arc's data + capture layer is complete; remaining work is filters + a few fixes.
+
+DONE + COMMITTED SINCE THE LAST BLOCK:
+  - A1 GEOGRAPHY PICKER (committed bad4787 renderer + eb8817f main): GeographyChips upgraded into the
+    real picker -- scoped country typeahead (LATAM-default / extra-LATAM toggle, frequency-ranked via
+    getCountryUsageCounts), pick-from-list only (no free-text), country chips color-coded by scope
+    (clay LATAM / blue extra-LATAM), REGIONAL/GLOBAL as level toggles (LATAM active [stores 'REGIONAL',
+    displays "LATAM"], +region/+Global disabled/coming-soon), sub-areas preserved, mentioned = neutral
+    ghost. Renderer vocab mirror geographyVocab.ts (synced-by-hand from main geography.ts). Main-side
+    resolver recognizes REGIONAL/GLOBAL sentinels as valid (not unmapped). onChange contract unchanged
+    (Intel NewsTab mount backward-compatible). NOTE: picker currently mounted ONLY on the Intel NewsTab
+    card; the New Sources mount (A2 -- wire picker + dual-write subject_countries AND re-run syncPlacements)
+    is NOT yet built.
+  - BUG D (committed earlier): handleCountries honors updateCountries result -- no optimistic state on a
+    failed/offline write.
+  - SLICE X (part of bad4787): scope toggle DEFAULTS from the source's chips -- all-LATAM -> LATAM lit,
+    all-extra -> extra lit, MIXED -> BOTH lit, EMPTY -> neutral (typeahead DISABLED with prompt "Select
+    LATAM or extra-LATAM first"). Lazy-init-once so user clicks are never re-clobbered.
+  - SCALAR FALLBACK RETIRED (part of bad4787): the old scalarFallback pill branch is GONE. Post-backfill,
+    empty subject_countries now ALWAYS shows the Slice-X empty prompt, never a stale scalar pill. Fixes:
+    (a) removing the last chip no longer resurrects the old scalar, (b) the ~12 hedge rows now show
+    "needs geography" prompt instead of un-clickable scalar text. (The scalar `geography` DB column is
+    left populated but never rendered.) This ALSO means every empty-geography card now VISIBLY prompts
+    for one -- partially doing the needs-geography-indicator's job.
+  - SCALAR->subject_countries BACKFILL (committed 99221f8, scripts/geo-scalar-backfill.mjs): two-pass,
+    dry-run-first, cloud-direct (mirror self-heals on next getSources read). Parser: strip parens, split
+    on "/" only, whole-fragment resolve (never substring -- hedge-safe), drop region-words/noise, Global
+    ->GLOBAL sentinel, LATAM->REGIONAL sentinel, Gaza->Palestine. Pass 1 (--latam-only): 184 LATAM rows.
+    Pass 2 (full): 100 extra-LATAM rows. 12 hedges + no-scalar rows correctly left empty (for the gate).
+    Verified in-app both passes (clay LATAM chips, blue extra-LATAM chips). Cloud is source of truth; the
+    23-vs-323 mirror/cloud row-count gap was real (cloud had far more than the mirror snapshot).
+
+GEOGRAPHY GATE (from Piece B, live): countGeographyPlacements is checked in sendSourceToReview +
+  commitSourceRow -- a source with ZERO geography placements cannot advance to the publication pipeline.
+  Backstop works; the per-card empty PROMPT (above) now makes the "needs geography" state visible on the
+  Intel card. Note the gate acts on info_page_sources PLACEMENTS; the picker edits subject_countries --
+  they connect at route time, but editing subject_countries on an already-in-New-Sources source does NOT
+  re-sync placements yet (that's A2's dual-write, unbuilt).
+
+REMAINING GEOGRAPHY-ARC / RELATED WORK (Dorian's chosen order):
+  1. SLICE Y -- THE FILTER WORK [NEXT]. Three parts, all client-side (filtering an already-loaded array),
+     reuse geographyVocab region logic:
+       (a) REGION FILTER on the Intelligence filter bar: LATAM / extra-LATAM / BOTH (three-state).
+           A source shows if ANY of its subject_countries resolves to a selected region (REGIONAL=LATAM-side,
+           GLOBAL=extra-side). Mixed sources show under whichever region(s) they touch (inclusive).
+       (b) CATEGORY DROPDOWN CORRECTION: the "All categories" dropdown currently filters on the AI's
+           freeform ai_category labels (Criminal & VNSA Activity / Extra-regional Supplier / etc.). Change
+           it to filter on the canonical NINE CS SECTIONS + Incidents (via proposed_sections, the field
+           routing uses). ai_category is LEFT ALONE for now (decision: revisit in AI-retune). Sections and
+           ai_category are SEPARATE fields on the source.
+       (c) PORT the Intelligence filter bar to the publication SOURCES tab, MINUS the reviewed/unreviewed
+           control (committed sources -- that state doesn't apply). [Diagnose item 4 covered whether the bar
+           is a shared component or NewsTab JSX -- follow that for reuse.]
+     Needs its own read-only diagnose first (filter bar structure, category dropdown source+predicate,
+     canonical sections field, Sources-tab current state) -- the diagnose was written; run it before build.
+  2. ISSUE 3 -- STUCK-OPEN CARD BUG. A card (fixture: "Iranian drone display in Coral Gables", Cuba) stays
+     EXPANDED across tab navigation and re-opens itself on return -- violates "views freeze where last used;
+     cards default closed on restart". Hypothesis: a force-open effect on mount for cards with in-progress
+     content, OR expand-state lost on remount. Read-only diagnose written; run before fixing.
+  3. NEEDS-GEOGRAPHY LIST INDICATOR. Per-card prompt is DONE (scalar retired). Remaining: a list-level
+     indicator/filter to FIND all empty-geography sources (the 12 hedges + any new empties) without opening
+     each. Small; pairs naturally with Slice Y's region filter.
+  4. AI-RETUNE (the upstream fix). The AI first-pass writes junk into BOTH geography (freeform "Middle East
+     (Iran/Hormuz)", "N/A", "unknown/global") AND category (the ai_category taxonomy that doesn't match the
+     canonical 9 sections). Retune analyze.ts to emit clean country names / sentinels for geography and the
+     canonical sections -- so backfill never needs re-running and ai_category's parallel taxonomy is resolved.
+     Touches src/main/ai/analyze.ts; connects to the token-efficient-AI standing rule.
+
+STILL DEFERRED (unchanged): A2 (New Sources picker mount + dual-write); review-stage REGIONAL backfill;
+  rule-6 cards_whole flip; two-level dynamic tab bar; REGIONAL->LATAM storage rename; per-cell (section x
+  geography) geography divergence in Pre-Commit Review; country-as-actor / actor-role (supply-axis re-index).
+
+▶ RESUME HERE (CURRENT, 2026-08-09 end -- geography backend COMPLETE; only Piece A/the picker remains) -> NEXT = PIECE A (the geography picker UI).
+
+DONE + COMMITTED THIS SESSION (geography arc backend is now fully built and proven):
+  - Slice 1 (committed): geography vocabulary module (src/main/geography.ts) -- resolver, unmapped surfacing.
+  - Slice 2a (committed): route flip -- routeToNew/routeToNewSources consume subject_countries, emit
+    country/region placements (cross product). PROVEN in cloud SQL.
+  - Slice 2b PIECE B (committed 60e6117): geography-aware syncPlacements -- (section,geography)-keyed
+    reconcile (cross product), per-geography delete narrowing, DECISION-B locked-collision BLOCK
+    (review/committed pairs cannot be removed via a New Sources edit -> returns blocked:true, zero rows
+    changed), the advance-to-review GEOGRAPHY GATE (countGeographyPlacements, called in sendSourceToReview
+    + commitSourceRow), and REMOVED slice-1's [REGIONAL] empty-fallback (empty resolve -> [] -> gate blocks).
+    ALL THREE self-test checks PASSED in the authoritative store (normal routing; per-geo delete keeps the
+    sibling; locked row untouched). Verified via a throwaway in-app self-test harness, since removed.
+  - COUNTRY->REGION TABLE (committed fe904b4): full 197-country map in geography.ts, 9 regions
+    (LATAM / North America / Europe / MENA / Sub-Saharan Africa / Asia / Russia / Oceania / GLOBAL).
+    Region type 'Middle East' renamed to 'MENA' (safe -- no external dependents). LATAM is flat (all Latin
+    America + Caribbean, 33). getCountryUsageCounts (main-side, reads mirror) added + wired
+    (ipc/preload/env.d.ts) for the picker's frequency ranking -- LIVE-TESTED via console, returns real
+    per-country counts (Colombia 8, Mexico 4, ...). Two BOUNDARY CALLS flagged in-code as overridable:
+    (a) Caucasus (Georgia/Armenia/Azerbaijan) -> MENA (could be Europe for Georgia/Armenia); (b) Sahel
+    line (Sudan/Mauritania -> MENA/Arab-League; Chad/Mali/Niger -> Sub-Saharan). Alias map handles
+    USA/UK/UAE/DRC/Ivory Coast/Burma/etc; normalizer-edge keys (Cote d'Ivoire, Guinea-Bissau, Timor-Leste,
+    Bosnia and Herzegovina) verified to equal normalizeCountry() output exactly.
+
+STANDING PRACTICE RULES ADDED THIS SESSION (committed 0b5221f): check existing UI/architecture before
+  designing or building (a mockup of an existing screen is wasted work); no view remounts on actions
+  (views freeze where last used -- background/optimistic updates only); token-efficient AI always (no
+  redundant re-scans; cheapest model that does the job).
+
+NEXT -- PIECE A (the geography picker UI; the FINAL geography-arc slice; DESIGN-FIRST / MOCKUP-FIRST):
+  START by READING the ACTUAL current GeographyChips.tsx (src/renderer/src/pages/Intelligence/) before
+  designing anything -- do not mock from memory (a mockup earlier this session reinvented a control that
+  already existed; that mistake is why the "check existing UI first" rule exists).
+  The picker (per decisions locked this session):
+    - A two-part LATAM / extra-LATAM toggle (color-coded, e.g. orange LATAM / blue extra-LATAM; NOT mutually
+      exclusive -- a source can carry both). Click a side, then the typeahead is scoped to that side's countries.
+    - FREQUENCY-RANKED typeahead (3-4 suggestions drop down as you type), ranked via getCountryUsageCounts
+      within the active scope. Region DERIVED from the pick (via COUNTRY_TO_REGION). NO popup -- inline
+      anchored dropdown (dismisses on select/blur), matching the card's existing +country/+actor/+tag pattern.
+    - REGIONAL and GLOBAL as separate selectable toggles (aggregation levels, not countries). REGIONAL = all-LATAM
+      now; other region-level targets appear as populated. (Confirm: REGIONAL offers all-LATAM now, other regions
+      as turned on.)
+    - Built as an UPGRADE to the shared GeographyChips component, mounted in BOTH the Intel card AND the New
+      Sources card (PipelineSourceCard) -- same picker both places. NOTE: REGIONAL/GLOBAL do NOT exist on the
+      Intel side today (confirmed missing) -- introducing them into the Intel geography model is part of Piece A
+      (decide where REGIONAL/GLOBAL store on the intel row -- likely as values in subject_countries, TBD).
+    - WIRING (per the 2b diagnose): widen getSourcePipeline + the row type to carry subject_countries/mentioned/
+      subGeo; add the parent handler in NewSourcesTab (mirrors onConfirmSections/onSetIncident prop pattern);
+      an edit writes subject_countries (via existing updateCountries) AND re-runs the geography-aware
+      syncPlacements (Option 1, locked -- both, so chips and placements stay coherent); keep it optimistic
+      (no remount, per standing rule). Piece A also FOLDS IN the "re-read the whole article in New Sources"
+      ask (chevron/expand to see full piece text, like Pre-Commit Review).
+    - The GATE (from Piece B) means a source with zero geographies can't advance -- the picker is how the
+      researcher satisfies it.
+
+STILL DEFERRED (unchanged): review-stage REGIONAL backfill (pre-flip rows); rule-6 cards_whole flip (unblocked
+  by 2a); two-level dynamic tab bar; REGIONAL->LATAM rename; country-as-actor as geography + actor-role
+  classification (-> supply-axis re-index); Pre-Commit Review PER-CELL geography divergence (layer 3;
+  New Sources stays source-level).
+
 ▶ RESUME HERE (CURRENT, 2026-08-09 late -- EXTENDS the slice-1+2a block below; locks the geography SELECTION model + reshapes the queue) -> NEXT BUILD = PIECE B (geography-aware syncPlacements + gate).
 
 GEOGRAPHY SELECTION MODEL (locked with Dorian 2026-08-09, supersedes the "[REGIONAL] empty-fallback" framing):
