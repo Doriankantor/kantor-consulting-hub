@@ -4,6 +4,72 @@ _Last updated: 2026-08-07 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
+▶ RESUME HERE (CURRENT, 2026-08-10 pm -- Intel filters shipped; next = Y2 [Sources-tab filter port] then issue-3, needs-geo indicator, AI retune) -> Y1 filter bar + picker fixes DONE and committed. Y2 needs a diagnose re-read (its first diagnose came through blank twice -- RE-RUN it).
+
+DONE + COMMITTED THIS SESSION (all pushed to main):
+  - A1 GEOGRAPHY PICKER + SLICE X (bad4787 renderer, eb8817f main): scoped country typeahead
+    (LATAM-default/extra-LATAM toggle, frequency-ranked via getCountryUsageCounts, pick-from-list only),
+    scope-coloured chips (clay LATAM / blue extra-LATAM / accent sentinels / ghost mentioned), REGIONAL/
+    GLOBAL level toggles (LATAM active, +region/+Global disabled), sub-areas preserved. Slice X: scope
+    toggle DEFAULTS from chips (all-LATAM->LATAM, all-extra->extra, MIXED->BOTH lit, EMPTY->neutral w/
+    disabled typeahead "Select LATAM or extra-LATAM first"). SCALAR FALLBACK RETIRED -- empty geography
+    now shows the prompt, never a stale scalar pill; the ~12 hedge rows now show "needs geography".
+    Renderer vocab mirror geographyVocab.ts (hand-synced from main geography.ts).
+  - BUG D (committed earlier): handleCountries honors updateCountries result (no optimistic state on
+    failed/offline write).
+  - SCALAR->subject_countries BACKFILL (99221f8, scripts/geo-scalar-backfill.mjs): two-pass, dry-run-
+    first, cloud-direct (mirror self-heals on next getSources read). Parser: strip parens, split on "/"
+    only, whole-fragment resolve (hedge-safe), Global->GLOBAL, LATAM->REGIONAL, Gaza->Palestine. Pass 1
+    (--latam-only): 184 LATAM. Pass 2: 100 extra-LATAM. 12 hedges + no-scalar left empty for the gate.
+    Verified in-app both passes. Cloud is source of truth (had ~323 rows vs the mirror's smaller snapshot).
+  - Y1 INTELLIGENCE FILTER BAR (dbd96f9): (a) REGION filter LATAM/extra-LATAM/both -- a source shows if
+    any subject_countries value resolves to a selected region (REGIONAL=LATAM-side, GLOBAL=extra-side);
+    mixed shows under whichever it touches; "Both" = only mixed; empty-geo shows only under "All".
+    (b) CATEGORY dropdown now filters CANONICAL SECTIONS + Incidents via routing.confirmed (the LIT/
+    SELECTED chips), FALLING BACK to proposed_sections when untouched -- NOT ai_category (that was the
+    "shows under greyed Logistics" bug). Section option values are KEYS ('vnsa'), matched key-to-key.
+    (c) LOAD-ALL WHEN FILTERING: region/section filters fetch the full in-scope set (~319) so the client
+    filter sees all rows, not just the loaded 50-page -- that was why extra-LATAM showed 0. Verified:
+    extra-LATAM (all statuses) = 102 of 319; VNSA filters selected sections; no remount. NOTE: relevance/
+    project filters have the SAME page-limited latent bug (not fixed -- flagged for a later consistency pass).
+  - ai_category PILL CLEANUP (6e8d3f0): removed the dead ai_category category pills from the Intel card
+    (they no longer drive the filter). KEPT the Incident indicator (separate flag, not ai_category). Grep
+    confirmed pills render only on the Intel card. ai_category FIELD left in the data model (revisit in retune).
+
+KEY LEARNINGS THIS SESSION (add to the recurring-bug list):
+  - subject_countries comes off a row as a JSON STRING -- parse before .some()/.includes() (same class as
+    categories_json). A missing parse silently returns nothing.
+  - Client-side filters over a PAGINATED list only see the loaded page -- a filter can show 0 while matching
+    rows exist off-page. Fix: load-all-when-filtering (fine at ~319 scale) or server-side (bigger, Y2+).
+  - "selected sections" live in routing.confirmed (the lit chips), NOT proposed_sections (the AI proposal /
+    which chips exist). Filter/read confirmed-else-proposed.
+  - UPLOADS TO CHAT AROUND HERE CAME THROUGH BLANK TWICE (the known empty-upload gotcha) -- when a diagnose
+    or report must be shared with the assistant, PASTE AS TEXT, don't rely on file upload.
+
+REMAINING WORK (Dorian's order):
+  1. Y2 [NEXT] -- port the Intelligence filter bar to the publication SOURCES tab, MINUS reviewed/unreviewed.
+     Its read-only diagnose (Sources-tab current controls, data-shape match [subject_countries / routing.
+     confirmed / incident flag], EXTRACT-shared-component vs COPY, and whether the Sources tab paginates
+     [needs load-all] or loads-all-at-once [load-all moot]) was RUN but came through BLANK to the assistant --
+     RE-RUN it and PASTE THE RESULT AS TEXT. Two decisions gate the build: (i) extract vs copy, (ii) does the
+     Sources tab need load-all. Then spec + build.
+  2. ISSUE 3 -- STUCK-OPEN CARD. Fixture: "Iranian drone display in Coral Gables" (Cuba) stays EXPANDED across
+     tab navigation and re-opens on return -- violates "views freeze where last used; default closed on restart".
+     Read-only diagnose written (where card expand-state lives; is there a force-open effect on mount for cards
+     with in-progress content). Run before fixing.
+  3. NEEDS-GEOGRAPHY LIST INDICATOR. Per-card empty prompt is DONE (scalar retired). Remaining: a list-level
+     indicator/filter to FIND all empty-geography sources (the 12 hedges + new empties) -- pairs with the region
+     filter (they already show only under "All"). Small.
+  4. AI-RETUNE. The AI first-pass writes junk into geography (freeform "Middle East (Iran/Hormuz)", "N/A",
+     "unknown/global") AND category (ai_category taxonomy that doesn't match the 9 canonical sections). Retune
+     analyze.ts to emit clean country names/sentinels + canonical sections, so backfill never re-runs and
+     ai_category's parallel taxonomy is resolved. Touches src/main/ai/analyze.ts; ties to token-efficient-AI rule.
+
+STILL DEFERRED (unchanged): A2 (New Sources picker mount + dual-write subject_countries AND re-run
+  syncPlacements); review-stage REGIONAL backfill; rule-6 cards_whole flip; two-level dynamic tab bar;
+  REGIONAL->LATAM storage rename; per-cell (section x geography) Pre-Commit divergence; country-as-actor /
+  actor-role (supply-axis re-index); the relevance/project page-limited filter bug (consistency pass).
+
 ▶ RESUME HERE (CURRENT, 2026-08-10 -- geography PICKER + BACKFILL shipped; next = Slice Y filters) -> A1 picker, scalar backfill, and the picker fixes are DONE and COMMITTED. The geography arc's data + capture layer is complete; remaining work is filters + a few fixes.
 
 DONE + COMMITTED SINCE THE LAST BLOCK:
