@@ -1409,8 +1409,11 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           const themaTags = readTags(source.thematic_tags)
           // News human layer: relevance override (analysis_json.human) + footer open state.
           const humanRel = (parseAnalysis(source.analysis_json).human as { relevance?: string } | undefined)?.relevance
-          const footerFilled = !!notesText(source.intel_notes)   // footer is notes-only now
-          const footerOpen = openFooter[source.id] ?? footerFilled
+          const footerFilled = !!notesText(source.intel_notes)   // footer is notes-only now (drives the ●/✎ indicator below)
+          // Issue-3 fix: default CLOSED, never content-forced open. footerFilled still styles the
+          // toggle's notes indicator, but no longer auto-opens the footer — an explicit toggle
+          // (setOpenFooter) wins within the session; on remount/restart every card starts closed.
+          const footerOpen = openFooter[source.id] ?? false
           // 3e: rich human-first footer — article text + AI + reconcile (per-source keyed).
           const contentDraft = contentDrafts[source.id] ?? (source.content || '')
           const hasArticleText = notesText(contentDraft).length > 40   // substantial pasted text (not ~52-char snippet leftovers)
