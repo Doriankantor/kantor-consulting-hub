@@ -17,6 +17,10 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { resolveAnthropicKey } from '../ipc'
+// Geo-2 (slice 2): canonical geography resolver -- snaps a raw country string to its
+// canonical spelling, recognizes the REGIONAL/GLOBAL sentinels, and flags unmapped junk.
+// Reused (not duplicated) from the main-side vocab; the gate path uses the same fn.
+import { resolveRegion } from '../geography'
 
 // Current model. This matches the live relevance-gate / classify path, whose
 // constant is GATE_MODEL = 'claude-haiku-4-5' in ipc/index.ts — a current Haiku 4.5
@@ -765,6 +769,12 @@ RULES:
   mentioned_countries: ["Iran"]  (Venezuela is the subject; Iran is the supplier mentioned).
 - If genuinely unsure whether a country is subject or mentioned, prefer subject only when the
   story is substantively about events/actors IN that country; otherwise mentioned.
+- SENTINELS: if the story has NO single subject country -- it is genuinely LATAM-wide/regional, or
+  extra-regional/global -- put the SOLE value "REGIONAL" (LATAM-wide) or "GLOBAL" (extra-regional) in
+  subject_countries and NOTHING else (never mix a sentinel with a country in the same list). Do NOT
+  invent a country, and do NOT emit a sub-region ("Middle East"), "N/A", or "unknown". If you truly
+  cannot determine the geography, return an EMPTY subject_countries list. mentioned_countries takes
+  bare countries ONLY -- never a sentinel.
 
 ACTORS. List every named actor the document ENGAGES — not only incident perpetrators. This axis is
 "which actors is this document about / dealing with," which matters as much for ANALYTICAL pieces as
@@ -909,26 +919,46 @@ function normalizeResult(parsed: Record<string, unknown>): AnalyzeResult {
   } else {
     out.routing_reasoning = ''
   }
-  // Geo-1: two bare-country-name lists. Clean strings, de-dupe case-insensitively within each
-  // list, cap at 12, then enforce mutual exclusion (subject wins over mentioned). No canonical
-  // country dictionary in v1 — just trimmed strings. Never throws; absent/invalid → [].
-  const cleanCountryList = (v: unknown): string[] => {
+  // Geo-2 (slice 2): CANONICAL SNAP. Each raw entry is resolved via resolveRegion instead of
+  // being passed through as trimmed freeform. Rules (Sentinel Model A):
+  //   - a real country -> its canonical spelling ("Colombian"/" mexico " -> "Colombia"/"Mexico");
+  //   - REGIONAL/GLOBAL are valid ONLY in subject_countries and ONLY as a SOLE entry -- if a
+  //     sentinel appears, the whole list becomes exactly [sentinel] (drop every country);
+  //   - mentioned_countries takes countries ONLY -> any sentinel there is dropped;
+  //   - unmapped junk ({unmapped:true}, e.g. "Middle East", "N/A") is DROPPED, never written;
+  //   - de-dupe case-insensitively, cap 12; then mutual exclusion (subject wins over mentioned).
+  // CRITICAL: an empty result STAYS EMPTY -- no REGIONAL fallback (deliberately unlike the slice-1
+  // gate). Empty subject_countries is a real state the needs-geography prompt + placement gate read.
+  // Never throws; absent/invalid input -> [].
+  const snapCountries = (v: unknown, allowSentinel: boolean): string[] => {
     if (!Array.isArray(v)) return []
-    const seen = new Set<string>(), out2: string[] = []
+    const seen = new Set<string>()
+    const countries: string[] = []
+    let sentinel: string | null = null // subject-only: first sentinel seen wins, becomes sole entry
     for (const raw of v) {
       const s = String(raw ?? '').trim().slice(0, 60)
       if (!s) continue
-      const key = s.toLowerCase()
+      const r = resolveRegion(s)
+      if ('unmapped' in r) continue // junk -> drop, do not pass freeform through
+      const isSentinel = r.country === 'REGIONAL' || r.country === 'GLOBAL'
+      if (isSentinel) {
+        if (!allowSentinel) continue // mentioned_countries: sentinels are not valid
+        if (sentinel === null) sentinel = r.country // canonical sentinel spelling
+        continue
+      }
+      const key = r.country.toLowerCase()
       if (seen.has(key)) continue
-      seen.add(key); out2.push(s)
-      if (out2.length >= 12) break
+      seen.add(key); countries.push(r.country)
+      if (countries.length >= 12) break
     }
-    return out2
+    // Model A: a sentinel is the SOLE entry -- if present, it replaces all countries.
+    if (allowSentinel && sentinel) return [sentinel]
+    return countries
   }
-  const subj = cleanCountryList(parsed.subject_countries)
+  const subj = snapCountries(parsed.subject_countries, true)
   const subjKeys = new Set(subj.map(s => s.toLowerCase()))
   // Mutual exclusion: a country in subject_countries is removed from mentioned_countries.
-  const mentioned = cleanCountryList(parsed.mentioned_countries).filter(m => !subjKeys.has(m.toLowerCase()))
+  const mentioned = snapCountries(parsed.mentioned_countries, false).filter(m => !subjKeys.has(m.toLowerCase()))
   out.subject_countries = subj
   out.mentioned_countries = mentioned
   // Actor-1: named actors, each typed. Fail-safe never-throw. Each item must be an object with a
