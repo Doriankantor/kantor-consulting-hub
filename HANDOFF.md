@@ -5,6 +5,77 @@ _Last updated: 2026-08-11 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 ## ▶ Start here — resume point for the next session
 
 --------------------------------------------------------------------------------
+> RESUME HERE (CURRENT, 2026-08-11 late -- unified CARD DESIGN locked; PUBLISH scoped (5 slices); ISSUE-3 fixed (32c1ef0); AI-RETUNE slice 1 shipped (a1d7f69). Next = retune slice 2 OR the card-unification arc.)
+
+SHIPPED + COMMITTED THIS SESSION:
+  - ISSUE-3 fix -- stuck-open card. NewsTab.tsx:1413 footerOpen default changed `?? footerFilled` -> `?? false`
+    (cards default closed; explicit toggle wins within session; footerFilled KEPT -- it still drives the
+    notes indicator dot/pencil on the Review-and-annotate button). Renderer-only. Tested 5/5. Committed.
+  - AI-RETUNE SLICE 1 (a1d7f69) -- constrain the RELEVANCE-GATE geography. KEY DIAGNOSE CORRECTION: the
+    freeform geography junk ("Middle East (Iran/Hormuz)", "N/A", "unknown/global") does NOT come from
+    analyze.ts -- analyze.ts already emits clean-ish bare country names + hard-validated 9 sections.
+    The junk factory is gateClassifyArticle in ipc/index.ts (~:2808), the title+snippet triage gate that
+    writes the SCALAR geography/region (region = geography) with only .slice(0,120). Fix: prompt now asks
+    for a single canonical country OR REGIONAL/GLOBAL sentinel; and a SNAP-before-write via resolveRegion
+    (already in src/main/geography.ts, already imported) enforces it -- canonical country -> normalized
+    spelling, sentinels through, unmapped/blank -> REGIONAL (LATAM-focused default). Forward-only: existing
+    junk rows clean up via the "Re-score unscored" button (a few cents of Haiku). Tested incl. cloud-SQL
+    verify. Committed.
+
+DESIGN LOCKED THIS SESSION (approved, NO code yet):
+  - UNIFIED SOURCE CARD -- via interactive mockup (outputs/unified-source-card-mockup.html). ONE shell,
+    three surfaces; only per-surface difference is which axis is EDITABLE. Structure: prominent TITLE
+    surface -> three tinted zones w/ corner icons [cogwheel = assessment/routing: status, confidence,
+    relevance, language, incident, sections, tags | globe = geography | bust = engaged entities/actors]
+    -> collapsible REVIEW & ANNOTATE w/ 3-state COMPLETENESS METER + gate checklist + Close btn ->
+    per-surface ACTION bar. PATTERNS: (a) overflow "... +N" pill per zone -> zone-anchored popover grouped
+    by sub-type; (b) confidence/relevance = click-to-override pills; (c) meter "ready" MUST equal the real
+    approve gate.
+    EDITABILITY MATRIX (FINAL): geography Intel EDIT / New READ / All READ; actors Intel EDIT / New READ
+    [NEW: read-visible; today ABSENT] / All READ; sections Intel READ (AI-proposed) / New EDIT (the +section
+    picker, unselected-only) / All READ [REVERSED TWICE -- FINAL = routing edits ONLY at New Sources];
+    tags Intel EDIT / New READ / All READ; incident Intel EDIT [NEW -- lift IncidentChip onto Intel] / New
+    EDIT / All READ; confidence + relevance Intel EDIT / New READ / All READ; actions Intel full / New
+    confirm+moveback / All none.
+    COMMIT-GATE INGREDIENTS: HARD = article text, AI run, geography (placements), >=1 section, tags,
+    incident-determined. NOT gates = confidence, reliability (AI-predetermined, override-only).
+  - CARD-UNIFICATION IS AN ARC. Intel card = inline JSX in NewsTab; New/All = PipelineSourceCard (which has
+    NO editable branch for geo/actors/tags/confidence/relevance -- only sections+incident). Build = extract a
+    shared SourceCard shell + editability config + add the missing editable branches. NEEDS A SEQUENCED SLICE
+    PLAN before code. OPEN DECISION: shared-shell-from-scratch (recommended) vs morph-Intel-inline-first.
+    Rough A-plan: (1) shell + Intel mount READ-ONLY, (2) wire Intel editable axes, (3) overflow popovers,
+    (4) incident lift, (5) converge New Sources, (6) converge All Sources, (7) completeness meter+gate
+    (needs an approve-gate logic diagnose first).
+  - DRONE-DB HANDOFF PACKET (outputs/): unified-card-model-spec.md (shell + editability model + reuse map +
+    the specs-zone open question) + the mockup. THIRD piece to generate: docs/contested-skies-lifecycle.md --
+    a CODE-TRUE intel+publish lifecycle map (BUILT/PARTIAL/DESIGN per stage); Code-writes-it prompt drafted.
+
+PUBLISH PIPELINE SCOPED (diagnose done). TWO CORRECTIONS to prior notes: (i) geography routing is NOT the
+  blocker -- country placements already reach the DB. (ii) Real blocker = TWO DISCONNECTED PUBLISH SYSTEMS:
+  live push publishToRepo (ipc:4246, GitHub Contents API, Head-gated) reads OLD info_page_commits + HTML-
+  appends into a hand-shaped index.html; the grid work (publication_changes/cards) never reaches the page.
+  5 critical-path slices: S1 monitor-repo pivot [UNKNOWN, external repo, own diagnose], S2 content.json
+  generator, S3 rewire publishToRepo to the grid, S4 ATOMIC approve transaction (today = separate best-effort
+  writes), S5 confirm deploy workflow [external]. +2 for full design: S6 AI change-summary/on-page note,
+  S7 RECENT CHANGES view + diff + rollback. Next unknown-collapser: read-only diagnose of contested-skies-monitor.
+
+RETUNE REMAINING (after slice 1):
+  - Slice 2: analyze.ts geography -- add REGIONAL/GLOBAL sentinels to the relevance prompt + a canonical-snap
+    in the subject_countries/mentioned_countries normalizer (currently NO dictionary validation). Token-neutral.
+    Keep the .ai/.routing/.human boundaries and emit section key `legal` (NOT `regulatory`).
+  - Slice 3: drop the dead ai_category/categories_json parallel taxonomy (keyword-derived, not AI, no longer
+    displayed or filtered). PRECEDE with a drop-safety diagnose of the cloud queue_section derivation
+    (ipc:3506 reads categories_json) before touching the column.
+
+REMAINING WORK (order): (1) retune slice 2/3 OR (2) CARD-UNIFICATION arc [write slice plan first] --
+  Dorian to choose; (3) needs-geography list indicator (small, independent).
+
+STILL DEFERRED (unchanged): A2 New Sources geo picker + syncPlacements re-run; review-stage REGIONAL backfill;
+  rule-6 cards_whole flip; two-level tab bar; REGIONAL->LATAM rename; per-cell divergence; supply-axis re-index;
+  page-limited relevance/project filter bug; intake-SourcesTab article-move question.
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
 > RESUME HERE (CURRENT, 2026-08-11 later -- unified CARD DESIGN locked (mockup approved); PUBLISH pipeline scoped (5 slices to reliable publish); next build = ISSUE-3 fix, then the CARD-UNIFICATION arc) 
 
 DESIGN LOCKED THIS SESSION (no code yet -- these are approved designs + scoping, not builds):
