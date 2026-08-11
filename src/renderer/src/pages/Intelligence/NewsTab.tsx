@@ -11,7 +11,7 @@ import GeographyChips from './GeographyChips'
 import ActorChips from './ActorChips'
 import { actorTypeClass } from './actorTypeClass'
 import { resolveFacts, resolveCaps, resolveIncident, type ResolvedFact, type ResolvedCap } from './resolveAnalysis'
-import { lookupCountry } from './geographyVocab'
+import { classifyGeo } from './geographyVocab'
 import { SECTION_LABELS } from './sectionLabels'
 import { parseConfig } from './frameworkConfig'
 import { notifyIntelChanged } from '../../utils/intelEvents'
@@ -35,23 +35,9 @@ const STATUS_LABELS: Record<string, string> = {
   imported: 'Imported — needs confirmation',
 }
 
-// Slice Y1 region filter: classify a source's geography from its subject_countries. A value resolves
-// LATAM-side (a region==='LATAM' country via geographyVocab, or the 'REGIONAL' sentinel) or
-// extra-LATAM-side (any other known country, or the 'GLOBAL' sentinel); a value not in the vocab
-// counts as neither. hasLatam/hasExtra can BOTH be true — a genuinely mixed source.
-function classifyGeo(subjectCountries: string[]): { hasLatam: boolean; hasExtra: boolean } {
-  let hasLatam = false, hasExtra = false
-  for (const v of subjectCountries) {
-    const u = v.trim().toUpperCase()
-    if (u === 'REGIONAL') { hasLatam = true; continue }
-    if (u === 'GLOBAL')   { hasExtra = true; continue }
-    const c = lookupCountry(v)
-    if (!c) continue
-    if (c.isLatam) hasLatam = true; else hasExtra = true
-  }
-  return { hasLatam, hasExtra }
-}
-// Sentinel value for the section dropdown's "Incidents" option — distinct from every section key.
+// Slice Y1 region filter: classifyGeo now lives in geographyVocab.ts (shared with AllSourcesTab) —
+// imported above. Sentinel value for the section dropdown's "Incidents" option — distinct from every
+// section key.
 const INCIDENTS_FILTER = '__incidents__'
 
 // Short labels for the gate's proposed relevance type.

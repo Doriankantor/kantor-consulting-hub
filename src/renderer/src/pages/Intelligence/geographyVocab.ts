@@ -239,3 +239,21 @@ export function lookupCountry(name: string): GeoCountry | undefined {
 export function isLatamCountry(name: string): boolean {
   return lookupCountry(name)?.isLatam ?? false
 }
+
+// Slice Y1 region filter: classify a source's geography from its subject_countries. A value resolves
+// LATAM-side (a region==='LATAM' country via lookupCountry, or the 'REGIONAL' sentinel) or
+// extra-LATAM-side (any other known country, or the 'GLOBAL' sentinel); a value not in the vocab
+// counts as neither. hasLatam/hasExtra can BOTH be true -- a genuinely mixed source. Shared by
+// NewsTab (Intel) and AllSourcesTab (committed library) so the region predicate has one definition.
+export function classifyGeo(subjectCountries: string[]): { hasLatam: boolean; hasExtra: boolean } {
+  let hasLatam = false, hasExtra = false
+  for (const v of subjectCountries) {
+    const u = v.trim().toUpperCase()
+    if (u === 'REGIONAL') { hasLatam = true; continue }
+    if (u === 'GLOBAL')   { hasExtra = true; continue }
+    const c = lookupCountry(v)
+    if (!c) continue
+    if (c.isLatam) hasLatam = true; else hasExtra = true
+  }
+  return { hasLatam, hasExtra }
+}

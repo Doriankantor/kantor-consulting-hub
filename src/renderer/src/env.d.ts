@@ -490,6 +490,9 @@ interface InfoPageSourceRow {
   relevance_score: number | null
   relevance_type: string | null
   geography: string | null
+  // Y2: role-split geography list (TEXT holding a JSON-string array), for the AllSourcesTab region
+  // filter. Added to the getSourcePipeline JOIN alongside the scalar `geography` above.
+  subject_countries: string | null
   language: string | null
   categories_json: string | null
   thematic_tags: string | null
