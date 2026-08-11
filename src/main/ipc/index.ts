@@ -7,7 +7,7 @@ import { join, basename, extname } from 'path'
 import { randomBytes, createHash, createHmac } from 'crypto'
 import { getDatabase, hashPassword } from '../db'
 import { CLOUD_ADMIN_EMAIL, PERMISSION_KEYS } from '../constants'
-import { resolvePlacementGeographies, getCountryUsageCounts } from '../geography'
+import { resolvePlacementGeographies, getCountryUsageCounts, resolveRegion } from '../geography'
 import { cloud } from '../cloud/client'
 import { driveSync } from '../google/drive'
 import { sendEmail, inviteEmailHtml } from '../google/gmail'
@@ -2805,9 +2805,15 @@ async function gateClassifyArticle(
 {
   "relevance_score": <integer 0-10 for Colombia relevance>,
   "relevance_type": "in-region | supply-side | precedent | escalation-signal | none",
-  "geography": "<primary country or region of the article, your best guess>",
+  "geography": "<a single bare English country name, or REGIONAL, or GLOBAL>",
   "reasoning": "<one short sentence>"
 }
+
+GEOGRAPHY RULE: "geography" must be EXACTLY ONE of:
+- a single bare English country name (e.g. "Colombia", "Mexico", "Venezuela", "Iran", "China", "United States"), OR
+- "REGIONAL" -- LATAM-wide, no single subject country, OR
+- "GLOBAL" -- extra-regional / worldwide, no single subject country.
+Do NOT return a sub-region, city, department, or body of water (e.g. "Middle East", "Hormuz", "Norte de Santander"), an adjective ("Colombian" -> use "Colombia"), a country code, or "N/A" / "unknown". If there is no single subject country you MUST return REGIONAL or GLOBAL -- never blank, never a guess.
 
 Title: ${article.title || ''}
 Snippet: ${article.snippet || ''}
@@ -2823,7 +2829,15 @@ Source: ${article.source || 'Unknown'}`,
     score = Math.max(0, Math.min(10, Math.round(score)))
     let rtype = String(parsed.relevance_type ?? 'none').toLowerCase().trim()
     if (!(GATE_TYPES as readonly string[]).includes(rtype)) rtype = 'none'
-    const geography = parsed.geography ? String(parsed.geography).slice(0, 120) : null
+    // Geo snap (Slice 1): the prompt asks for a canonical country name or the REGIONAL/GLOBAL
+    // sentinel, but a prompt can't enforce it -- snap the raw value to the main-side canonical
+    // vocab before it reaches the scalar geography/region columns (PipelineSourceCard's pin pill
+    // reads these). resolveRegion handles the two sentinels and normalizes/aliases a country to
+    // its canonical spelling; anything unmapped or blank falls back to REGIONAL (LATAM is the
+    // project default -- a safer, in-focus-region default than GLOBAL for an unresolvable value).
+    const rawGeo = parsed.geography != null ? String(parsed.geography).trim() : ''
+    const snapped = rawGeo ? resolveRegion(rawGeo) : null
+    const geography = snapped && !('unmapped' in snapped) ? snapped.country : 'REGIONAL'
     const reasoning = parsed.reasoning ? String(parsed.reasoning).slice(0, 500) : null
     return { relevance_score: score, relevance_type: rtype as GateRelevanceType, geography, region: geography, reasoning }
   } catch (e) {
