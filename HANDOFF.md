@@ -5,6 +5,71 @@ _Last updated: 2026-08-11 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 ## ▶ Start here — resume point for the next session
 
 --------------------------------------------------------------------------------
+> RESUME HERE (CURRENT, 2026-08-11 latest -- AI-RETUNE slices 1+2 SHIPPED; retune slice 3 REFRAMED into the four-type CONVERGENCE arc, which is the SAME arc as the unified-card build. Next = the unified-card / convergence slice plan, fresh session.)
+
+SHIPPED + COMMITTED THIS SESSION (retune):
+  - RETUNE SLICE 1 (a1d7f69) -- relevance-GATE geography constrained. The scalar-geography junk factory is
+    gateClassifyArticle in ipc/index.ts (~:2808), NOT analyze.ts. Prompt now asks for canonical country OR
+    REGIONAL/GLOBAL; snap-before-write via resolveRegion (src/main/geography.ts, already imported). Junk-fallback
+    REGIONAL. Forward-only (existing rows clean via Re-score). Verified incl. cloud SQL.
+  - RETUNE SLICE 2 (committed) -- analyze.ts geography sentinels + normalizer snap. Relevance prompt gained the
+    REGIONAL/GLOBAL sentinel instruction; normalizer snaps subject/mentioned via resolveRegion: canonical spelling,
+    subject accepts REGIONAL/GLOBAL as SOLE-entry sentinel (collapses mixed country+sentinel to sentinel alone),
+    mentioned = countries only, junk dropped, EMPTY STAYS EMPTY (no REGIONAL fallback -- preserves needs-geography
+    prompt + placement gate). Verified on real analysis runs: multi-country -> clean list; no-subject -> single
+    GLOBAL/REGIONAL; mixed legacy row cleaned to sole-entry on re-analyze; no sentinel in mentioned. subject_countries
+    is written ONLY by the manual "Analyze with AI" button (analyzeSource -> analyzeText relevance -> saveAiAnalysis),
+    requires stored article text, cloud-first then mirror. The gate (gate_processed=1) is a DIFFERENT pass and does
+    NOT write subject_countries.
+
+RETUNE SLICE 3 REFRAMED -- do NOT do it as a standalone categories_json drop. Drop-safety diagnose found:
+  categories_json is NOT load-bearing for routing (queue_section derived from it is WRITE-ONLY, zero readers;
+  filing runs on routing.proposed_sections + subject_countries). BUT the column is co-owned by SOCIAL (live
+  user-editable picker) and still renders pills on PipelineSourceCard. Dorian's intent: the old per-type
+  categories_json is a PLACEHOLDER to be REPLACED by the real structured axes, retired as those axes arrive --
+  not removed in isolation. => folds into the convergence arc below.
+
+THE BIG FINDING -- FOUR-TYPE CONVERGENCE = THE UNIFIED-CARD ARC (verified by diagnose):
+  The full structured apparatus (geography picker, section picker, tags, relevance, confidence, structured
+  analysis) currently lives fully only in NEWS. GOAL: all four intel types (news/social/documents/interviews)
+  must converge on the SAME structured outcome so every type can feed the publication pipeline -> website.
+  DIAGNOSE RESULT (critical): all three non-News tabs ALREADY run task:'relevance' + saveAiAnalysis, so the full
+  structured payload (proposed_sections, subject_countries, actors, capabilities, key_facts) ALREADY EXISTS in
+  analysis_json for every type. Routing is ALREADY converged -- all three Send handlers call routeToProject ->
+  routeToNewSources, placing by proposed_sections + subject_countries (same as News). So convergence is ~5/6 a
+  UI-ONLY PORT, not a re-analysis effort:
+    Per-type gaps (Social / Documents / Interviews):
+      - Geography picker (GeographyChips): MISSING all three -- UI-only (data in subject_countries)
+      - Sections picker/confirm: MISSING all three -- UI-only (data in routing)
+      - Full structured render (capabilities/key_facts/actors): PARTIAL all three -- UI-only (data in .ai)
+      - Confidence editor: Social HAS; Documents/Interviews MISSING -- UI-only
+      - Tags: all three HAVE (done)
+      - Human RELEVANCE override: MISSING all three -- the ONE real data-path gap (no handleHumanRelevance ->
+        setHumanRelevance -> analysis_json.human wired in these tabs; saveAiAnalysis writes .human the same way,
+        so reachable, just not wired).
+      - Old categories_json picker to retire: Social=full picker (co-owns column, keep column), Documents=read-only
+        badges, Interviews=none.
+  KEY STRATEGIC POINT: convergence and the unified-card redesign are ONE arc. The unified card IS the vehicle --
+  build the shared SourceCard shell with editable zones, mount it across all four types, and the structured-axis
+  port + categories_json retirement fall out of it. Porting controls tab-by-tab now, then rebuilding into the
+  unified card later, would touch social/documents/interviews TWICE. Do it once, via the card.
+
+NEXT (fresh session): write the UNIFIED-CARD / CONVERGENCE slice plan. It covers: (1) shared SourceCard shell
+  (title surface + cogwheel/globe/bust zones + overflow popovers + review/completeness meter, per the approved
+  mockup outputs/unified-source-card-mockup.html), (2) editability config per surface AND per intel type, (3) the
+  human-relevance data-path port (the one non-UI gap), (4) retire categories_json per type as its axes arrive
+  (keep the physical column -- Social co-owns). Open decision still: shared-shell-from-scratch (recommended) vs
+  morph-News-inline-first. Also pending: the drone-DB lifecycle doc (docs/contested-skies-lifecycle.md, Code-writes
+  prompt drafted) + the drone handoff packet already in outputs.
+
+Also still queued (unchanged): needs-geography list indicator (small, independent); publish pipeline 5-slice arc
+  (S1 monitor-repo pivot diagnose, S2 content.json gen, S3 rewire publishToRepo, S4 atomic transaction, S5 deploy);
+  Issue-3 DONE (32c1ef0).
+
+STILL DEFERRED (unchanged): A2 New Sources geo picker + syncPlacements re-run; review-stage REGIONAL backfill;
+  rule-6 cards_whole flip; two-level tab bar; REGIONAL->LATAM rename; per-cell divergence; supply-axis re-index;
+  page-limited relevance/project filter bug; intake-SourcesTab article-move question.
+--------------------------------------------------------------------------------
 > RESUME HERE (CURRENT, 2026-08-11 late -- unified CARD DESIGN locked; PUBLISH scoped (5 slices); ISSUE-3 fixed (32c1ef0); AI-RETUNE slice 1 shipped (a1d7f69). Next = retune slice 2 OR the card-unification arc.)
 
 SHIPPED + COMMITTED THIS SESSION:
