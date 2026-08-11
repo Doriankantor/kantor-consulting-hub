@@ -5,6 +5,84 @@ _Last updated: 2026-08-11 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 ## ▶ Start here — resume point for the next session
 
 --------------------------------------------------------------------------------
+> RESUME HERE (CURRENT, 2026-08-11 later -- unified CARD DESIGN locked (mockup approved); PUBLISH pipeline scoped (5 slices to reliable publish); next build = ISSUE-3 fix, then the CARD-UNIFICATION arc) 
+
+DESIGN LOCKED THIS SESSION (no code yet -- these are approved designs + scoping, not builds):
+
+1. UNIFIED SOURCE CARD -- approved via interactive mockup (unified-source-card-mockup.html in outputs).
+   ONE shell, three surfaces (Intel / New Sources / All Sources); the only per-surface difference is
+   which axis is EDITABLE. Structure: prominent TITLE surface (title + 1-line summary + status kicker)
+   -> THREE tinted zones with corner icons [A cogwheel = assessment/routing: status, confidence,
+   relevance, language, incident, sections, tags | B globe = geography: subject/mentioned/levels |
+   C bust = engaged entities: actors] -> collapsible REVIEW & ANNOTATE with 3-state COMPLETENESS METER
+   + gate checklist + Close btn -> per-surface ACTION bar.
+   KEY PATTERNS: (a) OVERFLOW -- each zone caps ~5 chips inline, rest collapse behind a "... +N" pill
+   in the zone accent colour; click opens a zone-anchored popover with the full set GROUPED by sub-type
+   (actors -> VNSAs/State/Industry; geography -> subject/mentioned). (b) confidence/relevance are
+   CLICK-TO-OVERRIDE pills (pill = the edit control, no separate dropdown). (c) completeness meter =
+   No work / In progress / Ready to commit, and "ready" MUST equal the real approve gate (never lies).
+
+   EDITABILITY MATRIX (FINAL):
+     Geography   : Intel EDIT | New READ | All READ
+     Actors      : Intel EDIT | New READ | All READ   [NEW: actors become READ-visible on New/All;
+                                                        currently ABSENT in PipelineSourceCard]
+     Sections    : Intel READ (AI-proposed only) | New EDIT (the + section picker, unselected-only) | All READ
+                   ** REVERSED TWICE THIS SESSION -- FINAL = sections edit ONLY at New Sources (routing is
+                      a New-Sources step); Intel shows AI-proposed sections read-only. **
+     Tags        : Intel EDIT | New READ | All READ
+     Incident    : Intel EDIT [NEW -- lift IncidentChip onto Intel] | New EDIT | All READ
+     Confidence  : Intel EDIT (click-override) | New READ | All READ
+     Relevance   : Intel EDIT (click-override) | New READ | All READ
+     Status/acts : Intel full verbs | New confirm+move-back | All none
+
+   COMMIT-GATE INGREDIENTS (for the completeness meter, agreed): HARD = article text, AI run, geography
+   (real placements), >=1 section, tags, incident-determined. NOT gates = confidence, reliability
+   (AI-predetermined, override-only, no unset state). Incident-determined joins the gate once the
+   incident control is lifted onto the card.
+
+2. CARD-UNIFICATION IS AN ARC, NOT ONE SLICE. Diagnose showed Intel card = inline JSX in NewsTab;
+   New Sources/All Sources = PipelineSourceCard (share almost nothing today: PipelineSourceCard has NO
+   editable branch for geography/actors/tags/confidence/relevance -- only sections + incident). Building
+   the unified card = extract a shared SourceCard shell + editability config + add the missing editable
+   branches. NEEDS A SEQUENCED SLICE PLAN (not a monolithic build) before any code. Open decision:
+   shared-shell-from-scratch (recommended) vs morph-Intel-inline-first-then-converge.
+
+3. DRONE-DB HANDOFF PACKET produced (in outputs, for the separate drone-database mockup project):
+   unified-card-model-spec.md (shell + editability model + reuse mapping + the specs-zone open question)
+   and the mockup html. THIRD piece pending: docs/contested-skies-lifecycle.md -- a CODE-TRUE intel+publish
+   lifecycle map (BUILT/PARTIAL/DESIGN per stage) that Code writes from a diagnose (prompt already drafted).
+
+4. PUBLISH PIPELINE SCOPED (diagnose done this session). TWO CORRECTIONS to prior HANDOFF notes:
+   (i) geography routing is NOT the publish blocker -- routeToNewSources/resolvePlacementGeographies
+   ALREADY emit country-level placements to the DB; the "collapses all to REGIONAL" note is STALE.
+   (ii) The real blocker is TWO DISCONNECTED PUBLISH SYSTEMS: the live push (publishToRepo, ipc:4246,
+   GitHub Contents API, Head-gated, GH_TOKEN) reads the OLD info_page_commits table and HTML-appends into
+   a hand-shaped index.html; all recent grid work (publication_changes, cards, Pre-Commit) never reaches
+   the page. FIVE critical-path slices to reliable grid-driven publish: (S1) monitor-repo pivot [UNKNOWN --
+   external repo, needs its own diagnose: does the SPA fetch a content.json or hold content inline], (S2)
+   content.json generator projecting the grid, (S3) rewire publishToRepo to read the grid + publication_changes,
+   (S4) ATOMIC approve transaction (today accept-flow writes are separate best-effort calls -- the "one
+   failure mode this pipeline exists to prevent"), (S5) confirm the deploy workflow [external]. TWO more to
+   full design: (S6) AI change-summary + on-page update note, (S7) RECENT CHANGES view + diff + rollback.
+   Next unknown-collapsing move: a read-only diagnose of the contested-skies-monitor repo.
+
+REMAINING WORK (order):
+  1. ISSUE-3 fix [NEXT, ready] -- stuck-open card. Root cause DIAGNOSED: footerOpen = openFooter[id] ?? footerFilled
+     at NewsTab.tsx:1413 uses a CONTENT-derived default (has-notes => open) while openFooter is ephemeral +
+     NewsTab unmounts on tab-nav, so any card with intel_notes re-opens on return and restart. FIX (agreed):
+     change the fallback to `?? false` (default closed; restart-closed becomes true). Freeze-view-on-tab-nav is a
+     SEPARATE later slice (keep NewsTab mounted -- has background-cost risk). Completeness badge PLACEMENT folds
+     into the card redesign; its LOGIC needs an approve-gate diagnose.
+  2. CARD-UNIFICATION arc -- write the sequenced slice plan first (see design #1/#2 above), then build.
+  3. NEEDS-GEOGRAPHY LIST INDICATOR (small).
+  4. AI-RETUNE analyze.ts (clean geography + canonical sections).
+
+STILL DEFERRED (unchanged): A2 New Sources geography picker + syncPlacements re-run; review-stage REGIONAL
+  backfill; rule-6 cards_whole flip; two-level dynamic tab bar; REGIONAL->LATAM rename; per-cell divergence;
+  supply-axis re-index; the page-limited relevance/project filter bug; the intake-SourcesTab article-move question.
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
 ▶ RESUME HERE (CURRENT, 2026-08-11 -- Y2 SHIPPED; next = issue-3 [stuck-open card] -> needs-geo list indicator -> AI-retune) -> Y2 is DONE and COMMITTED (0c1878f). All seven test checks green in-app. The geography-arc filter work is complete on BOTH the Intelligence NewsTab (Y1) and the publication AllSourcesTab (Y2).
 
 DONE + COMMITTED THIS SESSION (pushed to main):
