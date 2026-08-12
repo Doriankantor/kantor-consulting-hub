@@ -5,7 +5,7 @@ _Last updated: 2026-08-11 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 ## ▶ Start here — resume point for the next session
 
 --------------------------------------------------------------------------------
-> RESUME HERE (CURRENT, 2026-08-12 -- DATA-MODEL VERDICT IN (Cowork): the two-shape split is an ARTIFACT, not essential -> the unified card sits on ONE shape. Next = S0 DONE (20e12de) - getSourcePipeline SELECT widened, pipeline row now carries full source core on one shape. Next = card home (src/renderer/src/components/source-card/) + SourceCore model, then Phase A S1 (shell + read-only News mount). Write-propagation (A2) is a SEPARATE task that only gates EDITABLE pipeline surfaces.)
+> RESUME HERE (CURRENT, 2026-08-12 -- DATA-MODEL VERDICT IN (Cowork): the two-shape split is an ARTIFACT, not essential -> the unified card sits on ONE shape. S0 DONE (20e12de) - getSourcePipeline SELECT widened, pipeline row now carries full source core on one shape. S1 DONE (a54082c) - card home src/renderer/src/components/source-card/ built (parse/sourceCore/SourceCard), read-only card mounted on News. Next = Phase A S2 (wire News editable axes; sections read-only on News). Write-propagation (A2) is a SEPARATE task that only gates EDITABLE pipeline surfaces.)
 
 THE VERDICT (Cowork read the real schema/JOIN/write-paths, whole-repo -- not guessed):
   ** (a) LIGHT -- converge to ONE canonical SourceCore + placements[] overlay. ** Evidence:
@@ -40,10 +40,20 @@ REFINED ARC SEQUENCE (updated by the verdict):
      Main-process change -> dev restart. Read-only diagnose the current SELECT first; verify a pipeline row now
      carries actors/mentioned_countries/sub_geographies/geography_confirmed; commit immediately. This makes the
      card arc sit on one shape.
-  [NEXT] Then card home src/renderer/src/components/source-card/ + the SourceCore model (groupByArticle already close).
+  Card home src/renderer/src/components/source-card/ + the SourceCore model: DONE (part of S1 a54082c).
   Phase A (compose family = the goal, touches NO placement propagation):
-    S1 shell + SourceCore model + read-only mount on News (extract confidence/relevance to components in S2).
-    S2 wire News editable axes (geography/actors/tags/confidence/relevance; sections read-only on News).
+    S1 [DONE a54082c]: created src/renderer/src/components/source-card/ (parse.ts, sourceCore.ts row-pure model +
+       fromIntelligenceSource, SourceCard.tsx read-only face); mounted on News, footer + action row stay in NewsTab
+       live; render parity verified in-app on fresh + heavily-worked cards; typecheck baseline. Geo/actor chips inert
+       this slice (no-op onChange).
+    S2 [NEXT]: wire News editable axes into the card (geography/actors/tags/confidence/relevance live; sections
+       read-only on News). Confidence + relevance are inline <select> in NewsTab today -> extract them to small
+       components in S2.
+       S2 DECISION (Dorian's, captured): when editing is wired in S2, evaluate making geography-confirm write the
+       PERMANENT geography_confirmed flag (already exists on the row: 0=AI proposal, 1=human-confirmed) and retiring
+       the TEMPORARY session 'touched' cue. Dorian's instinct, likely correct. Needs a quick safety check first:
+       does flipping geography_confirmed re-trigger anything downstream (e.g. re-analysis, placement re-sync)?
+       Diagnose before wiring.
     S3 overflow "...+N" grouped popovers. S4 incident lift onto News.
     S5-S7 mount on Social/Docs/Interviews -- each mount = that type's structured port; fold in relevance-override
     wire + confidence editor (Docs/Ints). This is the convergence goal DONE: four intel types feed the grid.
@@ -70,15 +80,22 @@ SHIPPED (retune, prior session): slice 1 (a1d7f69) gate geo snap; slice 2 (563b9
   S0 (20e12de) widen getSourcePipeline SELECT to carry full source core - added is2.actors, mentioned_countries,
     sub_geographies, geography_confirmed, region, confidence_override to the SELECT and InfoPageSourceRow;
     SELECT-list + type only, verified a real placement row carries populated values via local-mirror scratch
-    query; typecheck held at baseline (main 5 / web 55, 0 new). NOT pushed (ahead of origin/main by 1).
+    query; typecheck held at baseline (main 5 / web 55, 0 new).
+  S1 (a54082c) extract read-only SourceCard face from NewsTab - created src/renderer/src/components/source-card/
+    (parse.ts row-parse helpers moved verbatim; sourceCore.ts row-pure SourceCore + fromIntelligenceSource;
+    SourceCard.tsx read-only face). Mounted on News via <SourceCard core={fromIntelligenceSource(source)}> with the
+    project-row + gate-error injected as children; footer workbench + Approve/Save/Reject action row stay in NewsTab,
+    live. Geo/actor chips inert this slice (no-op onChange; editing = S2). Parse helpers MOVED (not exported from
+    NewsTab) to avoid a NewsTab->SourceCard->sourceCore circular import. Render parity verified in-app on fresh +
+    heavily-worked cards; typecheck held at baseline (main 5 / web 55, 0 new in touched files).
 
 PUBLISH PIPELINE (unchanged): two disconnected systems; 5 critical slices + 2 for full design; after the arc.
 
-REMAINING WORK (order): (1) card arc Phase A (the goal) [NEXT]; (2) Phase B (needs A2 if editable pipeline);
-  (3) needs-geography list indicator; (4) publish pipeline. DEFERRED unchanged: A2 re-sync
-  propagation (now understood as the gate for editable pipeline surfaces), REGIONAL backfill, two-level tab bar,
-  REGIONAL->LATAM rename, supply-axis re-index, page-limited filter bug, intake-SourcesTab move question, drone
-  lifecycle doc still TO GENERATE.
+REMAINING WORK (order): (1) card arc Phase A -- S0 (20e12de) + S1 (a54082c) DONE; S2 [NEXT] (wire News editable
+  axes), then S3-S7; (2) Phase B (needs A2 if editable pipeline); (3) needs-geography list indicator; (4) publish
+  pipeline. DEFERRED unchanged: A2 re-sync propagation (now understood as the gate for editable pipeline surfaces),
+  REGIONAL backfill, two-level tab bar, REGIONAL->LATAM rename, supply-axis re-index, page-limited filter bug,
+  intake-SourcesTab move question, drone lifecycle doc still TO GENERATE.
 --------------------------------------------------------------------------------
 > RESUME HERE (CURRENT, 2026-08-11 latest -- AI-RETUNE slices 1+2 SHIPPED; slice 3 REFRAMED into the CONVERGENCE ARC. Next session = write the ONE slice plan for: unified SourceCard + structured-model port across all 4 intel types + categories_json retirement. Start fresh -- this is the central build arc.)
 
