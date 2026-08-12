@@ -5,7 +5,7 @@ _Last updated: 2026-08-11 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 ## ▶ Start here — resume point for the next session
 
 --------------------------------------------------------------------------------
-> RESUME HERE (CURRENT, 2026-08-12 -- DATA-MODEL VERDICT IN (Cowork): the two-shape split is an ARTIFACT, not essential -> the unified card sits on ONE shape. S0 DONE (20e12de) - getSourcePipeline SELECT widened, pipeline row now carries full source core on one shape. S1 DONE (a54082c) - card home src/renderer/src/components/source-card/ built (parse/sourceCore/SourceCard), read-only card mounted on News. Next = Phase A S2 (wire News editable axes; sections read-only on News). Write-propagation (A2) is a SEPARATE task that only gates EDITABLE pipeline surfaces.)
+> RESUME HERE (CURRENT, 2026-08-12 -- DATA-MODEL VERDICT IN (Cowork): the two-shape split is an ARTIFACT, not essential -> the unified card sits on ONE shape. S0 DONE (20e12de) - getSourcePipeline SELECT widened, pipeline row now carries full source core on one shape. S1 DONE (a54082c) - card home src/renderer/src/components/source-card/ built (parse/sourceCore/SourceCard), read-only card mounted on News. S2 DONE (e613c52) - geography + actors editing wired through the card; S1 always-amber regression fixed (cue clears on touch); confidence/tags/relevance stay live in NewsTab quick-controls. Next = Phase A S3 (overflow "...+N" grouped popovers per zone). Write-propagation (A2) is a SEPARATE task that only gates EDITABLE pipeline surfaces.)
 
 THE VERDICT (Cowork read the real schema/JOIN/write-paths, whole-repo -- not guessed):
   ** (a) LIGHT -- converge to ONE canonical SourceCore + placements[] overlay. ** Evidence:
@@ -46,15 +46,16 @@ REFINED ARC SEQUENCE (updated by the verdict):
        fromIntelligenceSource, SourceCard.tsx read-only face); mounted on News, footer + action row stay in NewsTab
        live; render parity verified in-app on fresh + heavily-worked cards; typecheck baseline. Geo/actor chips inert
        this slice (no-op onChange).
-    S2 [NEXT]: wire News editable axes into the card (geography/actors/tags/confidence/relevance live; sections
-       read-only on News). Confidence + relevance are inline <select> in NewsTab today -> extract them to small
-       components in S2.
-       S2 DECISION (Dorian's, captured): when editing is wired in S2, evaluate making geography-confirm write the
-       PERMANENT geography_confirmed flag (already exists on the row: 0=AI proposal, 1=human-confirmed) and retiring
-       the TEMPORARY session 'touched' cue. Dorian's instinct, likely correct. Needs a quick safety check first:
-       does flipping geography_confirmed re-trigger anything downstream (e.g. re-analysis, placement re-sync)?
-       Diagnose before wiring.
-    S3 overflow "...+N" grouped popovers. S4 incident lift onto News.
+    S2 [DONE e613c52]: wired geography + actors editing through SourceCard via optional onCountriesChange/
+       onActorsChange + geoTouched/actorsTouched props; fixed the S1 always-amber regression (cue clears on touch);
+       confidence/tags/relevance stay in NewsTab quick-controls row (card ownership deferred to the zone redesign).
+       Verified: geo edit writes to cloud (remove/add round-trip), sibling relevance override preserved. News now
+       fully live through the reusable card.
+       S2 DECISION (Dorian's) -- RESOLVED to verdict Y: keep the session 'touched' cue for now; do NOT flip the
+       permanent geography_confirmed flag this slice. Diagnose found the flag is the WRONG one for the axis News
+       edits (guards the SCALAR gate-geography, not the subject/mentioned LISTS), has no actor-side equivalent, and
+       its only 0->1 writer (updateGeography) is dead in the UI. Permanence is its own future slice.
+    S3 [NEXT]: overflow "...+N" grouped popovers per zone. (Then S4 incident lift onto News.)
     S5-S7 mount on Social/Docs/Interviews -- each mount = that type's structured port; fold in relevance-override
     wire + confidence editor (Docs/Ints). This is the convergence goal DONE: four intel types feed the grid.
   Phase B (pipeline family, needs A2 resolved if editable): replace PipelineSourceCard on New Sources/Pre-Commit/
@@ -88,14 +89,31 @@ SHIPPED (retune, prior session): slice 1 (a1d7f69) gate geo snap; slice 2 (563b9
     live. Geo/actor chips inert this slice (no-op onChange; editing = S2). Parse helpers MOVED (not exported from
     NewsTab) to avoid a NewsTab->SourceCard->sourceCore circular import. Render parity verified in-app on fresh +
     heavily-worked cards; typecheck held at baseline (main 5 / web 55, 0 new in touched files).
+  S2 (e613c52) wire geography + actors editing through SourceCard - added optional onCountriesChange/onActorsChange
+    + geoTouched/actorsTouched props (card stays pure, host owns session state); GeographyChips/ActorChips editable
+    when the prop is present, inert (S1 no-op) when absent so read-only mounts still work. Fixed the S1 always-amber
+    regression: cue = list-present && !touched, cleared on first touch via NewsTab's session Sets. confidence/tags/
+    relevance left live in NewsTab's quick-controls row (untouched; card ownership deferred to the zone redesign).
+    Verified in-app + cloud SQL (subject_countries round-trip); sibling relevance override preserved across a tags
+    edit; typecheck held at baseline (main 5 / web 55, 0 new in touched files).
 
 PUBLISH PIPELINE (unchanged): two disconnected systems; 5 critical slices + 2 for full design; after the arc.
 
-REMAINING WORK (order): (1) card arc Phase A -- S0 (20e12de) + S1 (a54082c) DONE; S2 [NEXT] (wire News editable
-  axes), then S3-S7; (2) Phase B (needs A2 if editable pipeline); (3) needs-geography list indicator; (4) publish
+REMAINING WORK (order): (1) card arc Phase A -- S0 (20e12de) + S1 (a54082c) + S2 (e613c52) DONE; S3 [NEXT] (overflow
+  popovers), then S4-S7; (2) Phase B (needs A2 if editable pipeline); (3) needs-geography list indicator; (4) publish
   pipeline. DEFERRED unchanged: A2 re-sync propagation (now understood as the gate for editable pipeline surfaces),
   REGIONAL backfill, two-level tab bar, REGIONAL->LATAM rename, supply-axis re-index, page-limited filter bug,
   intake-SourcesTab move question, drone lifecycle doc still TO GENERATE.
+
+BANKED (Dorian's finds):
+  GEO-POPULATION GAP (high-value, small, retune-adjacent): the relevance GATE resolves a clean scalar geography
+    (region/geography = 'Mexico' on gated cards, canonical since retune slice 1) but NEVER seeds subject_countries --
+    only the manual Analyze-with-AI writes the list. So gated-but-unanalyzed cards show EMPTY geography despite an
+    obvious country sitting in region/geography. Two gaps: (1) the card doesn't surface the scalar when the list is
+    empty; (2) nothing promotes scalar -> list. FIX: gate seeds subject_countries=[canonical country] when it
+    resolves one (NOT for REGIONAL/GLOBAL), marked AI-unconfirmed (amber) so a human confirms; card shows the scalar
+    as a soft chip on empty-list cards. Needs its own small diagnose (does seeding interact with the placement gate /
+    re-fire on re-gate?). Verified this session: Teotihuacan card had subject_countries=null but region=geography='Mexico'.
 --------------------------------------------------------------------------------
 > RESUME HERE (CURRENT, 2026-08-11 latest -- AI-RETUNE slices 1+2 SHIPPED; slice 3 REFRAMED into the CONVERGENCE ARC. Next session = write the ONE slice plan for: unified SourceCard + structured-model port across all 4 intel types + categories_json retirement. Start fresh -- this is the central build arc.)
 
