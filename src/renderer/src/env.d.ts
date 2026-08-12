@@ -499,6 +499,13 @@ interface InfoPageSourceRow {
   confidence: string | null
   review_notes: string | null
   disposition_tags: string | null
+  // S0: full source core carried onto the pipeline row (JSON-string arrays, carried raw/unparsed)
+  actors: string | null              // JSON {name,type}[]
+  mentioned_countries: string | null // JSON string[]
+  sub_geographies: string | null     // JSON {country: string[]}
+  geography_confirmed: number        // 0 = AI proposal, 1 = human-confirmed
+  region: string | null
+  confidence_override: number
   // 3c-2a: full-item fields (optional — most rows have none of these).
   type?: string
   analysis_json?: string
