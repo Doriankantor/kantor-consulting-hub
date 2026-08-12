@@ -5,6 +5,77 @@ _Last updated: 2026-08-11 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 ## ▶ Start here — resume point for the next session
 
 --------------------------------------------------------------------------------
+> RESUME HERE (CURRENT, 2026-08-12 -- DATA-MODEL VERDICT IN (Cowork): the two-shape split is an ARTIFACT, not essential -> the unified card sits on ONE shape. Next = widen getSourcePipeline JOIN (light slice), then the card arc Phase A. Write-propagation (A2) is a SEPARATE task that only gates EDITABLE pipeline surfaces.)
+
+THE VERDICT (Cowork read the real schema/JOIN/write-paths, whole-repo -- not guessed):
+  ** (a) LIGHT -- converge to ONE canonical SourceCore + placements[] overlay. ** Evidence:
+  - InfoPageSourceRow is literally a SUBSET of intelligence_sources columns + placement fields. The omission
+    of actors/mentioned_countries/sub_geographies/geography_confirmed from getSourcePipeline (ipc:4685) is a
+    NARROW SELECT over the LOCAL MIRROR -- no structural reason (both tables mirrored locally, every omitted
+    column physically present, no perf/cloud guard). It grew additively; nothing ever needed those editable on
+    a pipeline surface, so they were never added.
+  - FIX = widen the SELECT to carry the ~4 omitted core columns (+ any remaining renderable core), extend the
+    InfoPageSourceRow type (env.d.ts:469). Pipeline row becomes "SourceCore + placement fields." NO schema
+    rebuild, NO migration, NO cloud boundary crossed (pipeline READ is local mirror; the cloud-authoritative
+    rule governs placement WRITES only).
+  - The canonical model ALREADY EXISTS: groupByArticle yields SourceCore(1) + placements[](N). That IS "one
+    shape + placement overlay." The many-to-many is real (UNIQUE widened to article_id,info_page,section,
+    geography -> one source -> N placement rows, one per cell) but already collapsed by groupByArticle. It does
+    NOT force two row SHAPES, only a placements[] ARRAY on the one shape. => NO adapter pretzel; compose tabs
+    render the one shape with placements[] empty; pipeline surfaces carry the overlay.
+
+THE CAVEAT THAT RESHAPES THE ARC (write-propagation, a SEPARATE concern -- do NOT conflate with the shape):
+  Core edits (geography/actors/tags in News via updateCountries/updateActors/setArticleTags) write ONLY
+  intelligence_sources and NEVER call syncPlacements. syncPlacements fires from EXACTLY ONE site -- the New
+  Sources section-confirm (NewSourcesTab.tsx:83). So editing a PLACED source's geography in intel does NOT
+  re-place it; placement rows keep their old cells until someone re-confirms sections from New Sources, and
+  re-sync is LOCK-GATED (review/committed placements block re-sync). This is the known-deferred A2 gap.
+  IMPLICATION FOR THE ARC: rendering convergence = LIGHT (do it). But if the unified card makes geography/
+  sections/actors EDITABLE ON PIPELINE SURFACES, the re-sync path (more syncPlacements call-sites + lock
+  semantics = A2) becomes real work -- a DATA-PATH task, orthogonal to card shape. Phase A (compose tabs, the
+  goal) does NOT touch this. Phase B (editable pipeline surfaces) must resolve A2 first.
+
+REFINED ARC SEQUENCE (updated by the verdict):
+  S0 [NEXT, light]: widen getSourcePipeline SELECT to carry the full source core + extend InfoPageSourceRow type.
+     Main-process change -> dev restart. Read-only diagnose the current SELECT first; verify a pipeline row now
+     carries actors/mentioned_countries/sub_geographies/geography_confirmed; commit immediately. This makes the
+     card arc sit on one shape.
+  Then card home src/renderer/src/components/source-card/ + the SourceCore model (groupByArticle already close).
+  Phase A (compose family = the goal, touches NO placement propagation):
+    S1 shell + SourceCore model + read-only mount on News (extract confidence/relevance to components in S2).
+    S2 wire News editable axes (geography/actors/tags/confidence/relevance; sections read-only on News).
+    S3 overflow "...+N" grouped popovers. S4 incident lift onto News.
+    S5-S7 mount on Social/Docs/Interviews -- each mount = that type's structured port; fold in relevance-override
+    wire + confidence editor (Docs/Ints). This is the convergence goal DONE: four intel types feed the grid.
+  Phase B (pipeline family, needs A2 resolved if editable): replace PipelineSourceCard on New Sources/Pre-Commit/
+    All Sources with the one card + placements[] overlay. New Sources editable (sections+incident, + geography/
+    actors IF A2 re-sync is wired). All Sources read-only. Then: completeness meter+gate (approve-gate diagnose
+    first); retire categories_json USAGE per type LAST (keep the column -- Social co-owns it).
+
+CARD DESIGN + EDITABILITY MATRIX: LOCKED (unchanged) -- see prior block / outputs/unified-source-card-mockup.html
+  + unified-card-model-spec.md. 3 zones (cogwheel/globe/bust), overflow popovers, click-to-override conf/rel
+  pills, 3-state completeness meter = real approve gate. Matrix: geography/actors/tags/conf/rel edit on News;
+  sections+incident edit on New Sources; All Sources read-only.
+
+CONVERGENCE DIAGNOSE (unchanged): ~5/6 UI port -- all non-News tabs already run task:'relevance' + route via
+  routeToNewSources; gaps = geography picker, sections-confirm UI, structured render, confidence editor (Docs/
+  Ints) UI-only; relevance override = the one data-path gap.
+
+HOW WE WORK NOW: build arc in COWORK+CODE (whole-repo). Design in a react-and-refine loop. HANDOFF carries the
+  full WHY. Discipline (MORE important with Cowork autonomy): read-only diagnose first; verify in cloud SQL;
+  COMMIT IMMEDIATELY on green (Social-b was lost to a stray parallel-session git reset); verify ~/newsroom-pm
+  before any git op; ASCII commit msgs; one slice at a time; main-process changes need dev restart.
+
+SHIPPED (retune, prior session): slice 1 (a1d7f69) gate geo snap; slice 2 (563b943) analyze.ts geo sentinels.
+
+PUBLISH PIPELINE (unchanged): two disconnected systems; 5 critical slices + 2 for full design; after the arc.
+
+REMAINING WORK (order): (1) S0 widen JOIN [NEXT]; (2) card arc Phase A (the goal); (3) Phase B (needs A2 if
+  editable pipeline); (4) needs-geography list indicator; (5) publish pipeline. DEFERRED unchanged: A2 re-sync
+  propagation (now understood as the gate for editable pipeline surfaces), REGIONAL backfill, two-level tab bar,
+  REGIONAL->LATAM rename, supply-axis re-index, page-limited filter bug, intake-SourcesTab move question, drone
+  lifecycle doc still TO GENERATE.
+--------------------------------------------------------------------------------
 > RESUME HERE (CURRENT, 2026-08-11 latest -- AI-RETUNE slices 1+2 SHIPPED; slice 3 REFRAMED into the CONVERGENCE ARC. Next session = write the ONE slice plan for: unified SourceCard + structured-model port across all 4 intel types + categories_json retirement. Start fresh -- this is the central build arc.)
 
 SHIPPED + COMMITTED THIS SESSION:
