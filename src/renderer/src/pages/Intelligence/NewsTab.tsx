@@ -15,6 +15,9 @@ import { classifyGeo } from './geographyVocab'
 import { SECTION_LABELS } from './sectionLabels'
 import { parseConfig } from './frameworkConfig'
 import { notifyIntelChanged } from '../../utils/intelEvents'
+import SourceCard from '../../components/source-card/SourceCard'
+import { fromIntelligenceSource } from '../../components/source-card/sourceCore'
+import { readTags, safeParseObject, safeParseObjectArray, parseAnalysis, notesText } from '../../components/source-card/parse'
 
 const CONFIDENCE_COLORS = {
   high:   { bg: 'bg-green-100 dark:bg-green-900/30',   text: 'text-green-700 dark:text-green-400',   dot: 'bg-green-500' },
@@ -57,46 +60,10 @@ function relevanceBadge(score: number | null): { label: string; cls: string } {
   return { label: String(score), cls: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' }
 }
 
-function readTags(raw: string | null): string[] {
-  try { const a = JSON.parse(raw || '[]'); return Array.isArray(a) ? a : [] } catch { return [] }
-}
-// Geo-2: parse a JSON-string object {country: string[]} defensively → {} on null/invalid.
-function safeParseObject(raw: string | null | undefined): Record<string, string[]> {
-  try {
-    const o = JSON.parse(raw || '{}')
-    if (!o || typeof o !== 'object' || Array.isArray(o)) return {}
-    const out: Record<string, string[]> = {}
-    for (const [k, v] of Object.entries(o)) if (Array.isArray(v)) out[k] = v.map(String)
-    return out
-  } catch { return {} }
-}
-// Actor-2: parse the `actors` JSON-string column → [{name,type}] defensively. Keeps only objects
-// with a non-empty string name (trimmed); coerces type to string, default 'unknown'. → [] on invalid.
-function safeParseObjectArray(raw: string | null | undefined): { name: string; type: string }[] {
-  try {
-    const a = JSON.parse(raw || '[]')
-    if (!Array.isArray(a)) return []
-    const out: { name: string; type: string }[] = []
-    for (const item of a) {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) continue
-      const name = typeof (item as any).name === 'string' ? (item as any).name.trim() : ''
-      if (!name) continue
-      const type = typeof (item as any).type === 'string' ? (item as any).type : 'unknown'
-      out.push({ name, type })
-    }
-    return out
-  } catch { return [] }
-}
+// Row-parse helpers (readTags, safeParseObject, safeParseObjectArray, parseAnalysis, notesText)
+// moved to ../../components/source-card/parse and imported above — shared verbatim with the
+// SourceCore model so the card and this tab parse a row byte-identically.
 
-// News human layer helpers.
-function parseAnalysis(raw: string | null): Record<string, unknown> {
-  if (!raw) return {}
-  try { const o = JSON.parse(raw); return o && typeof o === 'object' ? o : {} } catch { return {} }
-}
-// Plain text from TipTap HTML — used to tell "empty notes" from real content.
-function notesText(html: string | null): string {
-  return (html || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
-}
 // 3e: return analysis_json with one top-level key replaced, preserving the rest.
 function withAnalysisKey(raw: string | null, key: string, block: unknown): string {
   const o = parseAnalysis(raw)
@@ -1472,139 +1439,10 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
               id={`news-card-${source.id}`}
               className={`bg-white dark:bg-white/[0.04] rounded-xl border p-4 hover:border-gray-300 dark:hover:border-white/[0.12] transition-all duration-300 ${highlightId === source.id ? 'border-indigo-400 dark:border-indigo-400 ring-2 ring-indigo-400/40' : 'border-gray-200 dark:border-white/[0.08]'} ${isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
             >
-              <div className="flex items-start gap-3">
-                {source.image_url && (
-                  <img
-                    src={source.image_url}
-                    alt=""
-                    className="w-16 h-12 rounded-lg object-cover shrink-0 border border-gray-100 dark:border-white/[0.06]"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    {/* Confidence badge */}
-                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${confStyle.bg} ${confStyle.text}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${confStyle.dot}`} />
-                      {conf}
-                    </span>
-                    {/* Relevance-score badge.
-                        gate_processed=1 + NULL score = tombstoned (failed to score) → gray "scoring failed".
-                        gate_processed=0 + NULL score = not yet gated → gray "REL —". */}
-                    {source.gate_processed === 1 && source.relevance_score == null ? (
-                      <span
-                        className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/30"
-                        title={source.gate_reasoning || 'Scoring failed — could not classify this article'}
-                      >
-                        scoring failed
-                      </span>
-                    ) : ((() => {
-                      const rb = relevanceBadge(source.relevance_score)
-                      return (
-                        <span
-                          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${rb.cls}`}
-                          title="Colombia relevance score (0–10)"
-                        >
-                          <span className="opacity-60 font-medium">REL</span>{rb.label}
-                        </span>
-                      )
-                    })())}
-                    {/* Relevance-type badge */}
-                    {source.relevance_type && source.relevance_type !== 'none' && (
-                      <span
-                        className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300"
-                        title="Why this matters (gate classification)"
-                      >
-                        {REL_TYPE_LABELS[source.relevance_type] || source.relevance_type}
-                      </span>
-                    )}
-                    {/* Status badge */}
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${source.status === 'imported' ? '' : 'uppercase'} ${STATUS_COLORS[source.status] || STATUS_COLORS.unreviewed}`}>
-                      {STATUS_LABELS[source.status] || source.status}
-                    </span>
-                    {/* Language badge — ES / EN / PT visibility only, no filter */}
-                    {source.language && (
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
-                          source.language === 'es' ? 'bg-yellow-100 dark:bg-yellow-500/15 text-yellow-700 dark:text-yellow-300' :
-                          source.language === 'pt' ? 'bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-300' :
-                          'bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300'
-                        }`}
-                        title={`Article language: ${source.language.toUpperCase()}`}
-                      >
-                        {source.language.toUpperCase()}
-                      </span>
-                    )}
-                    {/* Origin badges */}
-                    {source.added_by_name === 'Contested Skies Pipeline' && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300">Pipeline</span>
-                    )}
-                    {source.added_by_name === 'Imported from Contested Skies' && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/40">from Contested Skies</span>
-                    )}
-                    {source.added_by_name === 'Kantor Framework' && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300" title="Fixed authoritative framework reference — not graded">Framework — fixed</span>
-                    )}
-                    {source.added_by_name === 'Contested Skies Archive' && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/40">Source archive</span>
-                    )}
-                    {source.used_in_page && (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300"
-                        title={source.used_in_page_at ? `Published ${formatDate(source.used_in_page_at)}` : undefined}>
-                        Published — used in {source.used_in_page}
-                      </span>
-                    )}
-                    {/* Source name */}
-                    {source.source_name && (
-                      <span className="text-xs text-gray-500 dark:text-white/40 font-medium">{source.source_name}</span>
-                    )}
-                    {/* Date */}
-                    <span className="text-xs text-gray-400 dark:text-white/30">{formatDate(source.published_at)}</span>
-
-                    {/* Geography — Geo-2 nested country + sub-geo chips (replaces the scalar editor).
-                        Slice X: the scalar source.geography column is no longer rendered as a fallback
-                        pill; an empty subject shows the picker's empty-state prompt instead. */}
-                    <GeographyChips
-                      subject={subjectCountries}
-                      mentioned={mentionedCountries}
-                      subGeo={subGeographies}
-                      aiUnconfirmed={geoAiUnconfirmed}
-                      onChange={(subject, mentioned, subGeo) => handleCountries(source.id, subject, mentioned, subGeo)}
-                    />
-
-                    {/* Actors — Actor-2 flat typed chips (click-to-cycle type), under geography. */}
-                    <ActorChips
-                      actors={actors}
-                      aiUnconfirmed={actorsAiUnconfirmed}
-                      onChange={(next) => handleActors(source.id, next)}
-                    />
-                  </div>
-
-                  {/* Title */}
-                  {source.url ? (
-                    <a href={source.url} target="_blank" rel="noopener noreferrer"
-                      className="text-sm font-semibold text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 transition line-clamp-2">
-                      {source.title}
-                    </a>
-                  ) : (
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-2">{source.title}</p>
-                  )}
-
-                  {/* Snippet */}
-                  {source.snippet && (
-                    <p className="text-xs text-gray-500 dark:text-white/50 mt-1 line-clamp-2">{source.snippet}</p>
-                  )}
-
-                  {/* ai_category pills removed (display-only): the category filter now reads the CS
-                      SECTION set (routing.confirmed), so the freeform ai_category labels are dead
-                      cruft on this card. The ai_category / categories_json FIELD is retained (revisit
-                      in AI-retune); the separate article_type "INCIDENT" marker lives in the AI block
-                      below and is unaffected. */}
-
-                  {/* A2: read-only AI section-routing proposal (own row, above PROJECT/TOPIC). */}
-                  {/* TODO: derive project abbrev when multi-project intel lands */}
-                  <SectionProposalBadge sections={proposedSections} projectAbbrev="CS" />
-
+              {/* S1: unified card FACE (image, badges, geo/actor axes, title, snippet,
+                  section proposal) rendered READ-ONLY through SourceCard. The interactive
+                  project-row + gate-error below are injected as children and stay live here. */}
+              <SourceCard core={fromIntelligenceSource(source)}>
                   {/* Phase 1 + Phase 4: PROJECT selector (replaces Disposition TagPicker).
                       Phase 4: TOPIC tag picker (unchanged, with forceOpen for gate). */}
                   <div className="flex flex-wrap items-start gap-x-4 gap-y-1.5 mt-2.5">
@@ -1647,8 +1485,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                         : 'Add a topic tag to approve'}
                     </div>
                   )}
-                </div>
-              </div>
+              </SourceCard>
 
               {/* Actions + quick controls (confidence · topic tags · relevance override) */}
               <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
