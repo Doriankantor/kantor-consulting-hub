@@ -1439,10 +1439,17 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
               id={`news-card-${source.id}`}
               className={`bg-white dark:bg-white/[0.04] rounded-xl border p-4 hover:border-gray-300 dark:hover:border-white/[0.12] transition-all duration-300 ${highlightId === source.id ? 'border-indigo-400 dark:border-indigo-400 ring-2 ring-indigo-400/40' : 'border-gray-200 dark:border-white/[0.08]'} ${isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}
             >
-              {/* S1: unified card FACE (image, badges, geo/actor axes, title, snippet,
-                  section proposal) rendered READ-ONLY through SourceCard. The interactive
-                  project-row + gate-error below are injected as children and stay live here. */}
-              <SourceCard core={fromIntelligenceSource(source)}>
+              {/* S2: unified card FACE (image, badges, geo/actor axes, title, snippet, section
+                  proposal) through SourceCard. Geography/actors are EDITABLE here (handlers bound
+                  to source.id); the touched booleans drive the amber "AI" cue (clears on touch).
+                  The interactive project-row + gate-error below are injected as children. */}
+              <SourceCard
+                core={fromIntelligenceSource(source)}
+                onCountriesChange={(subject, mentioned, subGeo) => handleCountries(source.id, subject, mentioned, subGeo)}
+                onActorsChange={next => handleActors(source.id, next)}
+                geoTouched={countriesTouched.has(source.id)}
+                actorsTouched={actorsTouched.has(source.id)}
+              >
                   {/* Phase 1 + Phase 4: PROJECT selector (replaces Disposition TagPicker).
                       Phase 4: TOPIC tag picker (unchanged, with forceOpen for gate). */}
                   <div className="flex flex-wrap items-start gap-x-4 gap-y-1.5 mt-2.5">

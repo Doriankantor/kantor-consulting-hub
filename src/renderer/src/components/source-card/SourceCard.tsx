@@ -58,9 +58,37 @@ function formatDate(dateStr: string | null) {
   catch { return dateStr }
 }
 
-export default function SourceCard({ core, children }: { core: SourceCore; children?: ReactNode }) {
+// S2 interactivity (decision A: card stays pure, host owns session state). When an onXChange
+// prop is present the matching axis is EDITABLE and calls the host's handler verbatim (the
+// handler owns success/failure + touched-Set population); when absent the axis renders INERT
+// (no-op onChange) exactly like S1, so future read-only mounts keep working. The amber "AI"
+// cue is host-driven: geoTouched/actorsTouched come from NewsTab's session Sets, so touching
+// a card's geography/actors this session clears its cue. With no touched prop (read-only
+// mount) the cue falls back to list-present (core.hasGeo/hasActors) -- S1 behavior.
+interface SourceCardProps {
+  core: SourceCore
+  children?: ReactNode
+  onCountriesChange?: (subject: string[], mentioned: string[], subGeo: Record<string, string[]>) => void
+  onActorsChange?: (actors: { name: string; type: string }[]) => void
+  geoTouched?: boolean
+  actorsTouched?: boolean
+}
+
+export default function SourceCard({
+  core,
+  children,
+  onCountriesChange,
+  onActorsChange,
+  geoTouched,
+  actorsTouched,
+}: SourceCardProps) {
   const conf = core.confidence || 'low'
   const confStyle = CONFIDENCE_COLORS[conf as keyof typeof CONFIDENCE_COLORS] || CONFIDENCE_COLORS.low
+
+  // Amber cue = list-present AND not yet touched this session. geoTouched undefined (read-only
+  // mount) => !undefined = true => cue falls back to core.hasGeo. Restores "clears on touch".
+  const geoAiUnconfirmed = core.hasGeo && !geoTouched
+  const actorsAiUnconfirmed = core.hasActors && !actorsTouched
 
   return (
     <div className="flex items-start gap-3">
@@ -155,21 +183,21 @@ export default function SourceCard({ core, children }: { core: SourceCore; child
           {/* Geography — Geo-2 nested country + sub-geo chips (replaces the scalar editor).
               Slice X: the scalar source.geography column is no longer rendered as a fallback
               pill; an empty subject shows the picker's empty-state prompt instead.
-              S1: INERT (no-op onChange) — editing lands in S2. */}
+              S2: EDITABLE when onCountriesChange is present; inert (no-op) otherwise. */}
           <GeographyChips
             subject={core.subjectCountries}
             mentioned={core.mentionedCountries}
             subGeo={core.subGeographies}
-            aiUnconfirmed={core.hasGeo}
-            onChange={() => {}}
+            aiUnconfirmed={geoAiUnconfirmed}
+            onChange={onCountriesChange ?? (() => {})}
           />
 
           {/* Actors — Actor-2 flat typed chips (click-to-cycle type), under geography.
-              S1: INERT (no-op onChange). */}
+              S2: EDITABLE when onActorsChange is present; inert (no-op) otherwise. */}
           <ActorChips
             actors={core.actors}
-            aiUnconfirmed={core.hasActors}
-            onChange={() => {}}
+            aiUnconfirmed={actorsAiUnconfirmed}
+            onChange={onActorsChange ?? (() => {})}
           />
         </div>
 
