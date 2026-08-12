@@ -5,6 +5,90 @@ _Last updated: 2026-08-11 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 ## ▶ Start here — resume point for the next session
 
 --------------------------------------------------------------------------------
+> RESUME HERE (CURRENT, 2026-08-11 latest -- AI-RETUNE slices 1+2 SHIPPED; slice 3 REFRAMED into the CONVERGENCE ARC. Next session = write the ONE slice plan for: unified SourceCard + structured-model port across all 4 intel types + categories_json retirement. Start fresh -- this is the central build arc.)
+
+SHIPPED + COMMITTED THIS SESSION:
+  - AI-RETUNE SLICE 1 (a1d7f69) -- constrained the relevance-GATE geography (gateClassifyArticle,
+    ipc/index.ts ~:2808, the title+snippet triage writing the SCALAR geography/region). Prompt asks for
+    a single canonical country OR REGIONAL/GLOBAL; snap-before-write via resolveRegion (src/main/geography.ts,
+    already imported) enforces it; unmapped/blank -> REGIONAL fallback. Forward-only (existing junk rows
+    clean on "Re-score unscored"). Tested incl. cloud-SQL. The junk factory was the GATE, NOT analyze.ts.
+  - AI-RETUNE SLICE 2 (563b943) -- constrained analyze.ts geography (relevance task, the country LISTS).
+    Added REGIONAL/GLOBAL sentinel instruction + a canonical snap in the normalizer via resolveRegion
+    (same resolver). subject_countries accepts a sole-entry sentinel (mixed country+sentinel collapses to
+    the sentinel alone, Model A); mentioned_countries = countries only; unmapped junk dropped; EMPTY STAYS
+    EMPTY (no REGIONAL fallback -- deliberately unlike slice 1, so the needs-geography prompt + placement
+    gate keep working). Verified on real re-analyses: multi-country -> clean canonical list; no-subject ->
+    single GLOBAL sentinel sole-entry; mixed legacy row cleaned on re-analysis; no sentinel in mentioned.
+    NOTE: subject_countries is written ONLY by the manual "Analyze with AI" button (analyzeSource ->
+    analyzeText task relevance -> saveAiAnalysis); never auto-runs; requires stored article text; writes
+    cloud-first then mirror. The GATE (auto-run) writes only the scalar, not the lists.
+
+SLICE 3 REFRAMED -- it was never "drop a dead field." The drop-safety diagnose + Dorian's direction
+  reframed it: the old per-type categories_json categorization is a PLACEHOLDER to be REPLACED by porting
+  the full News structured model onto all 4 intel types, then retired as the trailing step. Key findings:
+    - categories_json is NOT droppable as a column: co-owned by Social (live user-editable picker) + still
+      rendered as pills on PipelineSourceCard (articles) + DocumentsTab (read-only badges). Retire the USAGE
+      per type as each gets real axes; leave the physical column (drop later once nothing writes it).
+    - queue_section (derived from categories_json on approve) is WRITE-ONLY, zero readers -- routing runs on
+      routing.proposed_sections + subject_countries. Retiring it is inert (no filing impact).
+
+THE CONVERGENCE ARC (the real work -- diagnosed, verified, NOT built):
+  GOAL: the full structured apparatus (geography picker, section confirm, tags, relevance, confidence,
+  structured analysis) currently lives ONLY in News. Bring Social/Documents/Interviews up to the SAME
+  structured OUTCOME so all 4 types feed the publication grid and reach the website. Ingestion differs per
+  type; the output must converge.
+
+  DIAGNOSE VERDICT (per-type, file:line captured this session): it is ~5/6 a UI PORT, not a data project.
+    - ALL THREE non-News tabs ALREADY run task:'relevance' + saveAiAnalysis -> the full structured payload
+      (proposed_sections, subject_countries, mentioned_countries, actors, capabilities, key_facts,
+      article_type) ALREADY lands in analysis_json for every type. Data exists.
+    - ALL THREE already reach routeToNewSources and place by sections+geo, identical to News. Routing done.
+    - GAPS to close (per type): GEOGRAPHY picker (add), SECTIONS confirm UI (add), full STRUCTURED render
+      (expand) -- all UI-ONLY (data present). CONFIDENCE editor: Social has it, Documents/Interviews need it
+      (UI-only). RELEVANCE override: all three missing -- the ONE true data-path gap (wire handleHumanRelevance
+      -> setHumanRelevance -> analysis_json.human; the write path exists, just not called). TAGS: done on all.
+    - categories_json UI to retire per type: Social = full picker (keep column), Documents = read-only badges,
+      Interviews = none.
+
+  ** THE UNIFICATION: this arc IS the card-unification arc from the data side. ** The unified SourceCard is
+  the shared component that mounts these axes; mounting it on Social/Docs/Interviews IS the structured-model
+  port. Do NOT port controls onto old tab layouts (that's 3x work then rip out). Build the unified card once,
+  mount per type. => the earlier open decision (shared-shell-from-scratch vs morph-News-inline) is now
+  DECIDED: SHARED-SHELL-FROM-SCRATCH -- the whole value is one component serving four types.
+
+  ONE SLICE PLAN to write next session (covers card + convergence + retirement together):
+    (1) shared SourceCard shell (title + 3 zones + overflow popovers + review/annotate + completeness meter),
+        mount on News READ-ONLY first (parity render).
+    (2) wire News editable axes into the shell (geography/actors/tags/confidence/relevance; sections read-
+        only on News per the locked matrix).
+    (3) overflow popovers; (4) incident lift onto News.
+    (5-7) mount the shell on Social, Documents, Interviews -- each mount = that type's structured port; fold in
+        the relevance-override wire (the one data gap) + confidence editor for Docs/Ints.
+    (8) sections editable on New Sources (routing desk) per the matrix.
+    (9) completeness meter + gate (needs an approve-gate logic diagnose first).
+    (10) retire categories_json USAGE per type once its real axes exist (trailing cleanup; keep the column).
+  Each slice independently testable; commit on green.
+
+CARD DESIGN + DRONE PACKET (locked earlier this session, unchanged): unified-card mockup + model spec in
+  outputs/ for the drone-DB project; editability matrix locked (geography/actors/tags/confidence/relevance
+  edit on News-Intel; sections edit on New Sources only; incident on Intel[new]+New; All Sources read-only).
+  Overflow "... +N" grouped popovers; click-to-override confidence/relevance pills; completeness gate =
+  text+AI-run+geo+>=1 section+tags+incident (confidence/reliability NOT gates). Drone lifecycle doc
+  (docs/contested-skies-lifecycle.md) still TO GENERATE via the Code-writes-it prompt drafted earlier.
+
+PUBLISH PIPELINE SCOPED (unchanged from prior block): two disconnected systems; 5 critical-path slices
+  (monitor-repo pivot[external diagnose], content.json generator, rewire publishToRepo to grid, atomic
+  approve transaction, confirm deploy) + 2 for full design. Geography routing is NOT the blocker.
+
+REMAINING WORK (order): (1) CONVERGENCE ARC -- write the unified slice plan above [NEXT, the central arc];
+  (2) needs-geography list indicator (small, independent); (3) publish pipeline slices (after monitor-repo
+  diagnose). Retune slice 3 subsumed into the convergence arc (step 10).
+
+STILL DEFERRED (unchanged): A2 New Sources geo picker + syncPlacements re-run; review-stage REGIONAL
+  backfill; two-level tab bar; REGIONAL->LATAM rename; per-cell divergence; supply-axis re-index;
+  page-limited relevance/project filter bug; intake-SourcesTab article-move question.
+--------------------------------------------------------------------------------
 > RESUME HERE (CURRENT, 2026-08-11 latest -- AI-RETUNE slices 1+2 SHIPPED; retune slice 3 REFRAMED into the four-type CONVERGENCE arc, which is the SAME arc as the unified-card build. Next = the unified-card / convergence slice plan, fresh session.)
 
 SHIPPED + COMMITTED THIS SESSION (retune):
