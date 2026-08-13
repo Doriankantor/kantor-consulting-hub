@@ -5,7 +5,7 @@ _Last updated: 2026-08-11 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 ## ▶ Start here — resume point for the next session
 
 --------------------------------------------------------------------------------
-> RESUME HERE (CURRENT, 2026-08-12 -- DATA-MODEL VERDICT IN (Cowork): the two-shape split is an ARTIFACT, not essential -> the unified card sits on ONE shape. S0 DONE (20e12de) - getSourcePipeline SELECT widened, pipeline row now carries full source core on one shape. S1 DONE (a54082c) - card home src/renderer/src/components/source-card/ built (parse/sourceCore/SourceCard), read-only card mounted on News. S2 DONE (e613c52) - geography + actors editing wired through the card; S1 always-amber regression fixed (cue clears on touch); confidence/tags/relevance stay live in NewsTab quick-controls. Next = Phase A S3 (overflow "...+N" grouped popovers per zone). Write-propagation (A2) is a SEPARATE task that only gates EDITABLE pipeline surfaces.)
+> RESUME HERE (CURRENT, 2026-08-12 -- DATA-MODEL VERDICT IN (Cowork): the two-shape split is an ARTIFACT, not essential -> the unified card sits on ONE shape. S0 DONE (20e12de) - getSourcePipeline SELECT widened, pipeline row now carries full source core on one shape. S1 DONE (a54082c) - card home src/renderer/src/components/source-card/ built (parse/sourceCore/SourceCard), read-only card mounted on News. S2 DONE (e613c52) - geography + actors editing wired through the card; S1 always-amber regression fixed (cue clears on touch); confidence/tags/relevance stay live in NewsTab quick-controls. S4 DONE (96a3da5) - incident control lifted onto News via SourceCard; News card now behaviorally COMPLETE. Overflow "...+N" popovers FOLDED into the later REDESIGN PHASE (they group zones that do not exist yet). Next = Phase A S5 (mount SourceCard on Social, then S6 Documents / S7 Interviews). Write-propagation (A2) is a SEPARATE task that only gates EDITABLE pipeline surfaces.)
 
 THE VERDICT (Cowork read the real schema/JOIN/write-paths, whole-repo -- not guessed):
   ** (a) LIGHT -- converge to ONE canonical SourceCore + placements[] overlay. ** Evidence:
@@ -55,13 +55,24 @@ REFINED ARC SEQUENCE (updated by the verdict):
        permanent geography_confirmed flag this slice. Diagnose found the flag is the WRONG one for the axis News
        edits (guards the SCALAR gate-geography, not the subject/mentioned LISTS), has no actor-side equivalent, and
        its only 0->1 writer (updateGeography) is dead in the UI. Permanence is its own future slice.
-    S3 [NEXT]: overflow "...+N" grouped popovers per zone. (Then S4 incident lift onto News.)
-    S5-S7 mount on Social/Docs/Interviews -- each mount = that type's structured port; fold in relevance-override
-    wire + confidence editor (Docs/Ints). This is the convergence goal DONE: four intel types feed the grid.
-  Phase B (pipeline family, needs A2 resolved if editable): replace PipelineSourceCard on New Sources/Pre-Commit/
-    All Sources with the one card + placements[] overlay. New Sources editable (sections+incident, + geography/
-    actors IF A2 re-sync is wired). All Sources read-only. Then: completeness meter+gate (approve-gate diagnose
-    first); retire categories_json USAGE per type LAST (keep the column -- Social co-owns it).
+    S4 [DONE 96a3da5]: relocated IncidentChip into components/source-card/ (shared home) + repointed PipelineSourceCard
+       import; mounted in SourceCard behind optional onIncidentChange; NewsTab wires setIncidentFlag ->
+       analysis_json.human.incident via the existing cloud-read RMW (siblings preserved). Three-state (incident/not/
+       unset), display human-else-gate, no enforcement on News (must-mark stays on New Sources). Verified: persists to
+       cloud, coexists with relevance override no clobber (3 rows carry both), New Sources control still works. News
+       card now behaviorally COMPLETE -- geography/actors/tags/confidence/relevance/incident all live through SourceCard.
+    S5 [NEXT]: mount SourceCard on Social (then S6 Documents, S7 Interviews) -- each mount = that type's structured-model
+       port (the convergence goal); fold in relevance-override wire + confidence editor (Docs/Ints). Convergence goal
+       DONE when all four intel types feed the grid through the one card.
+  Phase B (pipeline family, needs A2 resolved if editable): mount SourceCard on the pipeline surfaces (New Sources /
+    Pre-Commit / All Sources), replacing PipelineSourceCard, with the one card + placements[] overlay. New Sources
+    editable (sections+incident, + geography/actors IF A2 re-sync is wired). All Sources read-only.
+  REDESIGN PHASE (after the card is on all surfaces): boxed zones (cogwheel/globe/bust + corner icons), completeness
+    meter, click-to-override pills, AND overflow "...+N" grouped popovers -- one transforming slice landing everywhere
+    at once. (Overflow popovers were previously listed as S3 [NEXT]; they belong here -- they group overflow within
+    zones that do not exist until this phase.)
+  Then: completeness gate (needs approve-gate diagnose); retire categories_json USAGE per type LAST (keep the column --
+    Social co-owns it).
 
 CARD DESIGN + EDITABILITY MATRIX: LOCKED (unchanged) -- see prior block / outputs/unified-source-card-mockup.html
   + unified-card-model-spec.md. 3 zones (cogwheel/globe/bust), overflow popovers, click-to-override conf/rel
