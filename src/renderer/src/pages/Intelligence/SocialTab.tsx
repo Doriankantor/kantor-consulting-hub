@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useConnection } from '../../contexts/ConnectionContext'
 import RichTextEditor from '../../components/RichTextEditor'
+import SourceCard from '../../components/source-card/SourceCard'
+import { fromIntelligenceSource } from '../../components/source-card/sourceCore'
 import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
 import CondensedSummary from './CondensedSummary'
@@ -35,19 +37,8 @@ const ALL_CATEGORIES = [
   'State Military Activity', 'Finance & Sanctions', 'Extra-regional Supplier',
 ]
 
-const CONFIDENCE_COLORS = {
-  high:   { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400',   dot: 'bg-green-500' },
-  medium: { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400',   dot: 'bg-amber-500' },
-  low:    { bg: 'bg-red-100 dark:bg-red-900/30',     text: 'text-red-700 dark:text-red-400',       dot: 'bg-red-500' },
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  unreviewed: 'bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300',
-  approved:   'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
-  rejected:   'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
-  saved:      'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
-  pushed:     'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
-}
+// S5: CONFIDENCE_COLORS + STATUS_COLORS removed -- the confidence + status badges they styled
+// now render on the SourceCard face, which owns its own copies of these palettes.
 
 // Selected project, threaded from the Intelligence container (Slice 1/2b).
 type ProjectInfo = { id: string; name: string; keywords?: string } | null
@@ -672,8 +663,7 @@ export default function SocialTab({ onApprove, project = null }: Props) {
         )}
 
         {!loading && visible.map(post => {
-          const conf = post.confidence || 'low'
-          const confStyle = CONFIDENCE_COLORS[conf as keyof typeof CONFIDENCE_COLORS] || CONFIDENCE_COLORS.low
+          // S5: confidence badge moved to the SourceCard face -> conf/confStyle no longer derived here.
           const cats: string[] = (() => { try { return JSON.parse(post.categories_json || '[]') } catch { return [] } })()
           const PlatformIcon = PLATFORM_ICONS[post.platform || '']
           // 3d: picker default — the post's project, else the top-dropdown selected project.
@@ -690,6 +680,10 @@ export default function SocialTab({ onApprove, project = null }: Props) {
           const cardOpen = openCards[post.id] ?? (_hasNotes || _analyzed || _reconciled)
           return (
             <div key={post.id} className={`bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4 transition-all duration-300 ${isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
+              {/* Retained social-identity header: avatar + handle + platform + actions. The
+                  confidence badge, status badge, and date now come from the SourceCard face
+                  below (confidence/status/publishedAt are carried by core) -- removed here to
+                  avoid duplication (S5). */}
               <div className="flex items-start gap-2 mb-2">
                 <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center shrink-0 text-indigo-600 dark:text-indigo-400">
                   {PlatformIcon || <span className="text-[10px] font-bold">{(post.platform || 'S')[0]}</span>}
@@ -698,14 +692,6 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-semibold text-gray-900 dark:text-white">{post.handle}</span>
                     <span className="text-xs text-gray-400 dark:text-white/30">{post.platform}</span>
-                    <span className="text-xs text-gray-400 dark:text-white/30">{formatDate(post.published_at)}</span>
-                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${confStyle.bg} ${confStyle.text}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${confStyle.dot}`} />
-                      {conf}
-                    </span>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${STATUS_COLORS[post.status] || STATUS_COLORS.unreviewed}`}>
-                      {post.status}
-                    </span>
                   </div>
                 </div>
                 {post.url && (
@@ -735,7 +721,13 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                 )}
               </div>
 
-              <p className="text-sm text-gray-700 dark:text-white/80 whitespace-pre-wrap line-clamp-4">{post.content}</p>
+              {/* S5: the unified card face, READ-ONLY (no onChange props). Empty-data guards in
+                  SourceCard suppress every article-only zone (title/snippet/geo/actors/relevance/
+                  incident) on a social row, so this renders only confidence + status + date --
+                  parity with the badges removed from the header above. */}
+              <SourceCard core={fromIntelligenceSource(post)} />
+
+              <p className="text-sm text-gray-700 dark:text-white/80 whitespace-pre-wrap line-clamp-4 mt-2">{post.content}</p>
 
               {(post.location_mentioned || post.actors_mentioned) && (
                 <div className="flex gap-3 mt-2">

@@ -127,7 +127,11 @@ export default function SourceCard({
           {/* Relevance-score badge.
               gate_processed=1 + NULL score = tombstoned (failed to score) → gray "scoring failed".
               gate_processed=0 + NULL score = not yet gated → gray "REL —". */}
-          {core.gateProcessed === 1 && core.relevanceScore == null ? (
+          {/* Never-gated rows (Social/Docs/Interviews: gate_processed=0, no score) render NO
+              relevance badge — a "REL —" here would falsely imply the gate ran. Data-driven,
+              not type-keyed: News is always gate_processed=1 so it never enters this branch,
+              and the 'scoring failed' + 'REL n' branches below stay byte-identical. */}
+          {core.gateProcessed !== 1 && core.relevanceScore == null ? null : core.gateProcessed === 1 && core.relevanceScore == null ? (
             <span
               className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/30"
               title={core.gateReasoning || 'Scoring failed — could not classify this article'}
@@ -215,32 +219,48 @@ export default function SourceCard({
           {/* Geography — Geo-2 nested country + sub-geo chips (replaces the scalar editor).
               Slice X: the scalar source.geography column is no longer rendered as a fallback
               pill; an empty subject shows the picker's empty-state prompt instead.
-              S2: EDITABLE when onCountriesChange is present; inert (no-op) otherwise. */}
-          <GeographyChips
-            subject={core.subjectCountries}
-            mentioned={core.mentionedCountries}
-            subGeo={core.subGeographies}
-            aiUnconfirmed={geoAiUnconfirmed}
-            onChange={onCountriesChange ?? (() => {})}
-          />
+              S2: EDITABLE when onCountriesChange is present; inert (no-op) otherwise.
+              S5: GeographyChips always renders its full picker (no self-suppress), so on a
+              read-only mount with no geography (Social/Docs/Interviews) it would show an inert
+              editor. Guard: render only when the lists carry data OR this is an editable mount
+              (real onCountriesChange). Keys on data/handler, never type -> empty-editable News
+              still shows the picker; read-only-empty Social suppresses it. */}
+          {(core.subjectCountries.length > 0 || core.mentionedCountries.length > 0 || Object.keys(core.subGeographies).length > 0 || onCountriesChange) && (
+            <GeographyChips
+              subject={core.subjectCountries}
+              mentioned={core.mentionedCountries}
+              subGeo={core.subGeographies}
+              aiUnconfirmed={geoAiUnconfirmed}
+              onChange={onCountriesChange ?? (() => {})}
+            />
+          )}
 
           {/* Actors — Actor-2 flat typed chips (click-to-cycle type), under geography.
-              S2: EDITABLE when onActorsChange is present; inert (no-op) otherwise. */}
-          <ActorChips
-            actors={core.actors}
-            aiUnconfirmed={actorsAiUnconfirmed}
-            onChange={onActorsChange ?? (() => {})}
-          />
+              S2: EDITABLE when onActorsChange is present; inert (no-op) otherwise.
+              S5: ActorChips renders a "+ actor" affordance when empty (not nothing), so guard
+              the same way as geography -- data present OR editable mount. */}
+          {(core.actors.length > 0 || onActorsChange) && (
+            <ActorChips
+              actors={core.actors}
+              aiUnconfirmed={actorsAiUnconfirmed}
+              onChange={onActorsChange ?? (() => {})}
+            />
+          )}
         </div>
 
-        {/* Title */}
-        {core.url ? (
-          <a href={core.url} target="_blank" rel="noopener noreferrer"
-            className="text-sm font-semibold text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 transition line-clamp-2">
-            {core.title}
-          </a>
-        ) : (
-          <p className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-2">{core.title}</p>
+        {/* Title. S5: render the block only when there IS a title (Social/Docs/Interviews rows
+            can have title=null -> an empty <a>/<p> otherwise); link only when title AND url are
+            both present, else plain text. Data-driven: News rows always carry a title, so this
+            renders identically for them. */}
+        {core.title && (
+          core.url ? (
+            <a href={core.url} target="_blank" rel="noopener noreferrer"
+              className="text-sm font-semibold text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 transition line-clamp-2">
+              {core.title}
+            </a>
+          ) : (
+            <p className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-2">{core.title}</p>
+          )
         )}
 
         {/* Snippet */}
