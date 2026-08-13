@@ -44,6 +44,7 @@ export interface SourceCore {
   subGeographies: Record<string, string[]>
   hasGeo: boolean                        // lists non-empty
   geographyConfirmed: number             // permanent row flag: 0 = AI proposal, 1 = human-confirmed
+  region: string | null                  // gate's scalar geography (canonical country, or REGIONAL/GLOBAL sentinel)
 
   // ── actors ──
   actors: { name: string; type: string }[]
@@ -118,6 +119,7 @@ export function fromIntelligenceSource(row: IntelligenceSource): SourceCore {
     subGeographies: safeParseObject(row.sub_geographies),
     hasGeo: subjectCountries.length > 0 || mentionedCountries.length > 0,
     geographyConfirmed: row.geography_confirmed,
+    region: row.region,
 
     actors,
     hasActors: actors.length > 0,
