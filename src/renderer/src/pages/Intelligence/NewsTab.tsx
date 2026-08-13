@@ -933,6 +933,24 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     setActorsTouched(prev => new Set(prev).add(id))   // first edit clears the AI badge
   }
 
+  // S4: researcher confirms/adjusts the incident flag → analysis_json.human.incident via
+  // setIncidentFlag (gate-safe cloud RMW; preserves .ai/.routing/.reconciled/.human siblings).
+  // IncidentChip emits true (confirm/force) or false (not an incident); no News enforcement.
+  // Optimistic patch mirrors handleHumanRelevance (both touch analysis_json.human).
+  async function handleIncident(id: string, value: boolean) {
+    try {
+      const res = await window.api.intelligence.setIncidentFlag(id, value)
+      if (!res.ok) return
+      setSources(prev => prev.map(s => {
+        if (s.id !== id) return s
+        let a: Record<string, unknown> = {}
+        try { a = s.analysis_json ? JSON.parse(s.analysis_json) : {} } catch { a = {} }
+        if (res.human) a.human = res.human; else delete a.human
+        return { ...s, analysis_json: JSON.stringify(a) }
+      }))
+    } catch (e) { console.warn('[NewsTab] setIncidentFlag failed:', e) }
+  }
+
   // Write a tag set for one type (thematic) immediately — no Approve needed.
   async function handleSetTags(id: string, type: 'disposition' | 'thematic', tags: string[]) {
     const col = type === 'disposition' ? 'disposition_tags' : 'thematic_tags'
@@ -1447,6 +1465,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                 core={fromIntelligenceSource(source)}
                 onCountriesChange={(subject, mentioned, subGeo) => handleCountries(source.id, subject, mentioned, subGeo)}
                 onActorsChange={next => handleActors(source.id, next)}
+                onIncidentChange={value => handleIncident(source.id, value)}
                 geoTouched={countriesTouched.has(source.id)}
                 actorsTouched={actorsTouched.has(source.id)}
               >

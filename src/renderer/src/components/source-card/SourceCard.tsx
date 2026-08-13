@@ -14,6 +14,7 @@ import type { ReactNode } from 'react'
 import SectionProposalBadge from '../../pages/Intelligence/SectionProposalBadge'
 import GeographyChips from '../../pages/Intelligence/GeographyChips'
 import ActorChips from '../../pages/Intelligence/ActorChips'
+import IncidentChip from './IncidentChip'
 import { lookupCountry } from '../../pages/Intelligence/geographyVocab'
 import type { SourceCore } from './sourceCore'
 
@@ -71,6 +72,7 @@ interface SourceCardProps {
   children?: ReactNode
   onCountriesChange?: (subject: string[], mentioned: string[], subGeo: Record<string, string[]>) => void
   onActorsChange?: (actors: { name: string; type: string }[]) => void
+  onIncidentChange?: (value: boolean) => void
   geoTouched?: boolean
   actorsTouched?: boolean
 }
@@ -80,6 +82,7 @@ export default function SourceCard({
   children,
   onCountriesChange,
   onActorsChange,
+  onIncidentChange,
   geoTouched,
   actorsTouched,
 }: SourceCardProps) {
@@ -248,6 +251,22 @@ export default function SourceCard({
         {/* A2: read-only AI section-routing proposal (own row, above PROJECT/TOPIC). */}
         {/* TODO: derive project abbrev when multi-project intel lands */}
         <SectionProposalBadge sections={core.proposedSections} projectAbbrev="CS" />
+
+        {/* S4: incident confirm/adjust (three-state: confirm / not-an-incident / unset). Displays
+            the human-else-AI resolved state (core.incident) exactly as New Sources does. EDITABLE
+            when onIncidentChange is present; when absent (read-only mount) shows the read-only
+            badge only for a resolved incident -- mirrors PipelineSourceCard's branch. No News-side
+            enforcement: unset is a valid, non-blocking state (that requirement stays on New Sources). */}
+        {onIncidentChange ? (
+          <IncidentChip resolved={core.incident} onChange={onIncidentChange} />
+        ) : core.incident.isIncident && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+            <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30">Incident</span>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+              ⚠ Incident{core.incident.state === 'forced' ? ' · added' : ''}
+            </span>
+          </div>
+        )}
 
         {/* Host-injected interactive elements (News: project-row + gate-error). */}
         {children}

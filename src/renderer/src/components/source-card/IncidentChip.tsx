@@ -1,5 +1,7 @@
-// NS Slice 2: incident-flag confirm control on the New-Sources pipeline card — the incident
-// analogue of SectionChips. Same chip idiom (filled emerald = on, ghost/outlined = off, an
+// Incident-flag confirm control (three-state: confirm / not-an-incident / unset). Shared by the
+// New-Sources pipeline card (PipelineSourceCard) and the News card (SourceCard, S4). Relocated
+// from InfoPages/tabs into the shared source-card home so both sides import "up" (S1 precedent).
+// The incident analogue of SectionChips. Same chip idiom (filled emerald = on, ghost/outlined = off, an
 // indigo dot marks what the AI proposed). Three researcher-reachable states, driven by
 // resolveIncident (human-over-AI):
 //   confirmed    — AI flagged it and the researcher agrees (or hasn't touched it)
@@ -9,7 +11,7 @@
 // Every click emits the human override value (true = confirm/force, false = not an incident);
 // null is reserved for the writer's clear path and isn't produced here. Persistence goes to
 // analysis_json.human.incident via setIncidentFlag — NO info_page_sources / placement contact.
-import { ResolvedIncident } from '../../Intelligence/resolveAnalysis'
+import { ResolvedIncident } from '../../pages/Intelligence/resolveAnalysis'
 
 export interface IncidentChipProps {
   resolved: ResolvedIncident

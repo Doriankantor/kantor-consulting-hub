@@ -3,7 +3,7 @@ import { actorTypeClass } from '../../Intelligence/actorTypeClass'
 import { resolveFacts, resolveCaps, resolveIncident } from '../../Intelligence/resolveAnalysis'
 import { sectionLabel } from '../../Intelligence/sectionLabels'
 import SectionChips from './SectionChips'
-import IncidentChip from './IncidentChip'
+import IncidentChip from '../../../components/source-card/IncidentChip'
 
 // Shared read-only source card for the Info Page source pipeline tabs
 // (New Sources / Pre-Commit Review / All Sources). All metadata shown here was
