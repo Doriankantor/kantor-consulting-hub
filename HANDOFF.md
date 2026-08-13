@@ -96,6 +96,14 @@ SHIPPED (retune, prior session): slice 1 (a1d7f69) gate geo snap; slice 2 (563b9
     relevance left live in NewsTab's quick-controls row (untouched; card ownership deferred to the zone redesign).
     Verified in-app + cloud SQL (subject_countries round-trip); sibling relevance override preserved across a tags
     edit; typecheck held at baseline (main 5 / web 55, 0 new in touched files).
+  GEO-POPULATION CHIP [DONE 7858deb chip + 5ae4e9f SourceCore region]: gated-but-unanalyzed cards showed empty
+    geography despite a canonical country in the gate scalar (region). SourceCard now shows that scalar as a soft
+    AI-unconfirmed chip when subject_countries is empty, classified renderer-pure via geographyVocab -- exact
+    canonical country -> confirmable chip; sentinels/decorated/junk -> no chip. Click writes clean canonical
+    country via onCountriesChange (no new IPC, no gate change, no DB pre-seed). Verified in-app + cloud SQL (Mexico
+    one-click-confirms; Hormuz/Houthi/decorated regions show no chip). Card-only, zero DB-schema risk; fixes the
+    whole existing clean-region backlog. (7858deb committed only SourceCard and forgot the SourceCore region field
+    it reads; 5ae4e9f adds it so a clean checkout compiles.)
 
 PUBLISH PIPELINE (unchanged): two disconnected systems; 5 critical slices + 2 for full design; after the arc.
 
@@ -114,6 +122,15 @@ BANKED (Dorian's finds):
     resolves one (NOT for REGIONAL/GLOBAL), marked AI-unconfirmed (amber) so a human confirms; card shows the scalar
     as a soft chip on empty-list cards. Needs its own small diagnose (does seeding interact with the placement gate /
     re-fire on re-gate?). Verified this session: Teotihuacan card had subject_countries=null but region=geography='Mexico'.
+    UPDATE: gap (1) SHIPPED as GEO-POPULATION CHIP (7858deb + 5ae4e9f) -- the card now surfaces AND one-click-confirms
+    the clean scalar. Diagnose landed on the card-show-scalar path (safe, card-only) over gate-seed (the seed variant
+    is now optional, not needed; re-gate never re-fires on gate_processed=1 rows anyway).
+  DECORATED-REGION EXTRACTION (optional enhancement): the gate chip only fires on EXACT canonical region values
+    (Mexico). Decorated regions (Mexico (Sinaloa), Mexico (Guerrero state), Venezuela / Caribbean) obviously mean a
+    country but get no chip -- exact-match excludes them (safely). Enhancement: extract the leading canonical country
+    from a decorated region string and offer it as the chip. Deferred deliberately -- it is a fuzzy-match writing to
+    geography, wants its own slice + care; decorated cards still get geography via Analyze-with-AI. Build only if
+    under-firing proves annoying in daily use.
 --------------------------------------------------------------------------------
 > RESUME HERE (CURRENT, 2026-08-11 latest -- AI-RETUNE slices 1+2 SHIPPED; slice 3 REFRAMED into the CONVERGENCE ARC. Next session = write the ONE slice plan for: unified SourceCard + structured-model port across all 4 intel types + categories_json retirement. Start fresh -- this is the central build arc.)
 
