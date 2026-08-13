@@ -76,6 +76,15 @@ HOW WE WORK NOW: build arc in COWORK+CODE (whole-repo). Design in a react-and-re
   full WHY. Discipline (MORE important with Cowork autonomy): read-only diagnose first; verify in cloud SQL;
   COMMIT IMMEDIATELY on green (Social-b was lost to a stray parallel-session git reset); verify ~/newsroom-pm
   before any git op; ASCII commit msgs; one slice at a time; main-process changes need dev restart.
+  COWORK-VS-CHAT ROUTING (standing): whoever is driving the design loop must proactively FLAG when a task is better
+  suited to Cowork+Code and say why -- never silently keep a Cowork-shaped task in the chat relay. The line: design /
+  decisions / react-and-refine / single-component slices stay in the chat loop (it holds context and is good at
+  judgment); cross-cutting whole-repo investigation, data-model questions, or builds touching many surfaces at once
+  go to Cowork (whole-repo in view, no lossy paste relay). Flag it at the moment it applies, with a one-line why, and
+  let Dorian choose. Dorian asked for this explicitly.
+  VERIFY QUERIES ON ACCENTED TITLES (gotcha): ilike '%title%' on Spanish/accented titles is unreliable (returns no
+  rows despite a successful write) -- verify by id or by the written value, not a title fragment. Same family as
+  em-dash-fails and zsh-! gotchas.
 
 SHIPPED (retune, prior session): slice 1 (a1d7f69) gate geo snap; slice 2 (563b943) analyze.ts geo sentinels.
   S0 (20e12de) widen getSourcePipeline SELECT to carry full source core - added is2.actors, mentioned_countries,
