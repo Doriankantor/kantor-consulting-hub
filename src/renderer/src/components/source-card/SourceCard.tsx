@@ -14,6 +14,7 @@ import type { ReactNode } from 'react'
 import SectionProposalBadge from '../../pages/Intelligence/SectionProposalBadge'
 import GeographyChips from '../../pages/Intelligence/GeographyChips'
 import ActorChips from '../../pages/Intelligence/ActorChips'
+import { lookupCountry } from '../../pages/Intelligence/geographyVocab'
 import type { SourceCore } from './sourceCore'
 
 const CONFIDENCE_COLORS = {
@@ -89,6 +90,19 @@ export default function SourceCard({
   // mount) => !undefined = true => cue falls back to core.hasGeo. Restores "clears on touch".
   const geoAiUnconfirmed = core.hasGeo && !geoTouched
   const actorsAiUnconfirmed = core.hasActors && !actorsTouched
+
+  // Geo-population affordance: gated-but-unanalyzed cards have empty subject_countries but a
+  // scalar in core.region (the gate set it). Surface that scalar as a one-click-confirm chip so
+  // the researcher can promote it into the real subject list. SNAP region through the renderer's
+  // canonical vocab (lookupCountry, the same table GeographyChips uses) so we NEVER show or confirm
+  // a non-country: a real country resolves to its clean canonical name; the REGIONAL/GLOBAL
+  // sentinels and pre-retune free-text junk ('Middle East (Iran/Hormuz)', 'N/A') are absent from
+  // the vocab -> undefined -> null -> no chip. Shown ONLY when subject is empty, region snaps to a
+  // real country, and this is an editable mount (onCountriesChange present). The click routes
+  // through the S2 handler verbatim; nothing is written to the DB until the researcher clicks. A
+  // later full-text Analyze-with-AI overwrites the list wholesale -- the gate scalar is a placeholder.
+  const gateSuggestion = lookupCountry(core.region ?? '')?.name ?? null
+  const showGateGeoChip = !!onCountriesChange && core.subjectCountries.length === 0 && gateSuggestion !== null
 
   return (
     <div className="flex items-start gap-3">
@@ -179,6 +193,21 @@ export default function SourceCard({
           )}
           {/* Date */}
           <span className="text-xs text-gray-400 dark:text-white/30">{formatDate(core.publishedAt)}</span>
+
+          {/* Geo-population: soft "from gate" suggestion chip in the empty geography state.
+              Click promotes the gate's scalar country into subject_countries via the S2 handler
+              (mentioned + subGeo passed through unchanged). Once subject is non-empty the condition
+              falls false and this disappears, replaced by the normal confirmed-country chip. */}
+          {showGateGeoChip && (
+            <button
+              onClick={() => onCountriesChange?.([gateSuggestion], core.mentionedCountries, core.subGeographies)}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-amber-300 dark:border-amber-500/30 bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-500/25 transition"
+              title={`Gate proposed "${gateSuggestion}" from the title/snippet -- click to confirm as a subject country`}
+            >
+              <span className="font-semibold">+ {gateSuggestion}</span>
+              <span className="opacity-70 text-[8px] uppercase tracking-wide">from gate</span>
+            </button>
+          )}
 
           {/* Geography — Geo-2 nested country + sub-geo chips (replaces the scalar editor).
               Slice X: the scalar source.geography column is no longer rendered as a fallback
