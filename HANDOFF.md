@@ -5,7 +5,7 @@ _Last updated: 2026-08-11 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 ## ▶ Start here — resume point for the next session
 
 --------------------------------------------------------------------------------
-> RESUME HERE (CURRENT, 2026-08-12 -- DATA-MODEL VERDICT IN (Cowork): the two-shape split is an ARTIFACT, not essential -> the unified card sits on ONE shape. S0 DONE (20e12de) - getSourcePipeline SELECT widened, pipeline row now carries full source core on one shape. S1 DONE (a54082c) - card home src/renderer/src/components/source-card/ built (parse/sourceCore/SourceCard), read-only card mounted on News. S2 DONE (e613c52) - geography + actors editing wired through the card; S1 always-amber regression fixed (cue clears on touch); confidence/tags/relevance stay live in NewsTab quick-controls. S4 DONE (96a3da5) - incident control lifted onto News via SourceCard; News card now behaviorally COMPLETE. Overflow "...+N" popovers FOLDED into the later REDESIGN PHASE (they group zones that do not exist yet). Next = Phase A S5 (mount SourceCard on Social, then S6 Documents / S7 Interviews). Write-propagation (A2) is a SEPARATE task that only gates EDITABLE pipeline surfaces.)
+> RESUME HERE (CURRENT, 2026-08-12 -- DATA-MODEL VERDICT IN (Cowork): the two-shape split is an ARTIFACT, not essential -> the unified card sits on ONE shape. S0 DONE (20e12de) - getSourcePipeline SELECT widened, pipeline row now carries full source core on one shape. S1 DONE (a54082c) - card home src/renderer/src/components/source-card/ built (parse/sourceCore/SourceCard), read-only card mounted on News. S2 DONE (e613c52) - geography + actors editing wired through the card; S1 always-amber regression fixed (cue clears on touch); confidence/tags/relevance stay live in NewsTab quick-controls. S4 DONE (96a3da5) - incident control lifted onto News via SourceCard; News card now behaviorally COMPLETE. S5 DONE (460f79d) - shared SourceCard mounted read-only on Social (first cross-type mount); SourceCard hardened with general data-driven empty guards (title/relevance suppressed when absent; geo/actor chips shown only with data OR a real edit handler) so ungated/structure-sparse rows render no misleading blanks; duplicate confidence/status/date stripped from the Social header. Overflow "...+N" popovers FOLDED into the later REDESIGN PHASE (they group zones that do not exist yet). Next = Phase A S6 (mount SourceCard on Documents, then S7 Interviews) -- SAME ungated/title-optional shape as Social, the S5 guards already cover them with ZERO new SourceCard code. S5b DEFERRED = editable structured geo/actors on Social (needs new write paths + a freeform->structured migration + a SourceCore change). Write-propagation (A2) is a SEPARATE task that only gates EDITABLE pipeline surfaces.)
 
 THE VERDICT (Cowork read the real schema/JOIN/write-paths, whole-repo -- not guessed):
   ** (a) LIGHT -- converge to ONE canonical SourceCore + placements[] overlay. ** Evidence:
@@ -61,9 +61,26 @@ REFINED ARC SEQUENCE (updated by the verdict):
        unset), display human-else-gate, no enforcement on News (must-mark stays on New Sources). Verified: persists to
        cloud, coexists with relevance override no clobber (3 rows carry both), New Sources control still works. News
        card now behaviorally COMPLETE -- geography/actors/tags/confidence/relevance/incident all live through SourceCard.
-    S5 [NEXT]: mount SourceCard on Social (then S6 Documents, S7 Interviews) -- each mount = that type's structured-model
+    S5 [DONE 460f79d]: mounted shared SourceCard read-only on Social (first cross-type mount). Hardened SourceCard with
+       GENERAL data-driven empty guards so ungated/structure-sparse rows render with no misleading blanks: title
+       suppressed when empty; relevance badge suppressed when never gated (gateProcessed != 1 and relevanceScore null);
+       GeographyChips and ActorChips wrapped to show only when they have data OR a real edit handler (length>0 ||
+       onXChange) -- preserves News empty-editable pickers; SectionProposalBadge already self-suppresses. Stripped
+       now-duplicate confidence/status/date from the Social header (render via card face); identity/content/
+       freeform-intel/categories/compose/tail stay host-rendered in SocialTab. SourceCore, compose form, editing, and
+       styling untouched. Typecheck baseline (main 5 / web 55). NOT pushed.
+    S6 [NEXT]: mount SourceCard on Documents (then S7 Interviews) -- each mount = that type's structured-model
        port (the convergence goal); fold in relevance-override wire + confidence editor (Docs/Ints). Convergence goal
        DONE when all four intel types feed the grid through the one card.
+    PATTERN for S6 (Documents) / S7 (Interviews): both are ungated, title-optional, structured-geo-empty
+       intelligence_sources rows -- SAME shape as Social. Each mounts SourceCard READ-ONLY; the general empty guards
+       from S5 already cover them with ZERO new SourceCard code. Only meta (confidence/status/date) + any structured
+       data the row carries flows through core; each tab keeps its own identity/extras host-rendered alongside the card
+       (do NOT teach SourceCard type-specific fields). Verify per type: mount read-only, confirm no blank zones, strip
+       any duplicate meta from that tab's header.
+    S5b [DEFERRED]: editable structured geography/actors on Social -- needs new social write paths AND a decision on the
+       freeform location_mentioned/actors_mentioned -> structured subject_countries/actors migration; requires a
+       SourceCore change. Gates any EDITABLE Social card.
   Phase B (pipeline family, needs A2 resolved if editable): mount SourceCard on the pipeline surfaces (New Sources /
     Pre-Commit / All Sources), replacing PipelineSourceCard, with the one card + placements[] overlay. New Sources
     editable (sections+incident, + geography/actors IF A2 re-sync is wired). All Sources read-only.
@@ -124,11 +141,21 @@ SHIPPED (retune, prior session): slice 1 (a1d7f69) gate geo snap; slice 2 (563b9
     one-click-confirms; Hormuz/Houthi/decorated regions show no chip). Card-only, zero DB-schema risk; fixes the
     whole existing clean-region backlog. (7858deb committed only SourceCard and forgot the SourceCore region field
     it reads; 5ae4e9f adds it so a clean checkout compiles.)
+  S5 (460f79d) mount shared SourceCard read-only on Social (first cross-type mount) - SourceCard hardened with general
+    data-driven empty guards so ungated/structure-sparse rows render no misleading blanks: title suppressed when empty;
+    relevance badge suppressed when never gated (gateProcessed != 1 and relevanceScore null); GeographyChips/ActorChips
+    wrapped to show only with data OR a real edit handler (length>0 || onXChange) -- preserves News empty-editable
+    pickers; SectionProposalBadge self-suppresses (untouched). Stripped now-duplicate confidence/status/date from the
+    Social header (render via card face); identity/content/freeform-intel/categories/compose/tail stay host-rendered.
+    SourceCore, compose form, editing, styling untouched; guards data/handler-driven never type-gated, News-safe.
+    Typecheck held at baseline (main 5 / web 55, 0 new in touched files). NOT pushed.
 
 PUBLISH PIPELINE (unchanged): two disconnected systems; 5 critical slices + 2 for full design; after the arc.
 
-REMAINING WORK (order): (1) card arc Phase A -- S0 (20e12de) + S1 (a54082c) + S2 (e613c52) DONE; S3 [NEXT] (overflow
-  popovers), then S4-S7; (2) Phase B (needs A2 if editable pipeline); (3) needs-geography list indicator; (4) publish
+REMAINING WORK (order): (1) card arc Phase A -- S0 (20e12de) + S1 (a54082c) + S2 (e613c52) + S4 (96a3da5) + S5 (460f79d)
+  DONE; S6 [NEXT] (mount SourceCard on Documents), then S7 (Interviews) -- SAME shape as Social, S5 guards cover them
+  with zero new SourceCard code; overflow popovers FOLDED into the later REDESIGN PHASE; S5b (editable structured
+  geo/actors on Social) DEFERRED; (2) Phase B (needs A2 if editable pipeline); (3) needs-geography list indicator; (4) publish
   pipeline. DEFERRED unchanged: A2 re-sync propagation (now understood as the gate for editable pipeline surfaces),
   REGIONAL backfill, two-level tab bar, REGIONAL->LATAM rename, supply-axis re-index, page-limited filter bug,
   intake-SourcesTab move question, drone lifecycle doc still TO GENERATE.
