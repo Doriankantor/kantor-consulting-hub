@@ -116,9 +116,11 @@ So the reuse question for the drone DB is **not** "does the whole card fit" — 
 
 ---
 
-## 5. Proposed mapping onto a drone-systems catalogue entry
+## Appendix (parked) — cross-project reuse: drone-systems catalogue mapping
 
-A starting proposal for the drone DB to react to — **not** a locked design. Same shell, drone content:
+> PARKED / OUT OF SCOPE for the KC Hub SourceCard redesign. This appendix maps the shell onto a separate drone-database product and is retained for reference only; it is not part of the intel-card slices. Sections 1–4 above are the KC Hub spec.
+
+A starting proposal for a drone DB to react to — **not** a locked design. Same shell, drone content:
 
 **Title surface:** system name + one-line descriptor (e.g. platform family, role). Kicker: catalogue status (draft/verified), a data-confidence value, the primary data source, last-updated date.
 
