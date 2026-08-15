@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KC Hub — Unified Source Card</title>
+<style>
+  :root{
+    --paper:#f6f7f9;
+    --card:#ffffff;
+    --ink:#141821;
+    --ink-2:#3a4150;
+    --ink-3:#6b7482;
+    --hair:#e4e7ec;
+    --hair-2:#d3d8e0;
+
+    /* zone tints — muted, distinct, harmonious */
+    --z-cog-bg:#f3f4f7;   --z-cog-fr:#d8dce4;   --z-cog-ink:#4a5263;   /* settings / AI / meta */
+    --z-geo-bg:#eef6f7;   --z-geo-fr:#c4dfe2;   --z-geo-ink:#2f6f74;   /* geography */
+    --z-act-bg:#f2eef8;   --z-act-fr:#d8cbe9;   --z-act-ink:#5b4585;   /* actors / entities */
+
+    /* editable = interactive indigo; read = flat */
+    --edit:#3b4ea8;
+    --edit-bg:#eef0fb;
+    --edit-fr:#c3cbef;
+
+    /* semantic */
+    --hi:#1f8f5f; --hi-bg:#e6f5ee;
+    --med:#b7791f; --med-bg:#fbf1de;
+    --lo:#b23a48; --lo-bg:#fbe9ec;
+    --lat:#b4532e; --lat-bg:#fbeee7;   /* clay = LATAM */
+    --xlat:#2f5da8; --xlat-bg:#e9f0fb; /* blue = extra-LATAM */
+
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:var(--sans);font-size:14px;line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+    padding:32px 24px 80px;
+  }
+  .wrap{max-width:1040px;margin:0 auto}
+
+  /* ---- page header ---- */
+  .masthead{margin-bottom:22px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px}
+  h1{font-size:26px;line-height:1.1;letter-spacing:-.02em;font-weight:700;margin:0 0 8px}
+  .sub{color:var(--ink-2);max-width:64ch;margin:0}
+
+  /* ---- surface switcher ---- */
+  .controls{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:22px 0 10px}
+  .seg{display:inline-flex;background:var(--card);border:1px solid var(--hair-2);border-radius:11px;padding:3px;gap:2px}
+  .seg button{
+    font-family:var(--sans);font-size:13px;font-weight:600;color:var(--ink-3);
+    border:0;background:transparent;padding:8px 15px;border-radius:8px;cursor:pointer;
+    transition:background .12s,color .12s;
+  }
+  .seg button:hover{color:var(--ink)}
+  .seg button[aria-pressed="true"]{background:var(--ink);color:#fff}
+  .seg button:focus-visible{outline:2px solid var(--edit);outline-offset:2px}
+  .stage-note{font-size:12.5px;color:var(--ink-3)}
+  .stage-note b{color:var(--ink-2);font-weight:600}
+
+  /* ---- the card ---- */
+  .card{
+    position:relative;
+    background:var(--card);border:1px solid var(--hair-2);border-radius:16px;
+    box-shadow:0 1px 0 rgba(20,24,33,.03),0 10px 30px -18px rgba(20,24,33,.22);
+  }
+
+  /* title surface — the prominent hero of the card */
+  .title-surface{
+    padding:20px 22px;
+    background:linear-gradient(180deg,#fbfbfd 0%,#f4f6f9 100%);
+    border-bottom:1px solid var(--hair);
+    border-radius:16px 16px 0 0;
+  }
+  .title-surface .kicker{display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap}
+  .art-title{font-size:20px;line-height:1.18;letter-spacing:-.015em;font-weight:700;margin:0 0 6px;color:var(--ink)}
+  .art-sum{margin:0;color:var(--ink-2);font-size:14px;max-width:78ch}
+
+  /* zone grid */
+  .zones{display:grid;grid-template-columns:1.35fr 1fr 1.05fr;gap:12px;padding:14px}
+  .zone{
+    position:relative;border-radius:12px;padding:13px 13px 14px;
+    border:1px solid var(--z-cog-fr);background:var(--z-cog-bg);
+  }
+  .zone.geo{border-color:var(--z-geo-fr);background:var(--z-geo-bg)}
+  .zone.act{border-color:var(--z-act-fr);background:var(--z-act-bg)}
+  .zone-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+  .zone-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--z-cog-ink);font-weight:600}
+  .zone.geo .zone-label{color:var(--z-geo-ink)}
+  .zone.act .zone-label{color:var(--z-act-ink)}
+  .zone-ico{width:17px;height:17px;opacity:.55;color:var(--z-cog-ink)}
+  .zone.geo .zone-ico{color:var(--z-geo-ink)}
+  .zone.act .zone-ico{color:var(--z-act-ink)}
+
+  .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:9px}
+  .row:last-child{margin-bottom:0}
+  .field-k{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-right:2px}
+
+  /* pills */
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:12px;line-height:1;padding:5px 9px;border-radius:999px;white-space:nowrap;border:1px solid transparent}
+  .pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.9}
+  .pill.read{background:#fff;border-color:var(--hair-2);color:var(--ink-2)}
+  .pill.hi{background:var(--hi-bg);color:var(--hi)}
+  .pill.med{background:var(--med-bg);color:var(--med)}
+  .pill.lo{background:var(--lo-bg);color:var(--lo)}
+  .pill.lat{background:var(--lat-bg);color:var(--lat);border-color:#e6cdbf}
+  .pill.xlat{background:var(--xlat-bg);color:var(--xlat);border-color:#cbdcf3}
+  .pill.mono{font-family:var(--mono);font-size:11px;letter-spacing:.02em}
+  .pill.ghost{background:transparent;border:1px dashed var(--hair-2);color:var(--ink-3)}
+  .pill.tag{background:#eaf6ef;color:#2b7a52;border-color:#cfe9da}
+  .pill.sec-on{background:#e9ecfb;color:#3b4ea8;border-color:#cbd3f2;font-weight:600}
+  .pill.sec-off{background:transparent;border:1px dashed var(--hair-2);color:var(--ink-3)}
+  .pill.geoloc::before{content:"";}
+  .pill svg{width:12px;height:12px}
+
+  /* editable affordance */
+  .pill.editable{cursor:pointer;position:relative}
+  .pill.editable:hover{box-shadow:0 0 0 2px var(--edit-fr)}
+  .pill.editable .car{width:9px;height:9px;opacity:.6;margin-left:1px}
+  .pill.override{background:var(--edit-bg);border-color:var(--edit-fr);color:var(--edit);font-weight:600}
+  .chip-x{opacity:.4;font-weight:600;margin-left:3px;cursor:pointer}
+  .pill.editable.country{border-style:solid}
+  .add-chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 9px;border-radius:999px;border:1px dashed var(--edit-fr);color:var(--edit);background:transparent;cursor:pointer}
+  .add-chip:hover{background:var(--edit-bg)}
+
+  .type-in{font-size:12px;color:var(--ink-3);background:#fff;border:1px solid var(--hair-2);border-radius:8px;padding:6px 9px;min-width:120px}
+
+  .scope-tog{display:inline-flex;border:1px solid var(--hair-2);border-radius:8px;overflow:hidden;background:#fff}
+  .scope-tog span{font-size:11px;padding:4px 9px;color:var(--ink-3);cursor:pointer}
+  .scope-tog span.on{background:var(--lat-bg);color:var(--lat);font-weight:600}
+  .lvl{display:inline-flex;gap:5px;align-items:center}
+  .lvl .lk{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3)}
+
+  .muted-note{font-size:11px;color:var(--ink-3);font-style:italic;margin-top:2px}
+  .newbadge{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--edit);background:var(--edit-bg);border:1px solid var(--edit-fr);border-radius:5px;padding:2px 5px;margin-left:6px}
+
+  .ai-tag{font-family:var(--mono);font-size:9px;letter-spacing:.06em;color:#8a6d1e;background:#faf1d8;border:1px solid #ecd9a6;border-radius:5px;padding:2px 5px}
+
+  /* review & annotate */
+  .review{border-top:1px solid var(--hair);margin:0 14px;padding:0}
+  .review-bar{display:flex;align-items:center;gap:12px;padding:13px 0;cursor:pointer;user-select:none}
+  .review-bar .chev{width:16px;height:16px;color:var(--ink-3);transition:transform .15s}
+  .review.open .review-bar .chev{transform:rotate(180deg)}
+  .review-bar .rlabel{font-weight:600;color:var(--edit);font-size:13.5px}
+  .review-bar .rlabel svg{width:15px;height:15px;vertical-align:-2px;margin-right:5px}
+
+  /* completeness meter */
+  .meter{display:flex;align-items:center;gap:10px;margin-left:auto}
+  .meter .track{display:flex;gap:3px}
+  .meter .seg-b{width:34px;height:6px;border-radius:3px;background:var(--hair)}
+  .meter .seg-b.f-none{background:var(--hair)}
+  .meter[data-state="none"] .seg-b:nth-child(1){background:var(--ink-3)}
+  .meter[data-state="progress"] .seg-b:nth-child(1),
+  .meter[data-state="progress"] .seg-b:nth-child(2){background:var(--med)}
+  .meter[data-state="ready"] .seg-b{background:var(--hi)}
+  .meter .mlabel{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+  .meter[data-state="ready"] .mlabel{color:var(--hi)}
+  .meter[data-state="progress"] .mlabel{color:var(--med)}
+
+  .review-body{display:none;padding:2px 0 16px}
+  .review.open .review-body{display:block}
+  .checklist{display:grid;grid-template-columns:repeat(3,1fr);gap:7px 16px;margin:4px 0 14px}
+  .ck{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2)}
+  .ck .box{width:15px;height:15px;border-radius:4px;border:1.5px solid var(--hair-2);flex:0 0 auto;display:grid;place-items:center}
+  .ck.done .box{background:var(--hi);border-color:var(--hi)}
+  .ck.done .box svg{width:9px;height:9px;color:#fff}
+  .ck.done{color:var(--ink)}
+  .ck.todo{color:var(--ink-3)}
+  .notes{border:1px solid var(--hair-2);border-radius:9px;background:#fcfcfd;padding:11px 12px;color:var(--ink-3);font-size:13px;min-height:52px}
+  .review-foot{display:flex;justify-content:flex-end;margin-top:12px}
+  .btn-close{font-size:12.5px;color:var(--ink-3);background:transparent;border:1px solid var(--hair-2);border-radius:8px;padding:7px 13px;cursor:pointer}
+  .btn-close:hover{color:var(--ink);border-color:var(--hair-2);background:#f4f5f7}
+
+  /* action bar */
+  .actions{display:flex;flex-wrap:wrap;gap:9px;align-items:center;padding:14px;border-top:1px solid var(--hair);background:#fbfbfd;border-radius:0 0 16px 16px}
+  .btn{font-family:var(--sans);font-size:13px;font-weight:600;border-radius:9px;padding:9px 15px;cursor:pointer;border:1px solid transparent;display:inline-flex;align-items:center;gap:6px}
+  .btn svg{width:14px;height:14px}
+  .btn.approve{background:#199a5c;color:#fff}
+  .btn.approve:hover{background:#158150}
+  .btn.save{background:#d98518;color:#fff}
+  .btn.reject{background:#c53d4d;color:#fff}
+  .btn.ghost{background:#fff;border-color:var(--hair-2);color:var(--ink-2)}
+  .btn.ghost:hover{background:#f4f5f7}
+  .btn.primary{background:var(--edit);color:#fff}
+  .btn.moveback{background:#fff;border-color:var(--hair-2);color:var(--ink-2)}
+  .spacer{flex:1}
+  .actions-empty{color:var(--ink-3);font-size:12.5px;font-style:italic}
+
+  /* overflow ··· pill + anchored popover */
+  .more-pill{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11px;letter-spacing:.02em;padding:5px 9px;border-radius:999px;cursor:pointer;border:1px solid var(--z-cog-fr);background:#fff;color:var(--z-cog-ink);font-weight:600}
+  .zone.geo .more-pill{border-color:var(--z-geo-fr);color:var(--z-geo-ink)}
+  .zone.act .more-pill{border-color:var(--z-act-fr);color:var(--z-act-ink)}
+  .more-pill:hover{box-shadow:0 0 0 2px currentColor;filter:saturate(1.1)}
+  .more-pill .dots{letter-spacing:.12em;font-size:13px;line-height:.6}
+  .more-pill:focus-visible{outline:2px solid var(--edit);outline-offset:2px}
+
+  .pop{position:absolute;z-index:40;min-width:250px;max-width:340px;background:var(--card);border:1px solid var(--hair-2);border-radius:12px;
+    box-shadow:0 12px 40px -12px rgba(20,24,33,.32),0 2px 6px -2px rgba(20,24,33,.12);padding:13px 14px;display:none}
+  .pop.open{display:block;animation:popin .12s ease-out}
+  @keyframes popin{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  .pop-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+  .pop-title{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;display:flex;align-items:center;gap:7px}
+  .pop-title svg{width:14px;height:14px;opacity:.6}
+  .pop-x{border:0;background:transparent;color:var(--ink-3);cursor:pointer;font-size:16px;line-height:1;padding:2px 4px;border-radius:6px}
+  .pop-x:hover{background:#f2f3f5;color:var(--ink)}
+  .pop-group{margin-bottom:11px}
+  .pop-group:last-child{margin-bottom:0}
+  .pop-gk{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+  .pop-gk .ct{color:var(--ink-2);background:#f2f3f5;border-radius:5px;padding:1px 5px}
+  .pop-chips{display:flex;flex-wrap:wrap;gap:6px}
+  .pop-add{margin-top:11px;padding-top:11px;border-top:1px solid var(--hair)}
+  .pop-hint{font-size:12px;color:var(--ink-3);margin-bottom:9px}
+  .pop-chips .pill.sec-off{cursor:pointer;border-style:solid;border-color:var(--edit-fr);color:var(--edit);background:#fff}
+  .pop-chips .pill.sec-off:hover{background:var(--edit-bg)}
+
+  .absent{opacity:.5}
+  .absent-tag{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);border:1px dashed var(--hair-2);border-radius:5px;padding:2px 6px}
+
+  /* legend + matrix */
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin:14px 2px 0;font-size:12px;color:var(--ink-3)}
+  .legend .li{display:inline-flex;align-items:center;gap:6px}
+  .swatch{width:12px;height:12px;border-radius:4px;border:1px solid var(--hair-2)}
+  .sw-edit{background:var(--edit-bg);border-color:var(--edit-fr)}
+  .sw-read{background:#fff}
+  .sw-absent{background:repeating-linear-gradient(45deg,#fff,#fff 3px,#eceef1 3px,#eceef1 6px)}
+
+  .matrix-wrap{margin-top:34px}
+  .matrix-wrap h2{font-size:15px;letter-spacing:-.01em;margin:0 0 4px}
+  .matrix-wrap p.lead{color:var(--ink-2);font-size:13px;margin:0 0 14px;max-width:74ch}
+  table.matrix{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--hair-2);border-radius:12px;overflow:hidden;font-size:13px}
+  table.matrix th,table.matrix td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--hair)}
+  table.matrix thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);background:#f6f7f9;font-weight:600}
+  table.matrix tbody tr:last-child td{border-bottom:0}
+  table.matrix td.axis{font-weight:600;color:var(--ink)}
+  .cell{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.04em}
+  .cell::before{content:"";width:9px;height:9px;border-radius:3px;flex:0 0 auto}
+  .cell.edit{color:var(--edit)} .cell.edit::before{background:var(--edit)}
+  .cell.read{color:var(--ink-2)} .cell.read::before{background:#b8bfca}
+  .cell.absent{color:var(--ink-3)} .cell.absent::before{background:repeating-linear-gradient(45deg,#fff,#fff 2px,#d7dbe1 2px,#d7dbe1 4px);border:1px solid #d7dbe1}
+  .cell .star{color:var(--edit);font-size:10px;margin-left:1px}
+
+  /* drone reuse panel */
+  .reuse{margin-top:34px;background:var(--card);border:1px solid var(--hair-2);border-radius:14px;padding:18px 20px}
+  .reuse h2{font-size:15px;margin:0 0 4px;letter-spacing:-.01em}
+  .reuse p.lead{color:var(--ink-2);font-size:13px;margin:0 0 16px;max-width:76ch}
+  .reuse-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .reuse-col{border:1px solid var(--hair);border-radius:11px;padding:13px}
+  .reuse-col.cog{background:var(--z-cog-bg);border-color:var(--z-cog-fr)}
+  .reuse-col.geo{background:var(--z-geo-bg);border-color:var(--z-geo-fr)}
+  .reuse-col.act{background:var(--z-act-bg);border-color:var(--z-act-fr)}
+  .reuse-col .rl{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .reuse-col .rl svg{width:14px;height:14px;opacity:.6}
+  .reuse-col .maps{font-size:12.5px;color:var(--ink-2)}
+  .reuse-col .maps .src{color:var(--ink-3)}
+  .reuse-col .maps .arw{color:var(--ink-3);margin:0 4px}
+
+  .foot{margin-top:30px;font-size:12px;color:var(--ink-3);border-top:1px solid var(--hair);padding-top:16px}
+  .foot b{color:var(--ink-2)}
+
+  @media (max-width:820px){
+    .zones{grid-template-columns:1fr}
+    .reuse-grid{grid-template-columns:1fr}
+    .checklist{grid-template-columns:1fr 1fr}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div class="eyebrow">KC Hub · Contested Skies · card architecture</div>
+    <h1>One source card, three surfaces</h1>
+    <p class="sub">The same shell renders on Intel, New Sources and All Sources — the only thing that changes per surface is which axis is editable. Flip the surface below and watch each zone shift between editable, read-only, and absent.</p>
+  </div>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Surface">
+      <button data-surface="intel" aria-pressed="true">Intel</button>
+      <button data-surface="new" aria-pressed="false">New Sources</button>
+      <button data-surface="all" aria-pressed="false">All Sources</button>
+    </div>
+    <div class="stage-note" id="stageNote"></div>
+  </div>
+
+  <!-- ===================== THE CARD ===================== -->
+  <div class="card" id="card">
+
+    <!-- title surface -->
+    <div class="title-surface">
+      <div class="kicker" id="kicker"></div>
+      <h2 class="art-title">Drones reshape war in Colombia as deaths and injuries mount</h2>
+      <p class="art-sum">Civilians left increasingly exposed as a dangerous new front opens up in the country's decades-old conflict.</p>
+    </div>
+
+    <!-- three zones -->
+    <div class="zones">
+
+      <!-- COGWHEEL: status / AI meta / sections / tags -->
+      <div class="zone cog">
+        <div class="zone-head">
+          <span class="zone-label">Assessment &amp; routing</span>
+          <svg class="zone-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </div>
+
+        <div class="row" id="statusRow"></div>
+        <div class="row" id="metaRow"></div>
+        <div class="row" id="secRow"></div>
+        <div class="row" id="tagRow"></div>
+      </div>
+
+      <!-- GLOBE: geography -->
+      <div class="zone geo">
+        <div class="zone-head">
+          <span class="zone-label">Geography</span>
+          <svg class="zone-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+        </div>
+        <div id="geoBody"></div>
+      </div>
+
+      <!-- BUST: actors / entities -->
+      <div class="zone act">
+        <div class="zone-head">
+          <span class="zone-label">Engaged entities</span>
+          <svg class="zone-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg>
+        </div>
+        <div id="actBody"></div>
+      </div>
+
+    </div>
+
+    <!-- review & annotate -->
+    <div class="review open" id="review">
+      <div class="review-bar" id="reviewBar">
+        <span class="rlabel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Review and annotate</span>
+        <div class="meter" id="meter" data-state="progress">
+          <span class="mlabel" id="meterLabel">In progress</span>
+          <div class="track"><div class="seg-b"></div><div class="seg-b"></div><div class="seg-b"></div></div>
+        </div>
+      </div>
+      <div class="review-body">
+        <div class="checklist" id="checklist"></div>
+        <div class="notes">Researcher notes — free-text annotation saved with the source. Empty here.</div>
+        <div class="review-foot">
+          <button class="btn-close" id="btnClose">Close panel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- actions -->
+    <div class="actions" id="actions"></div>
+
+    <!-- shared overflow popover (anchored per zone) -->
+    <div class="pop" id="pop">
+      <div class="pop-head">
+        <span class="pop-title" id="popTitle"></span>
+        <button class="pop-x" id="popX" aria-label="Close">×</button>
+      </div>
+      <div id="popBody"></div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <span class="li"><span class="swatch sw-edit"></span> Editable on this surface</span>
+    <span class="li"><span class="swatch sw-read"></span> Read-only (edit elsewhere)</span>
+    <span class="li"><span class="swatch sw-absent"></span> Not shown</span>
+    <span class="li" style="margin-left:auto"><span class="newbadge" style="margin:0">NEW</span> gains a home in the unified card</span>
+  </div>
+
+  <!-- ===================== MATRIX ===================== -->
+  <div class="matrix-wrap">
+    <h2>Editability matrix — proven from the diagnose</h2>
+    <p class="lead">Each axis at each surface, from the live code. The pattern is clean: <b>Intel is the content workbench</b> (edits geography, actors, tags, confidence, relevance), <b>New Sources is the routing desk</b> (edits sections and incident), <b>All Sources is the archive</b> (edits nothing). That single-dimension difference is what makes one shared card honest rather than a flag-riddled mega-component.</p>
+    <table class="matrix">
+      <thead><tr><th>Axis</th><th>Intel</th><th>New Sources</th><th>All Sources</th></tr></thead>
+      <tbody>
+        <tr><td class="axis">Title &amp; summary</td><td><span class="cell read">read</span></td><td><span class="cell read">read</span></td><td><span class="cell read">read</span></td></tr>
+        <tr><td class="axis">Geography</td><td><span class="cell edit">edit</span></td><td><span class="cell read">read</span></td><td><span class="cell read">read</span></td></tr>
+        <tr><td class="axis">Actors / entities</td><td><span class="cell edit">edit</span></td><td><span class="cell read">read <span class="star">★new</span></span></td><td><span class="cell read">read <span class="star">★new</span></span></td></tr>
+        <tr><td class="axis">Sections (9 categories)</td><td><span class="cell read">read · AI-proposed</span></td><td><span class="cell edit">edit</span></td><td><span class="cell read">read</span></td></tr>
+        <tr><td class="axis">Tags</td><td><span class="cell edit">edit</span></td><td><span class="cell read">read</span></td><td><span class="cell read">read</span></td></tr>
+        <tr><td class="axis">Incident</td><td><span class="cell edit">edit <span class="star">★new</span></span></td><td><span class="cell edit">edit</span></td><td><span class="cell read">read</span></td></tr>
+        <tr><td class="axis">Confidence</td><td><span class="cell edit">edit</span></td><td><span class="cell read">read</span></td><td><span class="cell read">read</span></td></tr>
+        <tr><td class="axis">Relevance</td><td><span class="cell edit">edit</span></td><td><span class="cell read">read</span></td><td><span class="cell read">read</span></td></tr>
+        <tr><td class="axis">Status / actions</td><td><span class="cell edit">full</span></td><td><span class="cell edit">confirm · move back</span></td><td><span class="cell absent">none</span></td></tr>
+      </tbody>
+    </table>
+    <p class="lead" style="margin-top:12px">★ <b>new</b> = a control the unified card adds where the code has none today: incident on the Intel card (lifted from New Sources), and actors shown read-only on New Sources / All Sources (currently absent, so the researcher can see them without going back to Intel).</p>
+  </div>
+
+  <!-- ===================== DRONE DB REUSE ===================== -->
+  <div class="reuse">
+    <h2>Same shell, drone database</h2>
+    <p class="lead">The three zones aren't source-specific — they're a general "assessment / place / entities" frame. For the drone-systems catalogue the structure holds; only the content inside each zone changes. This is the mapping to hand the drone-DB designer.</p>
+    <div class="reuse-grid">
+      <div class="reuse-col cog">
+        <div class="rl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Assessment &amp; routing</div>
+        <div class="maps"><span class="src">status/confidence/relevance/tags/sections</span><span class="arw">→</span>class &amp; role, NATO type, status, data confidence, capability tags, catalogue sections</div>
+      </div>
+      <div class="reuse-col geo">
+        <div class="rl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>Geography</div>
+        <div class="maps"><span class="src">subject / mentioned countries</span><span class="arw">→</span>country of origin, operator states, observed deployment theatres</div>
+      </div>
+      <div class="reuse-col act">
+        <div class="rl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg>Engaged entities</div>
+        <div class="maps"><span class="src">actors</span><span class="arw">→</span>manufacturer, operators, known counter-systems &amp; integrators</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <b>Reading this mockup:</b> content is real (the Guardian Colombia card from the screenshot). The card shell, zones, and editability states are the proposal — react to the structure, not the pixels. The completeness meter in the review bar is the three-state gate (no work · in progress · ready to commit); its checklist reflects the commit ingredients we agreed: article text, AI run, geography, ≥1 section, tags, incident determined.
+  </div>
+
+</div>
+
+<script>
+(function(){
+  // ---------- card data (from the screenshot) ----------
+  var D = {
+    status:"UNREVIEWED", source:"the Guardian", date:"May 18 2026", lang:"EN",
+    confidence:{ai:"HIGH", override:null},
+    relevance:{ai:10, override:"High"},
+    subject:[{n:"Mexico",s:"lat"},{n:"Colombia",s:"lat"}],
+    mentioned:["Haiti","China","United States","Ukraine","Myanmar","Venezuela","Peru","Brazil"],
+    level:"LATAM",
+    actors:["CJNG (Jalisco Cartel New Generation)","Sinaloa Cartel","ELN (National Liberation Army)","FARC-EP","Mexican government (SEDENA)","Colombian military","Colombian police","Haitian transitional government","U.S. Customs and Border Protection","U.S. Southern Command (SOUTHCOM)","Brazilian Army","DJI","Dedrone Tactical"],
+    sectionsOn:["VNSA","Supply","Systems","Civilian"],
+    sectionsProposed:["Regulatory","External"],
+    tags:["cauca","farc-eln","civilian-casualties","drone-attack","weaponized-drone","tactical-innovation","counter-uas-procurement"],
+    incident:false
+  };
+
+  // ---------- per-surface editability config ----------
+  var SURF = {
+    intel:{ label:"Intel — the content workbench. Edit geography, actors, tags, confidence, relevance. Sections are AI-proposed (read-only here).",
+      geo:"edit", actors:"edit", sections:"read", tags:"edit", incident:"edit", conf:"edit", rel:"edit" },
+    new:{ label:"New Sources — the routing desk. Edit sections and incident; the rest is read-only reference.",
+      geo:"read", actors:"read", sections:"edit", tags:"read", incident:"edit", conf:"read", rel:"read" },
+    all:{ label:"All Sources — the committed archive. Everything read-only, no actions.",
+      geo:"read", actors:"read", sections:"read", tags:"read", incident:"read", conf:"read", rel:"read" }
+  };
+
+  // full canonical section vocabulary (for the add-picker: shows only unselected)
+  var ALL_SECTIONS = ["Systems","VNSA","Industry","External","Supply","Investment","Regulatory","Civilian","Logistics"];
+
+  var el = function(id){return document.getElementById(id);};
+  var svgCaret = '<svg class="car" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg>';
+  var svgCheck = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 6"/></svg>';
+  var GLOBE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>';
+  var BUST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg>';
+
+  var MAX = 5; // inline chips per zone before overflow
+
+  // classify an actor into a sub-group for the grouped popover
+  function actorGroup(ac){
+    if(/(DJI|Dedrone|Aerovironment|integrator)/i.test(ac)) return "Industry";
+    if(/government|military|police|Command|Army|Customs|transitional|SEDENA|SOUTHCOM/.test(ac)) return "State forces";
+    return "VNSAs";
+  }
+  function actorCls(ac){
+    var g = actorGroup(ac);
+    return g==="State forces" ? "xlat" : (g==="Industry" ? "read" : "lat");
+  }
+
+  // build a "···  +N" more-pill
+  function morePill(n, key){
+    return '<span class="more-pill" data-pop="'+key+'" tabindex="0" role="button"><span class="dots">···</span> +'+n+'</span>';
+  }
+
+  function chip(text,cls,removable,ai){
+    var x = removable ? '<span class="chip-x">×</span>' : '';
+    var a = ai ? ' <span class="ai-tag">AI</span>' : '';
+    return '<span class="pill '+cls+'">'+text+x+'</span>'+a;
+  }
+
+  var CUR = "intel"; // current surface, for popover editability
+
+  function mentionedInline(){
+    var shown = D.mentioned.slice(0, MAX), rest = D.mentioned.slice(MAX);
+    var h = '';
+    shown.forEach(function(m){ h += '<span class="pill xlat">'+m+'</span>'; });
+    if(rest.length) h += morePill(rest.length, "mentioned");
+    return h;
+  }
+
+  function render(surface){
+    CUR = surface;
+    var C = SURF[surface];
+    el('stageNote').innerHTML = '<b>'+surface.replace('all','All Sources').replace('new','New Sources').replace('intel','Intel')+'</b> — '+C.label;
+
+    // kicker in title surface (status + source live up top for prominence)
+    el('kicker').innerHTML =
+      chip('<span class="dot"></span>'+D.confidence.ai, 'hi mono') +
+      chip('REL '+D.relevance.ai,'read mono') +
+      '<span class="pill read mono">'+D.status+'</span>' +
+      '<span class="pill read">'+D.source+'</span>' +
+      '<span class="field-k" style="margin-left:2px">'+D.date+'</span>';
+
+    // ---- COGWHEEL zone ----
+    // status row: confidence + relevance (editable = click-to-override pills)
+    var conf, rel;
+    if(C.conf==="edit"){
+      conf = '<span class="pill hi mono editable" title="Click to override">'+D.confidence.ai+svgCaret+'</span>';
+    } else {
+      conf = '<span class="pill hi mono">'+D.confidence.ai+'</span>';
+    }
+    if(C.rel==="edit"){
+      rel = '<span class="pill override mono editable" title="Click to override">REL '+D.relevance.ai+' → '+D.relevance.override+svgCaret+'</span>';
+    } else {
+      rel = '<span class="pill read mono">REL '+D.relevance.ai+(D.relevance.override?' · '+D.relevance.override:'')+'</span>';
+    }
+    el('statusRow').innerHTML =
+      '<span class="field-k">Confidence</span>'+conf+
+      '<span class="field-k" style="margin-left:6px">Relevance</span>'+rel;
+
+    el('metaRow').innerHTML =
+      '<span class="field-k">Lang</span><span class="pill read mono">'+D.lang+'</span>'+
+      '<span class="field-k" style="margin-left:6px">Incident</span>'+ incidentControl(C.incident);
+
+    // sections — only SELECTED show on the card; "+ section" reveals the unselected ones
+    var secHtml = '<span class="field-k">Sections</span>';
+    D.sectionsOn.forEach(function(s){
+      secHtml += '<span class="pill sec-on">'+s+(C.sections==="edit"?'<span class="chip-x">×</span>':'')+'</span>';
+    });
+    if(C.sections==="edit"){
+      var avail = ALL_SECTIONS.filter(function(s){ return D.sectionsOn.indexOf(s)===-1; });
+      if(avail.length) secHtml += '<span class="add-chip" data-pop="sections" tabindex="0" role="button">+ section</span>';
+    }
+    el('secRow').innerHTML = secHtml;
+
+    // tags (cap inline, overflow the rest)
+    var tagHtml = '<span class="field-k">Tags</span>';
+    var tShown = D.tags.slice(0, MAX), tRest = D.tags.slice(MAX);
+    tShown.forEach(function(t){
+      tagHtml += '<span class="pill tag">'+t+ (C.tags==="edit"?'<span class="chip-x">×</span>':'') +'</span>';
+    });
+    if(tRest.length) tagHtml += morePill(tRest.length, "tags");
+    if(C.tags==="edit") tagHtml += '<span class="add-chip">+ tag</span>';
+    el('tagRow').innerHTML = tagHtml;
+
+    // ---- GLOBE zone ----
+    var g = '';
+    if(C.geo==="edit"){
+      g += '<div class="row"><span class="field-k">Subject</span>';
+      D.subject.forEach(function(c){ g += '<span class="pill lat editable country"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.3-7-11a7 7 0 0 1 14 0c0 4.7-7 11-7 11Z"/><circle cx="12" cy="10" r="2.4"/></svg>'+c.n+'<span class="chip-x">×</span></span>'; });
+      g += '</div>';
+      g += '<div class="row"><span class="field-k">Mentioned</span>'+ mentionedInline() +'</div>';
+      g += '<div class="row"><div class="scope-tog"><span class="on">LATAM</span><span>extra-LATAM</span></div><span class="field-k">scope</span></div>';
+      g += '<div class="row"><input class="type-in" placeholder="Add LATAM country…" disabled><span class="add-chip">+ mentioned</span></div>';
+      g += '<div class="row"><span class="lvl"><span class="lk">Levels</span><span class="pill xlat mono">◉ '+D.level+'</span><span class="pill ghost">+ region</span><span class="pill ghost">+ Global</span></span></div>';
+    } else {
+      g += '<div class="row"><span class="field-k">Subject</span>';
+      D.subject.forEach(function(c){ g += '<span class="pill lat">📍 '+c.n+'</span>'; });
+      g += '</div>';
+      g += '<div class="row"><span class="field-k">Mentioned</span>'+ mentionedInline() +'</div>';
+      g += '<div class="row"><span class="field-k">Level</span><span class="pill xlat mono">◉ '+D.level+'</span></div>';
+    }
+    el('geoBody').innerHTML = g;
+
+    // ---- BUST zone ---- (cap inline, overflow the rest, grouped in the popover)
+    var a = '<div class="row" style="gap:6px">';
+    var editA = (C.actors==="edit");
+    var aShown = D.actors.slice(0, MAX), aRest = D.actors.slice(MAX);
+    aShown.forEach(function(ac){
+      a += '<span class="pill '+actorCls(ac)+'">'+ac+(editA?'<span class="chip-x">×</span>':'')+'</span>';
+    });
+    if(aRest.length) a += morePill(aRest.length, "actors");
+    if(editA) a += '<span class="add-chip">+ actor</span><span class="ai-tag" style="margin-left:2px">AI</span>';
+    a += '</div>';
+    if(surface!=="intel"){
+      a += '<div class="muted-note">Read-only here — edit on Intel.<span class="newbadge">new in unified</span></div>';
+    }
+    el('actBody').innerHTML = a;
+
+    // ---- completeness meter + checklist ----
+    // Intel sample = in progress; others reflect committed-ish read state
+    var state = surface==="all" ? "ready" : (surface==="new" ? "progress" : "progress");
+    var meter = el('meter'); meter.setAttribute('data-state', state);
+    el('meterLabel').textContent = state==="ready"?"Ready to commit":(state==="progress"?"In progress":"No work");
+    var gate = [
+      {k:"Article text", done:true},
+      {k:"AI analysis run", done:true},
+      {k:"Geography set", done:true},
+      {k:"≥1 section", done:true},
+      {k:"Tags", done:true},
+      {k:"Incident determined", done:(surface==="all")}
+    ];
+    var cl='';
+    gate.forEach(function(gi){
+      cl += '<div class="ck '+(gi.done?'done':'todo')+'"><span class="box">'+(gi.done?svgCheck:'')+'</span>'+gi.k+'</div>';
+    });
+    el('checklist').innerHTML = cl;
+
+    // ---- actions ----
+    var A = el('actions');
+    if(surface==="intel"){
+      A.innerHTML =
+        '<button class="btn approve"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12l5 5L20 6"/></svg>Approve</button>'+
+        '<button class="btn save">Save</button>'+
+        '<button class="btn ghost">Make unreviewed</button>'+
+        '<div class="spacer"></div>'+
+        '<button class="btn reject">Reject</button>'+
+        '<button class="btn ghost">Duplicate</button>';
+    } else if(surface==="new"){
+      A.innerHTML =
+        '<button class="btn primary">Confirm sections</button>'+
+        '<div class="spacer"></div>'+
+        '<button class="btn moveback">↩ Move back to intel</button>';
+    } else {
+      A.innerHTML = '<span class="actions-empty">Committed — read-only. No actions on this surface.</span>';
+    }
+
+    // wire overflow pills + the section add-picker (any [data-pop] element)
+    document.querySelectorAll('[data-pop]').forEach(function(mp){
+      mp.addEventListener('click', function(e){ e.stopPropagation(); openPop(mp.getAttribute('data-pop'), mp); });
+      mp.addEventListener('keydown', function(e){ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); openPop(mp.getAttribute('data-pop'), mp); } });
+    });
+  }
+
+  // ---------- overflow popover ----------
+  function groupHtml(k, count, chipsHtml){
+    return '<div class="pop-group"><div class="pop-gk">'+k+' <span class="ct">'+count+'</span></div><div class="pop-chips">'+chipsHtml+'</div></div>';
+  }
+
+  function popContent(key){
+    if(key==="sections"){
+      var avail = ALL_SECTIONS.filter(function(s){ return D.sectionsOn.indexOf(s)===-1; });
+      var chips = avail.map(function(s){
+        var isAi = D.sectionsProposed.indexOf(s) !== -1;
+        var ai = isAi ? ' <span class="ai-tag">AI</span>' : '';
+        return '<span class="pill sec-off editable" title="Add section">+ '+s+'</span>'+ai;
+      }).join('');
+      var body = '<div class="pop-hint">Add a section. AI-suggested ones are marked.</div><div class="pop-chips">'+chips+'</div>';
+      return { title: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Add section', body: body };
+    }
+
+    var editable = SURF[CUR][ key==="tags" ? "tags" : (key==="actors" ? "actors" : "geo") ] === "edit";
+    var rm = editable ? '<span class="chip-x">×</span>' : '';
+
+    if(key==="actors"){
+      var groups = {"VNSAs":[], "State forces":[], "Industry":[]};
+      D.actors.forEach(function(ac){ groups[actorGroup(ac)].push(ac); });
+      var body = '';
+      ["VNSAs","State forces","Industry"].forEach(function(g){
+        if(!groups[g].length) return;
+        var chips = groups[g].map(function(ac){ return '<span class="pill '+actorCls(ac)+'">'+ac+rm+'</span>'; }).join('');
+        body += groupHtml(g, groups[g].length, chips);
+      });
+      if(editable) body += '<div class="pop-add"><span class="add-chip">+ actor</span></div>';
+      return { title: BUST+'Engaged entities', body: body };
+    }
+
+    if(key==="mentioned"){
+      var chips = D.mentioned.map(function(m){ return '<span class="pill xlat">'+m+(editable?'<span class="chip-x">×</span>':'')+'</span>'; }).join('');
+      var body = groupHtml("Mentioned", D.mentioned.length, chips);
+      if(editable) body += '<div class="pop-add"><span class="add-chip">+ mentioned</span></div>';
+      return { title: GLOBE+'Mentioned countries', body: body };
+    }
+
+    // tags
+    var tchips = D.tags.map(function(t){ return '<span class="pill tag">'+t+(editable?'<span class="chip-x">×</span>':'')+'</span>'; }).join('');
+    var tbody = groupHtml("Topic tags", D.tags.length, tchips);
+    if(editable) tbody += '<div class="pop-add"><span class="add-chip">+ tag</span></div>';
+    return { title: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 7h.01M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/></svg>Tags', body: tbody };
+  }
+
+  var pop = el('pop');
+  function openPop(key, anchor){
+    var c = popContent(key);
+    el('popTitle').innerHTML = c.title;
+    el('popBody').innerHTML = c.body;
+    pop.classList.add('open');
+    // position under the anchor, clamped to the card
+    var card = el('card').getBoundingClientRect();
+    var a = anchor.getBoundingClientRect();
+    var top = (a.bottom - card.top) + 6;
+    var left = (a.left - card.left);
+    var pw = pop.offsetWidth;
+    if(left + pw > card.width - 8) left = card.width - pw - 8;
+    if(left < 8) left = 8;
+    pop.style.top = top + 'px';
+    pop.style.left = left + 'px';
+  }
+  function closePop(){ pop.classList.remove('open'); }
+  el('popX').addEventListener('click', function(e){ e.stopPropagation(); closePop(); });
+  document.addEventListener('click', function(e){ if(!pop.contains(e.target) && !e.target.closest('.more-pill')) closePop(); });
+  document.addEventListener('keydown', function(e){ if(e.key==="Escape") closePop(); });
+
+  function incidentControl(mode){
+    if(mode==="edit"){
+      return '<span class="scope-tog" style="vertical-align:-1px"><span>⚠ Incident</span><span class="on">Not an incident</span></span>';
+    } else if(mode==="read"){
+      return D.incident ? '<span class="pill lo mono">⚠ Incident</span>' : '<span class="pill read mono">Not an incident</span>';
+    }
+    return '<span class="absent-tag">n/a</span>';
+  }
+
+  // ---------- wire up ----------
+  var btns = document.querySelectorAll('.seg button');
+  btns.forEach(function(b){
+    b.addEventListener('click', function(){
+      btns.forEach(function(x){ x.setAttribute('aria-pressed','false'); });
+      b.setAttribute('aria-pressed','true');
+      render(b.getAttribute('data-surface'));
+    });
+  });
+  el('reviewBar').addEventListener('click', function(){ el('review').classList.toggle('open'); });
+  el('btnClose').addEventListener('click', function(e){ e.stopPropagation(); el('review').classList.remove('open'); });
+
+  render('intel');
+})();
+</script>
+</body>
+</html>
