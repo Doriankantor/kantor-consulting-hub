@@ -119,11 +119,17 @@ export default function SourceCard({
       )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1 flex-wrap">
-          {/* Confidence badge */}
-          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${confStyle.bg} ${confStyle.text}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${confStyle.dot}`} />
-            {conf}
-          </span>
+          {/* Confidence badge. B2: render only when confidence is set (data-driven, like the
+              language/snippet/publishedAt guards). sourceCore maps confidence verbatim (null stays
+              null), so news/social/document -- which always carry it -- render as before, and
+              interviews (no confidence concept -> null) correctly suppress the badge instead of
+              defaulting to a spurious 'LOW'. */}
+          {core.confidence && (
+            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${confStyle.bg} ${confStyle.text}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${confStyle.dot}`} />
+              {conf}
+            </span>
+          )}
           {/* Relevance-score badge.
               gate_processed=1 + NULL score = tombstoned (failed to score) → gray "scoring failed".
               gate_processed=0 + NULL score = not yet gated → gray "REL —". */}
