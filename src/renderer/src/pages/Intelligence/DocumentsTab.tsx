@@ -5,6 +5,8 @@ import RichTextEditor from '../../components/RichTextEditor'
 import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
 import CondensedSummary from './CondensedSummary'
+import SourceCard from '../../components/source-card/SourceCard'
+import { fromIntelligenceSource } from '../../components/source-card/sourceCore'
 import { notifyIntelChanged } from '../../utils/intelEvents'
 
 // 2b: the selected project's config, threaded from the Intelligence container so
@@ -24,19 +26,9 @@ function stripHtml(html: string): string {
     .trim()
 }
 
-const CONFIDENCE_COLORS = {
-  high:   { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', dot: 'bg-green-500' },
-  medium: { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500' },
-  low:    { bg: 'bg-red-100 dark:bg-red-900/30',     text: 'text-red-700 dark:text-red-400',     dot: 'bg-red-500' },
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  unreviewed: 'bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300',
-  approved:   'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
-  rejected:   'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
-  saved:      'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
-  pushed:     'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
-}
+// S6: CONFIDENCE_COLORS + STATUS_COLORS removed -- the confidence + status badges they styled
+// (and the filename title) now render on the SourceCard face, which owns its own copies of
+// these palettes. Mirrors the S5 removal in SocialTab.
 
 interface Props {
   onApprove: (addedToPages?: string[]) => void
@@ -380,8 +372,8 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
         )}
 
         {!loading && visible.map(doc => {
-          const conf = doc.confidence || 'low'
-          const confStyle = CONFIDENCE_COLORS[conf as keyof typeof CONFIDENCE_COLORS] || CONFIDENCE_COLORS.low
+          // S6: conf/confStyle removed -- the confidence badge they styled now renders on the
+          // SourceCard face below (confidence is carried by core).
           const cats: string[] = (() => { try { return JSON.parse(doc.categories_json || '[]') } catch { return [] } })()
           // 3d: picker default — the doc's project, else the top-dropdown selected project.
           const projectBoardSel = doc.project_board_id || (project?.id ?? '')
@@ -404,17 +396,11 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
                   {getFileIcon(doc.file_name)}
                 </div>
                 <div className="flex-1 min-w-0">
+                  {/* S6: filename now renders as the SourceCard title (Option A); confidence +
+                      status badges moved to the SourceCard face. This header row keeps only the
+                      byline + added_at date -- docs have no published_at, so the card's date span
+                      is empty and the added_at date is NOT duplicated. */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">{doc.file_name || doc.title || 'Document'}</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${confStyle.bg} ${confStyle.text}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${confStyle.dot}`} />
-                      {conf}
-                    </span>
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${STATUS_COLORS[doc.status] || STATUS_COLORS.unreviewed}`}>
-                      {doc.status}
-                    </span>
                     {doc.added_by_name && (
                       <span className="text-xs text-gray-400 dark:text-white/30">by {doc.added_by_name}</span>
                     )}
@@ -432,6 +418,12 @@ export default function DocumentsTab({ onApprove, project = null }: Props) {
                   </button>
                 )}
               </div>
+
+              {/* S6: the unified card face, READ-ONLY (no onChange props). Empty-data guards in
+                  SourceCard suppress every article-only zone (snippet/geo/actors/relevance/
+                  incident/date) on a document row; title renders the filename (Option A), so this
+                  shows the filename + confidence + status -- parity with the header stripped above. */}
+              <SourceCard core={fromIntelligenceSource(doc)} />
 
               {/* Category badges */}
               {cats.length > 0 && (

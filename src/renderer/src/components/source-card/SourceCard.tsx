@@ -198,8 +198,12 @@ export default function SourceCard({
           {core.sourceName && (
             <span className="text-xs text-gray-500 dark:text-white/40 font-medium">{core.sourceName}</span>
           )}
-          {/* Date */}
-          <span className="text-xs text-gray-400 dark:text-white/30">{formatDate(core.publishedAt)}</span>
+          {/* Date. S6: render only when publishedAt is set (data-driven, like language/snippet
+              above). Social/News carry published_at -> renders as before; Documents leave it
+              null (the header shows added_at instead) -> the empty span is suppressed. */}
+          {core.publishedAt && (
+            <span className="text-xs text-gray-400 dark:text-white/30">{formatDate(core.publishedAt)}</span>
+          )}
 
           {/* Geo-population: soft "from gate" suggestion chip in the empty geography state.
               Click promotes the gate's scalar country into subject_countries via the S2 handler
