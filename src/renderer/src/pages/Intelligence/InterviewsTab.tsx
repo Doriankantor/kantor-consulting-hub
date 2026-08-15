@@ -5,6 +5,8 @@ import RichTextEditor from '../../components/RichTextEditor'
 import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
 import CondensedSummary from './CondensedSummary'
+import SourceCard from '../../components/source-card/SourceCard'
+import { fromIntelligenceSource } from '../../components/source-card/sourceCore'
 import { notifyIntelChanged } from '../../utils/intelEvents'
 
 // 2c: Intelligence "Interviews" tab — human-first, mirroring the Documents (2b)
@@ -19,13 +21,8 @@ import { notifyIntelChanged } from '../../utils/intelEvents'
 // The selected project, threaded from the Intelligence container (Slice 1/2b).
 type ProjectInfo = { id: string; name: string; keywords?: string } | null
 
-const STATUS_COLORS: Record<string, string> = {
-  unreviewed: 'bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300',
-  approved:   'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
-  rejected:   'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',
-  saved:      'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
-  pushed:     'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400',
-}
+// S7: STATUS_COLORS removed -- the status badge it styled now renders on the SourceCard face,
+// which owns its own copy of this palette. Mirrors the S6 removal in DocumentsTab.
 
 // Strip TipTap HTML to plain text — for the reconcile userNotes payload and the
 // "has notes?" emptiness check.
@@ -357,11 +354,11 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
               {/* Header */}
               <div className="flex items-start gap-3">
                 <div className="flex-1 min-w-0">
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white break-words">{iv.title || 'Untitled interview'}</span>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${STATUS_COLORS[iv.status] || STATUS_COLORS.unreviewed}`}>
-                      {iv.status}
-                    </span>
+                  {/* S7: title now renders as the SourceCard title (Option A); status badge moved
+                      to the SourceCard face. This header row keeps only the byline + added_at
+                      (creation) date -- the card carries the interview date (published_at) only
+                      when set, a DIFFERENT field, so no duplication. */}
+                  <div className="flex items-center gap-2 flex-wrap">
                     {iv.added_by_name && <span className="text-xs text-gray-400 dark:text-white/30">by {iv.added_by_name}</span>}
                     <span className="text-xs text-gray-400 dark:text-white/30">{formatDate(iv.added_at)}</span>
                   </div>
@@ -376,6 +373,12 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
                   </button>
                 )}
               </div>
+
+              {/* S7: the unified card face, READ-ONLY (no onChange props). Empty-data guards in
+                  SourceCard suppress every article-only zone (snippet/geo/actors/relevance/
+                  incident) on an interview row; title renders the interview title (Option A) and
+                  the date span shows published_at (the interview date) only when set. */}
+              <SourceCard core={fromIntelligenceSource(iv)} />
 
               {/* Slice 4: collapse toggle — hides the compose panel only (transcript
                   lives inside it); the header and tail controls stay visible. */}
