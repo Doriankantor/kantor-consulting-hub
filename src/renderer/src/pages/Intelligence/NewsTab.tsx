@@ -632,6 +632,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     const errs: Record<string, string> = {}
     if (!newsForm.title.trim()) errs.title = 'Title is required'
     if (!newsForm.project_board_id) errs.project_board_id = "Pick a project — articles without one won't appear in any project's queue."
+    if (!newsForm.confidence) errs.confidence = 'Pick a confidence level'
     setNewsErrors(errs)
     if (Object.keys(errs).length) return
     setNewsFormError(null)
@@ -1280,17 +1281,18 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Confidence</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Confidence *</label>
                 <select
                   value={newsForm.confidence}
                   onChange={e => setNewsForm(f => ({ ...f, confidence: e.target.value }))}
-                  className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-transparent text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  className={`w-full px-3 py-1.5 rounded-lg border text-sm bg-white dark:bg-transparent text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 ${newsErrors.confidence ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-white/[0.1]'}`}
                 >
                   <option value="">— confidence —</option>
                   <option value="high">High</option>
                   <option value="medium">Medium</option>
                   <option value="low">Low</option>
                 </select>
+                {newsErrors.confidence && <p className="text-xs text-red-500 dark:text-red-400 mt-1">{newsErrors.confidence}</p>}
               </div>
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-gray-500 dark:text-white/50 mb-1">Project *</label>
