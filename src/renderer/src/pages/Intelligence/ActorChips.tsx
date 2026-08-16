@@ -38,7 +38,7 @@ function dedupe(arr: { name: string; type: string }[]): { name: string; type: st
     if (seen.has(k)) continue
     seen.add(k); out.push({ name, type: a?.type || 'unknown' })
   }
-  return out.slice(0, 20)   // cap ~20
+  return out
 }
 
 export default function ActorChips({ actors, aiUnconfirmed, onChange }: ActorChipsProps) {
