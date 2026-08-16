@@ -368,6 +368,7 @@ export default function SourceCard({
                     mentioned={core.mentionedCountries}
                     subGeo={core.subGeographies}
                     aiUnconfirmed={geoAiUnconfirmed}
+                    editable={!!onCountriesChange}
                     onChange={onCountriesChange ?? (() => {})}
                   />
                 )}
@@ -392,6 +393,7 @@ export default function SourceCard({
                   <ActorChips
                     actors={core.actors}
                     aiUnconfirmed={actorsAiUnconfirmed}
+                    editable={!!onActorsChange}
                     onChange={onActorsChange ?? (() => {})}
                   />
                 )}

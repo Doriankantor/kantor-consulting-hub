@@ -5,12 +5,17 @@
 // Every mutation emits the WHOLE actors array via onChange — never incremental.
 import { useState } from 'react'
 import { actorTypeClass } from './actorTypeClass'
+import OverflowPopover from './OverflowPopover'
+import { groupActors } from './actorGroups'
 
 export interface ActorChipsProps {
   actors: { name: string; type: string }[]
   aiUnconfirmed?: boolean                                   // amber "AI" badge until first edit this session
+  editable: boolean                                         // Slice 2b: read mounts get flat chips (no ×/cycle/add)
   onChange: (actors: { name: string; type: string }[]) => void
 }
+
+const MAX_INLINE = 5   // Slice 2b: chips beyond this collapse behind the "... +N" popover
 
 // Click-to-cycle order for the type dimension (matches actorTypeClass's four real families + unknown).
 const TYPE_CYCLE = ['VNSA', 'state', 'extra-regional', 'commercial', 'unknown']
@@ -20,6 +25,8 @@ const nextType = (t: string): string => {
 }
 
 const ACTOR_CHIP = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium'
+// "... +N" overflow pill in the Zone C (engaged entities) violet accent.
+const MORE_PILL = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-500/25 transition'
 const ADD_BTN = 'px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-400 dark:text-white/30 border border-dashed border-gray-300 dark:border-white/[0.15] hover:text-gray-600 dark:hover:text-white/60'
 const INPUT = 'px-1.5 py-0.5 rounded border border-gray-200 dark:border-white/[0.15] bg-white dark:bg-transparent text-[11px] text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 w-28'
 const AI_BADGE = 'ml-0.5 px-1 rounded bg-amber-200/70 dark:bg-amber-500/30 text-amber-800 dark:text-amber-200 text-[8px] font-bold uppercase tracking-wide'
@@ -41,7 +48,7 @@ function dedupe(arr: { name: string; type: string }[]): { name: string; type: st
   return out
 }
 
-export default function ActorChips({ actors, aiUnconfirmed, onChange }: ActorChipsProps) {
+export default function ActorChips({ actors, aiUnconfirmed, editable, onChange }: ActorChipsProps) {
   const [adding, setAdding] = useState(false)
   const [value, setValue] = useState('')
 
@@ -55,6 +62,21 @@ export default function ActorChips({ actors, aiUnconfirmed, onChange }: ActorChi
     a.name.toLowerCase() === name.toLowerCase() ? { ...a, type: nextType(a.type) } : a))
 
   const aiBadge = aiUnconfirmed ? <span className={AI_BADGE} title="AI-extracted actors — edit to confirm">AI</span> : null
+
+  // One chip. Handlers (cycle/remove) are the same verbatim ones; `editable` only decides
+  // whether the name cycles the type and whether the × remove control renders (flat on read).
+  const renderChip = (a: { name: string; type: string }) => (
+    <span key={a.name} className={`${ACTOR_CHIP} ${actorTypeClass(a.type)}`}>
+      {editable ? (
+        <button className="hover:underline" onClick={() => cycle(a.name)} title={`${a.type} — click to change type`}>{a.name}</button>
+      ) : (
+        <span title={a.type}>{a.name}</span>
+      )}
+      {editable && (
+        <button onClick={() => remove(a.name)} className="opacity-60 hover:opacity-100" title={`Remove ${a.name}`}><XGlyph /></button>
+      )}
+    </span>
+  )
 
   const addControl = adding ? (
     <input
@@ -70,24 +92,24 @@ export default function ActorChips({ actors, aiUnconfirmed, onChange }: ActorChi
     <button className={ADD_BTN} onClick={() => setAdding(true)} title="Add actor">+ actor</button>
   )
 
-  // Empty → just the "+ actor" affordance (never a broken row).
-  if (actors.length === 0) return addControl
+  // Empty → just the "+ actor" affordance when editable (never a broken row); nothing on read.
+  if (actors.length === 0) return editable ? addControl : null
+
+  // Slice 2b: cap the inline row at MAX_INLINE; the rest live behind a "... +N" pill that
+  // opens a popover with ALL actors grouped by type. Chips render identically in both places.
+  const overflow = actors.length - MAX_INLINE
 
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      {actors.map(a => (
-        <span key={a.name} className={`${ACTOR_CHIP} ${actorTypeClass(a.type)}`}>
-          <button
-            className="hover:underline"
-            onClick={() => cycle(a.name)}
-            title={`${a.type} — click to change type`}
-          >
-            {a.name}
-          </button>
-          <button onClick={() => remove(a.name)} className="opacity-60 hover:opacity-100" title={`Remove ${a.name}`}><XGlyph /></button>
-        </span>
-      ))}
-      {addControl}
+      {actors.slice(0, MAX_INLINE).map(renderChip)}
+      {overflow > 0 && (
+        <OverflowPopover
+          count={overflow}
+          pillClassName={MORE_PILL}
+          groups={groupActors(actors).map(g => ({ label: g.label, count: g.actors.length, chips: g.actors.map(renderChip) }))}
+        />
+      )}
+      {editable && addControl}
       {aiBadge}
     </span>
   )

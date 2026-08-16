@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { useConnection } from '../contexts/ConnectionContext'
 import { useNavigate } from 'react-router-dom'
+import { usePopoverDismiss } from '../hooks/usePopoverDismiss'
 import { urgency, URGENCY_RANK, isPromoted, dueLabel, type UrgencyKey } from '../utils/urgency'
 // railOrder is no longer imported: the card's rail applies it internally, and the
 // panel's list must show STORED order (A-3 drags against it), not display order.
@@ -422,22 +423,6 @@ function PersonalCard({
 // helpers WEEKDAYS/MONTH_NAMES/toISODate/todayISO/prettyDate went with DatePopover,
 // which the native <input type="date"> replaced).
 const pad2 = (n: number): string => String(n).padStart(2, '0')
-
-/** Close a popover on outside-click or Escape. Shared by both pickers. */
-function usePopoverDismiss(open: boolean, close: () => void): React.RefObject<HTMLDivElement> {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent): void => {
-      if (ref.current && !ref.current.contains(e.target as Node)) close()
-    }
-    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') close() }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
-  }, [open, close])
-  return ref
-}
 
 const PILL_CLASS =
   'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-white/[0.12] ' +

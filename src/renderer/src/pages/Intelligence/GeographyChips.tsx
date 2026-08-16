@@ -15,12 +15,14 @@
 // main and renderer do not share modules, so that file is a hand-synced copy of geography.ts.
 import { useState } from 'react'
 import { GEO_COUNTRIES, lookupCountry } from './geographyVocab'
+import OverflowPopover from './OverflowPopover'
 
 export interface GeographyChipsProps {
   subject: string[]
   mentioned: string[]
   subGeo: Record<string, string[]>
   aiUnconfirmed?: boolean             // amber "AI" badge until the researcher first edits this session
+  editable: boolean                   // Slice 2b: read mounts get flat mentioned chips (no ×/add)
   onChange: (subject: string[], mentioned: string[], subGeo: Record<string, string[]>) => void
 }
 
@@ -35,6 +37,8 @@ const ACCENT_CHIP   = `${CHIP} bg-violet-100 dark:bg-violet-500/15 text-violet-7
 // free-text geographies still render sensibly.
 const SUBJECT_CHIP  = `${CHIP} bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-transparent`
 const MENTIONED_CHIP = `${CHIP} bg-transparent border-slate-300 dark:border-white/15 text-slate-500 dark:text-white/50`
+// "... +N" overflow pill in the Zone B (geography) teal accent.
+const MORE_PILL = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-500/25 transition'
 const ADD_BTN = 'px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-400 dark:text-white/30 border border-dashed border-gray-300 dark:border-white/[0.15] hover:text-gray-600 dark:hover:text-white/60'
 const INPUT = 'px-1.5 py-0.5 rounded border border-gray-200 dark:border-white/[0.15] bg-white dark:bg-transparent text-[11px] text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 w-32'
 const AI_BADGE = 'ml-0.5 px-1 rounded bg-amber-200/70 dark:bg-amber-500/30 text-amber-800 dark:text-amber-200 text-[8px] font-bold uppercase tracking-wide'
@@ -54,6 +58,7 @@ const LVL_OFF = 'bg-transparent text-violet-500 dark:text-violet-300/70 border-v
 const LVL_DISABLED = 'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border border-dashed border-gray-300 dark:border-white/15 text-gray-400 dark:text-white/25 opacity-50 cursor-not-allowed'
 
 const MAX_SUGGESTIONS = 5
+const MAX_INLINE_MENTIONED = 5   // Slice 2b: mentioned chips beyond this collapse behind the "... +N" popover (subject stays uncapped)
 
 const Pin = () => (
   <svg width="9" height="9" viewBox="0 0 10 10" fill="none" aria-hidden>
@@ -127,7 +132,7 @@ function deriveInitialScope(subject: string[]): 'latam' | 'extra' | 'both' | nul
 
 type EditState = { mode: 'sub'; country: string; value: string } | { mode: 'mentioned'; value: string } | null
 
-export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirmed, onChange }: GeographyChipsProps) {
+export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirmed, editable, onChange }: GeographyChipsProps) {
   const [edit, setEdit] = useState<EditState>(null)
   // Initial side derived from the source's existing subject chips (Decision B); 'both' = mixed card
   // (both segments lit, unscoped search), null = neutral empty card (no side lit, typeahead disabled
@@ -219,6 +224,18 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
   const aiBadge = aiUnconfirmed ? <span className={AI_BADGE} title="AI-proposed geography — edit to confirm">AI</span> : null
   const regionalOn = hasSentinel('REGIONAL')
 
+  // One mentioned chip (same removeCountry handler verbatim). `editable` only gates the ×
+  // remove control -- flat chip on a read mount. Used both inline and inside the popover.
+  const renderMentionedChip = (country: string) => (
+    <span key={`m-${country}`} className={MENTIONED_CHIP} title="Mentioned (metadata only — does not generate placements)">
+      {country}
+      {editable && (
+        <button onClick={() => removeCountry(country, 'mentioned')} className="opacity-60 hover:opacity-100" title={`Remove ${country}`}><XGlyph /></button>
+      )}
+    </span>
+  )
+  const mentionedOverflow = mentioned.length - MAX_INLINE_MENTIONED
+
   return (
     <div className="inline-flex flex-col gap-1 align-top">
       {/* ── CHIPS ROW (all kinds intermixed, colored by kind) ─────────────────────────────────── */}
@@ -261,12 +278,17 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
           )
         })}
 
-        {mentioned.map(country => (
-          <span key={`m-${country}`} className={MENTIONED_CHIP} title="Mentioned (metadata only — does not generate placements)">
-            {country}
-            <button onClick={() => removeCountry(country, 'mentioned')} className="opacity-60 hover:opacity-100" title={`Remove ${country}`}><XGlyph /></button>
-          </span>
-        ))}
+        {/* Slice 2b: SUBJECT stays uncapped (primary axis, above). Only MENTIONED overflows:
+            first MAX_INLINE_MENTIONED inline, the rest behind a "... +N" teal pill opening a
+            single-group "Mentioned" popover. */}
+        {mentioned.slice(0, MAX_INLINE_MENTIONED).map(renderMentionedChip)}
+        {mentionedOverflow > 0 && (
+          <OverflowPopover
+            count={mentionedOverflow}
+            pillClassName={MORE_PILL}
+            groups={[{ label: 'Mentioned', count: mentioned.length, chips: mentioned.map(renderMentionedChip) }]}
+          />
+        )}
         {aiBadge}
       </span>
 
@@ -313,9 +335,9 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
             </div>
           )}
         </div>
-        {edit?.mode === 'mentioned'
+        {editable && (edit?.mode === 'mentioned'
           ? inlineInput('Mentioned…', addMentioned)
-          : <button className={`${ADD_BTN} opacity-70`} onClick={() => setEdit({ mode: 'mentioned', value: '' })} title="Add mentioned country (metadata)">+ mentioned</button>}
+          : <button className={`${ADD_BTN} opacity-70`} onClick={() => setEdit({ mode: 'mentioned', value: '' })} title="Add mentioned country (metadata)">+ mentioned</button>)}
       </div>
 
       {/* ── LEVELS ROW (aggregation toggles) ──────────────────────────────────────────────────── */}
