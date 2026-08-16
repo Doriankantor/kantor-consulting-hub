@@ -28,6 +28,7 @@ import SectionProposalBadge from '../../pages/Intelligence/SectionProposalBadge'
 import GeographyChips from '../../pages/Intelligence/GeographyChips'
 import ActorChips from '../../pages/Intelligence/ActorChips'
 import IncidentChip from './IncidentChip'
+import ConfidencePill from './ConfidencePill'
 import { lookupCountry } from '../../pages/Intelligence/geographyVocab'
 import type { SourceCore } from './sourceCore'
 
@@ -86,6 +87,7 @@ interface SourceCardProps {
   onCountriesChange?: (subject: string[], mentioned: string[], subGeo: Record<string, string[]>) => void
   onActorsChange?: (actors: { name: string; type: string }[]) => void
   onIncidentChange?: (value: boolean) => void
+  onConfidenceChange?: (value: string) => void
   geoTouched?: boolean
   actorsTouched?: boolean
 }
@@ -96,6 +98,7 @@ export default function SourceCard({
   onCountriesChange,
   onActorsChange,
   onIncidentChange,
+  onConfidenceChange,
   geoTouched,
   actorsTouched,
 }: SourceCardProps) {
@@ -178,13 +181,12 @@ export default function SourceCard({
                 null), so news/social/document -- which always carry it -- render as before, and
                 interviews (no confidence concept -> null) correctly suppress the badge instead of
                 defaulting to a spurious 'LOW'. Wrapped in a display:contents span (no box, zero
-                relayout) as the Slice-3 swap point badge -> click-to-override pill. */}
+                relayout). Slice 3: the static badge is now ConfidencePill -- EDITABLE (click-to-cycle
+                high/medium/low) when onConfidenceChange is present, else the byte-identical read badge.
+                No type-keyed logic; the framework-ref "fixed" caveat is owned by NewsTab's handler. */}
             {core.confidence && (
               <span className="contents">
-                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${confStyle.bg} ${confStyle.text}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${confStyle.dot}`} />
-                  {conf}
-                </span>
+                <ConfidencePill conf={conf} style={confStyle} onChange={onConfidenceChange} />
               </span>
             )}
             {/* Source name */}
