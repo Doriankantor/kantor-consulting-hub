@@ -33,7 +33,9 @@ export interface SourceCore {
   status: IntelligenceSource['status']   // review status (NOT placement stage)
   confidence: 'high' | 'medium' | 'low' | null
   confidenceOverride: boolean            // confidence_override === 1: human-confirmed the confidence
-  hasContent: boolean                    // shared `content` column non-empty (cross-type gate check)
+  content: string | null                 // raw shared `content` column (news body / social post / transcript /
+                                         // doc). Substance is judged PER-TYPE by hasSubstantiveContent (canRoute),
+                                         // never with a single cross-type threshold here
   addedByName: string | null             // drives the origin badges + framework-fixed cue
   gateProcessed: number
   gateReasoning: string | null
@@ -111,7 +113,10 @@ export function fromIntelligenceSource(row: IntelligenceSource): SourceCore {
     status: row.status,
     confidence: row.confidence,
     confidenceOverride: row.confidence_override === 1,
-    hasContent: (row.content ?? '').trim().length > 0,
+    // Raw passthrough. The content gate is DELIBERATELY type-aware, so substance is judged downstream
+    // by hasSubstantiveContent(core.type, core.content) in canRoute -- NOT with a single cross-type
+    // threshold here. All four types write this same column (news body / social post / transcript / doc).
+    content: row.content,
     addedByName: row.added_by_name,
     gateProcessed: row.gate_processed,
     gateReasoning: row.gate_reasoning,

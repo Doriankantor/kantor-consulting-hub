@@ -17,6 +17,7 @@ import { parseConfig } from './frameworkConfig'
 import { notifyIntelChanged } from '../../utils/intelEvents'
 import SourceCard from '../../components/source-card/SourceCard'
 import { fromIntelligenceSource } from '../../components/source-card/sourceCore'
+import { canRoute } from '../../components/source-card/canRoute'
 import { readTags, safeParseObject, safeParseObjectArray, parseAnalysis, notesText } from '../../components/source-card/parse'
 
 const CONFIDENCE_COLORS = {
@@ -1442,17 +1443,29 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           const projectBoardSel = source.project_board_id
             || (selectedProjectId && selectedProjectId !== 'all' ? selectedProjectId : '')
 
-          // Phase 4: gate — Approve requires at least one project AND one topic tag.
-          const canApprove = projectSel !== '' && themaTags.length > 0
+          // Slice 4b-1: build core ONCE (also handed to SourceCard below) and run the SAME
+          // canRoute() gate the card's meter reads — single source of truth for "routable".
+          const core = fromIntelligenceSource(source)
+          const gate = canRoute(core)
+          // TODO(4b-2): INTERIM gate on the FIVE currently-live checks — NOT gate.all — because
+          // canRoute hardcodes incident=false this slice (its Yes/No control ships in 4b-2). Once
+          // that lands, switch this to `projectSel !== '' && gate.all`. Project is the route TARGET
+          // (orthogonal to the six checks); `tags` subsumes the old topic-tag condition.
+          const canApprove = projectSel !== ''
+            && gate.content && gate.aiAnalyzed && gate.tags && gate.confidence && gate.geography
           const gateErr = gateError[source.id]
 
-          // Phase 4: tooltip explaining what's missing.
-          const gateTooltip = !canApprove
-            ? (projectSel === '' && themaTags.length === 0
-                ? 'Select a project and add a topic tag to approve'
-                : projectSel === ''
-                ? 'Select a project to approve'
-                : 'Add a topic tag to approve')
+          // Slice 4b-1: tooltip enumerates the missing prerequisites (project + the five live checks),
+          // in meter-dot order. Incident is omitted — it's pending 4b-2, not part of the interim gate.
+          const gateMissing: string[] = []
+          if (projectSel === '') gateMissing.push('project')
+          if (!gate.content) gateMissing.push('content')
+          if (!gate.aiAnalyzed) gateMissing.push('AI analysis')
+          if (!gate.tags) gateMissing.push('tags')
+          if (!gate.confidence) gateMissing.push('confidence')
+          if (!gate.geography) gateMissing.push('geography')
+          const gateTooltip = gateMissing.length
+            ? `Not routable — missing: ${gateMissing.join(', ')}`
             : undefined
 
           return (
@@ -1466,7 +1479,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                   to source.id); the touched booleans drive the amber "AI" cue (clears on touch).
                   The interactive project-row + gate-error below are injected as children. */}
               <SourceCard
-                core={fromIntelligenceSource(source)}
+                core={core}
                 onCountriesChange={(subject, mentioned, subGeo) => handleCountries(source.id, subject, mentioned, subGeo)}
                 onActorsChange={next => handleActors(source.id, next)}
                 onIncidentChange={value => handleIncident(source.id, value)}
@@ -1576,7 +1589,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                       }
                       handleStatus(source.id, 'approved')
                     }}
-                    disabled={isPending || !online}
+                    disabled={isPending || !online || !canApprove}
                     title={!online ? 'Unavailable while offline' : gateTooltip}
                     className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-white text-xs font-medium transition ${
                       canApprove
