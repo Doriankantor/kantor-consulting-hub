@@ -1469,6 +1469,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                 onActorsChange={next => handleActors(source.id, next)}
                 onIncidentChange={value => handleIncident(source.id, value)}
                 onConfidenceChange={v => handleConfidence(source.id, v)}
+                onRelevanceChange={v => handleHumanRelevance(source.id, v ?? '')}
                 geoTouched={countriesTouched.has(source.id)}
                 actorsTouched={actorsTouched.has(source.id)}
               >

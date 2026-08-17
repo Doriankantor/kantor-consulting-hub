@@ -29,6 +29,7 @@ import GeographyChips from '../../pages/Intelligence/GeographyChips'
 import ActorChips from '../../pages/Intelligence/ActorChips'
 import IncidentChip from './IncidentChip'
 import ConfidencePill from './ConfidencePill'
+import RelevancePill from './RelevancePill'
 import { lookupCountry } from '../../pages/Intelligence/geographyVocab'
 import type { SourceCore } from './sourceCore'
 
@@ -88,6 +89,7 @@ interface SourceCardProps {
   onActorsChange?: (actors: { name: string; type: string }[]) => void
   onIncidentChange?: (value: boolean) => void
   onConfidenceChange?: (value: string) => void
+  onRelevanceChange?: (value: string | null) => void
   geoTouched?: boolean
   actorsTouched?: boolean
 }
@@ -99,6 +101,7 @@ export default function SourceCard({
   onActorsChange,
   onIncidentChange,
   onConfidenceChange,
+  onRelevanceChange,
   geoTouched,
   actorsTouched,
 }: SourceCardProps) {
@@ -238,33 +241,44 @@ export default function SourceCard({
                 <svg className="w-4 h-4 opacity-60 text-slate-500 dark:text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {/* Relevance-score badge. Wrapped in a display:contents span (no box, zero relayout)
-                    as the Slice-3 swap point badge -> click-to-override pill.
+                {/* Relevance. Wrapped in a display:contents span (no box, zero relayout). Slice 3b:
+                    the AI "REL n" badge (three states below, UNCHANGED: never-gated -> null,
+                    scoring-failed, REL n) is passed verbatim as RelevancePill's aiNode; the pill FOLDS
+                    core.humanRel (the researcher override) over it -- when a human relevance is set it
+                    REPLACES the AI badge with a distinct indigo/H provenance treatment + a tooltip that
+                    surfaces the AI score, and when onRelevanceChange is present (News) it is interactive
+                    (cycle High/Med/Low, clears back to the AI score). Read surfaces just fold in the
+                    human value if one exists. The pill NEVER writes relevance_score (only human.relevance
+                    via the handler). No type-keyed logic; the separate relevance-TYPE badge is untouched.
                     gate_processed=1 + NULL score = tombstoned (failed to score) → gray "scoring failed".
-                    gate_processed=0 + NULL score = not yet gated → gray "REL —". */}
-                {/* Never-gated rows (Social/Docs/Interviews: gate_processed=0, no score) render NO
-                    relevance badge — a "REL —" here would falsely imply the gate ran. Data-driven,
-                    not type-keyed: News is always gate_processed=1 so it never enters this branch,
-                    and the 'scoring failed' + 'REL n' branches below stay byte-identical. */}
+                    gate_processed=0 + NULL score = not yet gated → no badge (a "REL —" would falsely
+                    imply the gate ran; News is always gate_processed=1 so it never hits that branch). */}
                 <span className="contents">
-                  {core.gateProcessed !== 1 && core.relevanceScore == null ? null : core.gateProcessed === 1 && core.relevanceScore == null ? (
-                    <span
-                      className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/30"
-                      title={core.gateReasoning || 'Scoring failed — could not classify this article'}
-                    >
-                      scoring failed
-                    </span>
-                  ) : ((() => {
-                    const rb = relevanceBadge(core.relevanceScore)
-                    return (
-                      <span
-                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${rb.cls}`}
-                        title="Colombia relevance score (0–10)"
-                      >
-                        <span className="opacity-60 font-medium">REL</span>{rb.label}
-                      </span>
-                    )
-                  })())}
+                  <RelevancePill
+                    relevanceScore={core.relevanceScore}
+                    humanRel={core.humanRel}
+                    onChange={onRelevanceChange}
+                    aiNode={
+                      core.gateProcessed !== 1 && core.relevanceScore == null ? null : core.gateProcessed === 1 && core.relevanceScore == null ? (
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 dark:bg-white/[0.06] text-gray-400 dark:text-white/30"
+                          title={core.gateReasoning || 'Scoring failed — could not classify this article'}
+                        >
+                          scoring failed
+                        </span>
+                      ) : ((() => {
+                        const rb = relevanceBadge(core.relevanceScore)
+                        return (
+                          <span
+                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${rb.cls}`}
+                            title="Colombia relevance score (0–10)"
+                          >
+                            <span className="opacity-60 font-medium">REL</span>{rb.label}
+                          </span>
+                        )
+                      })())
+                    }
+                  />
                 </span>
                 {/* Relevance-type badge */}
                 {core.relevanceType && core.relevanceType !== 'none' && (
