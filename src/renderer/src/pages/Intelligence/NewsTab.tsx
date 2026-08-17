@@ -906,8 +906,9 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   }
 
   // Geo-2: researcher edit of the geography-axis lists (subject/mentioned countries + per-country
-  // sub-geo). Lists-only column write via updateCountries — scalar geography stays gate-set.
-  // Optimistic: store the three columns as JSON strings on the row (matching the mirror format).
+  // sub-geo). Column write via updateCountries — scalar geography VALUE stays gate-set, but Slice 4a
+  // stamps geography_confirmed=1 in the SAME write (implicit confirm: any human edit = confirmation).
+  // Optimistic: store the three columns as JSON strings + the confirm flag on the row (mirror format).
   async function handleCountries(id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>) {
     // Honor the write result: updateCountries returns { ok, error } and no-ops (ok:false) when
     // offline. Do NOT optimistically patch state on failure — a false chip that never persisted is
@@ -922,6 +923,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       subject_countries: JSON.stringify(subject),
       mentioned_countries: JSON.stringify(mentioned),
       sub_geographies: JSON.stringify(subGeo),
+      geography_confirmed: 1,   // Slice 4a: mirror the implicit-confirm the write just persisted
     } : s))
     setCountriesTouched(prev => new Set(prev).add(id))   // first edit clears the AI badge
   }

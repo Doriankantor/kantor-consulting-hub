@@ -748,7 +748,11 @@ export async function updateGeography(id: string, geography: string): Promise<{ 
 // Geo-2: the POST-HOC researcher editor for the geography-axis lists. Writes all three geo
 // list-columns (JSON-string) in one cloud UPDATE + resync. Separate from the analyze path
 // (saveAiAnalysis also writes subject/mentioned via Geo-1 — both target the same columns, fine).
-// Lists ONLY — never touches scalar geography / geography_confirmed.
+// Slice 4a: this path is only ever reached by an actual researcher chip edit (handleCountries
+// <- onCountriesChange), so it ALSO stamps geography_confirmed=1 as IMPLICIT confirmation. This
+// is ADDITIVE: the scalar geography/region VALUE columns are still untouched (only the confirm
+// flag is set alongside the three list writes) — AI-proposed-but-untouched rows never hit this
+// path and stay geography_confirmed=0.
 export async function updateCountries(
   id: string,
   subject: string[],
@@ -761,6 +765,7 @@ export async function updateCountries(
       subject_countries:   JSON.stringify(subject ?? []),
       mentioned_countries: JSON.stringify(mentioned ?? []),
       sub_geographies:     JSON.stringify(subGeo ?? {}),
+      geography_confirmed: 1,   // implicit confirm: a human edited geography (Slice 4a)
     }).eq('id', id)
   if (error) return { ok: false, error: `updateCountries failed: ${error.message}` }
   await resyncRow(id)

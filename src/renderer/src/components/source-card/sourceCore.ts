@@ -32,6 +32,8 @@ export interface SourceCore {
   relevanceType: string | null
   status: IntelligenceSource['status']   // review status (NOT placement stage)
   confidence: 'high' | 'medium' | 'low' | null
+  confidenceOverride: boolean            // confidence_override === 1: human-confirmed the confidence
+  hasContent: boolean                    // shared `content` column non-empty (cross-type gate check)
   addedByName: string | null             // drives the origin badges + framework-fixed cue
   gateProcessed: number
   gateReasoning: string | null
@@ -108,6 +110,8 @@ export function fromIntelligenceSource(row: IntelligenceSource): SourceCore {
     relevanceType: row.relevance_type,
     status: row.status,
     confidence: row.confidence,
+    confidenceOverride: row.confidence_override === 1,
+    hasContent: (row.content ?? '').trim().length > 0,
     addedByName: row.added_by_name,
     gateProcessed: row.gate_processed,
     gateReasoning: row.gate_reasoning,
