@@ -1394,8 +1394,8 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           const cats: string[] = (() => { try { return JSON.parse(source.categories_json || '[]') } catch { return [] } })()
           const dispoTags = readTags(source.disposition_tags)
           const themaTags = readTags(source.thematic_tags)
-          // News human layer: relevance override (analysis_json.human) + footer open state.
-          const humanRel = (parseAnalysis(source.analysis_json).human as { relevance?: string } | undefined)?.relevance
+          // News human layer: footer open state. (Relevance override moved to the card's
+          // RelevancePill — the footer select and its humanRel local were retired.)
           const footerFilled = !!notesText(source.intel_notes)   // footer is notes-only now (drives the ●/✎ indicator below)
           // Issue-3 fix: default CLOSED, never content-forced open. footerFilled still styles the
           // toggle's notes indicator, but no longer auto-opens the footer — an explicit toggle
@@ -1517,26 +1517,10 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                   )}
               </SourceCard>
 
-              {/* Actions + quick controls (confidence · topic tags · relevance override) */}
+              {/* Quick controls (topic tags) + status actions. Confidence and relevance are now
+                  edited on the card face itself (ConfidencePill / RelevancePill) — the legacy
+                  footer selects were retired once the card pills shipped. */}
               <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
-                {/* Confidence: fixed for framework refs, gradeable for journalistic sources */}
-                {source.added_by_name === 'Kantor Framework' ? (
-                  <span className="px-2 py-1 rounded text-[11px] border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 font-medium" title="Fixed authoritative source — confidence is not graded">
-                    Authoritative — fixed
-                  </span>
-                ) : (
-                  <select
-                    value={source.confidence || 'low'}
-                    onChange={e => handleConfidence(source.id, e.target.value)}
-                    className="px-2 py-1 rounded text-[11px] border border-gray-200 dark:border-white/[0.1] bg-white dark:bg-transparent text-gray-600 dark:text-white/70 focus:outline-none"
-                    title="Grade by how solid the source is"
-                  >
-                    <option value="high">High confidence</option>
-                    <option value="medium">Medium confidence</option>
-                    <option value="low">Low confidence</option>
-                  </select>
-                )}
-
                 {/* TOPIC tags — always-visible quick control (writes thematic_tags via setArticleTags) */}
                 <TagPicker
                   label="Topic"
@@ -1557,25 +1541,6 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                   isAdmin={can('delete_intel_tag') || isRoot}
                   forceOpen={forceOpenTopicId === source.id}
                 />
-
-                {/* RELEVANCE override — always-visible; stored in analysis_json.human (AI score kept) */}
-                <span className="inline-flex items-center gap-1">
-                  <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30">Rel</span>
-                  <select
-                    value={humanRel ?? ''}
-                    onChange={e => handleHumanRelevance(source.id, e.target.value)}
-                    className="px-2 py-0.5 rounded text-[11px] border border-gray-200 dark:border-white/[0.15] bg-white dark:bg-gray-900 text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
-                    title="Your relevance override — does not change the AI's REL score"
-                  >
-                    <option value="">— (use AI)</option>
-                    <option value="High">High</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Low">Low</option>
-                  </select>
-                  {humanRel && (
-                    <span className="text-[10px] text-gray-400 dark:text-white/35" title="AI relevance score is preserved">overrides AI REL {source.relevance_score ?? '—'}</span>
-                  )}
-                </span>
 
                 <div className="flex-1" />
 
