@@ -60,7 +60,11 @@ export default function TagPicker({ label, value, known, chipClass, onAdd, onRem
   function openPanel() {
     if (triggerRef.current) {
       const r = triggerRef.current.getBoundingClientRect()
-      setPanelPos({ top: r.bottom + 4, left: r.left, maxHeight: 240 })
+      // Clamp horizontally so the fixed panel never spills past the right edge.
+      // Panel isn't mounted yet here, so fall back to the w-56 width (224px);
+      // the useLayoutEffect re-clamps against the panel's real width once mounted.
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - 224 - 8))
+      setPanelPos({ top: r.bottom + 4, left, maxHeight: 240 })
     }
     setOpen(true)
   }
@@ -75,24 +79,28 @@ export default function TagPicker({ label, value, known, chipClass, onAdd, onRem
     const VIEWPORT_MARGIN = 8 // keep a little gap from the screen edge
     const r = triggerRef.current.getBoundingClientRect()
     const panelH = panelRef.current.offsetHeight // REAL rendered height
+    const panelW = panelRef.current.offsetWidth  // REAL rendered width
+    // Horizontal clamp mirrors the vertical solver: keep the panel off the right
+    // edge (and off the left) using the panel's real width.
+    const left = Math.max(VIEWPORT_MARGIN, Math.min(r.left, window.innerWidth - panelW - VIEWPORT_MARGIN))
     const spaceBelow = window.innerHeight - r.bottom - GAP - VIEWPORT_MARGIN
     const spaceAbove = r.top - GAP - VIEWPORT_MARGIN
     // Fits below at its real height? stay downward, in situ.
     if (panelH <= spaceBelow) {
-      setPanelPos(p => ({ ...p, top: r.bottom + GAP, left: r.left, maxHeight: Math.min(240, spaceBelow) }))
+      setPanelPos(p => ({ ...p, top: r.bottom + GAP, left, maxHeight: Math.min(240, spaceBelow) }))
       return
     }
     // Doesn't fit below. If it fits above at real height, flip up SNUGLY (bottom-aligned to trigger top).
     if (panelH <= spaceAbove) {
-      setPanelPos(p => ({ ...p, top: r.top - GAP - panelH, left: r.left, maxHeight: Math.min(240, spaceAbove) }))
+      setPanelPos(p => ({ ...p, top: r.top - GAP - panelH, left, maxHeight: Math.min(240, spaceAbove) }))
       return
     }
     // Fits neither: open on the larger side and cap+scroll.
     if (spaceBelow >= spaceAbove) {
-      setPanelPos(p => ({ ...p, top: r.bottom + GAP, left: r.left, maxHeight: Math.max(120, spaceBelow) }))
+      setPanelPos(p => ({ ...p, top: r.bottom + GAP, left, maxHeight: Math.max(120, spaceBelow) }))
     } else {
       const h = Math.max(120, spaceAbove)
-      setPanelPos(p => ({ ...p, top: r.top - GAP - h, left: r.left, maxHeight: h }))
+      setPanelPos(p => ({ ...p, top: r.top - GAP - h, left, maxHeight: h }))
     }
   }, [open, value.length, known.length])
 

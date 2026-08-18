@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useConnection } from '../../contexts/ConnectionContext'
 import RichTextEditor from '../../components/RichTextEditor'
-import TagPicker, { normalizeTagClient } from './TagPicker'
+import { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
 import SectionProposalBadge from './SectionProposalBadge'
 import GeographyChips from './GeographyChips'
@@ -1450,6 +1450,24 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                 onIncidentChange={value => handleIncident(source.id, value)}
                 onConfidenceChange={v => handleConfidence(source.id, v)}
                 onRelevanceChange={v => handleHumanRelevance(source.id, v ?? '')}
+                onTagsChange={nextTags => {
+                  handleSetTags(source.id, 'thematic', nextTags)
+                  // News-local: clear the gate's missing-topic error only when a topic REMAINS --
+                  // removing the last topic must not falsely satisfy the gate.
+                  if (nextTags.length > 0) {
+                    setGateError(prev => {
+                      const n = { ...prev }
+                      if (n[source.id]) n[source.id] = { ...n[source.id], missingTopic: false }
+                      return n
+                    })
+                  }
+                }}
+                tagVocabulary={knownThematic}
+                canEditTags={!!(source.project_board_id || (selectedProjectId && selectedProjectId !== 'all'))}
+                onTagCreate={name => handleCreateTag(source.id, 'thematic', source.project_board_id || '', themaTags, name)}
+                onTagDelete={((can('delete_intel_tag') || isRoot) && selectedProjectId && selectedProjectId !== 'all') ? tag => handleDeleteTag(tag, selectedProjectId) : undefined}
+                tagsAdmin={can('delete_intel_tag') || isRoot}
+                tagsForceOpen={forceOpenTopicId === source.id}
                 geoTouched={countriesTouched.has(source.id)}
                 actorsTouched={actorsTouched.has(source.id)}
               >
@@ -1497,31 +1515,9 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                   )}
               </SourceCard>
 
-              {/* Quick controls (topic tags) + status actions. Confidence and relevance are now
-                  edited on the card face itself (ConfidencePill / RelevancePill) — the legacy
-                  footer selects were retired once the card pills shipped. */}
+              {/* Status actions. Topic tags now live in the card's Topics zone (Zone D); confidence
+                  and relevance are edited on the card face (ConfidencePill / RelevancePill). */}
               <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-white/[0.06]">
-                {/* TOPIC tags — always-visible quick control (writes thematic_tags via setArticleTags) */}
-                <TagPicker
-                  label="Topic"
-                  value={themaTags}
-                  known={knownThematic}
-                  chipClass="bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-300"
-                  onAdd={tag => {
-                    handleSetTags(source.id, 'thematic', [...themaTags, tag])
-                    setGateError(prev => {
-                      const n = { ...prev }
-                      if (n[source.id]) n[source.id] = { ...n[source.id], missingTopic: false }
-                      return n
-                    })
-                  }}
-                  onRemove={tag => handleSetTags(source.id, 'thematic', themaTags.filter(t => t !== tag))}
-                  onCreate={name => handleCreateTag(source.id, 'thematic', source.project_board_id || '', themaTags, name)}
-                  onDelete={((can('delete_intel_tag') || isRoot) && selectedProjectId && selectedProjectId !== 'all') ? tag => handleDeleteTag(tag, selectedProjectId) : undefined}
-                  isAdmin={can('delete_intel_tag') || isRoot}
-                  forceOpen={forceOpenTopicId === source.id}
-                />
-
                 <div className="flex-1" />
 
                 {/* Phase 4: Approve — gated on project + topic. Dimmed + tooltip when blocked. */}
@@ -1538,7 +1534,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                           },
                         }))
                         if (themaTags.length === 0) {
-                          // Topic picker is always visible in the quick-controls row — just force it open.
+                          // Topic picker lives in the card's Topics zone (Zone D) — force it open.
                           setForceOpenTopicId(source.id)
                           setTimeout(() => setForceOpenTopicId(null), 0)
                         }

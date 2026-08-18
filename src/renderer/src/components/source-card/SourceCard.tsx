@@ -27,6 +27,7 @@ import type { ReactNode } from 'react'
 import SectionProposalBadge from '../../pages/Intelligence/SectionProposalBadge'
 import GeographyChips from '../../pages/Intelligence/GeographyChips'
 import ActorChips from '../../pages/Intelligence/ActorChips'
+import TagPicker from '../../pages/Intelligence/TagPicker'
 import IncidentChip from './IncidentChip'
 import ConfidencePill from './ConfidencePill'
 import RelevancePill from './RelevancePill'
@@ -91,6 +92,20 @@ interface SourceCardProps {
   onIncidentChange?: (value: boolean) => void
   onConfidenceChange?: (value: string) => void
   onRelevanceChange?: (value: string | null) => void
+  // S5b-2 (mount lift): the shared THEMATIC ("Topic") tag surface. When onTagsChange is present
+  // the card renders an editable TagPicker (Zone D) and routes add/remove through the host's
+  // thematic_tags writer; the vocabulary + registry mutators come from useThematicTagVocabulary
+  // in the host. Absent -> read-only teal chips (or nothing when there are no tags).
+  onTagsChange?: (nextTags: string[]) => void
+  tagVocabulary?: string[]
+  onTagCreate?: (name: string) => void
+  onTagDelete?: (tag: string) => void
+  tagsAdmin?: boolean
+  tagsForceOpen?: boolean
+  // Project gate: false suppresses the editable picker (host has no project/board scope) even
+  // when onTagsChange is present -- Zone D then shows read-only chips or a "select a project"
+  // hint instead of a free-type add path. Omitted/true -> editable (News never gates).
+  canEditTags?: boolean
   geoTouched?: boolean
   actorsTouched?: boolean
 }
@@ -103,6 +118,13 @@ export default function SourceCard({
   onIncidentChange,
   onConfidenceChange,
   onRelevanceChange,
+  onTagsChange,
+  tagVocabulary,
+  onTagCreate,
+  onTagDelete,
+  tagsAdmin,
+  tagsForceOpen,
+  canEditTags,
   geoTouched,
   actorsTouched,
 }: SourceCardProps) {
@@ -159,6 +181,11 @@ export default function SourceCard({
     !!onCountriesChange
   // Zone C (engaged entities): mirrors the existing ActorChips guard -- actors present OR editable.
   const showZoneC = core.actors.length > 0 || !!onActorsChange
+  // Zone D (topics): thematic tags present OR editable (onTagsChange handler wired by the host).
+  const showTags = core.thematicTags.length > 0 || !!onTagsChange
+  // Editable only when a write handler exists AND the host has not gated it off (canEditTags:false
+  // = no project/board scope). The zone still SHOWS (showTags) -- it just falls back to read-only.
+  const tagsEditable = !!onTagsChange && canEditTags !== false
 
   return (
     <div className="space-y-3">
@@ -215,8 +242,8 @@ export default function SourceCard({
         </div>
       </div>
 
-      {/* ================================================================ THREE TINTED ZONES */}
-      {(showZoneA || showZoneB || showZoneC) && (
+      {/* ================================================================ TINTED ZONES */}
+      {(showZoneA || showZoneB || showZoneC || showTags) && (
         <div className="flex flex-col md:flex-row items-stretch gap-2.5">
 
           {/* ZONE A -- Assessment & routing (cogwheel). Densest zone: confidence, relevance,
@@ -412,6 +439,47 @@ export default function SourceCard({
                     editable={!!onActorsChange}
                     onChange={onActorsChange ?? (() => {})}
                   />
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ZONE D -- Topics (tag). The shared THEMATIC ("Topic") tag surface, lifted from the
+              four tab-local TagPicker mounts so all four intel types inherit ONE editable Topics
+              control instead of four divergent ones. Same zones row, OUTSIDE {children}. EDITABLE
+              when onTagsChange is present: add/remove route through the host's thematic_tags writer,
+              while the vocabulary + registry create/delete come from the host's shared hook. Read-only
+              teal chips when tags exist with no handler. Label + teal chip identity are hardcoded --
+              that uniformity across all four tabs is the point. */}
+          {showTags && (
+            <div className="md:flex-1 rounded-lg border border-sky-200 dark:border-sky-500/20 bg-sky-50/60 dark:bg-sky-500/[0.06] p-3">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="font-mono text-[10px] tracking-wider uppercase font-semibold text-sky-600 dark:text-sky-400">Topics</span>
+                <svg className="w-4 h-4 opacity-60 text-sky-600 dark:text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.2" fill="currentColor" stroke="none"/></svg>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {tagsEditable ? (
+                  <TagPicker
+                    label="Topic"
+                    value={core.thematicTags}
+                    known={tagVocabulary ?? []}
+                    chipClass="bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-300"
+                    onAdd={tag => onTagsChange?.([...core.thematicTags, tag])}
+                    onRemove={tag => onTagsChange?.(core.thematicTags.filter(t => t !== tag))}
+                    onCreate={onTagCreate ?? (() => {})}
+                    onDelete={onTagDelete}
+                    isAdmin={tagsAdmin}
+                    forceOpen={tagsForceOpen}
+                  />
+                ) : core.thematicTags.length > 0 ? (
+                  // Gated (no project/board): read-only chips, NO picker/add/create affordance.
+                  core.thematicTags.map(tag => (
+                    <span key={tag} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-300">
+                      {tag}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-[10px] text-gray-400 dark:text-white/30 italic">Select a project to tag</span>
                 )}
               </div>
             </div>

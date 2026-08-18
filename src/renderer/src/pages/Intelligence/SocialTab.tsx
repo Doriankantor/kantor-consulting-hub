@@ -4,7 +4,7 @@ import { useConnection } from '../../contexts/ConnectionContext'
 import RichTextEditor from '../../components/RichTextEditor'
 import SourceCard from '../../components/source-card/SourceCard'
 import { fromIntelligenceSource } from '../../components/source-card/sourceCore'
-import TagPicker, { normalizeTagClient } from './TagPicker'
+import { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
 import CondensedSummary from './CondensedSummary'
 import { notifyIntelChanged } from '../../utils/intelEvents'
@@ -735,6 +735,12 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                 onCountriesChange={(subject, mentioned, subGeo) => handleCountries(post.id, subject, mentioned, subGeo)}
                 onActorsChange={next => handleActors(post.id, next)}
                 onConfidenceChange={v => handleConfidence(post.id, v)}
+                onTagsChange={nextTags => handleSetTags(post.id, nextTags)}
+                tagVocabulary={knownThematic}
+                onTagCreate={name => handleCreateTag(post.id, themaTags, name, projectBoardSel)}
+                onTagDelete={((can('delete_intel_tag') || isRoot) && projectBoardSel) ? tag => handleDeleteTag(tag, projectBoardSel) : undefined}
+                tagsAdmin={can('delete_intel_tag') || isRoot}
+                canEditTags={!!projectBoardSel}
                 geoTouched={countriesTouched.has(post.id)}
                 actorsTouched={actorsTouched.has(post.id)}
               />
@@ -813,22 +819,7 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                     <span className="text-[11px] text-gray-400 dark:text-white/30">Loading…</span>
                   )}
                 </div>
-                {/* T3: project-scoped topic tags */}
-                {projectBoardSel ? (
-                  <TagPicker
-                    label="Topic"
-                    value={themaTags}
-                    known={knownThematic}
-                    chipClass="bg-teal-100 dark:bg-teal-500/15 text-teal-700 dark:text-teal-300"
-                    onAdd={tag => handleSetTags(post.id, [...themaTags, tag])}
-                    onRemove={tag => handleSetTags(post.id, themaTags.filter(t => t !== tag))}
-                    onCreate={name => handleCreateTag(post.id, themaTags, name, projectBoardSel)}
-                    onDelete={((can('delete_intel_tag') || isRoot) && projectBoardSel) ? tag => handleDeleteTag(tag, projectBoardSel) : undefined}
-                    isAdmin={can('delete_intel_tag') || isRoot}
-                  />
-                ) : (
-                  <span className="text-[10px] text-gray-400 dark:text-white/30 italic">Select a project to tag</span>
-                )}
+                {/* T3 topic tags moved to the card's Topics zone (Zone D). */}
                 {/* 3d: Send to New sources — routes into the selected project's pipeline */}
                 <button
                   onClick={() => handleSend(post.id, projectBoardSel)}
