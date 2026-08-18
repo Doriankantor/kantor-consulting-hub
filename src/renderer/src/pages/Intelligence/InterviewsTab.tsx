@@ -8,6 +8,7 @@ import CondensedSummary from './CondensedSummary'
 import SourceCard from '../../components/source-card/SourceCard'
 import { fromIntelligenceSource } from '../../components/source-card/sourceCore'
 import { notifyIntelChanged } from '../../utils/intelEvents'
+import { useThematicTagVocabulary } from '../../hooks/useThematicTagVocabulary'
 
 // 2c: Intelligence "Interviews" tab — human-first, mirroring the Documents (2b)
 // compose flow. type='interview' rows on intelligence_sources; the transcript is
@@ -76,8 +77,11 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
   const [formError, setFormError] = useState<string | null>(null)
   // 3d: the info-page projects (for the per-item project picker + Send target).
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
-  // T3: the selected project's thematic tag vocabulary (project-scoped, from T1).
-  const [knownThematic, setKnownThematic] = useState<string[]>([])
+  // T3: the selected project's thematic tag vocabulary (project-scoped, from T1). S5b-2: the
+  // vocabulary + registry layer is the shared useThematicTagVocabulary hook (one impl across
+  // all four intel tabs); `knownThematic` keeps its name so mounts/inLibrary refs are unchanged.
+  const { known: knownThematic, createTag: createThematicTag, deleteTag: deleteThematicTag } =
+    useThematicTagVocabulary(project?.id ?? '')
   // Slice 4: per-card collapse state (id → open). Absent = fall back to default-open.
   // Persisted (option b): lazy-init from localStorage so an explicit collapse survives
   // leaving Intelligence; corrupt/missing value falls back to {} without crashing.
@@ -147,24 +151,8 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
     })()
   }, [])
 
-  // T3: load the selected project's thematic tag vocabulary; reload on project change.
-  useEffect(() => {
-    const boardId = project?.id
-    if (!boardId) { setKnownThematic([]); return }
-    window.api.intelligence.getKnownTags('thematic', boardId)
-      .then(setKnownThematic).catch(() => setKnownThematic([]))
-  }, [project?.id])
-
-  // Realtime: re-fetch this project's tag vocabulary when known_tags changes in cloud.
-  useEffect(() => {
-    const boardId = project?.id
-    window.api.intelligence.onTagsInvalidate((d) => {
-      if (!boardId) return
-      if (d.boardId && d.boardId !== boardId) return
-      window.api.intelligence.getKnownTags('thematic', boardId).then(setKnownThematic).catch(() => {})
-    })
-    return () => window.api.intelligence.removeTagsInvalidateListeners()
-  }, [project?.id])
+  // S5b-2: the project-scoped tag-vocabulary load + realtime subscription moved into
+  // useThematicTagVocabulary (called above). See the hook for the lifted implementation.
 
   // Realtime: re-fetch the interview list when intelligence_sources changes in cloud.
   useEffect(() => {
@@ -279,30 +267,14 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
   }
   const handleCreateTag = async (id: string, current: string[], name: string, boardId: string) => {
     if (!boardId) return
-    try {
-      const res = await window.api.intelligence.createTag(name, 'thematic', boardId)
-      if (!res?.ok || !res.name) {
-        console.warn('[InterviewsTab] createTag failed:', res?.error)
-        window.api.intelligence.getKnownTags('thematic', boardId).then(setKnownThematic).catch(() => {})
-        return
-      }
-      setKnownThematic(prev => prev.includes(res.name) ? prev : [...prev, res.name].sort((a, b) => a.localeCompare(b)))
-      if (!current.includes(res.name)) await handleSetTags(id, [...current, res.name])
-    } catch (e) { console.warn('[InterviewsTab] createTag failed:', e) }
+    const created = await createThematicTag(name, boardId)
+    if (created && !current.includes(created)) await handleSetTags(id, [...current, created])
   }
   const handleDeleteTag = async (name: string, boardId: string) => {
     if (!boardId) return
     if (!confirm(`Delete tag "${name}" from this project's registry?`)) return
-    try {
-      const res = await window.api.intelligence.deleteTag(name, 'thematic', boardId)
-      if (!res?.ok) {
-        console.warn('[InterviewsTab] deleteTag failed:', res?.error)
-        window.api.intelligence.getKnownTags('thematic', boardId).then(setKnownThematic).catch(() => {})
-        alert(res?.error || 'Could not delete the tag.')
-        return
-      }
-      setKnownThematic(prev => prev.filter(t => t !== name))
-    } catch (e) { console.warn('[InterviewsTab] deleteTag failed:', e) }
+    const res = await deleteThematicTag(name, boardId)
+    if (!res.ok) alert(res.error || 'Could not delete the tag.')
   }
 
   // Patch one interview in local state so notes/AI results re-render in place.

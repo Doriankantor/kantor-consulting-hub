@@ -10,6 +10,7 @@ import SectionProposalBadge from './SectionProposalBadge'
 import GeographyChips from './GeographyChips'
 import ActorChips from './ActorChips'
 import { actorTypeClass } from './actorTypeClass'
+import { useThematicTagVocabulary } from '../../hooks/useThematicTagVocabulary'
 import { resolveFacts, resolveCaps, resolveIncident, type ResolvedFact, type ResolvedCap } from './resolveAnalysis'
 import { classifyGeo } from './geographyVocab'
 import { SECTION_LABELS } from './sectionLabels'
@@ -158,8 +159,11 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   // Phase 4: gate error state per article + force-open topic picker.
   const [gateError, setGateError] = useState<Record<string, { missingProject: boolean; missingTopic: boolean }>>({})
   const [forceOpenTopicId, setForceOpenTopicId] = useState<string | null>(null)
-  // Topic tag registry (thematic — the only picker that stays).
-  const [knownThematic, setKnownThematic] = useState<string[]>([])
+  // Topic tag registry (thematic — the only picker that stays). S5b-2: the vocabulary +
+  // registry layer is now the shared useThematicTagVocabulary hook (one impl across all four
+  // intel tabs); `knownThematic` keeps its name so every mount/inLibrary reference is unchanged.
+  const { known: knownThematic, createTag: createThematicTag, deleteTag: deleteThematicTag } =
+    useThematicTagVocabulary(selectedProjectId && selectedProjectId !== 'all' ? selectedProjectId : '')
   const scrollRef = useRef<HTMLDivElement>(null)
   const [importedCount, setImportedCount] = useState(0)
   const [confirmingImported, setConfirmingImported] = useState(false)
@@ -512,30 +516,8 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     })()
   }, [])
 
-  // T1: the topic-tag registry is now PROJECT-SCOPED. Load the currently selected
-  // project's vocabulary (the top dropdown) and reload when it changes. When the
-  // dropdown is 'all' or empty there is no project scope → load nothing.
-  useEffect(() => {
-    (async () => {
-      const boardId = selectedProjectId && selectedProjectId !== 'all' ? selectedProjectId : ''
-      if (!boardId) { setKnownThematic([]); return }
-      try {
-        const t = await window.api.intelligence.getKnownTags('thematic', boardId)
-        setKnownThematic(t || [])
-      } catch (e) { console.warn('[NewsTab] known-tags load failed:', e) }
-    })()
-  }, [selectedProjectId])
-
-  // Realtime: re-fetch this project's tag vocabulary when known_tags changes in cloud.
-  useEffect(() => {
-    const boardId = selectedProjectId && selectedProjectId !== 'all' ? selectedProjectId : ''
-    window.api.intelligence.onTagsInvalidate((d) => {
-      if (!boardId) return
-      if (d.boardId && d.boardId !== boardId) return
-      window.api.intelligence.getKnownTags('thematic', boardId).then(setKnownThematic).catch(() => {})
-    })
-    return () => window.api.intelligence.removeTagsInvalidateListeners()
-  }, [selectedProjectId])
+  // S5b-2: the project-scoped tag-vocabulary load + realtime subscription moved into
+  // useThematicTagVocabulary (called above). See the hook for the lifted implementation.
 
   // Realtime: re-fetch the list + count badges when intelligence_sources changes
   // in cloud (another device approved/rejected/deleted). load() already refetches
@@ -978,39 +960,22 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     })
   }
 
-  // Create a new registry tag, refresh the local registry, then attach it.
+  // Create a new registry tag (via the shared vocabulary hook), then attach it to this row.
   // T1: the tag belongs to the ARTICLE's project (boardId = source.project_board_id).
   async function handleCreateTag(id: string, type: 'thematic', boardId: string, current: string[], name: string) {
     if (!boardId) return
-    try {
-      const res = await window.api.intelligence.createTag(name, type, boardId)
-      if (!res?.ok || !res.name) {
-        console.warn('[NewsTab] createTag failed:', res?.error)
-        // Cloud write failed — refetch so the picker reflects cloud truth (no phantom).
-        window.api.intelligence.getKnownTags(type, boardId).then(setKnownThematic).catch(() => {})
-        return
-      }
-      setKnownThematic(prev => prev.includes(res.name) ? prev : [...prev, res.name].sort((a, b) => a.localeCompare(b)))
-      if (!current.includes(res.name)) await handleSetTags(id, type, [...current, res.name])
-    } catch (e) { console.warn('[NewsTab] createTag failed:', e) }
+    const created = await createThematicTag(name, boardId)
+    if (created && !current.includes(created)) await handleSetTags(id, type, [...current, created])
   }
 
-  // Admin: delete a tag from the known_tags registry. Existing article chips are
-  // kept (articles retain their stored JSON) but the tag leaves the autocomplete.
-  // T1: deletion is scoped to the currently viewed project's registry (boardId).
-  async function handleDeleteTag(type: 'thematic', name: string, boardId: string) {
+  // Admin: delete a tag from the known_tags registry (via the shared vocabulary hook).
+  // Existing article chips are kept (articles retain their stored JSON) but the tag leaves
+  // the autocomplete. T1: deletion is scoped to the currently viewed project's registry.
+  async function handleDeleteTag(name: string, boardId: string) {
     if (!boardId) return
     if (!confirm(`Delete tag "${name}" from the registry? Articles that already use it will keep it as a chip.`)) return
-    try {
-      const res = await window.api.intelligence.deleteTag(name, type, boardId)
-      if (!res?.ok) {
-        console.warn('[NewsTab] deleteTag failed:', res?.error)
-        window.api.intelligence.getKnownTags(type, boardId).then(setKnownThematic).catch(() => {})
-        alert(res?.error || 'Could not delete the tag.')
-        return
-      }
-      setKnownThematic(prev => prev.filter(t => t !== name))
-    } catch (e) { console.warn('[NewsTab] deleteTag failed:', e) }
+    const res = await deleteThematicTag(name, boardId)
+    if (!res.ok) alert(res.error || 'Could not delete the tag.')
   }
 
   function formatDate(dateStr: string | null) {
@@ -1552,7 +1517,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                   }}
                   onRemove={tag => handleSetTags(source.id, 'thematic', themaTags.filter(t => t !== tag))}
                   onCreate={name => handleCreateTag(source.id, 'thematic', source.project_board_id || '', themaTags, name)}
-                  onDelete={((can('delete_intel_tag') || isRoot) && selectedProjectId && selectedProjectId !== 'all') ? tag => handleDeleteTag('thematic', tag, selectedProjectId) : undefined}
+                  onDelete={((can('delete_intel_tag') || isRoot) && selectedProjectId && selectedProjectId !== 'all') ? tag => handleDeleteTag(tag, selectedProjectId) : undefined}
                   isAdmin={can('delete_intel_tag') || isRoot}
                   forceOpen={forceOpenTopicId === source.id}
                 />

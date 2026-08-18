@@ -8,6 +8,7 @@ import TagPicker, { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
 import CondensedSummary from './CondensedSummary'
 import { notifyIntelChanged } from '../../utils/intelEvents'
+import { useThematicTagVocabulary } from '../../hooks/useThematicTagVocabulary'
 
 const PLATFORMS = ['X / Twitter', 'Telegram', 'LinkedIn', 'Facebook', 'Instagram', 'Other']
 
@@ -149,8 +150,11 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   const [fetchNote, setFetchNote] = useState<{ type: 'ok' | 'warn'; text: string } | null>(null)
   // 3d: the info-page projects (for the per-item project picker + Send target).
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([])
-  // T3: the selected project's thematic tag vocabulary (project-scoped, from T1).
-  const [knownThematic, setKnownThematic] = useState<string[]>([])
+  // T3: the selected project's thematic tag vocabulary (project-scoped, from T1). S5b-2: the
+  // vocabulary + registry layer is the shared useThematicTagVocabulary hook (one impl across
+  // all four intel tabs); `knownThematic` keeps its name so mounts/inLibrary refs are unchanged.
+  const { known: knownThematic, createTag: createThematicTag, deleteTag: deleteThematicTag } =
+    useThematicTagVocabulary(project?.id ?? '')
   const handleRef = useRef<HTMLInputElement>(null)
   // Social edit: scroll the top form into view when entering edit mode.
   const formRef = useRef<HTMLDivElement>(null)
@@ -202,24 +206,8 @@ export default function SocialTab({ onApprove, project = null }: Props) {
     })()
   }, [])
 
-  // T3: load the selected project's thematic tag vocabulary; reload on project change.
-  useEffect(() => {
-    const boardId = project?.id
-    if (!boardId) { setKnownThematic([]); return }
-    window.api.intelligence.getKnownTags('thematic', boardId)
-      .then(setKnownThematic).catch(() => setKnownThematic([]))
-  }, [project?.id])
-
-  // Realtime: re-fetch this project's tag vocabulary when known_tags changes in cloud.
-  useEffect(() => {
-    const boardId = project?.id
-    window.api.intelligence.onTagsInvalidate((d) => {
-      if (!boardId) return
-      if (d.boardId && d.boardId !== boardId) return
-      window.api.intelligence.getKnownTags('thematic', boardId).then(setKnownThematic).catch(() => {})
-    })
-    return () => window.api.intelligence.removeTagsInvalidateListeners()
-  }, [project?.id])
+  // S5b-2: the project-scoped tag-vocabulary load + realtime subscription moved into
+  // useThematicTagVocabulary (called above). See the hook for the lifted implementation.
 
   // Realtime: re-fetch the social list when intelligence_sources changes in cloud.
   useEffect(() => {
@@ -446,30 +434,14 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   }
   const handleCreateTag = async (id: string, current: string[], name: string, boardId: string) => {
     if (!boardId) return
-    try {
-      const res = await window.api.intelligence.createTag(name, 'thematic', boardId)
-      if (!res?.ok || !res.name) {
-        console.warn('[SocialTab] createTag failed:', res?.error)
-        window.api.intelligence.getKnownTags('thematic', boardId).then(setKnownThematic).catch(() => {})
-        return
-      }
-      setKnownThematic(prev => prev.includes(res.name) ? prev : [...prev, res.name].sort((a, b) => a.localeCompare(b)))
-      if (!current.includes(res.name)) await handleSetTags(id, [...current, res.name])
-    } catch (e) { console.warn('[SocialTab] createTag failed:', e) }
+    const created = await createThematicTag(name, boardId)
+    if (created && !current.includes(created)) await handleSetTags(id, [...current, created])
   }
   const handleDeleteTag = async (name: string, boardId: string) => {
     if (!boardId) return
     if (!confirm(`Delete tag "${name}" from this project's registry?`)) return
-    try {
-      const res = await window.api.intelligence.deleteTag(name, 'thematic', boardId)
-      if (!res?.ok) {
-        console.warn('[SocialTab] deleteTag failed:', res?.error)
-        window.api.intelligence.getKnownTags('thematic', boardId).then(setKnownThematic).catch(() => {})
-        alert(res?.error || 'Could not delete the tag.')
-        return
-      }
-      setKnownThematic(prev => prev.filter(t => t !== name))
-    } catch (e) { console.warn('[SocialTab] deleteTag failed:', e) }
+    const res = await deleteThematicTag(name, boardId)
+    if (!res.ok) alert(res.error || 'Could not delete the tag.')
   }
 
   // Patch one post in local state so notes/AI results re-render in place.
