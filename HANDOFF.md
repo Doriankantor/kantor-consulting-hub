@@ -5,9 +5,9 @@ _Last updated: 2026-08-16 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 ## ▶ Start here — resume point for the next session
 
 --------------------------------------------------------------------------------
-> RESUME HERE (CURRENT, 2026-08-18 latest -- S5b-1 SHIPPED + cloud-verified (e2f493e). The S5b-2 / LIFT tier is NEXT. Read this whole block first.)
+> RESUME HERE (CURRENT, 2026-08-18 latest -- S5b-2 SHIPPED (tags de-dup lift: 1e02311 step 1 + 37fa4b5 step 2, NOT pushed). NEXT = the CARD-ARC CAPSTONE (routing -> Zone A + cross-type completeness meter). Read this whole block first.)
 
-LAST SHIPPED: last code e2f493e (Slice S5b-1 -- editable confidence/geography/actors on social/document/interview, cloud-verified). Previous last-code was b1238ba (Slice 4b-1). This docs refresh commits on top of e2f493e. Tree clean apart from known scratchpads (info-pages/, scratchpad_actors_col.mjs, scratchpad_find_rosario.mjs, scratchpad_s0_verify.mjs, scripts/ai-bakeoff.mjs).
+LAST SHIPPED: last code 37fa4b5 (Slice S5b-2 step 2 -- thematic tags lifted into the shared SourceCard, single TagPicker mount). Preceded by 1e02311 (S5b-2 step 1 -- shared useThematicTagVocabulary hook) and e2f493e (S5b-1). NOT pushed (branch 2 ahead of origin/main). This docs refresh commits on top of 37fa4b5. Tree clean apart from known scratchpads (info-pages/, scratchpad_actors_col.mjs, scratchpad_find_rosario.mjs, scratchpad_s0_verify.mjs, scripts/ai-bakeoff.mjs).
 
 --- CARD ARC: what shipped this session ---
 The unified-card VISUAL redesign is complete and live on all four intel types (News/Social/Documents/Interviews):
@@ -21,13 +21,15 @@ The unified-card VISUAL redesign is complete and live on all four intel types (N
 - Routing rename: card footer "Review and annotate" -> "Routing" (resolved a name collision with NewsTab's human-layer footer).
 - Slice 4a: wired IMPLICIT geography confirmation (editing geography stamps geography_confirmed=1; AI-proposed-untouched stays 0). Cloud-verified. Surfaced hasContent + confidenceOverride on SourceCore.
 - Slice 4b-1: 6-DOT ROUTABILITY METER on News (content/AI/tags/confidence/geography/incident). canRoute() is the single source of truth (meter + Approve button read it). Type-aware content check (news>=200c / social non-empty / interview>=10w / doc non-empty). Click flyout listing checks. Incident dot DIM (pending 4b-2). Interim gate on the 5 live checks.
+- Slice S5b-2 step 1 (1e02311): extracted the shared useThematicTagVocabulary(projectBoardId) hook (knownThematic + getKnownTags load + the SINGLE onTagsInvalidate sub + registry create/delete), consumed once per tab.
+- Slice S5b-2 step 2 (37fa4b5): lifted thematic tags into the shared SourceCard as Zone D via ONE TagPicker mount; removed all four tab-local pickers; added canEditTags project-gating on all four tabs (News included) with read-only chips / "Select a project to tag" hint when none; News clears its missing-topic gate only when a topic remains; added a horizontal viewport clamp to the TagPicker dropdown so the panel + its registry-delete trash icon stay on-screen in the rightmost zone (fixed the "can't delete tag" report -- same root cause as the overflow). Renderer-only; typecheck baseline (main 5 / web 55).
 
 --- KEY DEFERRED ITEMS (banked, do in order) ---
 1. UNIFORM EDITING LAYER (S5b). The core purpose of unified cards: ALL controls editable on ALL types - CONFIDENCE (researcher-selected, NOT relevance), GEOGRAPHY, ACTORS, SUMMARY, STRUCTURED DATA, TAGS. Editable on News from the start; S5b brings the other 3 to parity. NO migration needed for the ready tier (all types already store geo/actors in the SAME structured columns; writers are type-agnostic).
    TIERS (from the 6-control x 3-type matrix):
      - S5b-1 / geography+actors+confidence = COMPLETE + SHIPPED (e2f493e), cloud-verified. Evidence below.
-     - S5b-2 / LIFT = tags (and maybe summary) = NEXT. The editable control lives IN NewsTab; it must be LIFTED into the shared SourceCard so all four types inherit ONE implementation (per-tab reimplementation would recreate the very non-uniformity S5b exists to remove). *** COWORK-SHAPED: edits the shared card + every tab at once. Read-only diagnose the current NewsTab tags control first, then build -> show diff -> REVIEW gate before test. ***
-     - S5b-3 / BUILD = structured data (+ parts of summary) - writer/column/mapping missing for non-News types.
+     - S5b-2 [SHIPPED 2026-08-18: 1e02311 step 1 + 37fa4b5 step 2]. RE-SCOPED from capability-lift to a DE-DUP REFACTOR (TagPicker was already shared+editable on all four tabs; this collapsed four tab-local mounts into ONE). Chose FULL CONSOLIDATION: new shared hook useThematicTagVocabulary(projectBoardId) owns knownThematic + getKnownTags load + the SINGLE onTagsInvalidate sub + registry create/delete, consumed once per tab (not per card). Tags now card-native in SourceCard Zone D via one TagPicker mount; all four tab-local pickers removed. All four tabs (News included) gate tag editing on project presence via canEditTags (read-only chips / 'Select a project to tag' hint when none). News clears its missing-topic gate only when a topic remains. TagPicker dropdown got a horizontal viewport clamp so the panel + its registry-delete trash icon stay on-screen in the rightmost zone (fixed the 'can't delete tag' report -- same root cause as the overflow, wiring was fine). Renderer-only; typecheck baseline (main 5 / web 55). NOT pushed.
+     - S5b-3 / BUILD = structured data (+ parts of summary) - writer/column/mapping missing for non-News types. DEFERRED behind the card-arc capstone (see REMAINING WORK ORDER below).
    S5b-1 EVIDENCE (COMPLETE, cloud-verified 2026-08-18):
      - Cloud-verified in intelligence_sources: interview 933c951d = confidence set + confidence_override=1; untouched interview 88f0aa3d stays confidence=null / override=0 (B2 invariant holds - NO fake-LOW). social b0c966cf + document a6f10883 both went low/override=0 -> high/override=1, proving the updateConfidence write path on all THREE non-News types (not just interview).
      - geography_confirmed=1 stamped on all three types via updateCountries (4a parity) - the meter's geography dot can now complete cross-type (unblocks 4b-1b).
@@ -52,6 +54,18 @@ The unified-card VISUAL redesign is complete and live on all four intel types (N
 
 7. IMAGE ATTACHMENTS (future arc, design-first, rides with/after ARC II): attach an image to a source + clickable indicator on the published monitor. Needs Supabase Storage (bucket + upload) for dropped files; URLs already supported. ~3-5 slices.
 
+--- QUEUED FOLLOW-UPS (unified-card capstone + items surfaced during S5b-2 testing) ---
+- Routing project picker (+ CS sections) -> card Zone A: move routing controls out of the footer into a card zone. Touches the {children} routing-footer coupling -- diagnose first.
+- Cross-type completeness/routability meter: lift the meter + approve gate off {children} (currently News-only) so all four types get it; wire the 'Incident (coming soon)' dimension and confirm/unblock send-to-New-sources (the coming-soon dot currently reads as blocking). THIS IS THE CARD-ARC CAPSTONE.
+- Relevance override (click-to-override relevance pill): the one remaining read-only data-path gap (confidence override shipped in S5b-1; relevance not yet).
+- Summary lift (the 'and maybe summary' from the old S5b-2 line): decide whether summary becomes card-native too.
+- Empty-vocab-in-All-view (minor, pre-existing): with the top filter on 'All', the vocabulary hook gets board='' -> empty tag list; separate vocabulary-scoping decision, not a Zone D bug.
+
+--- REMAINING WORK ORDER ---
+1. [NEXT] CARD-ARC CAPSTONE: routing controls -> card Zone A + cross-type completeness/routability meter (decouple the meter/footer from the {children} gate; extend to social/document/interview; wire the Incident dimension; gate send-to-New-sources). This finishes the unified-card arc.
+2. Phase B: pipeline surfaces replace PipelineSourceCard (converge the article/pipeline card onto the shared SourceCard).
+3. Cleanup: retire categories_json USAGE per type; Social freeform -> structured geo/actors migration.
+
 --- AFTER THE CARD ARC ---
 Pivot to ARC II = the PUBLICATION PIPELINE (geography/country-default model - "the next MAJOR priority"). Then the other separable arcs (A2 write-propagation, Phase B PipelineSourceCard convergence).
 
@@ -59,7 +73,7 @@ Pivot to ARC II = the PUBLICATION PIPELINE (geography/country-default model - "t
 Read-only diagnose before any build. One slice at a time. COWORK vs CHAT: switch to Cowork (agentic, Claude-Code-driven) for cross-cutting investigation and multi-file builds; use chat for design decisions and react-and-refine judgment calls. Claude should PROACTIVELY FLAG when a task is Cowork-shaped (e.g. a multi-file build across the shared card + several tabs) rather than waiting to be asked, and note when it makes sense to return to chat. HANDOFF.md carries the full "why" across both loops. Verify writes in cloud SQL, not just UI/mirror. Commit + push immediately on green; verify with git log (this session, "done" repeatedly meant shown-not-committed - always check git log). Code and docs = separate commits. git add specific files only (never -A - scratchpads). ASCII single-quoted commit messages. Confirm ~/newsroom-pm before any git op. Multi-tab/shared-card slices: build -> show diff -> REVIEW before test (enforce the review gate).
 
 === NEXT SESSION FIRST STEP ===
-Read this block, run git status + git log --oneline -5, confirm HEAD e2f493e. S5b-1 is SHIPPED + cloud-verified; NEXT is S5b-2 / LIFT (item 1) - lift the NewsTab tags editor into the shared SourceCard so all four types inherit it. COWORK-SHAPED: read-only diagnose the current NewsTab tags control first, then build -> show diff -> REVIEW gate before test.
+Read this block, run git status + git log --oneline -5, confirm HEAD 37fa4b5 (branch 2 ahead of origin/main -- S5b-2 NOT pushed). S5b-2 is SHIPPED (tags de-dup lift); NEXT is the CARD-ARC CAPSTONE (REMAINING WORK ORDER item 1) - move routing controls into Zone A + lift the routability meter/gate off the {children} coupling so all four types get it. COWORK-SHAPED: read-only diagnose the {children} routing-footer coupling first, then build -> show diff -> REVIEW gate before test.
 
 --- end resume block ---
 --------------------------------------------------------------------------------
