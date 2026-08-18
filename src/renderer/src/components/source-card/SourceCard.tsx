@@ -173,28 +173,13 @@ export default function SourceCard({
           />
         )}
         <div className="flex-1 min-w-0">
-          {/* Kicker row: status, confidence, source, date. The kicker OWNS status + confidence
-              -- they no longer render in Zone A. */}
+          {/* Kicker row: pure identity -- status, source, date. Confidence moved to Zone A (beside
+              relevance); the kicker no longer carries an assessment control. */}
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             {/* Status badge */}
             <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${core.status === 'imported' ? '' : 'uppercase'} ${STATUS_COLORS[core.status] || STATUS_COLORS.unreviewed}`}>
               {STATUS_LABELS[core.status] || core.status}
             </span>
-            {/* Confidence badge. Render when confidence is SET (data-driven, like the
-                language/snippet/publishedAt guards) OR when this is an EDITABLE mount
-                (onConfidenceChange present) -- so a researcher can score a row that has no
-                confidence yet (S5b-1: interviews load with confidence=null). B2 is preserved: we
-                pass the RAW nullable confidence, and ConfidencePill renders a neutral "set
-                confidence" affordance for null on editable mounts -- never a spurious 'LOW' (the old
-                AI-defaulted low is exactly what B2 killed). Read-only mounts (no handler) still
-                suppress the badge entirely when confidence is null. Wrapped in a display:contents
-                span (no box, zero relayout). No type-keyed logic; the framework-ref "fixed" caveat
-                is owned by NewsTab's handler. */}
-            {(core.confidence || onConfidenceChange) && (
-              <span className="contents">
-                <ConfidencePill conf={core.confidence} style={confStyle} onChange={onConfidenceChange} />
-              </span>
-            )}
             {/* Source name */}
             {core.sourceName && (
               <span className="text-xs text-gray-500 dark:text-white/40 font-medium">{core.sourceName}</span>
@@ -234,9 +219,9 @@ export default function SourceCard({
       {(showZoneA || showZoneB || showZoneC) && (
         <div className="flex flex-col md:flex-row items-stretch gap-2.5">
 
-          {/* ZONE A -- Assessment & routing (cogwheel). Densest zone: relevance, relevance-type,
-              language, origin, sections, incident. Confidence + status are NOT here (the kicker
-              owns them). */}
+          {/* ZONE A -- Assessment & routing (cogwheel). Densest zone: confidence, relevance,
+              relevance-type, language, origin, sections, incident. Status stays in the kicker;
+              confidence now lives here (first chip) beside relevance -- its semantic sibling. */}
           {showZoneA && (
             <div className="md:flex-[1.35] rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.03] p-3">
               <div className="flex items-center justify-between mb-2.5">
@@ -244,6 +229,18 @@ export default function SourceCard({
                 <svg className="w-4 h-4 opacity-60 text-slate-500 dark:text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {/* Confidence (moved here from the kicker -- confidence + relevance are semantic
+                    siblings, both AI-proposed + researcher-overridable, so they sit together).
+                    Render when confidence is SET or when EDITABLE (onConfidenceChange present) so a
+                    researcher can score a null-confidence row (interviews load null); B2 preserved --
+                    the RAW nullable confidence flows through and the pill shows a neutral "set
+                    confidence" affordance for null, never a spurious LOW. override wires the human
+                    fuchsia identity from core.confidenceOverride. display:contents wrapper (zero relayout). */}
+                {(core.confidence || onConfidenceChange) && (
+                  <span className="contents">
+                    <ConfidencePill conf={core.confidence} style={confStyle} onChange={onConfidenceChange} override={core.confidenceOverride} />
+                  </span>
+                )}
                 {/* Relevance. Wrapped in a display:contents span (no box, zero relayout). Slice 3b:
                     the AI "REL n" badge (three states below, UNCHANGED: never-gated -> null,
                     scoring-failed, REL n) is passed verbatim as RelevancePill's aiNode; the pill FOLDS

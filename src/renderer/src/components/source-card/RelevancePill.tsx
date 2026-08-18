@@ -36,6 +36,11 @@ const HUMAN_OPTIONS = ['High', 'Medium', 'Low'] as const
 const HUMAN_PILL = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ring-1 ring-indigo-300 dark:ring-indigo-400/40 bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
 const H_MARK = 'inline-flex items-center justify-center w-3 h-3 rounded-sm bg-indigo-600 dark:bg-indigo-400 text-white dark:text-indigo-950 text-[8px] font-bold leading-none'
 
+// Inline field-name label for the HUMAN-OVERRIDE state only: the AI-score badge (aiNode) already
+// renders literal "REL" (SourceCard's REL n badge), but the override pill shows a bare "High" with
+// no field name -- so it reads "H REL High". `uppercase` is added because HUMAN_PILL is NOT uppercase.
+const REL_PREFIX = 'text-[9px] tracking-wide font-extrabold opacity-60 uppercase'
+
 // EDIT-mode picker. Holds the popover hooks unconditionally (this component is only mounted when
 // onChange is present). The trigger keeps the folded appearance -- the human pill (H marker +
 // provenance tooltip) when an override is set, else the AI badge verbatim -- and opens the picker.
@@ -91,6 +96,7 @@ function RelevancePicker({
   const trigger: ReactNode = hasOverride ? (
     <>
       <span className={H_MARK} aria-hidden>H</span>
+      <span className={REL_PREFIX}>REL</span>
       {humanRel}
     </>
   ) : (
@@ -169,6 +175,7 @@ export default function RelevancePill({ aiNode, relevanceScore, humanRel, onChan
       return (
         <span className={HUMAN_PILL} title={overrideTitle}>
           <span className={H_MARK} aria-hidden>H</span>
+          <span className={REL_PREFIX}>REL</span>
           {humanRel}
         </span>
       )
