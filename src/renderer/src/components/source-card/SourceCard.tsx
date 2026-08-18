@@ -180,17 +180,19 @@ export default function SourceCard({
             <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${core.status === 'imported' ? '' : 'uppercase'} ${STATUS_COLORS[core.status] || STATUS_COLORS.unreviewed}`}>
               {STATUS_LABELS[core.status] || core.status}
             </span>
-            {/* Confidence badge. B2: render only when confidence is set (data-driven, like the
-                language/snippet/publishedAt guards). sourceCore maps confidence verbatim (null stays
-                null), so news/social/document -- which always carry it -- render as before, and
-                interviews (no confidence concept -> null) correctly suppress the badge instead of
-                defaulting to a spurious 'LOW'. Wrapped in a display:contents span (no box, zero
-                relayout). Slice 3: the static badge is now ConfidencePill -- EDITABLE (click-to-cycle
-                high/medium/low) when onConfidenceChange is present, else the byte-identical read badge.
-                No type-keyed logic; the framework-ref "fixed" caveat is owned by NewsTab's handler. */}
-            {core.confidence && (
+            {/* Confidence badge. Render when confidence is SET (data-driven, like the
+                language/snippet/publishedAt guards) OR when this is an EDITABLE mount
+                (onConfidenceChange present) -- so a researcher can score a row that has no
+                confidence yet (S5b-1: interviews load with confidence=null). B2 is preserved: we
+                pass the RAW nullable confidence, and ConfidencePill renders a neutral "set
+                confidence" affordance for null on editable mounts -- never a spurious 'LOW' (the old
+                AI-defaulted low is exactly what B2 killed). Read-only mounts (no handler) still
+                suppress the badge entirely when confidence is null. Wrapped in a display:contents
+                span (no box, zero relayout). No type-keyed logic; the framework-ref "fixed" caveat
+                is owned by NewsTab's handler. */}
+            {(core.confidence || onConfidenceChange) && (
               <span className="contents">
-                <ConfidencePill conf={conf} style={confStyle} onChange={onConfidenceChange} />
+                <ConfidencePill conf={core.confidence} style={confStyle} onChange={onConfidenceChange} />
               </span>
             )}
             {/* Source name */}

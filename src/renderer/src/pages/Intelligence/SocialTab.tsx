@@ -98,6 +98,10 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   const { online } = useConnection()
   const [posts, setPosts] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
+  // S5b-1: touched sets for the amber "AI-unconfirmed" cue -- first geo/actor edit clears the
+  // badge for that row this session. Mirrors NewsTab verbatim.
+  const [countriesTouched, setCountriesTouched] = useState<Set<string>>(new Set())
+  const [actorsTouched, setActorsTouched] = useState<Set<string>>(new Set())
   // Paging: loadedCount = rows fetched (routed excluded at the query, so this equals the
   // displayed count). total = exact non-routed count for the project. Ref lets load() read
   // depth without depending on it (which would loop the load effect).
@@ -232,6 +236,35 @@ export default function SocialTab({ onApprove, project = null }: Props) {
     if (!online || wasOnline) return
     load({ background: true })
   }, [online, load])
+
+  // S5b-1: geography / actors / confidence editors, wired VERBATIM from NewsTab
+  // (handleCountries / handleActors / handleConfidence). The writers are type-agnostic;
+  // updateCountries stamps geography_confirmed=1 in the SAME write (implicit confirm). Optimistic
+  // patches mirror the DB string format; the touched sets clear the amber AI cue on first edit.
+  async function handleCountries(id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>) {
+    const res = await window.api.intelligence.updateCountries(id, subject, mentioned, subGeo)
+    if (!res?.ok) {
+      console.error('[SocialTab] updateCountries failed — state not updated:', res?.error ?? 'no result')
+      return
+    }
+    setPosts(prev => prev.map(s => s.id === id ? {
+      ...s,
+      subject_countries: JSON.stringify(subject),
+      mentioned_countries: JSON.stringify(mentioned),
+      sub_geographies: JSON.stringify(subGeo),
+      geography_confirmed: 1,
+    } : s))
+    setCountriesTouched(prev => new Set(prev).add(id))
+  }
+  async function handleActors(id: string, next: { name: string; type: string }[]) {
+    await window.api.intelligence.updateActors(id, next)
+    setPosts(prev => prev.map(s => s.id === id ? { ...s, actors: JSON.stringify(next) } : s))
+    setActorsTouched(prev => new Set(prev).add(id))
+  }
+  async function handleConfidence(id: string, confidence: string) {
+    await window.api.intelligence.updateConfidence(id, confidence)
+    setPosts(prev => prev.map(s => s.id === id ? { ...s, confidence: confidence as any, confidence_override: 1 } : s))
+  }
 
   function toggleCategory(cat: string) {
     setForm(f => ({
@@ -725,7 +758,14 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                   SourceCard suppress every article-only zone (title/snippet/geo/actors/relevance/
                   incident) on a social row, so this renders only confidence + status + date --
                   parity with the badges removed from the header above. */}
-              <SourceCard core={fromIntelligenceSource(post)} />
+              <SourceCard
+                core={fromIntelligenceSource(post)}
+                onCountriesChange={(subject, mentioned, subGeo) => handleCountries(post.id, subject, mentioned, subGeo)}
+                onActorsChange={next => handleActors(post.id, next)}
+                onConfidenceChange={v => handleConfidence(post.id, v)}
+                geoTouched={countriesTouched.has(post.id)}
+                actorsTouched={actorsTouched.has(post.id)}
+              />
 
               <p className="text-sm text-gray-700 dark:text-white/80 whitespace-pre-wrap line-clamp-4 mt-2">{post.content}</p>
 

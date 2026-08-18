@@ -60,6 +60,10 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
   const { online } = useConnection()
   const [interviews, setInterviews] = useState<IntelligenceSource[]>([])
   const [loading, setLoading] = useState(true)
+  // S5b-1: touched sets for the amber "AI-unconfirmed" cue -- first geo/actor edit clears the
+  // badge for that row this session. Mirrors NewsTab verbatim.
+  const [countriesTouched, setCountriesTouched] = useState<Set<string>>(new Set())
+  const [actorsTouched, setActorsTouched] = useState<Set<string>>(new Set())
   // Paging (see SocialTab): loadedCount = rows fetched (routed excluded at query = displayed),
   // total = exact non-routed count for the project, ref lets load() read depth without looping.
   const [loadedCount, setLoadedCount] = useState(0)
@@ -177,6 +181,37 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
     if (!online || wasOnline) return
     load({ background: true })
   }, [online, load])
+
+  // S5b-1: geography / actors / confidence editors, wired VERBATIM from NewsTab
+  // (handleCountries / handleActors / handleConfidence). The writers are type-agnostic;
+  // updateCountries stamps geography_confirmed=1 in the SAME write (implicit confirm). Optimistic
+  // patches mirror the DB string format; the touched sets clear the amber AI cue on first edit.
+  // Interviews load with confidence=null; the shared ConfidencePill renders a neutral "set
+  // confidence" affordance and handleConfidence persists the researcher's first pick (no fake LOW).
+  async function handleCountries(id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>) {
+    const res = await window.api.intelligence.updateCountries(id, subject, mentioned, subGeo)
+    if (!res?.ok) {
+      console.error('[InterviewsTab] updateCountries failed — state not updated:', res?.error ?? 'no result')
+      return
+    }
+    setInterviews(prev => prev.map(s => s.id === id ? {
+      ...s,
+      subject_countries: JSON.stringify(subject),
+      mentioned_countries: JSON.stringify(mentioned),
+      sub_geographies: JSON.stringify(subGeo),
+      geography_confirmed: 1,
+    } : s))
+    setCountriesTouched(prev => new Set(prev).add(id))
+  }
+  async function handleActors(id: string, next: { name: string; type: string }[]) {
+    await window.api.intelligence.updateActors(id, next)
+    setInterviews(prev => prev.map(s => s.id === id ? { ...s, actors: JSON.stringify(next) } : s))
+    setActorsTouched(prev => new Set(prev).add(id))
+  }
+  async function handleConfidence(id: string, confidence: string) {
+    await window.api.intelligence.updateConfidence(id, confidence)
+    setInterviews(prev => prev.map(s => s.id === id ? { ...s, confidence: confidence as any, confidence_override: 1 } : s))
+  }
 
   // Capture a new interview: transcript goes to `content` as PLAIN TEXT.
   async function handleAdd() {
@@ -378,7 +413,14 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
                   SourceCard suppress every article-only zone (snippet/geo/actors/relevance/
                   incident) on an interview row; title renders the interview title (Option A) and
                   the date span shows published_at (the interview date) only when set. */}
-              <SourceCard core={fromIntelligenceSource(iv)} />
+              <SourceCard
+                core={fromIntelligenceSource(iv)}
+                onCountriesChange={(subject, mentioned, subGeo) => handleCountries(iv.id, subject, mentioned, subGeo)}
+                onActorsChange={next => handleActors(iv.id, next)}
+                onConfidenceChange={v => handleConfidence(iv.id, v)}
+                geoTouched={countriesTouched.has(iv.id)}
+                actorsTouched={actorsTouched.has(iv.id)}
+              />
 
               {/* Slice 4: collapse toggle — hides the compose panel only (transcript
                   lives inside it); the header and tail controls stay visible. */}

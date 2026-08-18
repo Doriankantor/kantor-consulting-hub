@@ -12,9 +12,9 @@
 // confidence and hands down the matching style.
 
 interface ConfidencePillProps {
-  conf: string                                   // display value (already lowercased: high | medium | low)
+  conf: string | null                            // display value (already lowercased: high | medium | low), or null = UNSET
   style: { bg: string; text: string; dot: string }  // the card's confStyle for `conf`
-  onChange?: (v: string) => void                 // present => interactive cycle; absent => read badge
+  onChange?: (v: string) => void                 // present => interactive; absent => read badge
 }
 
 // Click-to-cycle order. indexOf(-1) for an unknown value wraps to 0 -> 'high'.
@@ -23,7 +23,8 @@ const nextConfidence = (c: string): string =>
   CYCLE[(CYCLE.indexOf((c || '').toLowerCase()) + 1) % CYCLE.length]
 
 export default function ConfidencePill({ conf, style, onChange }: ConfidencePillProps) {
-  // READ: byte-identical to the card's original static confidence badge.
+  // READ: byte-identical to the card's original static confidence badge. Only mounted when
+  // confidence is SET -- the card guards read-only mounts on core.confidence -- so conf is non-null here.
   if (!onChange) {
     return (
       <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${style.bg} ${style.text}`}>
@@ -33,7 +34,27 @@ export default function ConfidencePill({ conf, style, onChange }: ConfidencePill
     )
   }
 
-  // EDITABLE: same visual, now a button that cycles the value on click.
+  // EDITABLE + UNSET (S5b-1): an editable mount whose row has no confidence yet (e.g. an interview a
+  // researcher has not scored). Render a NEUTRAL "set confidence" affordance -- deliberately NOT a
+  // red 'low'. That spurious AI-defaulted LOW is exactly what B2 removed; we only ever surface a
+  // level a human actually picked. First click seeds 'high' (CYCLE[0]); thereafter it cycles like
+  // any set pill. Uses its own muted (dashed) styling, so it ignores the passed `style` (which
+  // defaults to the low palette for a null conf).
+  if (!conf) {
+    return (
+      <button
+        type="button"
+        onClick={() => onChange('high')}
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border border-dashed border-gray-300 dark:border-white/20 text-gray-400 dark:text-white/50 hover:text-gray-600 dark:hover:text-white/80 transition"
+        title="Set confidence (overrides AI)"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-white/25" />
+        confidence
+      </button>
+    )
+  }
+
+  // EDITABLE + SET: same visual as the read badge, now a button that cycles the value on click.
   return (
     <button
       type="button"
