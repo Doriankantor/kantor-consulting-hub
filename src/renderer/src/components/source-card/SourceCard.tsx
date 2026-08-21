@@ -487,19 +487,19 @@ export default function SourceCard({
         </div>
       )}
 
-      {/* ============================================ REVIEW & ANNOTATE footer (shell only) */}
-      {/* Slice 1: a collapsible shell that HOSTS {children} (News's project-selector + gate-error
-          -- approval-readiness, which belongs near the future gate). The {children} JSX is
-          UNCHANGED -- only its container/location moved here. Rendered only when children are
-          present (data-driven off the children prop, never type-keyed), so read-only mounts that
-          pass no children show no footer. No completeness meter / gate checklist yet. */}
-      {children && (
-        <div className="border-t border-gray-100 dark:border-white/[0.06] pt-2.5">
-          {/* Header row: collapse toggle (left) + the 6-dot routability meter (right, OUTSIDE the
-              toggle button so per-dot tooltips work and a dot-hover never collapses the footer).
-              The meter is glanceable even when collapsed. It reads canRoute(core) -- the SAME gate
-              the route button reads (single source of truth). */}
-          <div className="flex items-center gap-2">
+      {/* ============================================ ROUTING footer (meter always; children gated) */}
+      {/* Capstone slice 1: the routability meter + "Routing" header now render on EVERY card (like the
+          tinted zones above), no longer only when a tab passes children -- so all four intel types get
+          the meter. The collapse toggle + collapsible body host {children} (News's project selector +
+          gate-error); a tab that passes no children (social/document/interview) shows a STATIC "Routing"
+          label + the meter, with no empty collapse region. The meter reads canRoute(core) -- the SAME
+          gate every tab's route/approve button reads (single source of truth). The approve/send button
+          itself stays a tab-owned sibling below the card; it is NOT hosted here. */}
+      <div className="border-t border-gray-100 dark:border-white/[0.06] pt-2.5">
+        {/* Header row: collapse toggle / static label (left) + the 6-dot routability meter (right,
+            OUTSIDE the toggle so per-dot tooltips work and a dot-hover never collapses the footer). */}
+        <div className="flex items-center gap-2">
+          {children ? (
             <button
               type="button"
               onClick={() => setReviewOpen(o => !o)}
@@ -511,16 +511,21 @@ export default function SourceCard({
                 Routing
               </span>
             </button>
-            <div className="flex-1" />
-            <RoutabilityMeter core={core} />
-          </div>
-          {reviewOpen && (
-            <div className="mt-1">
-              {children}
-            </div>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+              Routing
+            </span>
           )}
+          <div className="flex-1" />
+          <RoutabilityMeter core={core} />
         </div>
-      )}
+        {children && reviewOpen && (
+          <div className="mt-1">
+            {children}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

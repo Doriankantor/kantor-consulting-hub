@@ -53,22 +53,26 @@ export function canRoute(core: SourceCore): RouteGate {
   const content = hasSubstantiveContent(core.type, core.content)
   // AI analyzed = the AI block is populated. core.analysis.ai is always an object (asObject),
   // so a non-empty key set is the presence signal (=== !!analysis.ai from the audit).
-  const aiAnalyzed = Object.keys(core.analysis.ai).length > 0
+  // TYPE EXEMPTION (the ONLY one besides content): social is EXEMPT from the AI-analysis gate --
+  // social defaults to manual entry (AI read is deferred for social), so it routes on the
+  // researcher's manual notes without requiring an AI pass. Scoped to social + aiAnalyzed ONLY;
+  // do NOT generalize. The meter hides the AI dot for social so it isn't misleadingly shown lit.
+  const aiAnalyzed = core.type === 'social' ? true : Object.keys(core.analysis.ai).length > 0
   const tags = core.thematicTags.length >= 1
   const confidence = core.confidenceOverride === true
   // Geography = human-confirmed AND a real placement. REGIONAL/GLOBAL sentinels live INSIDE
   // subject_countries, so a deliberate level choice makes it non-empty and passes; an
   // empty-but-confirmed row (all chips cleared) FAILS -- a placement is required, not just the flag.
   const geography = core.geographyConfirmed === 1 && core.subjectCountries.length > 0
-  // TODO(4b-2): incident is HARDCODED false this slice — its dot renders DIM/pending. The gate/AI
-  // does NOT pre-determine incident, so the "AI proposes, human confirms" model has nothing to
-  // confirm; 4b-2 replaces "+ Mark as incident" with an explicit two-way "Incident? Yes/No" control
-  // and lights this check when the researcher answers EITHER way (persisted human decision). Do NOT
-  // wire this to AI-determination (rejected shortcut). The real signal is core.incident.human !== null.
-  const incident = false
+  // Capstone slice 1 (was the 4b-2 TODO): incident is now a REAL, REQUIRED check on all four types.
+  // The signal is the researcher's resolved decision — core.incident.human is true (confirm/force)
+  // or false (not an incident) once they answer the IncidentChip; null means unanswered. Answering
+  // EITHER way satisfies the gate (a deliberate decision was made); unanswered blocks routing. This
+  // is NOT wired to AI-determination (rejected shortcut) — only the persisted human flag counts.
+  const incident = core.incident.human !== null
 
-  // Because incident is hardcoded false, `all` can NEVER be true this slice — DO NOT gate the button
-  // on `all` yet (NewsTab uses an interim 5-check gate; TODO(4b-2) flips it back to `all`).
+  // Every check is now live, so `all` is the real gate — the card meter and every tab's route/approve
+  // button read it (single source of truth). No interim subset any more.
   const all = content && aiAnalyzed && tags && confidence && geography && incident
   return { content, aiAnalyzed, tags, confidence, geography, incident, all }
 }

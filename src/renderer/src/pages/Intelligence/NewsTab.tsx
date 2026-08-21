@@ -1412,16 +1412,12 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           // canRoute() gate the card's meter reads — single source of truth for "routable".
           const core = fromIntelligenceSource(source)
           const gate = canRoute(core)
-          // TODO(4b-2): INTERIM gate on the FIVE currently-live checks — NOT gate.all — because
-          // canRoute hardcodes incident=false this slice (its Yes/No control ships in 4b-2). Once
-          // that lands, switch this to `projectSel !== '' && gate.all`. Project is the route TARGET
-          // (orthogonal to the six checks); `tags` subsumes the old topic-tag condition.
-          const canApprove = projectSel !== ''
-            && gate.content && gate.aiAnalyzed && gate.tags && gate.confidence && gate.geography
+          // Capstone slice 1: the gate is now the FULL six-check gate.all (incident went live). Project
+          // is the route TARGET (orthogonal to the six checks); `tags` subsumes the old topic condition.
+          const canApprove = projectSel !== '' && gate.all
           const gateErr = gateError[source.id]
 
-          // Slice 4b-1: tooltip enumerates the missing prerequisites (project + the five live checks),
-          // in meter-dot order. Incident is omitted — it's pending 4b-2, not part of the interim gate.
+          // Tooltip enumerates the missing prerequisites (project + all six checks), in meter-dot order.
           const gateMissing: string[] = []
           if (projectSel === '') gateMissing.push('project')
           if (!gate.content) gateMissing.push('content')
@@ -1429,6 +1425,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
           if (!gate.tags) gateMissing.push('tags')
           if (!gate.confidence) gateMissing.push('confidence')
           if (!gate.geography) gateMissing.push('geography')
+          if (!gate.incident) gateMissing.push('incident')
           const gateTooltip = gateMissing.length
             ? `Not routable — missing: ${gateMissing.join(', ')}`
             : undefined

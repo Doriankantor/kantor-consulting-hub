@@ -4,6 +4,7 @@ import { useConnection } from '../../contexts/ConnectionContext'
 import RichTextEditor from '../../components/RichTextEditor'
 import SourceCard from '../../components/source-card/SourceCard'
 import { fromIntelligenceSource } from '../../components/source-card/sourceCore'
+import { canRoute } from '../../components/source-card/canRoute'
 import { normalizeTagClient } from './TagPicker'
 import SuggestedTagChip from './SuggestedTagChip'
 import CondensedSummary from './CondensedSummary'
@@ -252,6 +253,24 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   async function handleConfidence(id: string, confidence: string) {
     await window.api.intelligence.updateConfidence(id, confidence)
     setPosts(prev => prev.map(s => s.id === id ? { ...s, confidence: confidence as any, confidence_override: 1 } : s))
+  }
+
+  // Capstone slice 1: researcher confirms/adjusts the incident flag → analysis_json.human.incident via
+  // setIncidentFlag (cloud-authoritative RMW; preserves .ai/.routing/.reconciled/.human siblings). The
+  // writer is type-agnostic (keyed on id); this mirrors NewsTab.handleIncident. Optimistic patch swaps
+  // the row's .human sub-object with the writer's returned value so the incident dot lights immediately.
+  async function handleIncident(id: string, value: boolean) {
+    try {
+      const res = await window.api.intelligence.setIncidentFlag(id, value)
+      if (!res.ok) return
+      setPosts(prev => prev.map(s => {
+        if (s.id !== id) return s
+        let a: Record<string, unknown> = {}
+        try { a = s.analysis_json ? JSON.parse(s.analysis_json) : {} } catch { a = {} }
+        if (res.human) a.human = res.human; else delete a.human
+        return { ...s, analysis_json: JSON.stringify(a) }
+      }))
+    } catch (e) { console.warn('[SocialTab] setIncidentFlag failed:', e) }
   }
 
   function toggleCategory(cat: string) {
@@ -683,6 +702,10 @@ export default function SocialTab({ onApprove, project = null }: Props) {
           const _analyzed = !!_analysis.ai
           const _reconciled = !!_analysis.reconciled || !!post.reconciled_notes
           const cardOpen = openCards[post.id] ?? (_hasNotes || _analyzed || _reconciled)
+          // Capstone slice 1: build core ONCE (handed to SourceCard) and run the SAME canRoute() the
+          // card meter reads, so the "Send to New sources" gate below matches the dots exactly.
+          const core = fromIntelligenceSource(post)
+          const gate = canRoute(core)
           return (
             <div key={post.id} className={`bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4 transition-all duration-300 ${isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'}`}>
               {/* Retained social-identity header: avatar + handle + platform + actions. The
@@ -731,10 +754,11 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                   incident) on a social row, so this renders only confidence + status + date --
                   parity with the badges removed from the header above. */}
               <SourceCard
-                core={fromIntelligenceSource(post)}
+                core={core}
                 onCountriesChange={(subject, mentioned, subGeo) => handleCountries(post.id, subject, mentioned, subGeo)}
                 onActorsChange={next => handleActors(post.id, next)}
                 onConfidenceChange={v => handleConfidence(post.id, v)}
+                onIncidentChange={v => handleIncident(post.id, v)}
                 onTagsChange={nextTags => handleSetTags(post.id, nextTags)}
                 tagVocabulary={knownThematic}
                 onTagCreate={name => handleCreateTag(post.id, themaTags, name, projectBoardSel)}
@@ -823,8 +847,8 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                 {/* 3d: Send to New sources — routes into the selected project's pipeline */}
                 <button
                   onClick={() => handleSend(post.id, projectBoardSel)}
-                  disabled={!projectBoardSel || !online}
-                  title={!online ? 'Unavailable while offline' : projectBoardSel ? 'Route this post into the project’s New sources' : 'Select a project first'}
+                  disabled={!projectBoardSel || !online || !gate.all}
+                  title={!online ? 'Unavailable while offline' : !projectBoardSel ? 'Select a project first' : !gate.all ? 'Not routable yet — complete the checklist (the dots on the card)' : 'Route this post into the project’s New sources'}
                   className="px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   ➤ Send to New sources

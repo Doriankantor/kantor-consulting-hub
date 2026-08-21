@@ -7,6 +7,7 @@ import SuggestedTagChip from './SuggestedTagChip'
 import CondensedSummary from './CondensedSummary'
 import SourceCard from '../../components/source-card/SourceCard'
 import { fromIntelligenceSource } from '../../components/source-card/sourceCore'
+import { canRoute } from '../../components/source-card/canRoute'
 import { notifyIntelChanged } from '../../utils/intelEvents'
 import { useThematicTagVocabulary } from '../../hooks/useThematicTagVocabulary'
 
@@ -201,6 +202,24 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
     setInterviews(prev => prev.map(s => s.id === id ? { ...s, confidence: confidence as any, confidence_override: 1 } : s))
   }
 
+  // Capstone slice 1: researcher confirms/adjusts the incident flag → analysis_json.human.incident via
+  // setIncidentFlag (cloud-authoritative RMW; preserves .ai/.routing/.reconciled/.human siblings). The
+  // writer is type-agnostic (keyed on id); this mirrors NewsTab.handleIncident. Optimistic patch swaps
+  // the row's .human sub-object with the writer's returned value so the incident dot lights immediately.
+  async function handleIncident(id: string, value: boolean) {
+    try {
+      const res = await window.api.intelligence.setIncidentFlag(id, value)
+      if (!res.ok) return
+      setInterviews(prev => prev.map(s => {
+        if (s.id !== id) return s
+        let a: Record<string, unknown> = {}
+        try { a = s.analysis_json ? JSON.parse(s.analysis_json) : {} } catch { a = {} }
+        if (res.human) a.human = res.human; else delete a.human
+        return { ...s, analysis_json: JSON.stringify(a) }
+      }))
+    } catch (e) { console.warn('[InterviewsTab] setIncidentFlag failed:', e) }
+  }
+
   // Capture a new interview: transcript goes to `content` as PLAIN TEXT.
   async function handleAdd() {
     if (!transcript.trim()) { setFormError('Paste the interview transcript first.'); return }
@@ -356,6 +375,10 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
           const _analyzed = !!_analysis.ai
           const _reconciled = !!_analysis.reconciled || !!iv.reconciled_notes
           const cardOpen = openCards[iv.id] ?? (_hasNotes || _analyzed || _reconciled)
+          // Capstone slice 1: build core ONCE (handed to SourceCard) and run the SAME canRoute() the
+          // card meter reads, so the "Send to New sources" gate below matches the dots exactly.
+          const core = fromIntelligenceSource(iv)
+          const gate = canRoute(core)
           return (
             <div key={iv.id} className="bg-white dark:bg-white/[0.04] rounded-xl border border-gray-200 dark:border-white/[0.08] p-4">
               {/* Header */}
@@ -386,10 +409,11 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
                   incident) on an interview row; title renders the interview title (Option A) and
                   the date span shows published_at (the interview date) only when set. */}
               <SourceCard
-                core={fromIntelligenceSource(iv)}
+                core={core}
                 onCountriesChange={(subject, mentioned, subGeo) => handleCountries(iv.id, subject, mentioned, subGeo)}
                 onActorsChange={next => handleActors(iv.id, next)}
                 onConfidenceChange={v => handleConfidence(iv.id, v)}
+                onIncidentChange={v => handleIncident(iv.id, v)}
                 onTagsChange={nextTags => handleSetTags(iv.id, nextTags)}
                 tagVocabulary={knownThematic}
                 onTagCreate={name => handleCreateTag(iv.id, themaTags, name, projectBoardSel)}
@@ -451,8 +475,8 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
                 {/* 3d: Send to New sources — routes into the selected project's pipeline */}
                 <button
                   onClick={() => handleSend(iv.id, projectBoardSel)}
-                  disabled={!projectBoardSel || !online}
-                  title={!online ? 'Unavailable while offline' : projectBoardSel ? 'Route this interview into the project’s New sources' : 'Select a project first'}
+                  disabled={!projectBoardSel || !online || !gate.all}
+                  title={!online ? 'Unavailable while offline' : !projectBoardSel ? 'Select a project first' : !gate.all ? 'Not routable yet — complete the checklist (the dots on the card)' : 'Route this interview into the project’s New sources'}
                   className="px-2.5 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   ➤ Send to New sources

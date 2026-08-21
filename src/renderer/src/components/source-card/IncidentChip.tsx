@@ -32,15 +32,26 @@ export default function IncidentChip({ resolved, onChange }: IncidentChipProps) 
   const engaged = aiFlagged || human !== null
 
   if (!engaged) {
+    // Unanswered: an explicit two-way question. Both sides render OFF (ghost) until the researcher
+    // answers — clicking either fires exactly ONE onChange (one write), after which the row becomes
+    // `engaged` and the segmented pair below renders with the chosen side lit. Label is a question
+    // ("Incident?") only while unanswered; once answered the engaged branch shows plain "Incident".
     return (
       <div className="flex flex-wrap items-center gap-1.5 mt-2">
-        <span className={LABEL}>Incident</span>
+        <span className={LABEL}>Incident?</span>
         <button
           onClick={() => onChange(true)}
           className={`${CHIP_BASE} ${CHIP_OFF}`}
-          title="AI did not flag this as an incident — click to mark it one (forces incident generation)"
+          title="Mark this source as an incident"
         >
-          + Mark as incident
+          ⚠ Incident
+        </button>
+        <button
+          onClick={() => onChange(false)}
+          className={`${CHIP_BASE} ${CHIP_OFF}`}
+          title="Mark this source as NOT an incident"
+        >
+          Not an incident
         </button>
       </div>
     )

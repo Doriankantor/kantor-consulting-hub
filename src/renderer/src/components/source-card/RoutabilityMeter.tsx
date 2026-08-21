@@ -1,7 +1,7 @@
 // Slice 4b-1: the compact six-dot routability meter for the card's Routing footer. Reads the
 // SAME canRoute() the route button reads -- it only REFLECTS gate state, owns no logic of its
 // own. One dot per check in ROUTE_CHECKS order: LIT (emerald) when the check passes, DIM (grey)
-// when not. The incident dot is DIM this slice (canRoute hardcodes it false pending 4b-2).
+// when not. Capstone slice 1: incident is now a real check (no longer "coming soon").
 //
 //   - HOVER a dot -> a tooltip naming that check + its state.
 //   - CLICK the dots -> a flyout listing all six checks with done/remaining state. Anchoring
@@ -17,6 +17,13 @@ import { canRoute, ROUTE_CHECKS } from './canRoute'
 
 export default function RoutabilityMeter({ core }: { core: SourceCore }) {
   const gate = canRoute(core)
+  // Type-aware dot list: social is exempt from the AI-analysis gate (see canRoute), so DROP the
+  // aiAnalyzed check entirely for social -- it shows 5 honest dots + a 5-item flyout, never a
+  // misleadingly-lit AI dot. All other types render the full ROUTE_CHECKS unchanged. We filter a
+  // LOCAL copy here; ROUTE_CHECKS's exported definition is untouched (other code imports it).
+  const checks = core.type === 'social'
+    ? ROUTE_CHECKS.filter(c => c.key !== 'aiAnalyzed')
+    : ROUTE_CHECKS
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -53,17 +60,15 @@ export default function RoutabilityMeter({ core }: { core: SourceCore }) {
       <div className="text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:text-white/40 mb-1 px-0.5">
         Routability
       </div>
-      {ROUTE_CHECKS.map(({ key, label }) => {
+      {checks.map(({ key, label }) => {
         const done = gate[key]
-        // Incident is pending 4b-2 (hardcoded false) — mark it "coming soon", not a normal miss.
-        const pending = key === 'incident'
         return (
           <div key={key} className="flex items-center gap-1.5 text-[11px] px-0.5 py-0.5">
-            <span className={done ? 'text-emerald-500' : pending ? 'text-gray-300 dark:text-white/25' : 'text-gray-400 dark:text-white/30'}>
+            <span className={done ? 'text-emerald-500' : 'text-gray-400 dark:text-white/30'}>
               {done ? '✓' : '○'}
             </span>
             <span className={done ? 'text-gray-700 dark:text-white/80' : 'text-gray-400 dark:text-white/40'}>
-              {label}{pending ? ' (coming soon)' : ''}
+              {label}
             </span>
           </div>
         )
@@ -82,14 +87,14 @@ export default function RoutabilityMeter({ core }: { core: SourceCore }) {
         onMouseDown={e => e.stopPropagation()}
         onClick={() => (open ? setOpen(false) : openPanel())}
         className="inline-flex items-center gap-1 rounded px-0.5 py-0.5 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
-        title={gate.all ? 'Routable — all six checks pass' : 'Routability — click for the checklist'}
+        title={gate.all ? `Routable — all ${checks.length} checks pass` : 'Routability — click for the checklist'}
       >
-        {ROUTE_CHECKS.map(({ key, label }) => {
+        {checks.map(({ key, label }) => {
           const lit = gate[key]
           return (
             <span
               key={key}
-              title={`${label}: ${lit ? 'ready' : key === 'incident' ? 'coming soon' : 'missing'}`}
+              title={`${label}: ${lit ? 'ready' : 'missing'}`}
               className={`w-2 h-2 rounded-full transition-colors ${
                 lit ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-white/15'
               }`}
