@@ -24,6 +24,11 @@ const CHIP_OFF = 'bg-transparent border border-slate-300 dark:border-white/15 te
 const CHIP_BASE = 'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition'
 const LABEL = 'text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30'
 const PROPOSED_DOT = 'w-1 h-1 rounded-full bg-indigo-400 dark:bg-indigo-300'
+// Human-added marker for the FORCED case (researcher marked an incident the AI did NOT flag).
+// Mirrors the H_MARK construction in RelevancePill (indigo) / ConfidencePill (fuchsia), but in a
+// DISTINCT hue -- ROSE -- so incident-forced provenance never collides with those two human-H
+// treatments or with incident's own emerald CHIP_ON / indigo PROPOSED_DOT.
+const FORCED_H_MARK = 'inline-flex items-center justify-center w-3 h-3 rounded-sm bg-rose-600 dark:bg-rose-400 text-white dark:text-rose-950 text-[8px] font-bold leading-none'
 
 export default function IncidentChip({ resolved, onChange }: IncidentChipProps) {
   const { aiFlagged, human, isIncident, state } = resolved
@@ -44,14 +49,14 @@ export default function IncidentChip({ resolved, onChange }: IncidentChipProps) 
           className={`${CHIP_BASE} ${CHIP_OFF}`}
           title="Mark this source as an incident"
         >
-          ⚠ Incident
+          Yes
         </button>
         <button
           onClick={() => onChange(false)}
           className={`${CHIP_BASE} ${CHIP_OFF}`}
           title="Mark this source as NOT an incident"
         >
-          Not an incident
+          No
         </button>
       </div>
     )
@@ -59,21 +64,22 @@ export default function IncidentChip({ resolved, onChange }: IncidentChipProps) 
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 mt-2">
-      <span className={LABEL}>Incident</span>
+      <span className={LABEL}>Incident:</span>
       <button
         onClick={() => onChange(true)}
         className={`${CHIP_BASE} ${isIncident ? CHIP_ON : CHIP_OFF}`}
         title={aiFlagged ? 'AI-flagged incident — click to confirm' : 'Marked as incident by researcher — click to keep'}
       >
         {aiFlagged && <span className={PROPOSED_DOT} aria-hidden />}
-        ⚠ Incident{state === 'forced' ? ' · added' : ''}
+        {state === 'forced' && <span className={FORCED_H_MARK} aria-hidden>H</span>}
+        Yes
       </button>
       <button
         onClick={() => onChange(false)}
         className={`${CHIP_BASE} ${state === 'not-incident' ? CHIP_ON : CHIP_OFF}`}
         title="Mark this source as NOT an incident (suppresses incident generation)"
       >
-        Not an incident
+        No
       </button>
     </div>
   )
