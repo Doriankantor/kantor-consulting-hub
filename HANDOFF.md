@@ -5,9 +5,15 @@ _Last updated: 2026-08-16 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 ## ▶ Start here — resume point for the next session
 
 --------------------------------------------------------------------------------
-> RESUME HERE (CURRENT, 2026-08-18 latest -- S5b-2 SHIPPED (tags de-dup lift: 1e02311 step 1 + 37fa4b5 step 2, NOT pushed). NEXT = the CARD-ARC CAPSTONE (routing -> Zone A + cross-type completeness meter). Read this whole block first.)
+> RESUME HERE (CURRENT, 2026-08-22 latest -- CAPSTONE SLICE 1 SHIPPED (04698b2 structural + 926dd05 IncidentChip Yes/No, both on origin/main). NEXT = the CONFIRM-PROVENANCE ARC (3 slices A/B/D, ZERO data-model work). Read this whole block first.)
 
-LAST SHIPPED: last code 37fa4b5 (Slice S5b-2 step 2 -- thematic tags lifted into the shared SourceCard, single TagPicker mount). Preceded by 1e02311 (S5b-2 step 1 -- shared useThematicTagVocabulary hook) and e2f493e (S5b-1). NOT pushed (branch 2 ahead of origin/main). This docs refresh commits on top of 37fa4b5. Tree clean apart from known scratchpads (info-pages/, scratchpad_actors_col.mjs, scratchpad_find_rosario.mjs, scratchpad_s0_verify.mjs, scripts/ai-bakeoff.mjs).
+LAST SHIPPED: last code 926dd05 (Capstone slice 1, IncidentChip Yes/No control + rose H for researcher-forced). Preceded by 04698b2 (Capstone slice 1, the 7-file structural: routability meter decoupled from {children} cross-type + incident REQUIRED check + social exempt from the AI gate/5-dot meter + tab wiring). Both on origin/main (pushed). Earlier: 37fa4b5 / 1e02311 (S5b-2) + e2f493e (S5b-1). This docs refresh commits on top of 926dd05. Tree clean apart from known scratchpads (info-pages/, scratchpad_actors_col.mjs, scratchpad_find_rosario.mjs, scratchpad_s0_verify.mjs, scripts/ai-bakeoff.mjs).
+
+--- CAPSTONE SLICE 1: what shipped (2026-08-22) ---
+The unified-card CAPSTONE (routing meter cross-type + incident as a real gate) landed in two commits, both pushed:
+- 04698b2 (7-file structural): (1) RoutabilityMeter/footer DECOUPLED from the {children} gate -- the routing footer renders on its own (static "Routing" label when no children, collapse toggle when present), and {children} now gates ONLY the News-specific project selector; the meter is cross-type. (2) INCIDENT is now a REAL, REQUIRED sixth check in canRoute (core.incident.human !== null -- answering Yes or No satisfies it; unanswered blocks). (3) SOCIAL is EXEMPT from the aiAnalyzed gate (aiAnalyzed = type === 'social' ? true : ...), and the meter hides the AI dot for social (filters a LOCAL copy of ROUTE_CHECKS -> 5 honest dots + 5-item flyout); trigger tooltip is count-aware ("all N checks pass"). (4) Tab wiring: onIncidentChange threaded so the IncidentChip mounts editable in Zone A.
+- 926dd05 (IncidentChip control): explicit "Incident? Yes / No" in both branches (unanswered LABEL "Incident?", engaged LABEL "Incident:"); the Yes chip shows the indigo PROPOSED_DOT when AI-flagged, and a small rose square "H" marker (FORCED_H_MARK, new hue -- distinct from RelevancePill indigo / ConfidencePill fuchsia) only for state === 'forced' (researcher marked an incident the AI did NOT flag).
+- CLOUD-VERIFIED (sibling preservation): answering incident in-app on article 0899593b wrote human.incident=true + human.incident_at while .ai (8 keys), .routing (4 keys), human.relevance ("High") and human.overridden_at ALL survived unchanged -- the RMW writer preserves siblings.
 
 --- CARD ARC: what shipped this session ---
 The unified-card VISUAL redesign is complete and live on all four intel types (News/Social/Documents/Interviews):
@@ -40,7 +46,7 @@ The unified-card VISUAL redesign is complete and live on all four intel types (N
 
 3. Slice 4b-1b = extend the routability meter to social/doc/interview + flyout scroll-dismiss. BLOCKED on S5b-1 (their geo/confidence dots can't complete until those controls are editable). Once S5b makes them editable, 4b-1b ships the cross-type gating. The 3 non-News tabs route uniformly via routeToProject + "Send to New sources" (gate that button).
    4b-1b SCOPE FINDINGS (banked 2026-08-18, from a card-layout diagnostic session):
-   - The routing footer + 6-dot meter are gated on {children} at SourceCard.tsx:431, NOT type-gated (zero core.type checks in SourceCard). Only NewsTab passes children (its project selector + gate-error), which is why the footer/meter is News-only. FIX DIRECTION: decouple meter/footer from the {children} gate so it renders on its own condition (a routable source), and let {children} gate ONLY the News-specific project selector - do NOT thread empty children through the other three tabs just to trip the gate.
+   - [DONE in capstone slice 1, 04698b2] The routing footer + 6-dot meter WERE gated on {children} (the guard is at SourceCard.tsx:496, not the ~431/451 cited in older notes), NOT type-gated (zero core.type checks in SourceCard). Only NewsTab passed children (its project selector + gate-error), which is why the footer/meter was News-only. FIX (shipped): meter/footer DECOUPLED from the {children} gate -- renders on its own condition; {children} now gates ONLY the News-specific project selector. Did NOT thread empty children through the other three tabs.
    - 4b-1b is DEPENDENCY-LADEN, not "add the meter": confidence + geography dots are READY (S5b-1). BUT the incident dot needs 4b-2 (the standalone Incident Yes/No control does not exist yet), and section proposals on non-News types need item 6 (AI-READ tuning) - an empty section rail is uniform blank forms, not uniform editing. Sequence 4b-1b AFTER 4b-2 and item-6 for the non-News types, or ship it with those dots explicitly interim/dim.
    - PROJECT PICKER -> ZONE A (banked 2026-08-18, decided): the project picker (PROJECT: [Contested Skies]) currently lives in the footer "Routing" section, but Zone A is literally titled "Assessment & ROUTING" - the picker is a routing control and belongs there. HOWEVER it is entangled: the picker is ONE OF THE TWO children NewsTab passes (picker + gate-error) that trip the {children} gate making the footer/meter render at all. So moving the picker into Zone A MUST happen AS PART OF the children-gate decouple, not standalone - moving it alone empties children and the footer/meter stop rendering. SCOPE INTO 4b-1b. Open sub-question for the footer redesign (item 4): once the picker leaves the footer, does the footer "Routing" section still exist / need renaming? Likely footer becomes just the routability readout + send action; Zone A owns all the routing DECISIONS.
 
@@ -54,17 +60,35 @@ The unified-card VISUAL redesign is complete and live on all four intel types (N
 
 7. IMAGE ATTACHMENTS (future arc, design-first, rides with/after ARC II): attach an image to a source + clickable indicator on the published monitor. Needs Supabase Storage (bucket + upload) for dropped files; URLs already supported. ~3-5 slices.
 
---- QUEUED FOLLOW-UPS (unified-card capstone + items surfaced during S5b-2 testing) ---
-- Routing project picker (+ CS sections) -> card Zone A: move routing controls out of the footer into a card zone. Touches the {children} routing-footer coupling -- diagnose first.
-- Cross-type completeness/routability meter: lift the meter + approve gate off {children} (currently News-only) so all four types get it; wire the 'Incident (coming soon)' dimension and confirm/unblock send-to-New-sources (the coming-soon dot currently reads as blocking). THIS IS THE CARD-ARC CAPSTONE.
-- Relevance override (click-to-override relevance pill): the one remaining read-only data-path gap (confidence override shipped in S5b-1; relevance not yet).
+--- QUEUED FOLLOW-UPS (post-capstone-slice-1) ---
+- [DONE 04698b2/926dd05] Cross-type completeness/routability meter: lifted the meter + gate off {children} so all four types get it; incident is now a REAL required dimension (no longer "coming soon"); social exempt from the AI dot. THIS WAS THE CARD-ARC CAPSTONE (slice 1).
+- [PARTIAL -- capstone slice 2, still open] Routing project picker (+ CS sections) -> card Zone A: move the project picker out of the footer into Zone A ("Assessment & ROUTING"). The {children} decouple that unblocks this shipped in slice 1; the picker MOVE itself is not done. See REMAINING WORK ORDER item 1.
 - Summary lift (the 'and maybe summary' from the old S5b-2 line): decide whether summary becomes card-native too.
 - Empty-vocab-in-All-view (minor, pre-existing): with the top filter on 'All', the vocabulary hook gets board='' -> empty tag list; separate vocabulary-scoping decision, not a Zone D bug.
 
+--- NEXT ARC: CONFIRM-PROVENANCE (finalized 2026-08-22; diagnose done; 3 slices; ZERO data-model work) ---
+MODEL: every AI-populated dimension shows a small-but-noticeable provenance mark; the researcher can CONFIRM-AS-IS in ONE click (AI -> H, no edit needed). Confirm-as-is is the missing action today -- confirmation currently only happens as a SIDE EFFECT of editing, which is the root of the geography + incident bugs. Three paths all yield H: confirm-as-is, add, edit; the x deletes.
+PER-DIMENSION (deliberately NOT uniform):
+  - GATES, need confirm-as-is: CONFIDENCE (confidence_override col), GEOGRAPHY (geography_confirmed col -- MAIN subject countries only; the ghost +mentioned / +region / +Global slots do NOT count), INCIDENT (analysis.human.incident).
+  - RELEVANCE: gets the AI->H look for consistency, does NOT gate.
+  - ACTORS: KEEP the amber AI badge (provenance only), NO confirm action, does NOT gate -- routes on a visual glance.
+  - TAGS: OUT of the arc entirely, untouched -- already correct (AI suggests purple=new / green=existing chips under the AI summary; researcher clicks to add; no AI badge on chips, no confirm flag).
+NO NEW STORAGE: every gating dimension already persists its flag (2 cols + analysis.human.incident). No schema, no migration.
+THREE SLICES:
+  A = lift a shared <ProvenanceMark> primitive. Today there are 4 hand-copied H-marks (RelevancePill H_MARK indigo, ConfidencePill CONF_H_MARK fuchsia, IncidentChip FORCED_H_MARK rose, + the pattern) and 2 byte-identical amber AI-badges (GeographyChips + ActorChips) -- NO shared component. Slice A routes actors' badge + the 3 pills through one primitive (small-but-noticeable). Pure refactor.
+  B = confirm-as-is action on confidence / geography / incident (fixes bug B1 + B3) + the relevance AI->H look.
+  D = geography 3-action chip (body-click: confirm on 1st click / open sub-region on 2nd; the x deletes) + fix bug B2 (layout reflows).
+BANKED BUGS (all fixed inside this arc):
+  - B1 (geography confirm-without-edit): geography_confirmed=1 is stamped ONLY inside updateCountries, which fires ONLY on a GeographyChips onChange (an actual mutation). The country chip BODY click opens the sub-area editor (setEdit, no onChange), so it never confirms. No no-op confirm path exists.
+  - B2 (LATAM click reflows boxes): two real box-shape changes in GeographyChips -- the typeahead input width toggles !w-56 (disabled) -> w-32 (enabled) when scope goes null -> 'latam', AND the LATAM level button grows (appends a Check glyph) + injects a new violet sentinel chip into the chips row.
+  - B3 (incident invisible confirm): clicking Yes on an AI-flagged incident DOES write human.incident=true and lights the meter dot, BUT the chip render is IDENTICAL before/after -- isIncident was already true (from aiFlagged) so Yes was already lit, state stays 'confirmed', shows the indigo PROPOSED_DOT, never flips to H. The confirm-as-is visual gap in miniature.
+SUPERSEDES: this arc reworks HOW confidence/geography/incident get confirmed; slice 1's decouple/meter/incident-control stand unchanged.
+
 --- REMAINING WORK ORDER ---
-1. [NEXT] CARD-ARC CAPSTONE: routing controls -> card Zone A + cross-type completeness/routability meter (decouple the meter/footer from the {children} gate; extend to social/document/interview; wire the Incident dimension; gate send-to-New-sources). This finishes the unified-card arc.
-2. Phase B: pipeline surfaces replace PipelineSourceCard (converge the article/pipeline card onto the shared SourceCard).
-3. Cleanup: retire categories_json USAGE per type; Social freeform -> structured geo/actors migration.
+1. [NEXT] CONFIRM-PROVENANCE ARC (slices A/B/D above): shared <ProvenanceMark> + confirm-as-is on confidence/geography/incident + relevance AI->H look + geography 3-action chip; fixes bugs B1/B2/B3. ZERO data-model work.
+2. CAPSTONE SLICE 2 (was part of slice 1's scope): project picker (+ CS sections) -> card Zone A. The {children} decouple that unblocks this shipped in slice 1; only the picker MOVE remains. Open sub-question: once the picker leaves the footer, does the footer "Routing" section still need renaming (likely becomes just the routability readout + send action)?
+3. Phase B: pipeline surfaces replace PipelineSourceCard (converge the article/pipeline card onto the shared SourceCard).
+4. Cleanup: retire categories_json USAGE per type; Social freeform -> structured geo/actors migration.
 
 --- AFTER THE CARD ARC ---
 Pivot to ARC II = the PUBLICATION PIPELINE (geography/country-default model - "the next MAJOR priority"). Then the other separable arcs (A2 write-propagation, Phase B PipelineSourceCard convergence).
@@ -73,7 +97,7 @@ Pivot to ARC II = the PUBLICATION PIPELINE (geography/country-default model - "t
 Read-only diagnose before any build. One slice at a time. COWORK vs CHAT: switch to Cowork (agentic, Claude-Code-driven) for cross-cutting investigation and multi-file builds; use chat for design decisions and react-and-refine judgment calls. Claude should PROACTIVELY FLAG when a task is Cowork-shaped (e.g. a multi-file build across the shared card + several tabs) rather than waiting to be asked, and note when it makes sense to return to chat. HANDOFF.md carries the full "why" across both loops. Verify writes in cloud SQL, not just UI/mirror. Commit + push immediately on green; verify with git log (this session, "done" repeatedly meant shown-not-committed - always check git log). Code and docs = separate commits. git add specific files only (never -A - scratchpads). ASCII single-quoted commit messages. Confirm ~/newsroom-pm before any git op. Multi-tab/shared-card slices: build -> show diff -> REVIEW before test (enforce the review gate).
 
 === NEXT SESSION FIRST STEP ===
-Read this block, run git status + git log --oneline -5, confirm HEAD 37fa4b5 (branch 2 ahead of origin/main -- S5b-2 NOT pushed). S5b-2 is SHIPPED (tags de-dup lift); NEXT is the CARD-ARC CAPSTONE (REMAINING WORK ORDER item 1) - move routing controls into Zone A + lift the routability meter/gate off the {children} coupling so all four types get it. COWORK-SHAPED: read-only diagnose the {children} routing-footer coupling first, then build -> show diff -> REVIEW gate before test.
+Read this block, run git status + git log --oneline -5, confirm HEAD 926dd05 (origin/main up to date -- capstone slice 1 pushed). Capstone slice 1 is SHIPPED (cross-type meter + incident gate + IncidentChip Yes/No). NEXT is the CONFIRM-PROVENANCE ARC (REMAINING WORK ORDER item 1): the read-only diagnose is DONE (see the NEXT ARC block above -- 3 slices A/B/D, ZERO data-model work). Start with SLICE A (lift the shared <ProvenanceMark> primitive -- pure refactor, 4 H-marks + 2 amber badges -> one component). COWORK-SHAPED: build -> show diff -> REVIEW gate before test.
 
 --- end resume block ---
 --------------------------------------------------------------------------------
