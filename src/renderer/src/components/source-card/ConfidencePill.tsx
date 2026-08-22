@@ -10,6 +10,7 @@
 // The colour style is passed in (the card's confStyle) so there is one source of truth for the
 // palette and the display value stays reactive -- on cycle the host re-renders with the new
 // confidence and hands down the matching style.
+import ProvenanceMark from './ProvenanceMark'
 
 interface ConfidencePillProps {
   conf: string | null                            // display value (already lowercased: high | medium | low), or null = UNSET
@@ -30,7 +31,6 @@ const nextConfidence = (c: string): string =>
 // intent (square H mark = a human set this). Fuchsia = confidence/assessment; indigo = relevance/feedback-loop.
 // The ring LAYERS on top of the value colours (green/amber/red stay); the mark leads the existing dot.
 const CONF_HUMAN_RING = 'ring-1 ring-fuchsia-300 dark:ring-fuchsia-400/40'
-const CONF_H_MARK = 'inline-flex items-center justify-center w-3 h-3 rounded-sm bg-fuchsia-600 dark:bg-fuchsia-400 text-white dark:text-fuchsia-950 text-[8px] font-bold leading-none'
 
 // Inline field-name label so the pill self-identifies (CONF) alongside relevance's REL. Dimmed +
 // tiny; the host pill is already `uppercase` so no uppercase needed here. Shows in every VALUE
@@ -43,7 +43,7 @@ export default function ConfidencePill({ conf, style, onChange, override }: Conf
   if (!onChange) {
     return (
       <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${style.bg} ${style.text} ${override ? CONF_HUMAN_RING : ''}`}>
-        {override && <span className={CONF_H_MARK} aria-hidden>H</span>}
+        {override && <ProvenanceMark kind="human" hue="fuchsia" />}
         <span className={FIELD_PREFIX}>CONF</span>
         <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
         {conf}
@@ -80,7 +80,7 @@ export default function ConfidencePill({ conf, style, onChange, override }: Conf
       className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase transition hover:ring-1 hover:ring-inset hover:ring-current/50 ${style.bg} ${style.text} ${override ? CONF_HUMAN_RING : ''}`}
       title={`Confidence: ${conf} — click to change (overrides AI)`}
     >
-      {override && <span className={CONF_H_MARK} aria-hidden>H</span>}
+      {override && <ProvenanceMark kind="human" hue="fuchsia" />}
       <span className={FIELD_PREFIX}>CONF</span>
       <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
       {conf}

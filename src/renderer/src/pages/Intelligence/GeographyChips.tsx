@@ -16,6 +16,7 @@
 import { useState } from 'react'
 import { GEO_COUNTRIES, lookupCountry } from './geographyVocab'
 import OverflowPopover from './OverflowPopover'
+import ProvenanceMark from '../../components/source-card/ProvenanceMark'
 
 export interface GeographyChipsProps {
   subject: string[]
@@ -41,7 +42,6 @@ const MENTIONED_CHIP = `${CHIP} bg-transparent border-slate-300 dark:border-whit
 const MORE_PILL = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-500/25 transition'
 const ADD_BTN = 'px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-400 dark:text-white/30 border border-dashed border-gray-300 dark:border-white/[0.15] hover:text-gray-600 dark:hover:text-white/60'
 const INPUT = 'px-1.5 py-0.5 rounded border border-gray-200 dark:border-white/[0.15] bg-white dark:bg-transparent text-[11px] text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 w-32'
-const AI_BADGE = 'ml-0.5 px-1 rounded bg-amber-200/70 dark:bg-amber-500/30 text-amber-800 dark:text-amber-200 text-[8px] font-bold uppercase tracking-wide'
 const HINT = 'text-[9px] text-gray-400 dark:text-white/30'
 const ROW_LABEL = 'text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30'
 
@@ -221,7 +221,7 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
         .slice(0, MAX_SUGGESTIONS)
   const useLabel = (n: number) => (n === 0 ? 'new' : `${n} use${n === 1 ? '' : 's'}`)
 
-  const aiBadge = aiUnconfirmed ? <span className={AI_BADGE} title="AI-proposed geography — edit to confirm">AI</span> : null
+  const aiBadge = aiUnconfirmed ? <ProvenanceMark kind="ai" title="AI-proposed geography — edit to confirm" /> : null
   const regionalOn = hasSentinel('REGIONAL')
 
   // One mentioned chip (same removeCountry handler verbatim). `editable` only gates the ×

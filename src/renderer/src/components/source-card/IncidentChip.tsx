@@ -12,6 +12,7 @@
 // null is reserved for the writer's clear path and isn't produced here. Persistence goes to
 // analysis_json.human.incident via setIncidentFlag — NO info_page_sources / placement contact.
 import { ResolvedIncident } from '../../pages/Intelligence/resolveAnalysis'
+import ProvenanceMark from './ProvenanceMark'
 
 export interface IncidentChipProps {
   resolved: ResolvedIncident
@@ -24,11 +25,10 @@ const CHIP_OFF = 'bg-transparent border border-slate-300 dark:border-white/15 te
 const CHIP_BASE = 'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition'
 const LABEL = 'text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30'
 const PROPOSED_DOT = 'w-1 h-1 rounded-full bg-indigo-400 dark:bg-indigo-300'
-// Human-added marker for the FORCED case (researcher marked an incident the AI did NOT flag).
-// Mirrors the H_MARK construction in RelevancePill (indigo) / ConfidencePill (fuchsia), but in a
-// DISTINCT hue -- ROSE -- so incident-forced provenance never collides with those two human-H
+// Human-added marker for the FORCED case (researcher marked an incident the AI did NOT flag): the
+// shared <ProvenanceMark kind="human" hue="rose" /> -- a DISTINCT hue from RelevancePill (indigo) /
+// ConfidencePill (fuchsia) so incident-forced provenance never collides with those two human-H
 // treatments or with incident's own emerald CHIP_ON / indigo PROPOSED_DOT.
-const FORCED_H_MARK = 'inline-flex items-center justify-center w-3 h-3 rounded-sm bg-rose-600 dark:bg-rose-400 text-white dark:text-rose-950 text-[8px] font-bold leading-none'
 
 export default function IncidentChip({ resolved, onChange }: IncidentChipProps) {
   const { aiFlagged, human, isIncident, state } = resolved
@@ -71,7 +71,7 @@ export default function IncidentChip({ resolved, onChange }: IncidentChipProps) 
         title={aiFlagged ? 'AI-flagged incident — click to confirm' : 'Marked as incident by researcher — click to keep'}
       >
         {aiFlagged && <span className={PROPOSED_DOT} aria-hidden />}
-        {state === 'forced' && <span className={FORCED_H_MARK} aria-hidden>H</span>}
+        {state === 'forced' && <ProvenanceMark kind="human" hue="rose" />}
         Yes
       </button>
       <button

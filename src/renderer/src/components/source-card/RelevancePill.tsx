@@ -19,6 +19,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { usePopoverDismiss } from '../../hooks/usePopoverDismiss'
+import ProvenanceMark from './ProvenanceMark'
 
 interface RelevancePillProps {
   aiNode: ReactNode                            // the card's existing three-state AI "REL n" badge, verbatim
@@ -34,7 +35,6 @@ const HUMAN_OPTIONS = ['High', 'Medium', 'Low'] as const
 // Human-override styling: DELIBERATELY distinct from the AI REL badge's green/amber/red tiers --
 // one indigo "override" family + an H marker -- so provenance is unmistakable at every level.
 const HUMAN_PILL = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ring-1 ring-indigo-300 dark:ring-indigo-400/40 bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
-const H_MARK = 'inline-flex items-center justify-center w-3 h-3 rounded-sm bg-indigo-600 dark:bg-indigo-400 text-white dark:text-indigo-950 text-[8px] font-bold leading-none'
 
 // Inline field-name label for the HUMAN-OVERRIDE state only: the AI-score badge (aiNode) already
 // renders literal "REL" (SourceCard's REL n badge), but the override pill shows a bare "High" with
@@ -95,7 +95,7 @@ function RelevancePicker({
   const hasOverride = !!humanRel
   const trigger: ReactNode = hasOverride ? (
     <>
-      <span className={H_MARK} aria-hidden>H</span>
+      <ProvenanceMark kind="human" hue="indigo" />
       <span className={REL_PREFIX}>REL</span>
       {humanRel}
     </>
@@ -128,7 +128,7 @@ function RelevancePicker({
             return (
               <button key={opt} type="button" onClick={() => choose(opt)} className={`${optionBase} ${on ? optionOn : optionOff}`}>
                 <span className="inline-flex items-center gap-1">
-                  <span className={H_MARK} aria-hidden>H</span>
+                  <ProvenanceMark kind="human" hue="indigo" />
                   {opt}
                 </span>
                 {on && check}
@@ -174,7 +174,7 @@ export default function RelevancePill({ aiNode, relevanceScore, humanRel, onChan
     if (humanRel) {
       return (
         <span className={HUMAN_PILL} title={overrideTitle}>
-          <span className={H_MARK} aria-hidden>H</span>
+          <ProvenanceMark kind="human" hue="indigo" />
           <span className={REL_PREFIX}>REL</span>
           {humanRel}
         </span>

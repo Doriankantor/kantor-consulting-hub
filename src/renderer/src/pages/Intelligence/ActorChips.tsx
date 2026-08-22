@@ -7,6 +7,7 @@ import { useState } from 'react'
 import { actorTypeClass } from './actorTypeClass'
 import OverflowPopover from './OverflowPopover'
 import { groupActors } from './actorGroups'
+import ProvenanceMark from '../../components/source-card/ProvenanceMark'
 
 export interface ActorChipsProps {
   actors: { name: string; type: string }[]
@@ -29,7 +30,6 @@ const ACTOR_CHIP = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[1
 const MORE_PILL = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-500/25 transition'
 const ADD_BTN = 'px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-400 dark:text-white/30 border border-dashed border-gray-300 dark:border-white/[0.15] hover:text-gray-600 dark:hover:text-white/60'
 const INPUT = 'px-1.5 py-0.5 rounded border border-gray-200 dark:border-white/[0.15] bg-white dark:bg-transparent text-[11px] text-gray-700 dark:text-white/80 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 w-28'
-const AI_BADGE = 'ml-0.5 px-1 rounded bg-amber-200/70 dark:bg-amber-500/30 text-amber-800 dark:text-amber-200 text-[8px] font-bold uppercase tracking-wide'
 
 const XGlyph = () => (
   <svg width="7" height="7" viewBox="0 0 10 10" fill="none" aria-hidden><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
@@ -61,7 +61,7 @@ export default function ActorChips({ actors, aiUnconfirmed, editable, onChange }
   const cycle = (name: string) => onChange(actors.map(a =>
     a.name.toLowerCase() === name.toLowerCase() ? { ...a, type: nextType(a.type) } : a))
 
-  const aiBadge = aiUnconfirmed ? <span className={AI_BADGE} title="AI-extracted actors — edit to confirm">AI</span> : null
+  const aiBadge = aiUnconfirmed ? <ProvenanceMark kind="ai" title="AI-extracted actors — edit to confirm" /> : null
 
   // One chip. Handlers (cycle/remove) are the same verbatim ones; `editable` only decides
   // whether the name cycles the type and whether the × remove control renders (flat on read).
