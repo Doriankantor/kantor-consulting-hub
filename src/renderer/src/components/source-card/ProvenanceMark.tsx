@@ -18,6 +18,9 @@ const HUMAN_HUE = {
   indigo: 'bg-indigo-600 dark:bg-indigo-400 text-white dark:text-indigo-950',
   fuchsia: 'bg-fuchsia-600 dark:bg-fuchsia-400 text-white dark:text-fuchsia-950',
   rose: 'bg-rose-600 dark:bg-rose-400 text-white dark:text-rose-950',
+  // Slice B: geography's human-confirmed hue -- TEAL, matching Zone B's teal accent
+  // (border-teal-200 / text-teal-600). Full literal class strings so Tailwind's scanner keeps them.
+  teal: 'bg-teal-600 dark:bg-teal-400 text-white dark:text-teal-950',
 } as const
 
 type HumanHue = keyof typeof HUMAN_HUE

@@ -73,17 +73,34 @@ export default function ConfidencePill({ conf, style, onChange, override }: Conf
 
   // EDITABLE + SET: same visual as the read badge, now a button that cycles the value on click.
   // When override is true, layer the fuchsia ring ON TOP of the value colours and lead with the H mark.
+  // CONFIRM-PROVENANCE Slice B: when the value is AI/default-proposed and NOT yet human-confirmed
+  // (!override), lead with a one-click amber AI mark. Clicking it writes the SAME value back through
+  // onChange -> handleConfidence -> updateConfidence, which flips confidence_override 0->1 (value
+  // unchanged); handleConfidence's optimistic patch sets confidence_override:1 so the fuchsia H below
+  // replaces this mark immediately. It is a SEPARATE control from the cycle button (a sibling, not a
+  // nested button) so confirming never changes the level -- the cycle button's behavior is untouched.
   return (
-    <button
-      type="button"
-      onClick={() => onChange(nextConfidence(conf))}
-      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase transition hover:ring-1 hover:ring-inset hover:ring-current/50 ${style.bg} ${style.text} ${override ? CONF_HUMAN_RING : ''}`}
-      title={`Confidence: ${conf} — click to change (overrides AI)`}
-    >
-      {override && <ProvenanceMark kind="human" hue="fuchsia" />}
-      <span className={FIELD_PREFIX}>CONF</span>
-      <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-      {conf}
-    </button>
+    <span className="inline-flex items-center gap-0.5">
+      {!override && (
+        <button
+          type="button"
+          onClick={() => onChange(conf)}
+          title="AI confidence — click to confirm"
+        >
+          <ProvenanceMark kind="ai" />
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => onChange(nextConfidence(conf))}
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase transition hover:ring-1 hover:ring-inset hover:ring-current/50 ${style.bg} ${style.text} ${override ? CONF_HUMAN_RING : ''}`}
+        title={`Confidence: ${conf} — click to change (overrides AI)`}
+      >
+        {override && <ProvenanceMark kind="human" hue="fuchsia" />}
+        <span className={FIELD_PREFIX}>CONF</span>
+        <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
+        {conf}
+      </button>
+    </span>
   )
 }

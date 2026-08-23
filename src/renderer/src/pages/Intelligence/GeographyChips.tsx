@@ -22,7 +22,8 @@ export interface GeographyChipsProps {
   subject: string[]
   mentioned: string[]
   subGeo: Record<string, string[]>
-  aiUnconfirmed?: boolean             // amber "AI" badge until the researcher first edits this session
+  aiUnconfirmed?: boolean             // amber "AI" badge: AI-proposed geography, stored flag still 0
+  confirmed?: boolean                 // Slice B: geography_confirmed === 1 -> show the teal human H
   editable: boolean                   // Slice 2b: read mounts get flat mentioned chips (no ×/add)
   onChange: (subject: string[], mentioned: string[], subGeo: Record<string, string[]>) => void
 }
@@ -132,7 +133,7 @@ function deriveInitialScope(subject: string[]): 'latam' | 'extra' | 'both' | nul
 
 type EditState = { mode: 'sub'; country: string; value: string } | { mode: 'mentioned'; value: string } | null
 
-export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirmed, editable, onChange }: GeographyChipsProps) {
+export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirmed, confirmed, editable, onChange }: GeographyChipsProps) {
   const [edit, setEdit] = useState<EditState>(null)
   // Initial side derived from the source's existing subject chips (Decision B); 'both' = mixed card
   // (both segments lit, unscoped search), null = neutral empty card (no side lit, typeahead disabled
@@ -221,7 +222,26 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
         .slice(0, MAX_SUGGESTIONS)
   const useLabel = (n: number) => (n === 0 ? 'new' : `${n} use${n === 1 ? '' : 's'}`)
 
-  const aiBadge = aiUnconfirmed ? <ProvenanceMark kind="ai" title="AI-proposed geography — edit to confirm" /> : null
+  // CONFIRM-PROVENANCE Slice B: the geography provenance mark (fixes bug B1). When AI-proposed and
+  // still unconfirmed on an EDITABLE mount, the amber AI mark is a one-click CONFIRM-AS-IS: it re-emits
+  // the row's CURRENT UNCHANGED lists (never empty/partial) via onChange -> handleCountries ->
+  // updateCountries, which stamps geography_confirmed=1 (handleCountries' optimistic patch flips the
+  // flag immediately). Once confirmed, the stored flag drives the teal human H instead. The chip-body
+  // click (sub-editor), the +mentioned/+region/+Global slots, and which countries count are ALL
+  // untouched -- only subject-presence + the stored flag drive the mark; ghost slots never count.
+  const geoMark = (editable && aiUnconfirmed)
+    ? (
+      <button
+        type="button"
+        onClick={() => onChange(subject, mentioned, subGeo)}
+        title="AI-proposed geography — click to confirm"
+      >
+        <ProvenanceMark kind="ai" />
+      </button>
+    )
+    : confirmed
+      ? <ProvenanceMark kind="human" hue="teal" />
+      : null
   const regionalOn = hasSentinel('REGIONAL')
 
   // One mentioned chip (same removeCountry handler verbatim). `editable` only gates the ×
@@ -289,7 +309,7 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
             groups={[{ label: 'Mentioned', count: mentioned.length, chips: mentioned.map(renderMentionedChip) }]}
           />
         )}
-        {aiBadge}
+        {geoMark}
       </span>
 
       {/* ── SCOPE TOGGLE + hint ───────────────────────────────────────────────────────────────── */}

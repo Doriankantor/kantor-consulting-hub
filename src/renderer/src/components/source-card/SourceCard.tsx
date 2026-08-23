@@ -137,9 +137,13 @@ export default function SourceCard({
   // meter panel, not this bare children host).
   const [reviewOpen, setReviewOpen] = useState(true)
 
-  // Amber cue = list-present AND not yet touched this session. geoTouched undefined (read-only
-  // mount) => !undefined = true => cue falls back to core.hasGeo. Restores "clears on touch".
-  const geoAiUnconfirmed = core.hasGeo && !geoTouched
+  // Geography AI-state (CONFIRM-PROVENANCE Slice B): re-sourced from the STORED flag, not the session
+  // cue. AI-proposed-and-unconfirmed = geography present AND geography_confirmed still 0. This makes the
+  // mark survive reloads (a row confirmed last session no longer re-shows the amber badge) and lets the
+  // one-click confirm-as-is flip it to the teal H. geoTouched is no longer consulted for this signal.
+  const geoAiUnconfirmed = core.hasGeo && core.geographyConfirmed === 0
+  const geoConfirmed = core.geographyConfirmed === 1
+  // Actors keep the session cue (no stored actor-confirm flag exists; out of Slice B scope).
   const actorsAiUnconfirmed = core.hasActors && !actorsTouched
 
   // Geo-population affordance: gated-but-unanalyzed cards have empty subject_countries but a
@@ -411,6 +415,7 @@ export default function SourceCard({
                     mentioned={core.mentionedCountries}
                     subGeo={core.subGeographies}
                     aiUnconfirmed={geoAiUnconfirmed}
+                    confirmed={geoConfirmed}
                     editable={!!onCountriesChange}
                     onChange={onCountriesChange ?? (() => {})}
                   />

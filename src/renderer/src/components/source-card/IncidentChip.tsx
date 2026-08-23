@@ -25,9 +25,13 @@ const CHIP_OFF = 'bg-transparent border border-slate-300 dark:border-white/15 te
 const CHIP_BASE = 'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition'
 const LABEL = 'text-[9px] font-semibold uppercase tracking-wide text-gray-400 dark:text-white/30'
 const PROPOSED_DOT = 'w-1 h-1 rounded-full bg-indigo-400 dark:bg-indigo-300'
-// Human-added marker for the FORCED case (researcher marked an incident the AI did NOT flag): the
-// shared <ProvenanceMark kind="human" hue="rose" /> -- a DISTINCT hue from RelevancePill (indigo) /
-// ConfidencePill (fuchsia) so incident-forced provenance never collides with those two human-H
+// Human-set marker (CONFIRM-PROVENANCE Slice B, fixes bug B3): the shared
+// <ProvenanceMark kind="human" hue="rose" /> renders whenever human === true -- BOTH the FORCED case
+// (researcher marked an incident the AI did NOT flag) AND the CONFIRMED case (AI flagged it and the
+// researcher agreed). The indigo PROPOSED_DOT now shows ONLY while still unconfirmed
+// (aiFlagged && human === null); clicking Yes writes human.incident=true via the already-wired
+// handleIncident, so the dot visibly FLIPS to the rose H. Rose is a DISTINCT hue from RelevancePill
+// (indigo) / ConfidencePill (fuchsia) so incident provenance never collides with those two human-H
 // treatments or with incident's own emerald CHIP_ON / indigo PROPOSED_DOT.
 
 export default function IncidentChip({ resolved, onChange }: IncidentChipProps) {
@@ -68,10 +72,10 @@ export default function IncidentChip({ resolved, onChange }: IncidentChipProps) 
       <button
         onClick={() => onChange(true)}
         className={`${CHIP_BASE} ${isIncident ? CHIP_ON : CHIP_OFF}`}
-        title={aiFlagged ? 'AI-flagged incident — click to confirm' : 'Marked as incident by researcher — click to keep'}
+        title={aiFlagged ? (human === true ? 'AI-flagged incident — confirmed' : 'AI-flagged incident — click to confirm') : 'Marked as incident by researcher — click to keep'}
       >
-        {aiFlagged && <span className={PROPOSED_DOT} aria-hidden />}
-        {state === 'forced' && <ProvenanceMark kind="human" hue="rose" />}
+        {aiFlagged && human === null && <span className={PROPOSED_DOT} aria-hidden />}
+        {human === true && <ProvenanceMark kind="human" hue="rose" />}
         Yes
       </button>
       <button
