@@ -9,11 +9,16 @@ import OverflowPopover from './OverflowPopover'
 import { groupActors } from './actorGroups'
 import ProvenanceMark from '../../components/source-card/ProvenanceMark'
 
+// Slice B step 2a: an actor carries its provenance origin ('ai' by default; 'human' once a researcher
+// adds or edits it). It rides inside the existing `actors` JSON (parse.ts preserves it, updateActors
+// JSON.stringifies the whole array), so there is NO schema/IPC change.
+type Actor = { name: string; type: string; origin: 'ai' | 'human' }
+
 export interface ActorChipsProps {
-  actors: { name: string; type: string }[]
-  aiUnconfirmed?: boolean                                   // amber "AI" badge until first edit this session
+  actors: Actor[]
+  aiUnconfirmed?: boolean                                   // (unused since 2a: provenance is per-chip now; kept harmless)
   editable: boolean                                         // Slice 2b: read mounts get flat chips (no ×/cycle/add)
-  onChange: (actors: { name: string; type: string }[]) => void
+  onChange: (actors: Actor[]) => void
 }
 
 const MAX_INLINE = 5   // Slice 2b: chips beyond this collapse behind the "... +N" popover
@@ -35,15 +40,15 @@ const XGlyph = () => (
   <svg width="7" height="7" viewBox="0 0 10 10" fill="none" aria-hidden><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
 )
 
-// trim / drop-empty / case-insensitive de-dupe by name.
-function dedupe(arr: { name: string; type: string }[]): { name: string; type: string }[] {
-  const seen = new Set<string>(), out: { name: string; type: string }[] = []
+// trim / drop-empty / case-insensitive de-dupe by name. Preserves each actor's origin (2a).
+function dedupe(arr: Actor[]): Actor[] {
+  const seen = new Set<string>(), out: Actor[] = []
   for (const a of arr) {
     const name = String(a?.name ?? '').trim()
     if (!name) continue
     const k = name.toLowerCase()
     if (seen.has(k)) continue
-    seen.add(k); out.push({ name, type: a?.type || 'unknown' })
+    seen.add(k); out.push({ name, type: a?.type || 'unknown', origin: a?.origin === 'human' ? 'human' : 'ai' })
   }
   return out
 }
@@ -54,19 +59,20 @@ export default function ActorChips({ actors, aiUnconfirmed, editable, onChange }
 
   const commitAdd = (raw: string) => {
     const n = raw.trim()
-    if (n) onChange(dedupe([...actors, { name: n, type: 'unknown' }]))
+    if (n) onChange(dedupe([...actors, { name: n, type: 'unknown', origin: 'human' }]))   // 2a: a human added it
     setAdding(false); setValue('')
   }
   const remove = (name: string) => onChange(actors.filter(a => a.name.toLowerCase() !== name.toLowerCase()))
   const cycle = (name: string) => onChange(actors.map(a =>
-    a.name.toLowerCase() === name.toLowerCase() ? { ...a, type: nextType(a.type) } : a))
-
-  const aiBadge = aiUnconfirmed ? <ProvenanceMark kind="ai" title="AI-extracted actors — edit to confirm" /> : null
+    a.name.toLowerCase() === name.toLowerCase() ? { ...a, type: nextType(a.type), origin: 'human' } : a))   // 2a: a human edit = human provenance
 
   // One chip. Handlers (cycle/remove) are the same verbatim ones; `editable` only decides
   // whether the name cycles the type and whether the × remove control renders (flat on read).
-  const renderChip = (a: { name: string; type: string }) => (
+  // Slice B step 2a: each chip LEADS with its provenance mark -- violet H once a human added/edited
+  // it (origin==='human'), else the amber AI mark (AI-extracted / pre-2a actors default to 'ai').
+  const renderChip = (a: Actor) => (
     <span key={a.name} className={`${ACTOR_CHIP} ${actorTypeClass(a.type)}`}>
+      {a.origin === 'human' ? <ProvenanceMark kind="human" hue="violet" /> : <ProvenanceMark kind="ai" />}
       {editable ? (
         <button className="hover:underline" onClick={() => cycle(a.name)} title={`${a.type} — click to change type`}>{a.name}</button>
       ) : (
@@ -110,7 +116,6 @@ export default function ActorChips({ actors, aiUnconfirmed, editable, onChange }
         />
       )}
       {editable && addControl}
-      {aiBadge}
     </span>
   )
 }

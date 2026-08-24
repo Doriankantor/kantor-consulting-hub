@@ -31,6 +31,7 @@ import TagPicker from '../../pages/Intelligence/TagPicker'
 import IncidentChip from './IncidentChip'
 import ConfidencePill from './ConfidencePill'
 import RelevancePill from './RelevancePill'
+import ProvenanceMark from './ProvenanceMark'
 import RoutabilityMeter from './RoutabilityMeter'
 import { lookupCountry } from '../../pages/Intelligence/geographyVocab'
 import type { SourceCore } from './sourceCore'
@@ -304,6 +305,11 @@ export default function SourceCard({
                             className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${rb.cls}`}
                             title="Colombia relevance score (0–10)"
                           >
+                            {/* CONFIRM-PROVENANCE Slice B: lead the REL-score badge with the amber AI mark,
+                                the byte-identical leading slot the indigo H occupies inside RelevancePill's
+                                HUMAN_PILL when overridden -- an in-place AI->H swap. Provenance-only (no
+                                click); overriding relevance replaces this whole badge with the H pill. */}
+                            <ProvenanceMark kind="ai" />
                             <span className="opacity-60 font-medium">REL</span>{rb.label}
                           </span>
                         )

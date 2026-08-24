@@ -22,17 +22,20 @@ export function safeParseObject(raw: string | null | undefined): Record<string, 
 
 // Actor-2: parse the `actors` JSON-string column -> [{name,type}] defensively. Keeps only objects
 // with a non-empty string name (trimmed); coerces type to string, default 'unknown'. -> [] on invalid.
-export function safeParseObjectArray(raw: string | null | undefined): { name: string; type: string }[] {
+export function safeParseObjectArray(raw: string | null | undefined): { name: string; type: string; origin: 'ai' | 'human' }[] {
   try {
     const a = JSON.parse(raw || '[]')
     if (!Array.isArray(a)) return []
-    const out: { name: string; type: string }[] = []
+    const out: { name: string; type: string; origin: 'ai' | 'human' }[] = []
     for (const item of a) {
       if (!item || typeof item !== 'object' || Array.isArray(item)) continue
       const name = typeof (item as any).name === 'string' ? (item as any).name.trim() : ''
       if (!name) continue
       const type = typeof (item as any).type === 'string' ? (item as any).type : 'unknown'
-      out.push({ name, type })
+      // Slice B step 2a: per-actor provenance rides inside the same JSON. Default 'ai' when absent
+      // (existing / AI-extracted rows), 'human' once a researcher adds or edits the actor.
+      const origin: 'ai' | 'human' = (item as any).origin === 'human' ? 'human' : 'ai'
+      out.push({ name, type, origin })
     }
     return out
   } catch { return [] }

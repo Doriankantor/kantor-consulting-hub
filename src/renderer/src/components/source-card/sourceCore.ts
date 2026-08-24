@@ -51,7 +51,7 @@ export interface SourceCore {
   region: string | null                  // gate's scalar geography (canonical country, or REGIONAL/GLOBAL sentinel)
 
   // ── actors ──
-  actors: { name: string; type: string }[]
+  actors: { name: string; type: string; origin: 'ai' | 'human' }[]
   hasActors: boolean
 
   // ── analysis (parsed once) ──

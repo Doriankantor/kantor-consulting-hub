@@ -21,6 +21,9 @@ const HUMAN_HUE = {
   // Slice B: geography's human-confirmed hue -- TEAL, matching Zone B's teal accent
   // (border-teal-200 / text-teal-600). Full literal class strings so Tailwind's scanner keeps them.
   teal: 'bg-teal-600 dark:bg-teal-400 text-white dark:text-teal-950',
+  // Slice B step 2a: actors' human-provenance hue -- VIOLET, matching Zone C (engaged entities).
+  // Full literal class strings so Tailwind's scanner keeps them.
+  violet: 'bg-violet-600 dark:bg-violet-400 text-white dark:text-violet-950',
 } as const
 
 type HumanHue = keyof typeof HUMAN_HUE

@@ -4,9 +4,13 @@
 // order; empty groups are skipped (as the mockup skipped empties). Any actor whose type is
 // not one of the five known families falls into "Unknown" (defensive), never dropped.
 
+// Slice B step 2a: actors carry an `origin` provenance field; group buckets preserve it so the
+// overflow-popover chips render the same per-chip AI/H mark as the inline chips.
+type Actor = { name: string; type: string; origin: 'ai' | 'human' }
+
 export interface ActorGroup {
   label: string
-  actors: { name: string; type: string }[]
+  actors: Actor[]
 }
 
 // type value (lower-case) -> display label, in fixed render order.
@@ -18,8 +22,8 @@ const GROUP_ORDER: { type: string; label: string }[] = [
   { type: 'unknown', label: 'Unknown' },
 ]
 
-export function groupActors(actors: { name: string; type: string }[]): ActorGroup[] {
-  const buckets = new Map<string, { name: string; type: string }[]>()
+export function groupActors(actors: Actor[]): ActorGroup[] {
+  const buckets = new Map<string, Actor[]>()
   for (const g of GROUP_ORDER) buckets.set(g.type, [])
   for (const a of actors) {
     const key = (a?.type || '').toLowerCase()

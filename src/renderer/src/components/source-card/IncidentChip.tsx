@@ -83,6 +83,7 @@ export default function IncidentChip({ resolved, onChange }: IncidentChipProps) 
         className={`${CHIP_BASE} ${state === 'not-incident' ? CHIP_ON : CHIP_OFF}`}
         title="Mark this source as NOT an incident (suppresses incident generation)"
       >
+        {human === false && <ProvenanceMark kind="human" hue="rose" />}
         No
       </button>
     </div>

@@ -93,6 +93,11 @@ function RelevancePicker({
   }
 
   const hasOverride = !!humanRel
+  // CONFIRM-PROVENANCE Slice B: a true in-place AI->H swap in the pill's LEADING slot. Overridden ->
+  // indigo H as the first child inside HUMAN_PILL (below). AI-scored & NOT overridden -> aiNode, which
+  // leads with the amber AI mark INSIDE the REL-score badge's border (that mark is rendered where aiNode
+  // is built, in SourceCard, so it sits in the byte-identical leading position the H occupies here).
+  // Provenance-only: no click handler on the mark; the pill's click still opens the category picker.
   const trigger: ReactNode = hasOverride ? (
     <>
       <ProvenanceMark kind="human" hue="indigo" />
@@ -167,9 +172,9 @@ function RelevancePicker({
 export default function RelevancePill({ aiNode, relevanceScore, humanRel, onChange }: RelevancePillProps) {
   const overrideTitle = `Researcher override — AI scored REL ${relevanceScore ?? '—'}`
 
-  // READ mode (onChange absent) -- UNCHANGED. Folded: a human override shows the human category in
-  // place of the AI badge, with the provenance marker + tooltip, non-interactive. No override: the
-  // AI badge verbatim.
+  // READ mode (onChange absent). Folded: a human override shows the human category in place of the AI
+  // badge, with the indigo H provenance marker + tooltip, non-interactive. No override: the AI badge
+  // verbatim -- it already leads with the amber AI mark inside its border (built in SourceCard).
   if (!onChange) {
     if (humanRel) {
       return (

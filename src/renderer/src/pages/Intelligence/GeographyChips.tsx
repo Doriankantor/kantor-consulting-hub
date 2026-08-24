@@ -222,18 +222,19 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
         .slice(0, MAX_SUGGESTIONS)
   const useLabel = (n: number) => (n === 0 ? 'new' : `${n} use${n === 1 ? '' : 's'}`)
 
-  // CONFIRM-PROVENANCE Slice B: the geography provenance mark (fixes bug B1). When AI-proposed and
-  // still unconfirmed on an EDITABLE mount, the amber AI mark is a one-click CONFIRM-AS-IS: it re-emits
-  // the row's CURRENT UNCHANGED lists (never empty/partial) via onChange -> handleCountries ->
-  // updateCountries, which stamps geography_confirmed=1 (handleCountries' optimistic patch flips the
-  // flag immediately). Once confirmed, the stored flag drives the teal human H instead. The chip-body
-  // click (sub-editor), the +mentioned/+region/+Global slots, and which countries count are ALL
-  // untouched -- only subject-presence + the stored flag drive the mark; ghost slots never count.
-  const geoMark = (editable && aiUnconfirmed)
+  // CONFIRM-PROVENANCE Slice B (fixes bug B1): the geography provenance mark, LEADING each SUBJECT chip
+  // (this slice the flag is set-level, so every subject chip shows the same mark; per-country origin is
+  // the next slice). Unconfirmed AI proposal on an EDITABLE mount -> a click-to-confirm amber AI button;
+  // its onClick re-emits the row's CURRENT UNCHANGED lists (never empty/partial) via onChange ->
+  // handleCountries -> updateCountries, stamping geography_confirmed=1 (optimistic patch flips it at
+  // once), and stopPropagation so confirming never opens the chip-body sub-area editor. Confirmed ->
+  // a non-clickable teal H. Mentioned chips get NO mark; ghost +mentioned/+region/+Global never count.
+  // Returns a fresh node per call so it can lead multiple chips.
+  const subjectMark = () => (editable && aiUnconfirmed)
     ? (
       <button
         type="button"
-        onClick={() => onChange(subject, mentioned, subGeo)}
+        onClick={e => { e.stopPropagation(); onChange(subject, mentioned, subGeo) }}
         title="AI-proposed geography — click to confirm"
       >
         <ProvenanceMark kind="ai" />
@@ -268,6 +269,7 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
             // level sentinel — accent chip, globe, NOT sub-drillable
             return (
               <span key={`x-${value}`} className={ACCENT_CHIP} title={`${sentinelLabel(sent)} level (stored as ${sent})`}>
+                {subjectMark()}
                 <Globe />{sentinelLabel(sent)}
                 <button onClick={() => removeCountry(value, 'subject')} className="ml-0.5 opacity-60 hover:opacity-100" title={`Remove ${sentinelLabel(sent)}`}><XGlyph /></button>
               </span>
@@ -277,6 +279,7 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
           const editingSub = edit?.mode === 'sub' && edit.country === value
           return (
             <span key={`s-${value}`} className={countryChipClass(value)}>
+              {subjectMark()}
               <Pin />
               <button className="hover:underline" onClick={() => setEdit({ mode: 'sub', country: value, value: '' })} title={`Add a sub-area to ${value}`}>
                 {value}
@@ -309,7 +312,6 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
             groups={[{ label: 'Mentioned', count: mentioned.length, chips: mentioned.map(renderMentionedChip) }]}
           />
         )}
-        {geoMark}
       </span>
 
       {/* ── SCOPE TOGGLE + hint ───────────────────────────────────────────────────────────────── */}
