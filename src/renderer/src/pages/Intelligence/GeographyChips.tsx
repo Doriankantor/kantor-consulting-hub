@@ -24,6 +24,7 @@ export interface GeographyChipsProps {
   subGeo: Record<string, string[]>
   aiUnconfirmed?: boolean             // amber "AI" badge: AI-proposed geography, stored flag still 0
   confirmed?: boolean                 // Slice B: geography_confirmed === 1 -> show the teal human H
+  originMap?: Record<string, string>  // Slice 1a: per-country provenance (name -> 'ai'|'human'); optional so non-News callers compile untouched. Absent/unknown -> 'ai'.
   editable: boolean                   // Slice 2b: read mounts get flat mentioned chips (no ×/add)
   onChange: (subject: string[], mentioned: string[], subGeo: Record<string, string[]>) => void
 }
@@ -133,7 +134,7 @@ function deriveInitialScope(subject: string[]): 'latam' | 'extra' | 'both' | nul
 
 type EditState = { mode: 'sub'; country: string; value: string } | { mode: 'mentioned'; value: string } | null
 
-export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirmed, confirmed, editable, onChange }: GeographyChipsProps) {
+export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirmed, confirmed, originMap = {}, editable, onChange }: GeographyChipsProps) {
   const [edit, setEdit] = useState<EditState>(null)
   // Initial side derived from the source's existing subject chips (Decision B); 'both' = mixed card
   // (both segments lit, unscoped search), null = neutral empty card (no side lit, typeahead disabled
@@ -243,6 +244,30 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
     : confirmed
       ? <ProvenanceMark kind="human" hue="teal" />
       : null
+  // Slice 1a (read side): per-COUNTRY provenance mark on country chips ONLY. Adds a per-country origin
+  // read for the HUE while preserving subjectMark()'s EXACT behavior — so 1a is a behavioral no-op.
+  //   - originMap[name] === 'human' -> non-clickable teal H (already confirmed).
+  //   - else -> subjectMark()'s body VERBATIM: the same click-to-confirm-as-is amber AI button
+  //     (identical onClick re-emitting the current lists to stamp geography_confirmed=1, identical
+  //     props/classes/title) when editable && aiUnconfirmed; teal H when confirmed; null otherwise.
+  // No writer yet, so every country reads 'ai' this slice -> every country chip is the clickable amber
+  // AI confirm, byte-identical to Slice B. No teal H via origin until 1b writes per-country origins.
+  // Sentinels keep the set-level subjectMark() untouched.
+  const countryMark = (name: string) => originMap[name] === 'human'
+    ? <ProvenanceMark kind="human" hue="teal" />
+    : (editable && aiUnconfirmed)
+      ? (
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); onChange(subject, mentioned, subGeo) }}
+          title="AI-proposed geography — click to confirm"
+        >
+          <ProvenanceMark kind="ai" />
+        </button>
+      )
+      : confirmed
+        ? <ProvenanceMark kind="human" hue="teal" />
+        : null
   const regionalOn = hasSentinel('REGIONAL')
 
   // One mentioned chip (same removeCountry handler verbatim). `editable` only gates the ×
@@ -279,7 +304,7 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
           const editingSub = edit?.mode === 'sub' && edit.country === value
           return (
             <span key={`s-${value}`} className={countryChipClass(value)}>
-              {subjectMark()}
+              {countryMark(value)}
               <Pin />
               <button className="hover:underline" onClick={() => setEdit({ mode: 'sub', country: value, value: '' })} title={`Add a sub-area to ${value}`}>
                 {value}

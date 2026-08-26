@@ -422,6 +422,7 @@ export default function SourceCard({
                     subGeo={core.subGeographies}
                     aiUnconfirmed={geoAiUnconfirmed}
                     confirmed={geoConfirmed}
+                    originMap={core.geographyOrigins}
                     editable={!!onCountriesChange}
                     onChange={onCountriesChange ?? (() => {})}
                   />

@@ -48,6 +48,7 @@ export interface SourceCore {
   subGeographies: Record<string, string[]>
   hasGeo: boolean                        // lists non-empty
   geographyConfirmed: number             // permanent row flag: 0 = AI proposal, 1 = human-confirmed
+  geographyOrigins: Record<string, string>  // Slice 1a: country name -> 'ai'|'human', from analysis_json.human.geography_origins; {} when absent (all read 'ai' until a writer lands)
   region: string | null                  // gate's scalar geography (canonical country, or REGIONAL/GLOBAL sentinel)
 
   // ── actors ──
@@ -136,6 +137,9 @@ export function fromIntelligenceSource(row: IntelligenceSource): SourceCore {
     analysis: { ai, human, routing, reconciled },
     proposedSections: Array.isArray(routing.proposed_sections) ? routing.proposed_sections : [],
     humanRel: (human as { relevance?: string }).relevance,
+    // Slice 1a (read side): per-country geography provenance, modeled on humanRel. asObject guards
+    // to {} when .human.geography_origins is absent, so unknown countries default to 'ai' downstream.
+    geographyOrigins: asObject((human as any).geography_origins) as Record<string, string>,
     articleType: typeof ai.article_type === 'string' ? ai.article_type : undefined,
     incident: resolveIncident(analysis),
     caps: resolveCaps(analysis),
