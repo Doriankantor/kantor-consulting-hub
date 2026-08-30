@@ -89,7 +89,7 @@ interface SourceCardProps {
   core: SourceCore
   children?: ReactNode
   onCountriesChange?: (subject: string[], mentioned: string[], subGeo: Record<string, string[]>, origins: Record<string, string>) => void
-  onActorsChange?: (actors: { name: string; type: string }[]) => void
+  onActorsChange?: (actors: { name: string; type: string; origin?: 'ai' | 'human' }[]) => void
   onIncidentChange?: (value: boolean) => void
   onConfidenceChange?: (value: string) => void
   onRelevanceChange?: (value: string | null) => void

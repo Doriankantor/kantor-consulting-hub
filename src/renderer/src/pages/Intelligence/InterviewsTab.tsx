@@ -201,13 +201,21 @@ export default function InterviewsTab({ onApprove, project = null }: Props) {
     }))
     setCountriesTouched(prev => new Set(prev).add(id))
   }
-  async function handleActors(id: string, next: { name: string; type: string }[]) {
-    await window.api.intelligence.updateActors(id, next)
+  async function handleActors(id: string, next: { name: string; type: string; origin?: 'ai' | 'human' }[]) {
+    const res = await window.api.intelligence.updateActors(id, next)
+    if (!res?.ok) {
+      console.error('[InterviewsTab] updateActors failed — state not updated:', res?.error ?? 'no result')
+      return
+    }
     setInterviews(prev => prev.map(s => s.id === id ? { ...s, actors: JSON.stringify(next) } : s))
     setActorsTouched(prev => new Set(prev).add(id))
   }
   async function handleConfidence(id: string, confidence: string) {
-    await window.api.intelligence.updateConfidence(id, confidence)
+    const res = await window.api.intelligence.updateConfidence(id, confidence)
+    if (!res?.ok) {
+      console.error('[InterviewsTab] updateConfidence failed — state not updated:', res?.error ?? 'no result')
+      return
+    }
     setInterviews(prev => prev.map(s => s.id === id ? { ...s, confidence: confidence as any, confidence_override: 1 } : s))
   }
 

@@ -812,7 +812,13 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   }
 
   async function handleConfidence(id: string, confidence: string) {
-    await window.api.intelligence.updateConfidence(id, confidence)
+    // FIX #3: honor the write result like handleCountries/handleIncident — never patch a false
+    // value that never persisted. updateConfidence returns { ok, error } and no-ops offline.
+    const res = await window.api.intelligence.updateConfidence(id, confidence)
+    if (!res?.ok) {
+      console.error('[NewsTab] updateConfidence failed — state not updated:', res?.error ?? 'no result')
+      return
+    }
     setSources(prev => prev.map(s => s.id === id ? { ...s, confidence: confidence as any, confidence_override: 1 } : s))
   }
 
@@ -923,8 +929,14 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
 
   // Actor-2: researcher edit of the actor axis. Writes the `actors` column (JSON-string) via
   // updateActors. Optimistic: store the JSON string on the row (mirror format). Mirrors handleCountries.
-  async function handleActors(id: string, next: { name: string; type: string }[]) {
-    await window.api.intelligence.updateActors(id, next)
+  async function handleActors(id: string, next: { name: string; type: string; origin?: 'ai' | 'human' }[]) {
+    // FIX #3: honor the write result (mirror handleCountries). FIX #5: origin is a first-class typed
+    // field end to end now — it no longer survives only by JSON.stringify luck.
+    const res = await window.api.intelligence.updateActors(id, next)
+    if (!res?.ok) {
+      console.error('[NewsTab] updateActors failed — state not updated:', res?.error ?? 'no result')
+      return
+    }
     setSources(prev => prev.map(s => s.id === id ? { ...s, actors: JSON.stringify(next) } : s))
     setActorsTouched(prev => new Set(prev).add(id))   // first edit clears the AI badge
   }

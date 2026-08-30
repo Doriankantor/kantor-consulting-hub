@@ -1003,10 +1003,10 @@ interface Window {
       markDuplicate:        (id: string, duplicateOf: string | null) => Promise<{ ok: boolean }>
       // News undo: flip a 'saved' article back to 'unreviewed' (clears the review stamp; no verdict/routing).
       revertToUnreviewed:   (id: string) => Promise<{ ok: boolean; error?: string }>
-      updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean }>
+      updateConfidence:     (id: string, confidence: string)   => Promise<{ ok: boolean; error?: string }>
       updateGeography:      (id: string, geography: string)    => Promise<{ ok: boolean }>
       updateCountries:      (id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>) => Promise<{ ok: boolean; error?: string }>
-      updateActors:         (id: string, actors: { name: string; type: string }[]) => Promise<{ ok: boolean; error?: string }>
+      updateActors:         (id: string, actors: { name: string; type: string; origin?: 'ai' | 'human' }[]) => Promise<{ ok: boolean; error?: string }>
       setProject:           (id: string, boardId: string | null) => Promise<{ ok: boolean }>   // 3a: board-id project association
       routeToProject:       (sourceId: string, boardId: string) => Promise<{ ok: boolean; pageName?: string; error?: string }>   // 3d: Send to New sources
       getKnownTags:         (type: string, boardId: string)              => Promise<string[]>
