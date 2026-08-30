@@ -3704,6 +3704,9 @@ function registerIntelligenceHandlers(): void {
   ipcMain.handle('intelligence:setIncidentFlag', (_e, id: string, value: boolean | null) =>
     intelCloud.setIncidentFlag(id, value))
 
+  ipcMain.handle('intelligence:setGeographyOrigins', (_e, id: string, origins: Record<string, string>) =>
+    intelCloud.setGeographyOrigins(id, origins))
+
   // Human overrides for the AI's extracted KEY FACTS / SYSTEMS. Stored under
   // analysis_json.human.overrides (OUTSIDE .ai) so re-analysis cannot clobber them.
   // patch === null clears that entry. RMW → cloud-only. Offline → { ok:false }.

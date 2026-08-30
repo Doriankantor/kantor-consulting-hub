@@ -892,7 +892,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   // sub-geo). Column write via updateCountries — scalar geography VALUE stays gate-set, but Slice 4a
   // stamps geography_confirmed=1 in the SAME write (implicit confirm: any human edit = confirmation).
   // Optimistic: store the three columns as JSON strings + the confirm flag on the row (mirror format).
-  async function handleCountries(id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>) {
+  async function handleCountries(id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>, origins: Record<string, string>) {
     // Honor the write result: updateCountries returns { ok, error } and no-ops (ok:false) when
     // offline. Do NOT optimistically patch state on failure — a false chip that never persisted is
     // worse than showing the true (unwritten) state. No toast UI in this file, so log + bail.
@@ -901,13 +901,23 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
       console.error('[NewsTab] updateCountries failed — state not updated:', res?.error ?? 'no result')
       return
     }
-    setSources(prev => prev.map(s => s.id === id ? {
-      ...s,
-      subject_countries: JSON.stringify(subject),
-      mentioned_countries: JSON.stringify(mentioned),
-      sub_geographies: JSON.stringify(subGeo),
-      geography_confirmed: 1,   // Slice 4a: mirror the implicit-confirm the write just persisted
-    } : s))
+    // Slice 1b: persist the per-member origin map (SEPARATE writer under analysis_json.human; display-
+    // only, does NOT gate). updateCountries still owns the set-level geography_confirmed flag, unchanged.
+    const originRes = await window.api.intelligence.setGeographyOrigins(id, origins)
+    setSources(prev => prev.map(s => {
+      if (s.id !== id) return s
+      let a: Record<string, unknown> = {}
+      try { a = s.analysis_json ? JSON.parse(s.analysis_json) : {} } catch { a = {} }
+      if (originRes?.ok) { if (originRes.human) a.human = originRes.human; else delete a.human }
+      return {
+        ...s,
+        subject_countries: JSON.stringify(subject),
+        mentioned_countries: JSON.stringify(mentioned),
+        sub_geographies: JSON.stringify(subGeo),
+        geography_confirmed: 1,   // Slice 4a: mirror the implicit-confirm the write just persisted
+        analysis_json: JSON.stringify(a),   // Slice 1b: mirror the origin-map write into .human
+      }
+    }))
     setCountriesTouched(prev => new Set(prev).add(id))   // first edit clears the AI badge
   }
 
@@ -1442,7 +1452,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                   The interactive project-row + gate-error below are injected as children. */}
               <SourceCard
                 core={core}
-                onCountriesChange={(subject, mentioned, subGeo) => handleCountries(source.id, subject, mentioned, subGeo)}
+                onCountriesChange={(subject, mentioned, subGeo, origins) => handleCountries(source.id, subject, mentioned, subGeo, origins)}
                 onActorsChange={next => handleActors(source.id, next)}
                 onIncidentChange={value => handleIncident(source.id, value)}
                 onConfidenceChange={v => handleConfidence(source.id, v)}

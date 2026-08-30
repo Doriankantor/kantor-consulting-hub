@@ -230,19 +230,28 @@ export default function SocialTab({ onApprove, project = null }: Props) {
   // (handleCountries / handleActors / handleConfidence). The writers are type-agnostic;
   // updateCountries stamps geography_confirmed=1 in the SAME write (implicit confirm). Optimistic
   // patches mirror the DB string format; the touched sets clear the amber AI cue on first edit.
-  async function handleCountries(id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>) {
+  async function handleCountries(id: string, subject: string[], mentioned: string[], subGeo: Record<string, string[]>, origins: Record<string, string>) {
     const res = await window.api.intelligence.updateCountries(id, subject, mentioned, subGeo)
     if (!res?.ok) {
       console.error('[SocialTab] updateCountries failed — state not updated:', res?.error ?? 'no result')
       return
     }
-    setPosts(prev => prev.map(s => s.id === id ? {
-      ...s,
-      subject_countries: JSON.stringify(subject),
-      mentioned_countries: JSON.stringify(mentioned),
-      sub_geographies: JSON.stringify(subGeo),
-      geography_confirmed: 1,
-    } : s))
+    // Slice 1b: persist the per-member origin map (separate writer under analysis_json.human; does NOT gate).
+    const originRes = await window.api.intelligence.setGeographyOrigins(id, origins)
+    setPosts(prev => prev.map(s => {
+      if (s.id !== id) return s
+      let a: Record<string, unknown> = {}
+      try { a = s.analysis_json ? JSON.parse(s.analysis_json) : {} } catch { a = {} }
+      if (originRes?.ok) { if (originRes.human) a.human = originRes.human; else delete a.human }
+      return {
+        ...s,
+        subject_countries: JSON.stringify(subject),
+        mentioned_countries: JSON.stringify(mentioned),
+        sub_geographies: JSON.stringify(subGeo),
+        geography_confirmed: 1,
+        analysis_json: JSON.stringify(a),
+      }
+    }))
     setCountriesTouched(prev => new Set(prev).add(id))
   }
   async function handleActors(id: string, next: { name: string; type: string }[]) {
@@ -755,7 +764,7 @@ export default function SocialTab({ onApprove, project = null }: Props) {
                   parity with the badges removed from the header above. */}
               <SourceCard
                 core={core}
-                onCountriesChange={(subject, mentioned, subGeo) => handleCountries(post.id, subject, mentioned, subGeo)}
+                onCountriesChange={(subject, mentioned, subGeo, origins) => handleCountries(post.id, subject, mentioned, subGeo, origins)}
                 onActorsChange={next => handleActors(post.id, next)}
                 onConfidenceChange={v => handleConfidence(post.id, v)}
                 onIncidentChange={v => handleIncident(post.id, v)}

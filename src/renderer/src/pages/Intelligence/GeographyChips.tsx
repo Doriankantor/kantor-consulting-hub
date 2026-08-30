@@ -26,7 +26,32 @@ export interface GeographyChipsProps {
   confirmed?: boolean                 // Slice B: geography_confirmed === 1 -> show the teal human H
   originMap?: Record<string, string>  // Slice 1a: per-country provenance (name -> 'ai'|'human'); optional so non-News callers compile untouched. Absent/unknown -> 'ai'.
   editable: boolean                   // Slice 2b: read mounts get flat mentioned chips (no ×/add)
-  onChange: (subject: string[], mentioned: string[], subGeo: Record<string, string[]>) => void
+  // Slice 1b: onChange now also carries the recomputed per-member origin map (name -> 'human'; pruned to
+  // current subject members, absence = 'ai'). The host fires updateCountries (lists + set-level flag) AND
+  // setGeographyOrigins (the map) from it. Computed in GeographyChips via nextOrigins (single source).
+  onChange: (subject: string[], mentioned: string[], subGeo: Record<string, string[]>, origins: Record<string, string>) => void
+}
+
+// Slice 1b: compute the pruned per-member origin map for the NEXT subject list. Keys ONLY for members
+// currently in nextSubject; the value is always 'human' (absence = 'ai'). Removed members (in prev, not
+// in next) are naturally absent -> pruned. Keys are the raw member strings (countries AND sentinels).
+//   - forced (explicit confirm click) -> 'human'
+//   - member NOT in prevSubject (human-ADDED this edit) -> 'human'  (2-wide)
+//   - prevOrigins[member] === 'human' -> preserved
+//   - else omitted (defaults to 'ai')
+export function nextOrigins(
+  prevOrigins: Record<string, string>,
+  prevSubject: string[],
+  nextSubject: string[],
+  forcedHumanKeys: string[] = [],
+): Record<string, string> {
+  const prevSet = new Set(prevSubject)
+  const forced = new Set(forcedHumanKeys)
+  const out: Record<string, string> = {}
+  for (const m of nextSubject) {
+    if (forced.has(m) || !prevSet.has(m) || prevOrigins[m] === 'human') out[m] = 'human'
+  }
+  return out
 }
 
 // ── chip styles ───────────────────────────────────────────────────────────────────────────────
@@ -157,8 +182,14 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
   }
 
   // ── whole-state mutations (each rebuilds all three and emits) ───────────────────────────────
+  // Slice 1b: every mutation routes through emit(), which recomputes the pruned per-member origin map
+  // from the PREV props (originMap, subject) and the NEXT subject, then emits it alongside the lists.
+  // forced = members to force to 'human' (the per-chip confirm click); a plain edit passes none, so a
+  // newly-added member becomes 'human' (2-wide) and existing members keep their prior origin.
+  const emit = (nextSubject: string[], nextMentioned: string[], nextSubGeo: Record<string, string[]>, forced: string[] = []) =>
+    onChange(nextSubject, nextMentioned, nextSubGeo, nextOrigins(originMap, subject, nextSubject, forced))
   const pickCountry = (name: string) => {
-    onChange(dedupe([...subject, name]), without(mentioned, name), subGeo)
+    emit(dedupe([...subject, name]), without(mentioned, name), subGeo)
     setQuery(''); setOpen(false)
   }
   const addMentioned = (name: string) => {
@@ -166,33 +197,33 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
     const nextSub = without(subject, n)
     const nextSubGeo = { ...subGeo }
     for (const k of Object.keys(nextSubGeo)) if (k.toLowerCase() === n.toLowerCase()) delete nextSubGeo[k]
-    onChange(nextSub, dedupe([...mentioned, n]), nextSubGeo); close()
+    emit(nextSub, dedupe([...mentioned, n]), nextSubGeo); close()
   }
   const removeCountry = (name: string, list: 'subject' | 'mentioned') => {
     if (list === 'subject') {
       const nextSubGeo = { ...subGeo }
       for (const k of Object.keys(nextSubGeo)) if (k.toLowerCase() === name.toLowerCase()) delete nextSubGeo[k]
-      onChange(without(subject, name), mentioned, nextSubGeo)
+      emit(without(subject, name), mentioned, nextSubGeo)
     } else {
-      onChange(subject, without(mentioned, name), subGeo)
+      emit(subject, without(mentioned, name), subGeo)
     }
   }
   const addSub = (country: string, area: string) => {
     const a = area.trim(); if (!a) { close(); return }
     const cur = subGeo[country] ?? []
-    onChange(subject, mentioned, { ...subGeo, [country]: dedupe([...cur, a]) }); close()
+    emit(subject, mentioned, { ...subGeo, [country]: dedupe([...cur, a]) }); close()
   }
   const removeSub = (country: string, area: string) => {
     const nextArr = without(subGeo[country] ?? [], area)
     const next = { ...subGeo }
     if (nextArr.length) next[country] = nextArr; else delete next[country]
-    onChange(subject, mentioned, next)
+    emit(subject, mentioned, next)
   }
   // Level toggle: add/remove a sentinel value in subject[]. STORAGE stays the sentinel string.
   const hasSentinel = (s: Sentinel): boolean => subject.some(v => asSentinel(v) === s)
   const toggleSentinel = (s: Sentinel) => {
-    if (hasSentinel(s)) onChange(subject.filter(v => asSentinel(v) !== s), mentioned, subGeo)
-    else onChange(dedupe([...subject, s]), without(mentioned, s), subGeo)
+    if (hasSentinel(s)) emit(subject.filter(v => asSentinel(v) !== s), mentioned, subGeo)
+    else emit(dedupe([...subject, s]), without(mentioned, s), subGeo)
   }
 
   // inline input (sub-area + mentioned) — commit on Enter, cancel on Escape.
@@ -223,51 +254,33 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
         .slice(0, MAX_SUGGESTIONS)
   const useLabel = (n: number) => (n === 0 ? 'new' : `${n} use${n === 1 ? '' : 's'}`)
 
-  // CONFIRM-PROVENANCE Slice B (fixes bug B1): the geography provenance mark, LEADING each SUBJECT chip
-  // (this slice the flag is set-level, so every subject chip shows the same mark; per-country origin is
-  // the next slice). Unconfirmed AI proposal on an EDITABLE mount -> a click-to-confirm amber AI button;
-  // its onClick re-emits the row's CURRENT UNCHANGED lists (never empty/partial) via onChange ->
-  // handleCountries -> updateCountries, stamping geography_confirmed=1 (optimistic patch flips it at
-  // once), and stopPropagation so confirming never opens the chip-body sub-area editor. Confirmed ->
-  // a non-clickable teal H. Mentioned chips get NO mark; ghost +mentioned/+region/+Global never count.
-  // Returns a fresh node per call so it can lead multiple chips.
-  const subjectMark = () => (editable && aiUnconfirmed)
-    ? (
-      <button
-        type="button"
-        onClick={e => { e.stopPropagation(); onChange(subject, mentioned, subGeo) }}
-        title="AI-proposed geography — click to confirm"
-      >
-        <ProvenanceMark kind="ai" />
-      </button>
-    )
-    : confirmed
-      ? <ProvenanceMark kind="human" hue="teal" />
-      : null
-  // Slice 1a (read side): per-COUNTRY provenance mark on country chips ONLY. Adds a per-country origin
-  // read for the HUE while preserving subjectMark()'s EXACT behavior — so 1a is a behavioral no-op.
-  //   - originMap[name] === 'human' -> non-clickable teal H (already confirmed).
-  //   - else -> subjectMark()'s body VERBATIM: the same click-to-confirm-as-is amber AI button
-  //     (identical onClick re-emitting the current lists to stamp geography_confirmed=1, identical
-  //     props/classes/title) when editable && aiUnconfirmed; teal H when confirmed; null otherwise.
-  // No writer yet, so every country reads 'ai' this slice -> every country chip is the clickable amber
-  // AI confirm, byte-identical to Slice B. No teal H via origin until 1b writes per-country origins.
-  // Sentinels keep the set-level subjectMark() untouched.
+  // CONFIRM-PROVENANCE geography mark, LEADING each SUBJECT member chip (countries AND sentinels — they
+  // are subject-array peers as of slice 1b/Part D). PER-MEMBER origin is the SOLE source of truth for a
+  // chip's mark — it does NOT fall back to the set-level geography_confirmed flag (doing so leaked: once
+  // ANY chip was confirmed the flag flipped to 1 and every other chip falsely rendered a teal H). Reads
+  // this member's origin from originMap (name -> 'human'; absence = 'ai'):
+  //   - originMap[name] === 'human' -> non-clickable teal H (THIS member confirmed).
+  //   - else editable -> clickable amber AI = confirm-as-is. onClick re-emits the row's CURRENT UNCHANGED
+  //     lists (so updateCountries still stamps the set-level geography_confirmed=1, which still gates via
+  //     canRoute) AND, via emit's forced key, stamps THIS member 'human' in the origin map. stopProp so
+  //     confirming never opens the chip-body sub-area editor.
+  //   - else null (read-only mount). Mentioned chips get NO mark; ghost +mentioned/+region/+Global never count.
+  // Legacy rows with geography_confirmed=1 but no origin map show amber AI chips (accurate: no per-chip
+  // review happened). Returns a fresh node per call so it can lead multiple chips.
   const countryMark = (name: string) => originMap[name] === 'human'
     ? <ProvenanceMark kind="human" hue="teal" />
-    : (editable && aiUnconfirmed)
+    : editable
       ? (
         <button
           type="button"
-          onClick={e => { e.stopPropagation(); onChange(subject, mentioned, subGeo) }}
+          className="inline-flex items-center px-0.5 -mx-0.5 py-0.5 -my-0.5"
+          onClick={e => { e.stopPropagation(); emit(subject, mentioned, subGeo, [name]) }}
           title="AI-proposed geography — click to confirm"
         >
           <ProvenanceMark kind="ai" />
         </button>
       )
-      : confirmed
-        ? <ProvenanceMark kind="human" hue="teal" />
-        : null
+      : null
   const regionalOn = hasSentinel('REGIONAL')
 
   // One mentioned chip (same removeCountry handler verbatim). `editable` only gates the ×
@@ -294,7 +307,7 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
             // level sentinel — accent chip, globe, NOT sub-drillable
             return (
               <span key={`x-${value}`} className={ACCENT_CHIP} title={`${sentinelLabel(sent)} level (stored as ${sent})`}>
-                {subjectMark()}
+                {countryMark(value)}
                 <Globe />{sentinelLabel(sent)}
                 <button onClick={() => removeCountry(value, 'subject')} className="ml-0.5 opacity-60 hover:opacity-100" title={`Remove ${sentinelLabel(sent)}`}><XGlyph /></button>
               </span>

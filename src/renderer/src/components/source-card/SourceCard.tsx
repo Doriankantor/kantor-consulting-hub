@@ -25,7 +25,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import SectionProposalBadge from '../../pages/Intelligence/SectionProposalBadge'
-import GeographyChips from '../../pages/Intelligence/GeographyChips'
+import GeographyChips, { nextOrigins } from '../../pages/Intelligence/GeographyChips'
 import ActorChips from '../../pages/Intelligence/ActorChips'
 import TagPicker from '../../pages/Intelligence/TagPicker'
 import IncidentChip from './IncidentChip'
@@ -88,7 +88,7 @@ function formatDate(dateStr: string | null) {
 interface SourceCardProps {
   core: SourceCore
   children?: ReactNode
-  onCountriesChange?: (subject: string[], mentioned: string[], subGeo: Record<string, string[]>) => void
+  onCountriesChange?: (subject: string[], mentioned: string[], subGeo: Record<string, string[]>, origins: Record<string, string>) => void
   onActorsChange?: (actors: { name: string; type: string }[]) => void
   onIncidentChange?: (value: boolean) => void
   onConfidenceChange?: (value: string) => void
@@ -397,7 +397,7 @@ export default function SourceCard({
                     falls false and this disappears, replaced by the normal confirmed-country chip. */}
                 {showGateGeoChip && (
                   <button
-                    onClick={() => onCountriesChange?.([gateSuggestion], core.mentionedCountries, core.subGeographies)}
+                    onClick={() => onCountriesChange?.([gateSuggestion], core.mentionedCountries, core.subGeographies, nextOrigins(core.geographyOrigins, core.subjectCountries, [gateSuggestion]))}
                     className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-amber-300 dark:border-amber-500/30 bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-500/25 transition"
                     title={`Gate proposed "${gateSuggestion}" from the title/snippet -- click to confirm as a subject country`}
                   >

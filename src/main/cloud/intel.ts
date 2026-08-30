@@ -501,6 +501,29 @@ export async function setIncidentFlag(id: string, value: boolean | null): Promis
   return { ok: true, human: analysis.human ?? null }
 }
 
+// Geo slice 1b: per-COUNTRY geography provenance, stored as a name->'human' map under
+// analysis_json.human.geography_origins (parallel to human.incident) so re-running Analyze — which
+// replaces analysis.ai WHOLESALE — can never clobber it. Modeled EXACTLY on setIncidentFlag: read
+// CLOUD (never the mirror), merge the one key, preserve every sibling (.ai / .routing / .reconciled /
+// .human.relevance / .human.incident / .human.overrides), then resync the mirror. The CALLER computes
+// AND prunes the full map (keys only for members currently in the subject list, only 'human' entries);
+// the writer just persists it. Empty map -> the key is deleted (every member defaults to 'ai').
+export async function setGeographyOrigins(id: string, origins: Record<string, string>): Promise<{ ok: boolean; human?: unknown; error?: string }> {
+  if (!isOnline()) return OFFLINE
+  const r = await readCloudAnalysis(id)
+  if (!r.ok) return { ok: false, error: r.error }
+  const analysis = r.analysis!
+  const human = (analysis.human && typeof analysis.human === 'object') ? analysis.human as Record<string, unknown> : {}
+  if (origins && Object.keys(origins).length) human.geography_origins = origins
+  else delete human.geography_origins
+  if (Object.keys(human).length) analysis.human = human
+  else delete analysis.human
+  const { error } = await cloud.from('intelligence_sources').update({ analysis_json: JSON.stringify(analysis) }).eq('id', id)
+  if (error) return { ok: false, error: `setGeographyOrigins failed: ${error.message}` }
+  await resyncRow(id)
+  return { ok: true, human: analysis.human ?? null }
+}
+
 // Human overrides for the AI's extracted KEY FACTS + SYSTEMS. Stored OUTSIDE analysis.ai
 // (under analysis.human.overrides) so re-running Analyze — which replaces analysis.ai
 // WHOLESALE (see saveAiAnalysis) — can never clobber a researcher's correction. Modeled
