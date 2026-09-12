@@ -1,0 +1,807 @@
+{
+  "reason": "culled-insert-error: Gateway Timeout",
+  "savedAt": "2026-09-12T10:35:06.890Z",
+  "rows": [
+    {
+      "title": "Oil Pulls Back but Middle East Risk Holds WTI Near $100",
+      "url": "https://www.riotimesonline.com/oil-markets-latam-saturday-september-12-2026/",
+      "source_name": "riotimesonline.com",
+      "published_at": "2026-09-12T07:00:00Z",
+      "content_snippet": "Oil Pulls Back but Middle East Risk Holds WTI Near $100",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about oil prices and Middle East geopolitical risk; contains no mention of drones, UAS, or UAV systems. No Latin American country involvement. Topic is commodity markets, not drone/UAS intelligence.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[],\"summary\":\"Article discusses crude oil price movements and geopolitical risk in the Middle East; entirely unrelated to Latin American drone activity.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch1 (CO VE EC PE BR)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Cuando la muerte cae del cielo",
+      "url": "https://www.semana.com/opinion/articulo/cuando-la-muerte-cae-del-cielo/202625/",
+      "source_name": "semana.com",
+      "published_at": "2026-09-12T06:00:00Z",
+      "content_snippet": "Cuando la muerte cae del cielo",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "low",
+      "claude_analysis": "{\"q1_about_drones\":\"unknown\",\"q2_latam_country\":\"unknown\",\"q3_main_topic\":\"unknown\",\"primary_category\":null,\"confidence_suggestion\":\"low\",\"confidence_reasoning\":\"Article title 'Cuando la muerte cae del cielo' (When death falls from the sky) is suggestive of drone/aerial attack content, but no article snippet content was provided beyond the title and source. Cannot determine if the article discusses drones, which Latin American country is involved, or if drones are the main topic without access to the body text.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[],\"summary\":\"Insufficient data to categorize; only title and source provided without article content.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch1 (CO VE EC PE BR)",
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Anthropic identifica e bloqueia tentativas de uso  malicioso  do Claude para desenvolver armas , incluindo biológicas",
+      "url": "https://oglobo.globo.com/mundo/noticia/2026/09/11/anthropic-identifica-e-bloqueia-tentativas-de-uso-malicioso-do-claude-para-desenvolver-armas-incluindo-biologicas.ghtml",
+      "source_name": "oglobo.globo.com",
+      "published_at": "2026-09-12T02:00:00Z",
+      "content_snippet": "Anthropic identifica e bloqueia tentativas de uso  malicioso  do Claude para desenvolver armas , incluindo biológicas",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about AI safety measures by Anthropic (a US company) regarding misuse of their Claude language model for weapons development. No drones, UAS, or UAV systems are mentioned. No Latin American country is involved. This is a cybersecurity/AI ethics story, not a Latin American drone intelligence story.\",\"relevance_score\":0,\"key_actors\":[\"Anthropic\",\"Claude (AI model)\"],\"countries\":[],\"summary\":\"Anthropic reports blocking malicious attempts to use Claude AI for developing weapons including biological weapons; no drone or Latin America content.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch1 (CO VE EC PE BR)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Arena Impacto mostra como as novas tecnologias já estão mudando os negócios",
+      "url": "https://globorural.globo.com/conteudo-de-marca/solinftec/noticia/2026/09/arena-impacto-mostra-como-as-novas-tecnologias-ja-estao-mudando-os-negocios.ghtml",
+      "source_name": "globorural.globo.com",
+      "published_at": "2026-09-11T23:00:00Z",
+      "content_snippet": "Arena Impacto mostra como as novas tecnologias já estão mudando os negócios",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"yes\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article title and snippet are generic about 'new technologies' changing business, with no mention of drones, UAS, UAVs, or any unmanned systems. The source is globorural.globo.com (agricultural/rural business focus), suggesting this is about general technology adoption in agriculture/business, not drone-specific content.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[\"Brazil\"],\"summary\":\"Generic article about new technologies transforming business, with no drone or UAS content detected.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch1 (CO VE EC PE BR)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Zelensky insta EUA a impor sanes à Rússia após novos ataques",
+      "url": "http://www.em.com.br/internacional/2026/09/7498813-zelensky-insta-eua-a-impor-sancoes-a-russia-apos-novos-ataques.html",
+      "source_name": "em.com.br",
+      "published_at": "2026-09-11T20:15:00Z",
+      "content_snippet": "Zelensky insta EUA a impor sanes à Rússia após novos ataques",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about Ukraine-Russia conflict and US sanctions policy. No mention of drones, UAS, or UAV systems. No Latin American country involvement. This is geopolitical coverage of the Russia-Ukraine war, completely outside the scope of a Latin America drone intelligence database.\",\"relevance_score\":0,\"key_actors\":[\"Zelensky\",\"USA\",\"Russia\"],\"countries\":[\"Ukraine\",\"Russia\",\"USA\"],\"summary\":\"Zelensky urges the USA to impose sanctions on Russia following new attacks - unrelated to Latin American drone activity.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch1 (CO VE EC PE BR)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Primeiro Censo de primatas encontra 6 espécies em Mato Grosso",
+      "url": "https://g1.globo.com/mt/mato-grosso/noticia/2026/09/11/primeiro-censo-de-primatas-encontra-especies-ameacadas-de-extincao-em-espacos-urbanos-de-mt-conheca.ghtml",
+      "source_name": "g1.globo.com",
+      "published_at": "2026-09-11T20:15:00Z",
+      "content_snippet": "Primeiro Censo de primatas encontra 6 espécies em Mato Grosso",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"yes\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about a primate census in Mato Grosso, Brazil. While it may mention drones as a tool for wildlife surveying, the primary topic is primatology/biodiversity research, not drone systems or their use in Latin America.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[\"Brazil\"],\"summary\":\"A primate census documenting six species found in Mato Grosso, Brazil has no substantive connection to drone intelligence or Latin American UAS activity.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch1 (CO VE EC PE BR)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "India and Russia are building something big in space",
+      "url": "http://www.venezuelastar.com/news/279300639/india-and-russia-are-building-something-big-in-space",
+      "source_name": "venezuelastar.com",
+      "published_at": "2026-09-11T19:00:00Z",
+      "content_snippet": "India and Russia are building something big in space",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about India and Russia space cooperation, not about drones/UAS. Venezuela is mentioned only as the source domain (venezuelastar.com), not as the article subject. No Latin American country is actually involved in the content.\",\"relevance_score\":0,\"key_actors\":[\"India\",\"Russia\"],\"countries\":[],\"summary\":\"Article discusses India-Russia space cooperation, which is not relevant to Latin American drone intelligence.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch1 (CO VE EC PE BR)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Anthropic bloqueia pesquisa de arma , ataque russo e uso indevido do Claude por China",
+      "url": "https://www.infomoney.com.br/mundo/anthropic-bloqueia-pesquisa-de-arma-ataque-russo-e-uso-indevido-do-claude-por-china/",
+      "source_name": "infomoney.com.br",
+      "published_at": "2026-09-11T16:45:00Z",
+      "content_snippet": "Anthropic bloqueia pesquisa de arma , ataque russo e uso indevido do Claude por China",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about Anthropic's AI safety policies blocking research on weapons, Russian attacks, and Chinese misuse of Claude AI. No mention of drones, UAS, or UAV systems. No Latin American country involvement. This is a technology policy/AI ethics article, not a drone intelligence article.\",\"relevance_score\":0,\"key_actors\":[\"Anthropic\",\"Claude\"],\"countries\":[],\"summary\":\"Anthropic blocks weapon research, Russian attacks, and Chinese misuse of its Claude AI model—unrelated to Latin American drone activity.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch1 (CO VE EC PE BR)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Diretor do Iapen diz que briga de detentos com morte e feridos pode ter relao com grupos rivais – Diário do Amap",
+      "url": "https://www.diariodoamapa.com.br/cadernos/policia/diretor-do-iapen-diz-que-briga-de-detentos-com-morte-e-feridos-pode-ter-relacao-com-grupos-rivais/",
+      "source_name": "diariodoamapa.com.br",
+      "published_at": "2026-09-11T16:00:00Z",
+      "content_snippet": "Diretor do Iapen diz que briga de detentos com morte e feridos pode ter relao com grupos rivais – Diário do Amap",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"yes\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about a prison fight/riot between detainees and rival groups in Amapá, Brazil. No mention of drones, UAS, or UAV systems. This is a general crime/prison security story unrelated to drone technology.\",\"relevance_score\":0,\"key_actors\":[\"Iapen Director\",\"Prison detainees\",\"Rival groups\"],\"countries\":[\"Brazil\"],\"summary\":\"Prison director in Amapá, Brazil comments on a detainee fight possibly related to rival gangs, with no connection to drone technology.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch1 (CO VE EC PE BR)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Perito cita queda violenta de avião  quase na vertical  em Mato Grosso ; identificao de 3 vítimas será por DNA",
+      "url": "https://www.sonoticias.com.br/geral/perito-cita-queda-violenta-e-diz-que-aviao-caiu-quase-na-vertical-em-mt-identificacao-das-vitimas-sera-por-dna/",
+      "source_name": "sonoticias.com.br",
+      "published_at": "2026-09-11T15:30:00Z",
+      "content_snippet": "Perito cita queda violenta de avião  quase na vertical  em Mato Grosso ; identificao de 3 vítimas será por DNA",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"yes\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about a plane crash in Mato Grosso, Brazil. No mention of drones, UAS, or UAV systems. This is an aviation accident investigation, not drone-related content.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[\"Brazil\"],\"summary\":\"Article reports on a violent plane crash in Mato Grosso with DNA identification needed for victims; contains no drone or UAS content.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch1 (CO VE EC PE BR)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Rio Nightlife Tonight : Stray Kids at Rock in Rio",
+      "url": "https://www.riotimesonline.com/rio-de-janeiro-nightlife-tonight-september-11-2026/",
+      "source_name": "riotimesonline.com",
+      "published_at": "2026-09-11T14:30:00Z",
+      "content_snippet": "Rio Nightlife Tonight : Stray Kids at Rock in Rio",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"yes\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about a K-pop concert (Stray Kids) at Rock in Rio music festival in Brazil. Contains no discussion of drones, UAS, or UAV systems whatsoever. Fails gate question 1.\",\"relevance_score\":0,\"key_actors\":[\"Stray Kids\"],\"countries\":[\"Brazil\"],\"summary\":\"Entertainment news article about a K-pop band performing at Rock in Rio music festival; entirely unrelated to drone or UAS activity.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch1 (CO VE EC PE BR)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "EE . UU . recordó el día que cambió su historia : Trump eligió ir al Pentágono y no participó de actos en Zona Cero",
+      "url": "https://www.elpais.com.uy/mundo/estados-unidos/ee-uu-recordo-el-dia-que-cambio-su-historia-trump-eligio-ir-al-pentagono-y-no-participo-de-actos-en-zona-cero",
+      "source_name": "elpais.com.uy",
+      "published_at": "2026-09-12T08:00:00Z",
+      "content_snippet": "EE . UU . recordó el día que cambió su historia : Trump eligió ir al Pentágono y no participó de actos en Zona Cero",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"yes\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about Trump's decision to visit the Pentagon on 9/11 commemoration rather than Ground Zero. No drone or UAS content is present in title or snippet. Solely a political/historical commemoration article.\",\"relevance_score\":0,\"key_actors\":[\"Trump\"],\"countries\":[\"Uruguay\"],\"summary\":\"Article discusses Trump's 9/11 commemoration decisions and has no connection to drone or UAS systems in Latin America.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch2 (BL PA UY AR CI)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Tras un rastrillaje de 30 kilómetros , hallaron decenas de animales robados y una moto",
+      "url": "https://www.elsol.com.ar/policiales/tras-un-rastrillaje-de-30-kilometros-hallaron-decenas-de-animales-robados-y-una-moto/",
+      "source_name": "elsol.com.ar",
+      "published_at": "2026-09-11T21:30:00Z",
+      "content_snippet": "Tras un rastrillaje de 30 kilómetros , hallaron decenas de animales robados y una moto",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"yes\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article title and snippet describe a 30-kilometer search operation that recovered stolen animals and a motorcycle in Argentina. No mention of drones, UAS, or UAV systems in the available text. This is a general law enforcement/animal theft story.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[\"Argentina\"],\"summary\":\"Police conducted a 30-kilometer search operation in Argentina and recovered stolen livestock and a motorcycle, with no drone involvement mentioned.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch2 (BL PA UY AR CI)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "En 1825 sacaron un árbol de de América del Sur para alimentar a la población y hoy lo quieren parar con drones",
+      "url": "https://www.diariouno.com.ar/sociedad/en-1825-sacaron-un-arbol-de-america-del-sur-alimentar-la-poblacion-y-hoy-lo-quieren-parar-drones-n1594984",
+      "source_name": "diariouno.com.ar",
+      "published_at": "2026-09-11T21:00:00Z",
+      "content_snippet": "En 1825 sacaron un árbol de de América del Sur para alimentar a la población y hoy lo quieren parar con drones",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"yes\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article title mentions 'drones' but the content appears to be about a tree species from South America (likely referring to a historical agricultural/botanical topic from 1825) with only a vague reference to modern drone use. The snippet does not provide sufficient evidence that drones are the primary subject matter—this appears to be a clickbait headline with minimal actual drone content.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[\"Argentina\"],\"summary\":\"Article discusses a South American tree species from 1825 with an unclear modern connection to drones; insufficient drone/UAS intelligence content for database inclusion.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch2 (BL PA UY AR CI)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Un matrimonio y sus hijas de 8 y 12 años mueren asesinados en un ataque israelí a una casa en Gaza",
+      "url": "https://diariosanrafael.com.ar/un-matrimonio-y-sus-hijas-de-8-y-12-anos-mueren-asesinados-en-un-ataque-israeli-a-una-casa-en-gaza/",
+      "source_name": "diariosanrafael.com.ar",
+      "published_at": "2026-09-11T20:15:00Z",
+      "content_snippet": "Un matrimonio y sus hijas de 8 y 12 años mueren asesinados en un ataque israelí a una casa en Gaza",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about an Israeli military attack on Gaza with no mention of drones, UAS, or UAV systems. Gaza is in the Middle East, not Latin America. Does not meet any of the three gate criteria.\",\"relevance_score\":0,\"key_actors\":[\"Israel\",\"civilians in Gaza\"],\"countries\":[\"Gaza/Palestine\",\"Israel\"],\"summary\":\"Reports on civilian casualties from an Israeli military strike in Gaza with no drone or Latin American connection.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch2 (BL PA UY AR CI)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "India and Russia are building something big in space",
+      "url": "http://www.argentinastar.com/news/279300639/india-and-russia-are-building-something-big-in-space",
+      "source_name": "argentinastar.com",
+      "published_at": "2026-09-11T14:45:00Z",
+      "content_snippet": "India and Russia are building something big in space",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article title indicates focus on India-Russia space cooperation, not Latin American drone/UAS activity. No Latin American countries are mentioned in the snippet, and the content is about space programs, not drones or UAS systems.\",\"relevance_score\":0,\"key_actors\":[\"India\",\"Russia\"],\"countries\":[],\"summary\":\"Article discusses India-Russia space cooperation and is not relevant to Latin American drone intelligence.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch2 (BL PA UY AR CI)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Agenda informativa : se cumple una semana de la explosión en el Regimiento Bolívar de Viacha",
+      "url": "https://eju.tv/2026/09/agenda-informativa-se-cumple-una-semana-de-la-explosion-en-el-regimiento-bolivar-de-viacha/",
+      "source_name": "eju.tv",
+      "published_at": "2026-09-11T14:30:00Z",
+      "content_snippet": "Agenda informativa : se cumple una semana de la explosión en el Regimiento Bolívar de Viacha",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"yes\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about an explosion at a military regiment in Bolivia. No mention of drones, UAS, or UAV systems in the title or snippet. This is a general news item about a military incident, not drone-related intelligence.\",\"relevance_score\":0,\"key_actors\":[\"Regimiento Bolívar\"],\"countries\":[\"Bolivia\"],\"summary\":\"News coverage of an explosion at the Regimiento Bolívar in Viacha, Bolivia - unrelated to drone activity.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch2 (BL PA UY AR CI)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Intruso felino : llamó al 911 por ruidos en su casa y la policía encontró un lince en la escalera",
+      "url": "https://www.rosario3.com/informaciongeneral/intruso-felino-llamo-al-911-por-ruidos-en-su-casa-y-la-policia-encontro-un-lince-en-la-escalera-20260902-0039.html",
+      "source_name": "rosario3.com",
+      "published_at": "2026-09-11T12:00:00Z",
+      "content_snippet": "Intruso felino : llamó al 911 por ruidos en su casa y la policía encontró un lince en la escalera",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"yes\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about a lynx found in someone's house during a police response to a 911 call. No drone, UAS, or UAV systems are mentioned or discussed. This is a wildlife/police incident story, not related to drone technology.\",\"relevance_score\":0,\"key_actors\":[\"police\",\"homeowner\"],\"countries\":[\"Argentina\"],\"summary\":\"Police respond to a 911 call about noises in a house and discover a lynx on the staircase.\"}",
+      "status": "culled",
+      "source_stream": [
+        "batch2 (BL PA UY AR CI)"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Australia - China university collaborations under the microscope",
+      "url": "https://independentaustralia.net/politics/politics-display/australia-china-university-collaborations-under-the-microscope,21547",
+      "source_name": "independentaustralia.net",
+      "published_at": "2026-09-12T09:15:00Z",
+      "content_snippet": "Australia - China university collaborations under the microscope",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about Australia-China university collaborations and does not discuss drones, UAS, or UAV systems. No Latin American countries are involved. Article is geographically and topically irrelevant to a Latin America drone intelligence database.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[],\"summary\":\"Not applicable - article concerns Australia-China academic partnerships with no drone or Latin American content.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "BRICS meets in India : What on the agenda , why it matters - Dominican Republic Post – Caribbean News , Business , Travel & Culture",
+      "url": "https://dominicanrepublicpost.com/brics-meets-in-india-whats-on-the-agenda-why-it-matters/",
+      "source_name": "dominicanrepublicpost.com",
+      "published_at": "2026-09-12T09:15:00Z",
+      "content_snippet": "BRICS meets in India : What on the agenda , why it matters - Dominican Republic Post – Caribbean News , Business , Travel & Culture",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"yes\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about BRICS summit meeting in India. No mention of drones, UAS, or UAV systems in title or snippet. Dominican Republic is mentioned only as the source publication location, not as article subject matter.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[],\"summary\":\"Article covers BRICS geopolitical meeting agenda in India; contains no drone or UAS content.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "BRICS meets in India : What on the agenda , why it matters | News",
+      "url": "https://www.aljazeera.com/news/2026/9/12/brics-meets-in-india-whats-on-the-agenda-why-it-matters",
+      "source_name": "aljazeera.com",
+      "published_at": "2026-09-12T07:15:00Z",
+      "content_snippet": "BRICS meets in India : What on the agenda , why it matters | News",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about BRICS summit meeting in India; no mention of drones, UAS, or UAV systems; no Latin American country focus; completely off-topic for a Latin America drone intelligence database.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[],\"summary\":\"BRICS meeting in India - unrelated to Latin American drone activity or UAS systems.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "How Anthropic says Claude was used for weapons , spying and cyber operations",
+      "url": "https://www.asiaone.com:443/digital/how-anthropic-says-claude-was-used-weapons-spying-and-cyber-operations",
+      "source_name": "asiaone.com",
+      "published_at": "2026-09-12T07:15:00Z",
+      "content_snippet": "How Anthropic says Claude was used for weapons , spying and cyber operations",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about misuse of an AI language model (Claude by Anthropic) for weapons, spying, and cyber operations. It does not discuss drones, UAS, or UAV systems. No Latin American country is mentioned in the title or snippet provided. This is an AI safety/security article, not a drone intelligence article.\",\"relevance_score\":0,\"key_actors\":[\"Anthropic\",\"Claude\"],\"countries\":[],\"summary\":\"Article discusses misuse of AI language model Claude for weapons, spying, and cyber operations—not relevant to Latin American drone intelligence.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "How Anthropic says Claude was used for weapons , spying and cyber operations",
+      "url": "https://www.asiaone.com/digital/how-anthropic-says-claude-was-used-weapons-spying-and-cyber-operations",
+      "source_name": "asiaone.com",
+      "published_at": "2026-09-12T06:00:00Z",
+      "content_snippet": "How Anthropic says Claude was used for weapons , spying and cyber operations",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about misuse of an AI language model (Claude by Anthropic) for weapons, spying, and cyber operations. It does not discuss drones, UAS, or UAV systems at all. No Latin American country is mentioned in the title or snippet. This is a cybersecurity/AI ethics article, not a drone intelligence article.\",\"relevance_score\":0,\"key_actors\":[\"Anthropic\",\"Claude\"],\"countries\":[],\"summary\":\"Article discusses alleged misuse of Anthropic's Claude AI for weapons development, espionage, and cyber operations - unrelated to drone or UAS activity in Latin America.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "25 anos depois , o mundo aprendeu com o 11 de Setembro ? ",
+      "url": "https://observador.pt/programas/5-continentes/25-anos-depois-o-mundo-aprendeu-com-o-11-de-setembro/",
+      "source_name": "observador.pt",
+      "published_at": "2026-09-12T05:45:00Z",
+      "content_snippet": "25 anos depois , o mundo aprendeu com o 11 de Setembro ? ",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article title translates to '25 years later, did the world learn from 9/11?' This is a commemorative/reflective piece about the September 11 attacks. No mention of drones, UAS, or UAV systems in the snippet. Source is Portuguese (observador.pt, Portugal-based outlet), not a Latin American publication. Article does not concern Latin American drone activity.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[],\"summary\":\"Not relevant—article is a retrospective commentary on 9/11 with no connection to drones or Latin America.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "PLA Purge May Be Driving China To Rely More On Military Pressure Against Taiwan : Analysts",
+      "url": "https://www.zerohedge.com/geopolitical/pla-purge-may-be-driving-china-rely-more-military-pressure-against-taiwan-analysts",
+      "source_name": "zerohedge.com",
+      "published_at": "2026-09-12T04:30:00Z",
+      "content_snippet": "PLA Purge May Be Driving China To Rely More On Military Pressure Against Taiwan : Analysts",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about PLA purges and China-Taiwan military tensions. No mention of drones, UAS, or UAV systems. No Latin American countries involved. Topic is geopolitical analysis of Chinese military leadership changes and their impact on cross-strait military pressure.\",\"relevance_score\":0,\"key_actors\":[\"PLA (People's Liberation Army)\",\"China\",\"Taiwan\"],\"countries\":[],\"summary\":\"Geopolitical analysis of Chinese military leadership purges and their potential impact on military pressure against Taiwan—not relevant to Latin American drone intelligence.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "EXPLAINER - Anthropic threat intelligence report : What to know",
+      "url": "https://aa.com.tr/en/features/explainer-anthropic-threat-intelligence-report-what-to-know/4054686",
+      "source_name": "aa.com.tr",
+      "published_at": "2026-09-11T19:30:00Z",
+      "content_snippet": "EXPLAINER - Anthropic threat intelligence report : What to know",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is a general explainer about Anthropic's threat intelligence report with no specific focus on drones, UAS, or UAV systems, and no Latin American country involvement indicated\",\"relevance_score\":0,\"key_actors\":[\"Anthropic\"],\"countries\":[],\"summary\":\"General explainer article about Anthropic threat intelligence report unrelated to Latin American drone activity.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Donovan Deep Dives : Taiwan , Japan and the Philippines need to face the common threat from Beijing",
+      "url": "https://www.taipeitimes.com/News/feat/archives/2026/09/12/2003864127",
+      "source_name": "taipeitimes.com",
+      "published_at": "2026-09-11T19:00:00Z",
+      "content_snippet": "Donovan Deep Dives : Taiwan , Japan and the Philippines need to face the common threat from Beijing",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is geopolitical analysis about Taiwan, Japan, and Philippines facing threats from Beijing. No mention of drones, UAS, or UAV systems. No Latin American countries involved. Topic is East Asian security, not LATAM drone intelligence.\",\"relevance_score\":0,\"key_actors\":[\"Taiwan\",\"Japan\",\"Philippines\",\"Beijing/China\"],\"countries\":[],\"summary\":\"Geopolitical analysis of East Asian security threats, with no relevance to Latin American drone activity or systems.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "বিদ্রোহীদের ড্রোন হামলার পর মিয়ানমারের বিমানবন্দর বন্ধ",
+      "url": "https://www.dailynayadiganta.com/international/asia/TFoeHMaTtLpT",
+      "source_name": "dailynayadiganta.com",
+      "published_at": "2026-09-11T12:00:00Z",
+      "content_snippet": "বিদ্রোহীদের ড্রোন হামলার পর মিয়ানমারের বিমানবন্দর বন্ধ",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"yes\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"yes\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is clearly about drone attacks, but Myanmar is in Southeast Asia, not Latin America. This database is exclusively for Latin American drone intelligence.\",\"relevance_score\":0,\"key_actors\":[\"rebels/insurgents in Myanmar\"],\"countries\":[\"Myanmar\"],\"summary\":\"Article reports on drone attacks by rebels on Myanmar airports, but this is geographically outside the Latin America scope of this database.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Myanmar airport shut after rebel drone attack : security sources",
+      "url": "https://www.bssnews.net/international/423400",
+      "source_name": "bssnews.net",
+      "published_at": "2026-09-11T08:30:00Z",
+      "content_snippet": "Myanmar airport shut after rebel drone attack : security sources",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "low",
+      "claude_analysis": "{\"q1_about_drones\":\"yes\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"yes\",\"primary_category\":null,\"confidence_suggestion\":\"low\",\"confidence_reasoning\":\"Article is about a drone attack, but Myanmar is in Southeast Asia, not Latin America. Database is specifically for Latin American drone/UAS intelligence only.\",\"relevance_score\":0,\"key_actors\":[\"Myanmar airport\",\"rebels\"],\"countries\":[\"Myanmar\"],\"summary\":\"Rebel drone attack on Myanmar airport is geographically outside the Latin America scope of this database.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Myanmar airport shut after rebel drone attack : security sources",
+      "url": "https://www.thehindu.com/news/international/myanmar-airport-shut-after-rebel-drone-attack-security-sources/article71455106.ece",
+      "source_name": "thehindu.com",
+      "published_at": "2026-09-11T07:45:00Z",
+      "content_snippet": "Myanmar airport shut after rebel drone attack : security sources",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"yes\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"yes\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is clearly about a drone attack on an airport, but Myanmar is in Southeast Asia, not Latin America. Fails the geographic requirement for the LATAM database.\",\"relevance_score\":0,\"key_actors\":[\"Myanmar rebels\"],\"countries\":[\"Myanmar\"],\"summary\":\"Rebel drone attack forces closure of Myanmar airport, but this event is outside the Latin American geographic scope of this database.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Dallo sceicco Bin Laden ai gruppi più « locali », la parabola di Al Qaeda non è ancora terminata dopo l  11 settembre",
+      "url": "https://www.corriere.it/esteri/26_settembre_11/osama-bin-laden-al-qaeda-oggi-11-settembre-20fd4b90-ecf3-4e26-80ce-93e64da20xlk.shtml",
+      "source_name": "corriere.it",
+      "published_at": "2026-09-11T06:15:00Z",
+      "content_snippet": "Dallo sceicco Bin Laden ai gruppi più « locali », la parabola di Al Qaeda non è ancora terminata dopo l  11 settembre",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is in Italian and discusses Al Qaeda's evolution from Bin Laden to local groups post-9/11. No mention of drones, UAS, UAVs, or any Latin American countries. This is a general geopolitical/terrorism analysis piece unrelated to the database scope.\",\"relevance_score\":0,\"key_actors\":[\"Al Qaeda\",\"Bin Laden\"],\"countries\":[],\"summary\":\"Italian-language article analyzing Al Qaeda's organizational evolution since September 11th, with no relevance to Latin American drone activity.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "11 septembre 2001 : 25 ans plus tard , que reste - t - il dAl - Qaïda ? ",
+      "url": "https://www.lejdd.fr/International/11-septembre-2001-25-ans-plus-tard-que-reste-t-il-dal-qaida-183150",
+      "source_name": "lejdd.fr",
+      "published_at": "2026-09-11T05:30:00Z",
+      "content_snippet": "11 septembre 2001 : 25 ans plus tard , que reste - t - il dAl - Qaïda ? ",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about Al-Qaeda 25 years after 9/11 (French source, lejdd.fr). No mention of drones, UAS, or UAV systems. No Latin American country involvement. This is a terrorism/geopolitical analysis piece unrelated to the database scope.\",\"relevance_score\":0,\"key_actors\":[\"Al-Qaeda\"],\"countries\":[],\"summary\":\"Historical analysis of Al-Qaeda's status 25 years after the September 11, 2001 attacks; not related to Latin American drone activity.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Seghe elettriche e attacchi esca , così i tremila del blocco nero hanno assaltato il cantiere Tav",
+      "url": "https://www.lastampa.it/torino/2026/09/11/news/tav_assalto_cantiere_seghe_elettriche_attacchi_tremila_del_blocco_nero-15735959/",
+      "source_name": "lastampa.it",
+      "published_at": "2026-09-11T02:00:00Z",
+      "content_snippet": "Seghe elettriche e attacchi esca , così i tremila del blocco nero hanno assaltato il cantiere Tav",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is in Italian about a protest/assault on a TAV (Turin-Lyon train) construction site in Italy by black bloc activists using electric saws. No drones, UAS, or UAV systems mentioned. No Latin American content. Not relevant to LATAM drone intelligence database.\",\"relevance_score\":0,\"key_actors\":[\"black bloc activists\"],\"countries\":[\"Italy\"],\"summary\":\"Italian protest article about activists attacking a train construction site with electric saws; completely unrelated to Latin American drone operations or UAS systems.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Anthropic says AI now lets lone operators run state - level hacking campaigns",
+      "url": "https://siliconangle.com/2026/09/10/anthropic-says-ai-now-lets-lone-operators-run-state-level-hacking-campaigns/",
+      "source_name": "siliconangle.com",
+      "published_at": "2026-09-11T00:45:00Z",
+      "content_snippet": "Anthropic says AI now lets lone operators run state - level hacking campaigns",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about AI-enabled hacking capabilities in general, not about drones/UAS systems. No Latin American countries are mentioned. This is a cybersecurity article from a tech publication, not drone intelligence.\",\"relevance_score\":0,\"key_actors\":[\"Anthropic\"],\"countries\":[],\"summary\":\"Article discusses AI capabilities for hacking campaigns but contains no connection to drones, UAS, or any Latin American countries.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "АТЕШ знищив вежу зв  язку в Орловській області Росії - що відомо про успішну диверсію",
+      "url": "https://24tv.ua/atesh-znishhiv-vezhu-zvyazku-orlovskiy-oblasti-rosiyi-shho-vidomo_n3139371",
+      "source_name": "24tv.ua",
+      "published_at": "2026-09-10T22:45:00Z",
+      "content_snippet": "АТЕШ знищив вежу зв  язку в Орловській області Росії - що відомо про успішну диверсію",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is in Ukrainian language and discusses ATESH destroying a communications tower in Oryol Oblast, Russia. This is about the Russia-Ukraine conflict, not Latin American drone activity. No Latin American countries are involved.\",\"relevance_score\":0,\"key_actors\":[\"ATESH\"],\"countries\":[\"Russia\"],\"summary\":\"Ukrainian source reporting on ATESH's alleged destruction of a Russian communications tower in Oryol Oblast—not relevant to Latin American drone intelligence.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Damir D . Ocwirk : AI je već rastočio esej i kratku priču , roman će ipak malo teže",
+      "url": "https://www.glasistre.hr/knjizevnost/2026/09/10/damir-d-ocwirk-ai-je-vec-rastocio-esej-i-kratku-pricu-roman-ce-ipak-malo-teze-1084674",
+      "source_name": "glasistre.hr",
+      "published_at": "2026-09-10T21:45:00Z",
+      "content_snippet": "Damir D . Ocwirk : AI je već rastočio esej i kratku priču , roman će ipak malo teže",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about artificial intelligence's capability to write essays, short stories, and novels. It is not about drones, UAS, or UAV systems. The source is a Croatian news outlet (glasistre.hr), not a Latin American publication. No drone content is present.\",\"relevance_score\":0,\"key_actors\":[\"Damir D. Ocwirk\"],\"countries\":[],\"summary\":\"Opinion piece about AI's capacity to generate creative writing content; completely unrelated to drone/UAS technology or Latin America.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Битва за Україну . День тисяча шістсот шістдесятий",
+      "url": "https://www.ukrinform.ua/rubric-ato/4162934-bitva-za-ukrainu-den-tisaca-sistsot-sistdesatij.html",
+      "source_name": "ukrinform.ua",
+      "published_at": "2026-09-10T18:30:00Z",
+      "content_snippet": "Битва за Україну . День тисяча шістсот шістдесятий",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article title is in Ukrainian language ('Битва за Україну' = 'Battle for Ukraine') and appears to be about the Russia-Ukraine conflict (Day 1,666), not about Latin America or drones/UAS systems. Source is ukrinform.ua (Ukrainian news). No Latin American country involvement detected.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[\"Ukraine\"],\"summary\":\"This is a Ukrainian-language article about the ongoing Russia-Ukraine conflict, unrelated to Latin American drone intelligence.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Online Alberta referendum conversation driven by separatists : study",
+      "url": "https://www.cbc.ca/news/canada/calgary/alberta-separation-online-influencer-study-9.7338861",
+      "source_name": "cbc.ca",
+      "published_at": "2026-09-10T18:15:00Z",
+      "content_snippet": "Online Alberta referendum conversation driven by separatists : study",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about Alberta (Canada) separatist political discourse and online referendum conversations. Contains no mention of drones, UAS, or UAV systems. Alberta is not a Latin American country.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[],\"summary\":\"Article discusses online political conversations about Alberta separatism and referendums, with no connection to drone/UAS activity or Latin America.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Ali al - Taher : What Israel  operational control  of the hill really means for Hezbollah and Lebanon",
+      "url": "https://www.middleeasteye.net/news/ali-al-taher-what-israels-operational-control-really-means-hezbollah-and-lebanon",
+      "source_name": "middleeasteye.net",
+      "published_at": "2026-09-10T10:00:00Z",
+      "content_snippet": "Ali al - Taher : What Israel  operational control  of the hill really means for Hezbollah and Lebanon",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about Israel-Hezbollah-Lebanon conflict in the Middle East. No mention of drones, UAS, or UAV systems. No Latin American countries involved. Geographically and topically outside database scope.\",\"relevance_score\":0,\"key_actors\":[\"Israel\",\"Hezbollah\",\"Lebanon\"],\"countries\":[],\"summary\":\"Article discusses Israel's operational control of territory in the Middle East and its implications for Hezbollah and Lebanon—not relevant to Latin American drone intelligence.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "  АТЕШ  заявив про диверсію в орловській області , яка порушила керування російськими дронами",
+      "url": "https://unn.ua/news/atesh-zaiavyv-pro-dyversiiu-v-orlovskii-oblasti-yaka-porushyla-keruvannia-rosiiskymy-dronamy",
+      "source_name": "unn.ua",
+      "published_at": "2026-09-10T06:30:00Z",
+      "content_snippet": "  АТЕШ  заявив про диверсію в орловській області , яка порушила керування російськими дронами",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"yes\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"yes\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is clearly about drone sabotage/disruption, but the geographic focus is Oryol Oblast in Russia (Ukraine conflict context), not Latin America. Source is Ukrainian (unn.ua) and content concerns Russian drone operations in Eastern Europe, not LATAM drone activity.\",\"relevance_score\":0,\"key_actors\":[\"ATESH\",\"Russian military\"],\"countries\":[\"Russia\",\"Ukraine\"],\"summary\":\"Ukrainian ATESH group claims sabotage operation in Russian Oryol Oblast disrupted Russian drone control systems.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "  АТЕШ  заявив про диверсію в орловській області , яка порушила керування російськими дронами",
+      "url": "https://daily.com.ua/partners-news/atesh-zayavyv-pro-dyversiyu-v-orlovskii-oblasti-yaka-porushyla-keruvannya-rosiiskymy-dronamy/",
+      "source_name": "daily.com.ua",
+      "published_at": "2026-09-10T06:15:00Z",
+      "content_snippet": "  АТЕШ  заявив про диверсію в орловській області , яка порушила керування російськими дронами",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "low",
+      "claude_analysis": "{\"q1_about_drones\":\"yes\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"yes\",\"primary_category\":null,\"confidence_suggestion\":\"low\",\"confidence_reasoning\":\"Article is about drones and drone operations, but involves Ukraine/Russia (Oryol Oblast), not Latin America. This is Eastern European conflict coverage, outside the geographic scope of a Latin America drone/UAS intelligence database.\",\"relevance_score\":0,\"key_actors\":[\"ATESH\",\"Russian military\"],\"countries\":[\"Ukraine\",\"Russia\"],\"summary\":\"ATESH claims sabotage operation in Russia's Oryol Oblast disrupted control of Russian military drones, but this concerns Eastern European conflict and is not relevant to Latin American drone intelligence.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Technology versus troops",
+      "url": "https://www.business-standard.com/blueprint-defence-magazine/insights/technology-versus-troops-126090700921_1.html",
+      "source_name": "business-standard.com",
+      "published_at": "2026-09-10T02:45:00Z",
+      "content_snippet": "Technology versus troops",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article title 'Technology versus troops' from business-standard.com (India-based publication) provides no evidence of drone/UAS content or Latin American relevance. The vague title suggests a general military/defense comparison unrelated to drone systems or LATAM.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[],\"summary\":\"Insufficient information to determine relevance; appears to be generic technology-military comparison without drone or Latin American focus.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "The return of maritime centrality",
+      "url": "https://www.business-standard.com/blueprint-defence-magazine/insights/the-return-of-maritime-centrality-126090700824_1.html",
+      "source_name": "business-standard.com",
+      "published_at": "2026-09-10T02:45:00Z",
+      "content_snippet": "The return of maritime centrality",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article title 'The return of maritime centrality' from business-standard.com does not indicate drone/UAS content. The snippet provides no information about drones, UAS, or UAV systems, and no Latin American country is mentioned or implied. The article appears to be about maritime commerce or geopolitics unrelated to drone intelligence.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[],\"summary\":\"Article is not about drones or UAS systems and does not involve Latin American drone activity.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Taiwan Most Vulnerable Moment | Opinion | fairfieldsuntimes . com",
+      "url": "https://www.fairfieldsuntimes.com/opinion/taiwan-s-most-vulnerable-moment/article_1574cc2d-2150-5b09-8c7b-f2c569d016b3.html",
+      "source_name": "fairfieldsuntimes.com",
+      "published_at": "2026-09-10T00:30:00Z",
+      "content_snippet": "Taiwan Most Vulnerable Moment | Opinion | fairfieldsuntimes . com",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about Taiwan's geopolitical vulnerability, not about drones or UAS systems. Taiwan is not a Latin American country. No drone/UAS content evident from title and snippet.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[],\"summary\":\"Opinion piece on Taiwan's geopolitical position; not relevant to Latin American drone intelligence.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "The road to somewhere",
+      "url": "https://www.business-standard.com/blueprint-defence-magazine/reports/the-road-to-somewhere-126090400552_1.html",
+      "source_name": "business-standard.com",
+      "published_at": "2026-09-10T00:00:00Z",
+      "content_snippet": "The road to somewhere",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article title 'The road to somewhere' from business-standard.com provides no indication of drone/UAS content. No snippet text is provided beyond the title, making it impossible to identify any drone-related subject matter or Latin American connection.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[],\"summary\":\"Insufficient information provided; article does not appear to concern drones or Latin America based on available metadata.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "The P5 lead the race",
+      "url": "https://www.business-standard.com/blueprint-defence-magazine/reports/the-p5-lead-the-race-126090700230_1.html",
+      "source_name": "business-standard.com",
+      "published_at": "2026-09-10T00:00:00Z",
+      "content_snippet": "The P5 lead the race",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article title 'The P5 lead the race' with no snippet content provided does not indicate any connection to drones, UAS, or UAV systems. The vague title suggests it may be about economics, sports, or geopolitics (possibly the P5 UN Security Council members) but contains no Latin American or drone-related signals.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[],\"summary\":\"Insufficient information to determine relevance; title alone does not suggest drone or Latin American content.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "More than a music festival : Hope , unity and womanhood at Daisy Chain Fields",
+      "url": "https://kcpr.org/daisy-chain-fields/",
+      "source_name": "kcpr.org",
+      "published_at": "2026-09-09T23:00:00Z",
+      "content_snippet": "More than a music festival : Hope , unity and womanhood at Daisy Chain Fields",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about a music festival focused on hope, unity, and womanhood at Daisy Chain Fields. No mention of drones, UAS, or UAV systems. Source (kcpr.org) is a US-based college radio station. No Latin American content indicated in title or snippet.\",\"relevance_score\":0,\"key_actors\":[],\"countries\":[],\"summary\":\"Music festival article with no drone or Latin American relevance.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "Turkey defense giants court Egypt at Alamein Airshow : What to know - AL - MONITOR : The Middle Eastʼs leading independent news source since 2012",
+      "url": "https://www.al-monitor.com/originals/2026/09/turkeys-defense-giants-court-egypt-alamein-airshow-what-know",
+      "source_name": "al-monitor.com",
+      "published_at": "2026-09-09T22:15:00Z",
+      "content_snippet": "Turkey defense giants court Egypt at Alamein Airshow : What to know - AL - MONITOR : The Middle Eastʼs leading independent news source since 2012",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is about Turkish defense companies courting Egypt at an airshow. No Latin American countries are involved, and while defense procurement may tangentially involve drone systems, the article does not primarily focus on drones/UAS/UAV systems.\",\"relevance_score\":0,\"key_actors\":[\"Turkey defense companies\",\"Egypt\"],\"countries\":[],\"summary\":\"Turkish defense firms engage with Egyptian counterparts at the Alamein Airshow; not relevant to Latin American drone intelligence.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": "US , Philippines train with Russian - Indian BrahMos missiles in South China Sea",
+      "url": "https://www.tribuneindia.com/news/india/us-philippines-train-with-russian-indian-brahmos-missiles-in-south-china-sea/",
+      "source_name": "tribuneindia.com",
+      "published_at": "2026-09-09T21:00:00Z",
+      "content_snippet": "US , Philippines train with Russian - Indian BrahMos missiles in South China Sea",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"yes\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is primarily about BrahMos missile training between US and Philippines in South China Sea. While Philippines is mentioned, the article focuses on missile systems and geopolitical military exercises, not drone/UAS systems. Drones are not the primary subject matter.\",\"relevance_score\":0,\"key_actors\":[\"United States\",\"Philippines\",\"Russia\",\"India\"],\"countries\":[\"Philippines\"],\"summary\":\"Article discusses US-Philippines military training with Russian-Indian BrahMos missiles in the South China Sea, not Latin American drone activity.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    },
+    {
+      "title": " 《 TAIPEI TIMES 》 Taiwan not on right drone track : ex - official - 焦點",
+      "url": "https://news.ltn.com.tw/news/focus/breakingnews/5568827",
+      "source_name": "news.ltn.com.tw",
+      "published_at": "2026-09-09T20:30:00Z",
+      "content_snippet": " 《 TAIPEI TIMES 》 Taiwan not on right drone track : ex - official - 焦點",
+      "primary_category": null,
+      "sub_category": null,
+      "confidence_level": "high",
+      "claude_analysis": "{\"q1_about_drones\":\"no\",\"q2_latam_country\":\"no\",\"q3_main_topic\":\"no\",\"primary_category\":null,\"confidence_suggestion\":\"high\",\"confidence_reasoning\":\"Article is from Taiwan (Taipei Times) about Taiwan's drone policy/strategy, not Latin America. No Latin American countries or regions are mentioned. Geographic scope is East Asia, not LATAM.\",\"relevance_score\":0,\"key_actors\":[\"Taiwan government\",\"ex-official\"],\"countries\":[\"Taiwan\"],\"summary\":\"Opinion piece about Taiwan's domestic drone strategy and policy direction, with no relevance to Latin American drone activity.\"}",
+      "status": "culled",
+      "source_stream": [
+        "guerrilla-actors"
+      ],
+      "imported_to_hub": false
+    }
+  ]
+}
