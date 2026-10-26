@@ -13,7 +13,7 @@
 //
 // Region for a picked country is DERIVED from the RENDERER vocab mirror (geographyVocab.ts);
 // main and renderer do not share modules, so that file is a hand-synced copy of geography.ts.
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { GEO_COUNTRIES, lookupCountry } from './geographyVocab'
 import OverflowPopover from './OverflowPopover'
 import ProvenanceMark from '../../components/source-card/ProvenanceMark'
@@ -25,6 +25,12 @@ export interface GeographyChipsProps {
   aiUnconfirmed?: boolean             // amber "AI" badge: AI-proposed geography, stored flag still 0
   confirmed?: boolean                 // Slice B: geography_confirmed === 1 -> show the teal human H
   originMap?: Record<string, string>  // Slice 1a: per-country provenance (name -> 'ai'|'human'); optional so non-News callers compile untouched. Absent/unknown -> 'ai'.
+  // R3a: the gate's scalar geography, ALREADY snapped to a canonical country name by the host
+  // (SourceCard does lookupCountry(core.region)) -- a suggestion, NOT a stored subject member. When
+  // present and not yet confirmed/dismissed this renders the 3-action "from gate" chip. The chip
+  // lives here, not in the host, because click-to-replace drives this component's scope + typeahead
+  // focus. Omitted by every non-News mount -> no chip, zero behaviour change for them.
+  gateSuggestion?: string | null
   editable: boolean                   // Slice 2b: read mounts get flat mentioned chips (no ×/add)
   // Slice 1b: onChange now also carries the recomputed per-member origin map (name -> 'human'; pruned to
   // current subject members, absence = 'ai'). The host fires updateCountries (lists + set-level flag) AND
@@ -65,6 +71,9 @@ const ACCENT_CHIP   = `${CHIP} bg-violet-100 dark:bg-violet-500/15 text-violet-7
 // free-text geographies still render sensibly.
 const SUBJECT_CHIP  = `${CHIP} bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-transparent`
 const MENTIONED_CHIP = `${CHIP} bg-transparent border-slate-300 dark:border-white/15 text-slate-500 dark:text-white/50`
+// R3a: the gate SUGGESTION chip — amber (the codebase's "AI-proposed, unconfirmed" hue), carried over
+// verbatim from the old SourceCard button minus its hover, which now belongs to the confirm body alone.
+const GATE_CHIP = `${CHIP} border-amber-300 dark:border-amber-500/30 bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-200`
 // "... +N" overflow pill in the Zone B (geography) teal accent.
 const MORE_PILL = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300 hover:bg-teal-200 dark:hover:bg-teal-500/25 transition'
 const ADD_BTN = 'px-1.5 py-0.5 rounded text-[10px] font-medium text-gray-400 dark:text-white/30 border border-dashed border-gray-300 dark:border-white/[0.15] hover:text-gray-600 dark:hover:text-white/60'
@@ -104,6 +113,12 @@ const Check = () => (
 )
 const XGlyph = () => (
   <svg width="7" height="7" viewBox="0 0 10 10" fill="none" aria-hidden><path d="M2.5 2.5l5 5M7.5 2.5l-5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+)
+// R3a: swap arrows — the gate chip's "wrong country, let me pick another" affordance.
+const Swap = () => (
+  <svg width="9" height="9" viewBox="0 0 10 10" fill="none" aria-hidden>
+    <path d="M1 3.2h6.2L5.8 1.8M9 6.8H2.8l1.4 1.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
 )
 
 // trim / drop-empty / case-insensitive de-dupe within a list.
@@ -159,7 +174,7 @@ function deriveInitialScope(subject: string[]): 'latam' | 'extra' | 'both' | nul
 
 type EditState = { mode: 'sub'; country: string; value: string } | { mode: 'mentioned'; value: string } | null
 
-export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirmed, confirmed, originMap = {}, editable, onChange }: GeographyChipsProps) {
+export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirmed, confirmed, originMap = {}, gateSuggestion = null, editable, onChange }: GeographyChipsProps) {
   const [edit, setEdit] = useState<EditState>(null)
   // Initial side derived from the source's existing subject chips (Decision B); 'both' = mixed card
   // (both segments lit, unscoped search), null = neutral empty card (no side lit, typeahead disabled
@@ -170,6 +185,18 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
   const [open, setOpen] = useState(false)                          // typeahead dropdown visibility
   const [counts, setCounts] = useState<Record<string, number> | null>(null)  // cached once per open, never per keystroke
   const close = () => setEdit(null)
+  // R3a: gate-suggestion dismissals, SESSION-LOCAL (no storage in this slice -- R3b persists it).
+  // Keyed by the suggestion NAME, not a bare boolean, so a later re-score proposing a DIFFERENT
+  // country still surfaces its own chip instead of inheriting this dismissal.
+  const [gateDismissed, setGateDismissed] = useState<string[]>([])
+  // R3a: the typeahead input, so click-to-replace can focus it (it had no ref before this slice).
+  const inputRef = useRef<HTMLInputElement>(null)
+  // R3a focus handshake. The input is `disabled` while scope === null -- exactly the state an
+  // empty-geography card sits in -- and a disabled input ignores .focus(). State updates are
+  // batched, so focusing inside the click handler would hit the STILL-disabled element. Bump a tick
+  // instead and focus from an effect, which runs after the commit that enables it.
+  const [focusTick, setFocusTick] = useState(0)
+  useEffect(() => { if (focusTick > 0) inputRef.current?.focus() }, [focusTick])
 
   // Frequency counts for the typeahead ranking. Loaded LAZILY on first typeahead focus (not on
   // mount) so a card the researcher never touches costs nothing; cached for the component's life.
@@ -283,6 +310,34 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
       : null
   const regionalOn = hasSentinel('REGIONAL')
 
+  // ── R3a: the gate-suggestion chip ───────────────────────────────────────────────────────────────
+  // APPEAR-CONDITION (the bug fix). The old host-side test was `subjectCountries.length === 0`, which
+  // wrongly hid the suggestion the moment ANY subject member existed -- including a level SENTINEL,
+  // since REGIONAL/GLOBAL are subject-array peers. So adding the LATAM level silently killed the
+  // "+ Mexico" chip although no country had been confirmed. The test is now about the SUGGESTED
+  // COUNTRY itself: show it unless that country is already a subject member (case-insensitively, via
+  // the same selectedLower set the typeahead filters on), or it was dismissed this session. Sentinels
+  // never collide with a country name, so Mexico and LATAM now coexist -- only confirming, dismissing
+  // or replacing the country clears the chip. `editable` gates it outright: read mounts show nothing.
+  const gateName = (gateSuggestion ?? '').trim()
+  const showGateChip = editable
+    && gateName !== ''
+    && !selectedLower.has(gateName.toLowerCase())
+    && !gateDismissed.some(d => d.toLowerCase() === gateName.toLowerCase())
+
+  // CLICK-TO-REPLACE: the gate named the wrong country. Clear the query, scope the candidate list to
+  // the SUGGESTION's OWN side (not a hard-coded LATAM -- the gate can propose a non-LATAM country,
+  // and scoping to the wrong side would show an empty list), then focus the input via the tick above.
+  // The suggestion is left on screen until the replacement is picked, so the researcher can still see
+  // what the gate guessed. Nothing is written; this only arms the typeahead.
+  const replaceGate = (name: string): void => {
+    setScope(lookupCountry(name)?.isLatam ? 'latam' : 'extra')
+    setQuery('')
+    ensureCounts()
+    setOpen(false)                       // no stale dropdown under an empty query
+    setFocusTick(t => t + 1)
+  }
+
   // One mentioned chip (same removeCountry handler verbatim). `editable` only gates the ×
   // remove control -- flat chip on a read mount. Used both inline and inside the popover.
   const renderMentionedChip = (country: string) => (
@@ -301,6 +356,42 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
       {/* Slice X: the scalar `geography` column is never rendered here anymore — an empty subject
           shows the empty-state picker (disabled typeahead prompt), not a stale scalar pill. */}
       <span className="inline-flex flex-wrap items-center gap-1.5">
+        {/* R3a: the gate suggestion, leading the chips row (the position it held as a sibling in the
+            host's Zone B). THREE distinct targets in one chip:
+              - BODY ("+ Mexico from gate") -> confirm. Routes through pickCountry VERBATIM, so it adds
+                the country to subject, drops it from mentioned, stamps origin 'human' via emit's
+                2-wide rule, and clears the query -- identical to picking it from the typeahead.
+              - SWAP arrows -> replaceGate: arms the typeahead on the right side, keeps the chip.
+              - × -> dismiss for this session only (nothing written).
+            The two affordances sit behind a hairline divider so the body stays the obvious primary. */}
+        {showGateChip && (
+          <span className={GATE_CHIP} title={`Gate proposed "${gateName}" from the title/snippet`}>
+            <button
+              onClick={() => pickCountry(gateName)}
+              className="inline-flex items-center gap-1 hover:underline"
+              title={`Confirm ${gateName} as a subject country`}
+            >
+              <span className="font-semibold">+ {gateName}</span>
+              <span className="opacity-70 text-[8px] uppercase tracking-wide">from gate</span>
+            </button>
+            <span className="inline-flex items-center gap-0.5 ml-0.5 pl-1 border-l border-amber-300/70 dark:border-amber-500/30">
+              <button
+                onClick={() => replaceGate(gateName)}
+                className="opacity-60 hover:opacity-100"
+                title={`Wrong country — pick a different one instead of ${gateName}`}
+              >
+                <Swap />
+              </button>
+              <button
+                onClick={() => setGateDismissed(prev => [...prev, gateName])}
+                className="opacity-60 hover:opacity-100"
+                title={`Dismiss the gate's "${gateName}" suggestion`}
+              >
+                <XGlyph />
+              </button>
+            </span>
+          </span>
+        )}
         {subject.map(value => {
           const sent = asSentinel(value)
           if (sent) {
@@ -365,6 +456,7 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
       <div className="flex items-center gap-1.5">
         <div className="relative">
           <input
+            ref={inputRef}              // R3a: so the gate chip's replace action can focus it
             value={query}
             disabled={scope === null}   // neutral empty card: no scope chosen → typeahead locked
             onChange={e => { setQuery(e.target.value); setOpen(true) }}

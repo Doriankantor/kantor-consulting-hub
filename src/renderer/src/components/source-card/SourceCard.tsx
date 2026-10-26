@@ -25,7 +25,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import SectionProposalBadge from '../../pages/Intelligence/SectionProposalBadge'
-import GeographyChips, { nextOrigins } from '../../pages/Intelligence/GeographyChips'
+import GeographyChips from '../../pages/Intelligence/GeographyChips'
 import ActorChips from '../../pages/Intelligence/ActorChips'
 import TagPicker from '../../pages/Intelligence/TagPicker'
 import IncidentChip from './IncidentChip'
@@ -153,12 +153,14 @@ export default function SourceCard({
   // canonical vocab (lookupCountry, the same table GeographyChips uses) so we NEVER show or confirm
   // a non-country: a real country resolves to its clean canonical name; the REGIONAL/GLOBAL
   // sentinels and pre-retune free-text junk ('Middle East (Iran/Hormuz)', 'N/A') are absent from
-  // the vocab -> undefined -> null -> no chip. Shown ONLY when subject is empty, region snaps to a
-  // real country, and this is an editable mount (onCountriesChange present). The click routes
-  // through the S2 handler verbatim; nothing is written to the DB until the researcher clicks. A
-  // later full-text Analyze-with-AI overwrites the list wholesale -- the gate scalar is a placeholder.
+  // the vocab -> undefined -> null -> no chip. Nothing is written to the DB until the researcher
+  // acts. A later full-text Analyze-with-AI overwrites the list wholesale -- the gate scalar is a
+  // placeholder.
+  // R3a: the CHIP itself moved INTO GeographyChips (it needs the typeahead's scope + focus for the
+  // click-to-replace action, which is that component's own state). This card keeps only the vocab
+  // SNAP and hands the clean country name down as a prop; GeographyChips owns the appear-condition
+  // (suggestion not already a subject member, not dismissed) and all three actions.
   const gateSuggestion = lookupCountry(core.region ?? '')?.name ?? null
-  const showGateGeoChip = !!onCountriesChange && core.subjectCountries.length === 0 && gateSuggestion !== null
 
   // Zone visibility -- DATA/HANDLER-driven, never type-keyed (the Slice-1 key rule). A zone
   // renders only when it carries real content OR a live edit handler for its axis, so News
@@ -410,20 +412,9 @@ export default function SourceCard({
                 <svg className="w-4 h-4 opacity-60 text-teal-600 dark:text-teal-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {/* Geo-population: soft "from gate" suggestion chip in the empty geography state.
-                    Click promotes the gate's scalar country into subject_countries via the S2 handler
-                    (mentioned + subGeo passed through unchanged). Once subject is non-empty the condition
-                    falls false and this disappears, replaced by the normal confirmed-country chip. */}
-                {showGateGeoChip && (
-                  <button
-                    onClick={() => onCountriesChange?.([gateSuggestion], core.mentionedCountries, core.subGeographies, nextOrigins(core.geographyOrigins, core.subjectCountries, [gateSuggestion]))}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-amber-300 dark:border-amber-500/30 bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-500/25 transition"
-                    title={`Gate proposed "${gateSuggestion}" from the title/snippet -- click to confirm as a subject country`}
-                  >
-                    <span className="font-semibold">+ {gateSuggestion}</span>
-                    <span className="opacity-70 text-[8px] uppercase tracking-wide">from gate</span>
-                  </button>
-                )}
+                {/* R3a: the gate-suggestion chip used to render HERE, confirm-only. It now lives inside
+                    GeographyChips (below, via the gateSuggestion prop) so its click-to-replace action can
+                    reach the typeahead's scope + focus. */}
 
                 {/* Geography — Geo-2 nested country + sub-geo chips (replaces the scalar editor).
                     Slice X: the scalar source.geography column is no longer rendered as a fallback
@@ -442,6 +433,7 @@ export default function SourceCard({
                     aiUnconfirmed={geoAiUnconfirmed}
                     confirmed={geoConfirmed}
                     originMap={core.geographyOrigins}
+                    gateSuggestion={gateSuggestion}
                     editable={!!onCountriesChange}
                     onChange={onCountriesChange ?? (() => {})}
                   />
