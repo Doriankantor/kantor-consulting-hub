@@ -998,6 +998,8 @@ interface Window {
       setIncidentFlag:      (id: string, value: boolean | null) => Promise<{ ok: boolean; human?: unknown; error?: string }>
       // Geo slice 1b: per-country provenance map (name -> 'human') → analysis_json.human.geography_origins. Caller prunes; {} deletes the key.
       setGeographyOrigins:  (id: string, origins: Record<string, string>) => Promise<{ ok: boolean; human?: unknown; error?: string }>
+      // R3b: gate-suggestion dismissal → analysis_json.human.gate_geo_dismissed (string[]). ADD-only by name; null clears the list.
+      setGateGeoDismissed:  (id: string, name: string | null) => Promise<{ ok: boolean; human?: unknown; error?: string }>
       // Human overrides for AI-extracted KEY FACTS / SYSTEMS → analysis_json.human.overrides (survives re-analysis). patch=null clears.
       setAnalysisOverride:  (id: string, kind: 'key_fact' | 'capability', key: string, patch: Record<string, unknown> | null) => Promise<{ ok: true; human: Record<string, any> | null } | { ok: false; error: string }>
       getUnreviewedCount:   ()                                 => Promise<number>

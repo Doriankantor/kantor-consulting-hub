@@ -50,6 +50,7 @@ export interface SourceCore {
   geographyConfirmed: number             // permanent row flag: 0 = AI proposal, 1 = human-confirmed
   geographyOrigins: Record<string, string>  // Slice 1a: country name -> 'ai'|'human', from analysis_json.human.geography_origins; {} when absent (all read 'ai' until a writer lands)
   region: string | null                  // gate's scalar geography (canonical country, or REGIONAL/GLOBAL sentinel)
+  gateGeoDismissed: string[]             // R3b: country names whose gate suggestion the researcher dismissed, from analysis_json.human.gate_geo_dismissed; [] when absent/non-array
 
   // ── actors ──
   actors: { name: string; type: string; origin: 'ai' | 'human' }[]
@@ -153,6 +154,9 @@ export function fromIntelligenceSource(row: IntelligenceSource): SourceCore {
     // Slice 1a (read side): per-country geography provenance, modeled on humanRel. asObject guards
     // to {} when .human.geography_origins is absent, so unknown countries default to 'ai' downstream.
     geographyOrigins: asObject((human as any).geography_origins) as Record<string, string>,
+    // R3b: persisted gate-suggestion dismissals. stringArray guards absence / a non-array / non-string
+    // members down to [], so a row without the key (every pre-R3b row) shows the chip as before.
+    gateGeoDismissed: stringArray((human as any).gate_geo_dismissed),
     articleType: typeof ai.article_type === 'string' ? ai.article_type : undefined,
     incident: resolveIncident(analysis),
     caps: resolveCaps(analysis),

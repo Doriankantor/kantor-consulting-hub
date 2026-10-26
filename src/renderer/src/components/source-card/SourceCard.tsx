@@ -93,6 +93,7 @@ interface SourceCardProps {
   onIncidentChange?: (value: boolean) => void
   onConfidenceChange?: (value: string) => void
   onRelevanceChange?: (value: number | null) => void   // Slice R2: NUMERIC 1-10 (AI scale); null clears
+  onGateDismiss?: (name: string) => void               // R3b: persist a gate-suggestion dismissal (ADD-only by name)
   // S5b-2 (mount lift): the shared THEMATIC ("Topic") tag surface. When onTagsChange is present
   // the card renders an editable TagPicker (Zone D) and routes add/remove through the host's
   // thematic_tags writer; the vocabulary + registry mutators come from useThematicTagVocabulary
@@ -119,6 +120,7 @@ export default function SourceCard({
   onIncidentChange,
   onConfidenceChange,
   onRelevanceChange,
+  onGateDismiss,
   onTagsChange,
   tagVocabulary,
   onTagCreate,
@@ -434,6 +436,8 @@ export default function SourceCard({
                     confirmed={geoConfirmed}
                     originMap={core.geographyOrigins}
                     gateSuggestion={gateSuggestion}
+                    gateDismissedPersisted={core.gateGeoDismissed}
+                    onGateDismiss={onGateDismiss}
                     editable={!!onCountriesChange}
                     onChange={onCountriesChange ?? (() => {})}
                   />

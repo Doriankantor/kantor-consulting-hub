@@ -528,6 +528,38 @@ export async function setGeographyOrigins(id: string, origins: Record<string, st
   return { ok: true, human: analysis.human ?? null }
 }
 
+// R3b: the researcher's DISMISSAL of the gate's "+ {country} from gate" geography suggestion, stored
+// as a STRING ARRAY of dismissed country names under analysis_json.human.gate_geo_dismissed. Keyed by
+// NAME (not a boolean) so a later re-score proposing a DIFFERENT country still surfaces its own chip.
+// Cloned from setGeographyOrigins: read CLOUD (never the mirror), merge the one key, preserve every
+// sibling (.ai / .routing / .reconciled / .human.relevance / .human.incident / .human.geography_origins
+// / .human.overrides), then resync the mirror. ADD-only: a name is appended if not already present
+// (case-insensitive), so dismissals accrue. null clears the whole list (no caller uses it yet). A
+// legacy/non-array value is treated as empty rather than crashing.
+export async function setGateGeoDismissed(id: string, name: string | null): Promise<{ ok: boolean; human?: unknown; error?: string }> {
+  if (!isOnline()) return OFFLINE
+  const r = await readCloudAnalysis(id)
+  if (!r.ok) return { ok: false, error: r.error }
+  const analysis = r.analysis!
+  const human = (analysis.human && typeof analysis.human === 'object') ? analysis.human as Record<string, unknown> : {}
+  const prev = Array.isArray(human.gate_geo_dismissed)
+    ? (human.gate_geo_dismissed as unknown[]).filter((x): x is string => typeof x === 'string')
+    : []
+  const v = (name ?? '').trim()
+  let next: string[]
+  if (name == null) next = []
+  else if (!v || prev.some(p => p.toLowerCase() === v.toLowerCase())) next = prev
+  else next = [...prev, v]
+  if (next.length) human.gate_geo_dismissed = next
+  else delete human.gate_geo_dismissed
+  if (Object.keys(human).length) analysis.human = human
+  else delete analysis.human
+  const { error } = await cloud.from('intelligence_sources').update({ analysis_json: JSON.stringify(analysis) }).eq('id', id)
+  if (error) return { ok: false, error: `setGateGeoDismissed failed: ${error.message}` }
+  await resyncRow(id)
+  return { ok: true, human: analysis.human ?? null }
+}
+
 // Human overrides for the AI's extracted KEY FACTS + SYSTEMS. Stored OUTSIDE analysis.ai
 // (under analysis.human.overrides) so re-running Analyze — which replaces analysis.ai
 // WHOLESALE (see saveAiAnalysis) — can never clobber a researcher's correction. Modeled

@@ -3706,6 +3706,9 @@ function registerIntelligenceHandlers(): void {
 
   ipcMain.handle('intelligence:setGeographyOrigins', (_e, id: string, origins: Record<string, string>) =>
     intelCloud.setGeographyOrigins(id, origins))
+  // R3b: persist a gate-suggestion dismissal (ADD-only by name) -> analysis_json.human.gate_geo_dismissed.
+  ipcMain.handle('intelligence:setGateGeoDismissed', (_e, id: string, name: string | null) =>
+    intelCloud.setGateGeoDismissed(id, name))
 
   // Human overrides for the AI's extracted KEY FACTS / SYSTEMS. Stored under
   // analysis_json.human.overrides (OUTSIDE .ai) so re-analysis cannot clobber them.

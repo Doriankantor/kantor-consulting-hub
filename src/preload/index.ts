@@ -360,6 +360,7 @@ const api = {
     setRoutingConfirmed:  (id: string, sections: string[]) => ipcRenderer.invoke('intelligence:setRoutingConfirmed', id, sections),
     setIncidentFlag:      (id: string, value: boolean | null) => ipcRenderer.invoke('intelligence:setIncidentFlag', id, value),
     setGeographyOrigins:  (id: string, origins: Record<string, string>) => ipcRenderer.invoke('intelligence:setGeographyOrigins', id, origins),
+    setGateGeoDismissed:  (id: string, name: string | null) => ipcRenderer.invoke('intelligence:setGateGeoDismissed', id, name),
     setAnalysisOverride:  (id: string, kind: 'key_fact' | 'capability', key: string, patch: Record<string, unknown> | null) => ipcRenderer.invoke('intelligence:setAnalysisOverride', id, kind, key, patch),
     getKnownTags:         (type: string, boardId: string)              => ipcRenderer.invoke('intelligence:getKnownTags', type, boardId),
     createTag:            (name: string, type: string, boardId: string) => ipcRenderer.invoke('intelligence:createTag', name, type, boardId),

@@ -31,6 +31,11 @@ export interface GeographyChipsProps {
   // lives here, not in the host, because click-to-replace drives this component's scope + typeahead
   // focus. Omitted by every non-News mount -> no chip, zero behaviour change for them.
   gateSuggestion?: string | null
+  // R3b: the PERSISTED dismissals (core.gateGeoDismissed, from analysis_json.human.gate_geo_dismissed)
+  // so a dismissed chip stays hidden across remount / tab switch. onGateDismiss is the host's writer
+  // path; absent (non-News mounts) -> the × still hides the chip locally but writes nothing.
+  gateDismissedPersisted?: string[]
+  onGateDismiss?: (name: string) => void
   editable: boolean                   // Slice 2b: read mounts get flat mentioned chips (no ×/add)
   // Slice 1b: onChange now also carries the recomputed per-member origin map (name -> 'human'; pruned to
   // current subject members, absence = 'ai'). The host fires updateCountries (lists + set-level flag) AND
@@ -174,7 +179,7 @@ function deriveInitialScope(subject: string[]): 'latam' | 'extra' | 'both' | nul
 
 type EditState = { mode: 'sub'; country: string; value: string } | { mode: 'mentioned'; value: string } | null
 
-export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirmed, confirmed, originMap = {}, gateSuggestion = null, editable, onChange }: GeographyChipsProps) {
+export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirmed, confirmed, originMap = {}, gateSuggestion = null, gateDismissedPersisted = [], onGateDismiss, editable, onChange }: GeographyChipsProps) {
   const [edit, setEdit] = useState<EditState>(null)
   // Initial side derived from the source's existing subject chips (Decision B); 'both' = mixed card
   // (both segments lit, unscoped search), null = neutral empty card (no side lit, typeahead disabled
@@ -185,9 +190,10 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
   const [open, setOpen] = useState(false)                          // typeahead dropdown visibility
   const [counts, setCounts] = useState<Record<string, number> | null>(null)  // cached once per open, never per keystroke
   const close = () => setEdit(null)
-  // R3a: gate-suggestion dismissals, SESSION-LOCAL (no storage in this slice -- R3b persists it).
-  // Keyed by the suggestion NAME, not a bare boolean, so a later re-score proposing a DIFFERENT
-  // country still surfaces its own chip instead of inheriting this dismissal.
+  // R3a: gate-suggestion dismissals, SESSION-LOCAL. Keyed by the suggestion NAME, not a bare boolean,
+  // so a later re-score proposing a DIFFERENT country still surfaces its own chip instead of inheriting
+  // this dismissal. R3b: kept as the OPTIMISTIC layer (instant hide on ×, even before / without the
+  // write); the persisted gateDismissedPersisted prop is what keeps it hidden after a remount.
   const [gateDismissed, setGateDismissed] = useState<string[]>([])
   // R3a: the typeahead input, so click-to-replace can focus it (it had no ref before this slice).
   const inputRef = useRef<HTMLInputElement>(null)
@@ -319,11 +325,20 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
   // the same selectedLower set the typeahead filters on), or it was dismissed this session. Sentinels
   // never collide with a country name, so Mexico and LATAM now coexist -- only confirming, dismissing
   // or replacing the country clears the chip. `editable` gates it outright: read mounts show nothing.
+  // R3b: a dismissal counts from EITHER layer -- the session-local optimistic list or the persisted one.
   const gateName = (gateSuggestion ?? '').trim()
+  const isGateDismissed = (name: string): boolean =>
+    [...gateDismissed, ...gateDismissedPersisted].some(d => d.toLowerCase() === name.toLowerCase())
   const showGateChip = editable
     && gateName !== ''
     && !selectedLower.has(gateName.toLowerCase())
-    && !gateDismissed.some(d => d.toLowerCase() === gateName.toLowerCase())
+    && !isGateDismissed(gateName)
+
+  // R3b DISMISS: hide instantly via the local layer, then persist through the host's writer (if any).
+  const dismissGate = (name: string): void => {
+    setGateDismissed(prev => [...prev, name])
+    onGateDismiss?.(name)
+  }
 
   // CLICK-TO-REPLACE: the gate named the wrong country. Clear the query, scope the candidate list to
   // the SUGGESTION's OWN side (not a hard-coded LATAM -- the gate can propose a non-LATAM country,
@@ -362,7 +377,7 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
                 the country to subject, drops it from mentioned, stamps origin 'human' via emit's
                 2-wide rule, and clears the query -- identical to picking it from the typeahead.
               - SWAP arrows -> replaceGate: arms the typeahead on the right side, keeps the chip.
-              - × -> dismiss for this session only (nothing written).
+              - × -> dismissGate: instant local hide + (R3b) persisted via onGateDismiss when wired.
             The two affordances sit behind a hairline divider so the body stays the obvious primary. */}
         {showGateChip && (
           <span className={GATE_CHIP} title={`Gate proposed "${gateName}" from the title/snippet`}>
@@ -383,7 +398,7 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
                 <Swap />
               </button>
               <button
-                onClick={() => setGateDismissed(prev => [...prev, gateName])}
+                onClick={() => dismissGate(gateName)}
                 className="opacity-60 hover:opacity-100"
                 title={`Dismiss the gate's "${gateName}" suggestion`}
               >

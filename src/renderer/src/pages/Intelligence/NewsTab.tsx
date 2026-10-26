@@ -961,6 +961,24 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
     } catch (e) { console.warn('[NewsTab] setIncidentFlag failed:', e) }
   }
 
+  // R3b: researcher dismissed the gate's "+ {country} from gate" geography suggestion → appended (by
+  // name) to analysis_json.human.gate_geo_dismissed via setGateGeoDismissed (gate-safe cloud RMW;
+  // preserves every .human sibling). GeographyChips already hid the chip optimistically; this patch
+  // makes the dismissal survive a remount. Same shape as handleIncident.
+  async function handleGateDismiss(id: string, name: string) {
+    try {
+      const res = await window.api.intelligence.setGateGeoDismissed(id, name)
+      if (!res.ok) return
+      setSources(prev => prev.map(s => {
+        if (s.id !== id) return s
+        let a: Record<string, unknown> = {}
+        try { a = s.analysis_json ? JSON.parse(s.analysis_json) : {} } catch { a = {} }
+        if (res.human) a.human = res.human; else delete a.human
+        return { ...s, analysis_json: JSON.stringify(a) }
+      }))
+    } catch (e) { console.warn('[NewsTab] setGateGeoDismissed failed:', e) }
+  }
+
   // Write a tag set for one type (thematic) immediately — no Approve needed.
   async function handleSetTags(id: string, type: 'disposition' | 'thematic', tags: string[]) {
     const col = type === 'disposition' ? 'disposition_tags' : 'thematic_tags'
@@ -1471,6 +1489,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                 onIncidentChange={value => handleIncident(source.id, value)}
                 onConfidenceChange={v => handleConfidence(source.id, v)}
                 onRelevanceChange={v => handleHumanRelevance(source.id, v)}
+                onGateDismiss={name => handleGateDismiss(source.id, name)}
                 onTagsChange={nextTags => {
                   handleSetTags(source.id, 'thematic', nextTags)
                   // News-local: clear the gate's missing-topic error only when a topic REMAINS --
