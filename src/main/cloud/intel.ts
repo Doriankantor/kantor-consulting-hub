@@ -462,15 +462,19 @@ export async function saveReconciled(id: string, reconciled: {
   return { ok: true, reconciled: block }
 }
 
-export async function setHumanRelevance(id: string, value: string | null): Promise<{ ok: boolean; human?: unknown; error?: string }> {
+export async function setHumanRelevance(id: string, value: number | null): Promise<{ ok: boolean; human?: unknown; error?: string }> {
   if (!isOnline()) return OFFLINE
   const r = await readCloudAnalysis(id)
   if (!r.ok) return { ok: false, error: r.error }
   const analysis = r.analysis!
   const human = (analysis.human && typeof analysis.human === 'object') ? analysis.human as Record<string, unknown> : {}
-  const v = (value ?? '').trim()
-  if (!v) { delete human.relevance; delete human.overridden_at }
-  else { human.relevance = v; human.overridden_at = nowIso() }
+  // Slice R2: human relevance is NUMERIC (1-10), matching the AI relevance_score scale (Storage
+  // Option 1 -- written to analysis_json.human.relevance; the relevance_score COLUMN is NEVER touched
+  // here, preserving the AI-said vs human-said pairing). null (or a non-finite value) clears the
+  // override; otherwise store the number verbatim. Legacy rows may hold a category STRING here -- the
+  // read side (sourceCore) tolerates that as UNSET; this writer only ever writes a number or deletes.
+  if (value == null || !Number.isFinite(value)) { delete human.relevance; delete human.overridden_at }
+  else { human.relevance = value; human.overridden_at = nowIso() }
   if (Object.keys(human).length) analysis.human = human
   else delete analysis.human
   const { error } = await cloud.from('intelligence_sources').update({ analysis_json: JSON.stringify(analysis) }).eq('id', id)

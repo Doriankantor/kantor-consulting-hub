@@ -92,7 +92,7 @@ interface SourceCardProps {
   onActorsChange?: (actors: { name: string; type: string; origin?: 'ai' | 'human' }[]) => void
   onIncidentChange?: (value: boolean) => void
   onConfidenceChange?: (value: string) => void
-  onRelevanceChange?: (value: string | null) => void
+  onRelevanceChange?: (value: number | null) => void   // Slice R2: NUMERIC 1-10 (AI scale); null clears
   // S5b-2 (mount lift): the shared THEMATIC ("Topic") tag surface. When onTagsChange is present
   // the card renders an editable TagPicker (Zone D) and routes add/remove through the host's
   // thematic_tags writer; the vocabulary + registry mutators come from useThematicTagVocabulary
@@ -279,7 +279,8 @@ export default function SourceCard({
                     core.humanRel (the researcher override) over it -- when a human relevance is set it
                     REPLACES the AI badge with a distinct indigo/H provenance treatment + a tooltip that
                     surfaces the AI score, and when onRelevanceChange is present (News) it is interactive
-                    (cycle High/Med/Low, clears back to the AI score). Read surfaces just fold in the
+                    (Slice R2: a 1-10 numeric picker on the AI's own scale, plus confirm-as-is on the AI
+                    mark and a clear-override row). Read surfaces just fold in the
                     human value if one exists. The pill NEVER writes relevance_score (only human.relevance
                     via the handler). No type-keyed logic; the separate relevance-TYPE badge is untouched.
                     gate_processed=1 + NULL score = tombstoned (failed to score) → gray "scoring failed".
@@ -300,6 +301,9 @@ export default function SourceCard({
                         </span>
                       ) : ((() => {
                         const rb = relevanceBadge(core.relevanceScore)
+                        // Slice R2: capture the score as a local const so the narrowing below survives
+                        // into the click closure (a property access would not).
+                        const aiScore = core.relevanceScore
                         return (
                           <span
                             className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${rb.cls}`}
@@ -307,9 +311,24 @@ export default function SourceCard({
                           >
                             {/* CONFIRM-PROVENANCE Slice B: lead the REL-score badge with the amber AI mark,
                                 the byte-identical leading slot the indigo H occupies inside RelevancePill's
-                                HUMAN_PILL when overridden -- an in-place AI->H swap. Provenance-only (no
-                                click); overriding relevance replaces this whole badge with the H pill. */}
-                            <ProvenanceMark kind="ai" />
+                                HUMAN_PILL when overridden -- an in-place AI->H swap.
+                                Slice R2: now that the human value is on the AI's own numeric scale, that
+                                mark is also the CONFIRM-AS-IS action, symmetric with ConfidencePill -- click
+                                writes the AI score as the human value (-> indigo H "REL n"), stopPropagation
+                                so the pill's own click (which opens the 1-10 picker) does not also fire.
+                                Non-clickable on read surfaces (no onRelevanceChange) and when the score is
+                                null -- there is nothing to confirm then. The tier colours are untouched. */}
+                            {onRelevanceChange && aiScore != null ? (
+                              <span
+                                className="cursor-pointer"
+                                onClick={e => { e.stopPropagation(); onRelevanceChange(aiScore) }}
+                                title="AI relevance score — click to confirm it as your own"
+                              >
+                                <ProvenanceMark kind="ai" />
+                              </span>
+                            ) : (
+                              <ProvenanceMark kind="ai" />
+                            )}
                             <span className="opacity-60 font-medium">REL</span>{rb.label}
                           </span>
                         )

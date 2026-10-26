@@ -3689,9 +3689,9 @@ function registerIntelligenceHandlers(): void {
   // analysis_json.human — NOT the relevance_score column (the gate owns that and
   // would clobber a human value on the next rescore). Merge-in-place like
   // saveReconciled so other analysis_json keys (.ai / .reconciled) are preserved.
-  // Passing null/'' clears the override.
+  // Slice R2: the value is NUMERIC 1-10 (the AI relevance_score scale). Passing null clears it.
   // RMW → cloud-only (analysis_json.human merge). Offline → { ok:false }.
-  ipcMain.handle('intelligence:setHumanRelevance', (_e, id: string, value: string | null) =>
+  ipcMain.handle('intelligence:setHumanRelevance', (_e, id: string, value: number | null) =>
     intelCloud.setHumanRelevance(id, value))
 
   // NS-1: confirm/trim the AI's proposed sections → analysis_json.routing.confirmed.

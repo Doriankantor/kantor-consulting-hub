@@ -63,7 +63,7 @@ export interface SourceCore {
     reconciled: Record<string, any> | undefined
   }
   proposedSections: { section: string; confidence?: 'high' | 'medium' | 'low' }[]
-  humanRel: string | undefined
+  humanRel: number | undefined           // Slice R2: researcher relevance override, NUMERIC 1-10 (AI scale). Legacy category strings read as undefined.
   articleType: string | undefined
   incident: ResolvedIncident
   caps: ResolvedCap[]
@@ -85,6 +85,13 @@ function asObject(x: unknown): Record<string, any> {
 }
 function stringArray(x: unknown): string[] {
   return Array.isArray(x) ? x.filter((t): t is string => typeof t === 'string') : []
+}
+// Slice R2 legacy guard. analysis_json.human.relevance is UNTYPED JSON: post-R2 it holds a number,
+// pre-R2 rows hold a category string ('High'), and either may be absent. Anything that is not a
+// finite number -- a legacy string, null, NaN, an object -- degrades to undefined (= no override),
+// so old rows render as un-overridden AI rather than crashing or printing a word in a numeric slot.
+function numberOrUndefined(x: unknown): number | undefined {
+  return typeof x === 'number' && Number.isFinite(x) ? x : undefined
 }
 
 export function fromIntelligenceSource(row: IntelligenceSource): SourceCore {
@@ -136,7 +143,13 @@ export function fromIntelligenceSource(row: IntelligenceSource): SourceCore {
 
     analysis: { ai, human, routing, reconciled },
     proposedSections: Array.isArray(routing.proposed_sections) ? routing.proposed_sections : [],
-    humanRel: (human as { relevance?: string }).relevance,
+    // Slice R2: the human relevance override is NUMERIC (1-10), on the same scale as the AI
+    // relevance_score column. LEGACY TOLERANCE: rows written before R2 hold a CATEGORY STRING here
+    // ('High' | 'Medium' | 'Low'). We accept only a finite number and otherwise fall through to
+    // undefined, so a legacy row renders as un-overridden (the amber AI badge) instead of throwing or
+    // showing a word in a numeric slot. No auto-migration: the stored string is left untouched in the
+    // cloud until a human re-picks a number (which overwrites it via setHumanRelevance).
+    humanRel: numberOrUndefined((human as { relevance?: unknown }).relevance),
     // Slice 1a (read side): per-country geography provenance, modeled on humanRel. asObject guards
     // to {} when .human.geography_origins is absent, so unknown countries default to 'ai' downstream.
     geographyOrigins: asObject((human as any).geography_origins) as Record<string, string>,

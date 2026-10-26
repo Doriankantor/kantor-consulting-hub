@@ -305,9 +305,11 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
   }
 
   // Researcher relevance override → analysis_json.human (gate-safe; never relevance_score).
-  async function handleHumanRelevance(id: string, value: string) {
+  // Slice R2: the value is NUMERIC 1-10 (the AI's own scale); null clears the override. The pill
+  // hands us the number or null directly, so there is no empty-string round-trip any more.
+  async function handleHumanRelevance(id: string, value: number | null) {
     try {
-      const res = await window.api.intelligence.setHumanRelevance(id, value || null)
+      const res = await window.api.intelligence.setHumanRelevance(id, value)
       if (!res.ok) return
       setSources(prev => prev.map(s => {
         if (s.id !== id) return s
@@ -1468,7 +1470,7 @@ export default function NewsTab({ onApprove, selectedProjectId }: Props) {
                 onActorsChange={next => handleActors(source.id, next)}
                 onIncidentChange={value => handleIncident(source.id, value)}
                 onConfidenceChange={v => handleConfidence(source.id, v)}
-                onRelevanceChange={v => handleHumanRelevance(source.id, v ?? '')}
+                onRelevanceChange={v => handleHumanRelevance(source.id, v)}
                 onTagsChange={nextTags => {
                   handleSetTags(source.id, 'thematic', nextTags)
                   // News-local: clear the gate's missing-topic error only when a topic REMAINS --

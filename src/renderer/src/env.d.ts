@@ -991,7 +991,9 @@ interface Window {
       saveReconciled:       (id: string, reconciled: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[] }) => Promise<{ ok: true; reconciled: { relevance_score?: number; relevance_reasoning?: string; summary?: string; suggested_tags?: string[]; reconciled_at: string } } | { ok: false; error: string }>
       updateReconciledNotes:(id: string, html: string)        => Promise<{ ok: boolean }>
       // News human layer: researcher relevance override stored in analysis_json.human (gate-safe).
-      setHumanRelevance:    (id: string, value: string | null) => Promise<{ ok: true; human: { relevance?: string; overridden_at?: string } | null } | { ok: false; error: string }>
+      // Slice R2: value is NUMERIC 1-10 (same scale as the AI relevance_score column); null clears.
+      // Legacy rows may still READ BACK a category string here, so the return stays widened.
+      setHumanRelevance:    (id: string, value: number | null) => Promise<{ ok: true; human: { relevance?: number | string; overridden_at?: string } | null } | { ok: false; error: string }>
       setRoutingConfirmed:  (id: string, sections: string[]) => Promise<{ ok: boolean; routing?: unknown; error?: string }>
       setIncidentFlag:      (id: string, value: boolean | null) => Promise<{ ok: boolean; human?: unknown; error?: string }>
       // Geo slice 1b: per-country provenance map (name -> 'human') → analysis_json.human.geography_origins. Caller prunes; {} deletes the key.
