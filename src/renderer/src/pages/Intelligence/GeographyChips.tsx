@@ -13,8 +13,10 @@
 //
 // Region for a picked country is DERIVED from the RENDERER vocab mirror (geographyVocab.ts);
 // main and renderer do not share modules, so that file is a hand-synced copy of geography.ts.
-import { useEffect, useRef, useState } from 'react'
-import { GEO_COUNTRIES, lookupCountry } from './geographyVocab'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { GEO_COUNTRIES, lookupCountry, REGION_TOKENS, toRegionToken } from './geographyVocab'
+import { usePopoverDismiss } from '../../hooks/usePopoverDismiss'
 import OverflowPopover from './OverflowPopover'
 import ProvenanceMark from '../../components/source-card/ProvenanceMark'
 
@@ -147,6 +149,15 @@ const asSentinel = (v: string): Sentinel | null => {
   return u === 'REGIONAL' ? 'REGIONAL' : u === 'GLOBAL' ? 'GLOBAL' : null
 }
 const sentinelLabel = (s: Sentinel): string => (s === 'REGIONAL' ? 'LATAM' : 'Global')
+// Subregional S2: the 6 extra-LATAM REGION tokens (EUROPE, MENA, ...). A PARALLEL helper, not a
+// widening of Sentinel: REGIONAL/GLOBAL are sole-entry LEVELS with their own toggle semantics
+// (hasSentinel/toggleSentinel/regionalOn), while a region is an additive peer of countries. They
+// share only the RENDER (accent chip + globe). Returns the canonical token, or null.
+const asRegion = (v: string): string | null => {
+  const t = toRegionToken(v)
+  return t in REGION_TOKENS ? t : null
+}
+const REGION_ORDER = Object.keys(REGION_TOKENS)
 // Country chip color: known LATAM → clay, known non-LATAM → blue, unknown/legacy → neutral emerald.
 function countryChipClass(name: string): string {
   const c = lookupCountry(name)
@@ -156,7 +167,7 @@ function countryChipClass(name: string): string {
 
 // Decision B: derive the scope toggle's INITIAL side from the source's existing subject chips.
 // All-LATAM (LATAM countries and/or the REGIONAL sentinel) → 'latam'; all-extra-LATAM (non-LATAM
-// countries and/or the GLOBAL sentinel) → 'extra'; a mix of both sides → 'both' (both segments lit);
+// countries, the GLOBAL sentinel and/or a region token) → 'extra'; a mix of both sides → 'both' (both segments lit);
 // EMPTY subject, or only values not in the vocab → null (NEUTRAL — neither segment lit, typeahead
 // disabled until the user picks a side). Pure; consumed ONCE via lazy useState init, so a user's
 // later click owns the toggle and is never re-clobbered on re-render. A value not in geographyVocab
@@ -167,6 +178,7 @@ function deriveInitialScope(subject: string[]): 'latam' | 'extra' | 'both' | nul
     const sent = asSentinel(value)
     if (sent === 'REGIONAL') { hasLatam = true; continue }   // REGIONAL sentinel counts LATAM-side
     if (sent === 'GLOBAL')   { hasExtra = true; continue }   // GLOBAL sentinel counts extra-LATAM-side
+    if (asRegion(value))     { hasExtra = true; continue }   // S2: a region token counts extra-LATAM-side
     const c = lookupCountry(value)
     if (!c) continue                                         // not in vocab → counts as neither
     if (c.isLatam) hasLatam = true; else hasExtra = true
@@ -257,6 +269,15 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
   const toggleSentinel = (s: Sentinel) => {
     if (hasSentinel(s)) emit(subject.filter(v => asSentinel(v) !== s), mentioned, subGeo)
     else emit(dedupe([...subject, s]), without(mentioned, s), subGeo)
+  }
+  // Subregional S2: add/remove a REGION token in subject[], modeled on toggleSentinel. Matching is by
+  // canonical token (asRegion), so a legacy 'Europe' spelling is found and removed too; an ADD always
+  // stores the canonical token. Routes through emit -> a newly added member is stamped 'human' in the
+  // origin map (nextOrigins: not in prev) and the gate flag sets, exactly like pickCountry.
+  const hasRegion = (token: string): boolean => subject.some(v => asRegion(v) === token)
+  const toggleRegion = (token: string) => {
+    if (hasRegion(token)) emit(subject.filter(v => asRegion(v) !== token), mentioned, subGeo)
+    else emit(dedupe([...subject, token]), without(mentioned, token), subGeo)
   }
 
   // inline input (sub-area + mentioned) — commit on Enter, cancel on Escape.
@@ -419,6 +440,19 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
               </span>
             )
           }
+          const region = asRegion(value)
+          if (region) {
+            // S2: region token — same accent chip + globe as the sentinels, Title-case label, NOT
+            // sub-drillable. Same per-chip origin mark and x remove.
+            const label = REGION_TOKENS[region]
+            return (
+              <span key={`r-${value}`} className={ACCENT_CHIP} title={`${label} region (stored as ${region})`}>
+                {countryMark(value)}
+                <Globe />{label}
+                <button onClick={() => removeCountry(value, 'subject')} className="ml-0.5 opacity-60 hover:opacity-100" title={`Remove ${label}`}><XGlyph /></button>
+              </span>
+            )
+          }
           const subs = subGeo[value] ?? []
           const editingSub = edit?.mode === 'sub' && edit.country === value
           return (
@@ -517,9 +551,95 @@ export default function GeographyChips({ subject, mentioned, subGeo, aiUnconfirm
         >
           <Globe />LATAM{regionalOn && <Check />}
         </button>
-        <button disabled className={LVL_DISABLED} title="other regions coming soon">+ region</button>
+        <RegionPicker hasRegion={hasRegion} onToggle={toggleRegion} />
         <button disabled className={LVL_DISABLED} title="global coming soon">+ Global</button>
       </div>
     </div>
+  )
+}
+
+// Subregional S2: the "+ region" level button + its popover picker. Anchoring recipe REUSED from
+// ConfidencePill.ConfidencePicker / RelevancePicker (createPortal + position:fixed from the
+// trigger's getBoundingClientRect, viewport-clamped after mount, usePopoverDismiss). Lists all 6
+// regions by Title-case label; a region already in subject shows CHECKED and clicking it removes it
+// (a toggle, matching the LATAM level button), so the picker is also the place to undo a pick.
+function RegionPicker({ hasRegion, onToggle }: { hasRegion: (token: string) => boolean; onToggle: (token: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = usePopoverDismiss(open, useCallback(() => setOpen(false), []))
+
+  const openPanel = (): void => {
+    const r = triggerRef.current?.getBoundingClientRect()
+    if (r) setPos({ top: r.bottom + 6, left: r.left })
+    setOpen(true)
+  }
+
+  // Clamp inside the viewport using the panel's REAL size: 8px off the edges, flip above the
+  // trigger if it would run off the bottom (same recipe as ConfidencePicker).
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current || !panelRef.current) return
+    const MARGIN = 8
+    const r = triggerRef.current.getBoundingClientRect()
+    const pw = panelRef.current.offsetWidth
+    const ph = panelRef.current.offsetHeight
+    let left = r.left
+    if (left + pw > window.innerWidth - MARGIN) left = window.innerWidth - pw - MARGIN
+    if (left < MARGIN) left = MARGIN
+    let top = r.bottom + 6
+    if (top + ph > window.innerHeight - MARGIN && r.top - ph - 6 >= MARGIN) top = r.top - ph - 6
+    setPos({ top, left })
+  }, [open, panelRef])
+
+  const choose = (token: string): void => {
+    onToggle(token)
+    setOpen(false)
+  }
+
+  const optionBase = 'flex items-center justify-between gap-3 w-full px-2 py-1 rounded text-[11px] text-left transition'
+  const optionOn = 'bg-violet-50 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 font-semibold'
+  const optionOff = 'text-gray-700 dark:text-white/70 hover:bg-gray-100 dark:hover:bg-white/[0.06]'
+
+  const panel = open
+    ? createPortal(
+        <div
+          ref={panelRef}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}
+          className="min-w-[168px] rounded-lg border border-gray-200 dark:border-white/[0.12] bg-white dark:bg-gray-900 shadow-xl p-1.5 flex flex-col gap-0.5"
+        >
+          <div className="px-2 pt-0.5 pb-1 text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:text-white/40">
+            Extra-LATAM region
+          </div>
+          {REGION_ORDER.map(token => {
+            const on = hasRegion(token)
+            return (
+              <button key={token} type="button" onClick={() => choose(token)} className={`${optionBase} ${on ? optionOn : optionOff}`}
+                title={on ? `${REGION_TOKENS[token]} — click to remove` : `Add ${REGION_TOKENS[token]} region placement`}>
+                <span className="inline-flex items-center gap-1.5"><Globe />{REGION_TOKENS[token]}</span>
+                {on && <Check />}
+              </button>
+            )
+          })}
+        </div>,
+        document.body,
+      )
+    : null
+
+  // Trigger styled as an ACTIVE level button (was LVL_DISABLED). onMouseDown stopPropagation so
+  // usePopoverDismiss's document mousedown doesn't close-then-reopen on a trigger click.
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        onMouseDown={e => e.stopPropagation()}
+        onClick={() => (open ? setOpen(false) : openPanel())}
+        className={`${LVL_BASE} ${LVL_OFF}`}
+        title="Add an extra-LATAM region placement"
+      >
+        <Globe />+ region
+      </button>
+      {panel}
+    </>
   )
 }
