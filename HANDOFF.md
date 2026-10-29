@@ -4,108 +4,141 @@ _Last updated: 2026-08-16 · **v2.3.0 RELEASED** (published 2026-07-17, tag `v2.
 
 ## ▶ Start here — resume point for the next session
 
---------------------------------------------------------------------------------
-> RESUME HERE (CURRENT, 2026-08-25 latest -- CONFIRM-PROVENANCE Slice B SHIPPED (06f32fa + 9b04bca, NOT pushed). NEXT = geography per-country origin (give each subject-country chip its own AI/H, like actors), then Slice D (geography 3-action chip + B2 reflow fix). Read this whole block first.)
+> RESUME HERE (2026-10-29). HEAD = 1485438, origin/main IN SYNC (0 ahead/0 behind),
+> tree clean apart from the five known untracked scratchpads (info-pages/,
+> scratchpad_actors_col.mjs, scratchpad_find_rosario.mjs, scratchpad_s0_verify.mjs,
+> scripts/ai-bakeoff.mjs). CARD UNIFORMITY (Intelligence) + GEOGRAPHY PER-COUNTRY
+> ORIGIN + SUBREGIONAL GEOGRAPHY are all SHIPPED and PUSHED. Next pivot is the
+> PUBLICATION PIPELINE (ARC II) and/or the GATE-STARVATION diagnose -- see NEXT.
 
-CONFIRM-PROVENANCE Slice B [SHIPPED 9b04bca]: every AI-populated pill/chip now leads with a small in-pill AI-or-H provenance mark, and the three gates get one-click confirm-as-is (AI->H, value unchanged) via the existing flag setters -- no new storage/IPC/schema. Confidence (amber AI in the pill, click confirms confidence_override=1 unchanged), geography (AI mark leads each subject chip as click-to-confirm stamping geography_confirmed=1; teal H when confirmed; fixes B1), incident (H keyed off the human decision, Yes and No both show rose H; fixes B3), relevance (amber AI inside the REL badge / indigo H when overridden -- provenance only, no confirm), actors (per-chip: amber AI or violet H once a human adds/edits; origin persisted inside the existing actors JSON, default ai, human on add/edit; whole-set badge removed; non-gating). Added teal + violet hues to ProvenanceMark. Renderer-only; typecheck baseline. NOT pushed. (Slice B landed in two commits: 06f32fa = first confirm-as-is pass on confidence/geography/incident; 9b04bca = the uniform in-pill placement + relevance mark + per-actor provenance refinements.)
+NOTE ON HASHES: an earlier pull --rebase rewrote the confirm-provenance SHAs. The old
+HANDOFF hashes (3b7f211/06f32fa/11acdeb/9b04bca) no longer exist. Current chain:
+ee5f4d1 (Slice A), 6008a51 (A docs), cfdc06b (B pass 1), 6ab6549 (B), 8c9d283 (B docs).
 
-CONFIRM-PROVENANCE Slice A [SHIPPED 3b7f211]: lifted a shared <ProvenanceMark> primitive (src/renderer/src/components/source-card/ProvenanceMark.tsx) -- kind=human (square H, hue prop from a LITERAL per-hue class map so Tailwind keeps the classes) + kind=ai (amber badge, per-site title); 8 render sites routed, 5 dead consts removed. PURE REFACTOR, zero behavior/data/gate/visual change.
+--- SHIPPED THIS SESSION (all pushed, in order) ---
+- CONFIRM-PROVENANCE A+B (ee5f4d1 / cfdc06b / 6ab6549): shared ProvenanceMark
+  primitive; uniform in-pill AI/H marks; one-click confirm-as-is on confidence /
+  geography / incident; relevance AI->H look; per-actor provenance. Renderer-only.
+- GEOGRAPHY PER-COUNTRY ORIGIN 1a+1b (eca8e9f / 88b0057): each subject-country chip
+  AND the REGIONAL/GLOBAL sentinels carry their OWN AI/H mark, stored as a name->
+  'human' map in analysis_json.human.geography_origins (NOT a string[]->object[]
+  restructure -- the sidecar-map path was chosen as far lower blast radius). Per-chip
+  origin is the SOLE source of a chip's mark; the set-level geography_confirmed flag
+  still GATES advancement but no longer leaks into chip display. Model (locked):
+  confirm ANY one chip to advance; confirm ALL for a high-confidence queryable record.
+  New writer setGeographyOrigins (clone of setIncidentFlag RMW). Cloud-verified
+  sibling-safe.
+- HANDLER HARDENING (b3b4914): res.ok guards on handleConfidence + handleActors across
+  all 4 intel tabs (no false-view on failed write); actor origin typed first-class
+  renderer->preload.
+- CARD UNIFORMITY R1/R2/R3a/R3b (be84afa / 1adcd3a / ebb0384 / 40b897e):
+  - R1 confidence: AI mark confirms-as-is; body opens a High/Med/Low + "Use AI score"
+    popover (replaced click-to-cycle).
+  - R2 relevance: human override is now NUMERIC 1-10 on the AI relevance_score scale
+    (one scale, not two). Stored in human.relevance; relevance_score column untouched
+    (preserves AI-said vs human-said for the learning loop). Mark confirms-as-is; body
+    opens a 1-10 picker + clear-override. Legacy category strings ('High') tolerated as
+    UNSET via numberOrUndefined (non-destructive). hasOverride is typeof===number (a
+    confirmed REL 0 is a real override).
+  - R3a geography gate chip: the "+ {country} FROM GATE" chip moved INTO GeographyChips
+    as a 3-action chip -- confirm (pickCountry) / x dismiss / click-to-replace (arms the
+    typeahead with the suggestion's own scope + focus). Appear-condition keyed on the
+    SUGGESTED COUNTRY's membership, not subject length (sentinels no longer hide it).
+  - R3b: persists the dismiss in analysis_json.human.gate_geo_dismissed (add-only by
+    name, survives remount; legacy/non-array tolerated). Cloud-verified sibling-safe.
+- SUBREGIONAL GEOGRAPHY S1+S2 (34915d8 / 1485438) -- Fork A, CAPTURE + first-class
+  BUCKETS:
+  - 6 extra-LATAM region tokens: NORTH_AMERICA, EUROPE, MENA, SUB_SAHARAN_AFRICA, ASIA,
+    OCEANIA. Canonical stored form UPPERCASE_UNDERSCORE. NOT Russia (one-country region
+    -> use the country chip), NOT LATAM (= REGIONAL), NOT GLOBAL (already a sentinel).
+    REGION_TOKENS + toRegionToken mirrored by hand in main/geography.ts AND renderer
+    geographyVocab.ts.
+  - Regions are MIXABLE with countries (Germany + Europe coexist) and FIRST-CLASS: a
+    region resolves to a real placement geography and routes to its OWN region cell
+    (buckets-first -- decided over tag-only; info_page_sources.geography is free text,
+    no FK, pages are projections, so a region row is clean-inert until committed).
+    S1: resolveRegion branch + additive snapCountries mixing + geoLabel Title-case +
+    a SEPARATE "regions" tab group in CellGrid (NOT folded into SUPPLIER_AXIS_GEOS,
+    which signals re-index DEBT) + no Incidents rail (no single country to home to).
+    S2: "+ region" button opens a 6-region popover (reuses the confidence/relevance
+    popover infra); region chips render as globe-accent peers inheriting countryMark
+    per-chip origin; deriveInitialScope + classifyGeo treat regions as extra-LATAM.
+  - CLOUD-VERIFIED end-to-end: a routed source with subject_countries
+    ["Argentina","Ukraine","EUROPE"] wrote 12 placement rows (3 geos x 4 sections)
+    INCLUDING real EUROPE rows, NO REGIONAL fallback; all three geos human in the
+    origin map; relevance + incident siblings intact.
 
-LAST SHIPPED: last code 9b04bca (Confirm-provenance Slice B -- uniform in-pill AI/H provenance chips, confirm-as-is on gates, per-actor provenance, 10 files). NOT pushed. Confirm-provenance commit chain, all UNPUSHED and ahead of origin/main: 3b7f211 (Slice A -- shared ProvenanceMark), 06f32fa (Slice B pass 1 -- confirm-as-is on confidence/geography/incident), 11acdeb (docs -- Slice A shipped), 9b04bca (Slice B -- uniform in-pill AI/H chips, confirm-as-is on gates, per-actor provenance). Preceded by 926dd05 + 04698b2 (Capstone slice 1, both on origin/main), then 37fa4b5 / 1e02311 (S5b-2) + e2f493e (S5b-1). This docs refresh commits on top of 9b04bca. Tree clean apart from known scratchpads (info-pages/, scratchpad_actors_col.mjs, scratchpad_find_rosario.mjs, scratchpad_s0_verify.mjs, scripts/ai-bakeoff.mjs).
+--- NEXT (pivot decision) ---
+Card uniformity in Intelligence is DONE. The two candidate next arcs, both groundwork
+for publication:
+1. GATE-STARVATION DIAGNOSE (Contested-Skies-only, one GDELT stream): is the incident-
+   tuned relevance gate silently culling NON-incident analytical material (capability/
+   procurement/regulatory/industry) that the categories need? Design docs argue this
+   should land BEFORE the publication pipeline (a starved corpus makes the pipeline
+   useless). Diagnose-first.
+2. PUBLICATION PIPELINE (ARC II) -- the New Sources -> review -> publish flow the two
+   design docs describe. This is where: (a) pub-process cards (PipelineSourceCard) get
+   UNIFORMIZED (adapter fromPipelineRow + reuse the shared read-components -- diagnose
+   done, read-only pub cards the likely shape), and (b) FORK B lands: region buckets
+   gain real region pages (turn on Europe/MENA/...).
+Sequencing of 1 vs 2 is an open decision for next session.
 
---- CAPSTONE SLICE 1: what shipped (2026-08-22) ---
-The unified-card CAPSTONE (routing meter cross-type + incident as a real gate) landed in two commits, both pushed:
-- 04698b2 (7-file structural): (1) RoutabilityMeter/footer DECOUPLED from the {children} gate -- the routing footer renders on its own (static "Routing" label when no children, collapse toggle when present), and {children} now gates ONLY the News-specific project selector; the meter is cross-type. (2) INCIDENT is now a REAL, REQUIRED sixth check in canRoute (core.incident.human !== null -- answering Yes or No satisfies it; unanswered blocks). (3) SOCIAL is EXEMPT from the aiAnalyzed gate (aiAnalyzed = type === 'social' ? true : ...), and the meter hides the AI dot for social (filters a LOCAL copy of ROUTE_CHECKS -> 5 honest dots + 5-item flyout); trigger tooltip is count-aware ("all N checks pass"). (4) Tab wiring: onIncidentChange threaded so the IncidentChip mounts editable in Zone A.
-- 926dd05 (IncidentChip control): explicit "Incident? Yes / No" in both branches (unanswered LABEL "Incident?", engaged LABEL "Incident:"); the Yes chip shows the indigo PROPOSED_DOT when AI-flagged, and a small rose square "H" marker (FORCED_H_MARK, new hue -- distinct from RelevancePill indigo / ConfidencePill fuchsia) only for state === 'forced' (researcher marked an incident the AI did NOT flag).
-- CLOUD-VERIFIED (sibling preservation): answering incident in-app on article 0899593b wrote human.incident=true + human.incident_at while .ai (8 keys), .routing (4 keys), human.relevance ("High") and human.overridden_at ALL survived unchanged -- the RMW writer preserves siblings.
+--- BANKED (hardening + polish, do when touched) ---
+- readCloudAnalysis SILENT-FLATTEN: on a JSON parse failure of a NON-NULL
+  analysis_json, readCloudAnalysis returns {} so the next .human write overwrites the
+  whole column, destroying .ai/.routing/.reconciled. Pre-existing across ALL 6 .human
+  writers. FIX: distinguish absent (fine, proceed) from present-but-corrupt (abort).
+  Small; do before adding more .human writers.
+- RE-ANALYZE WIPES CONFIRMED GEOGRAPHY: saveAiAnalysis overwrites subject_countries
+  wholesale on re-analyze, eating hand-confirmed countries AND regions. Pre-existing,
+  cousin to the flatten risk.
+- REGION-ONLY APPROVE-BUT-VANISH: a region-only source approves but (correctly for
+  Fork A) routes to its region bucket now that buckets are first-class -- this was the
+  tag-only concern and is RESOLVED by the buckets-first rework; no longer a worry.
+- RAW REGION-TOKEN LABELS: a few geography-print sites still show the raw token
+  (PipelineSourceCard pin pill, syncPlacements "EUROPE is in review" message) -- only
+  CellGrid + PreCommitReview geoLabel were Title-cased. Cosmetic; sweep later.
+- SCOPE-TOGGLE QUIRK: adding a region/level to an EMPTY card doesn't light the matching
+  scope side (deriveInitialScope runs once at mount by design); typeahead stays locked
+  until a side is picked; self-heals on remount. Pre-existing (LATAM button too).
+- PUB-CARD UNIFORMITY: PipelineSourceCard still wears the OLD skin (raw REL/HIGH badges,
+  plain "Researcher override" text). Uniformized as part of ARC II (above).
+- macOS INSTALL "VIRUS" FLAG: unsigned/un-notarized build (notarize:false,
+  hardenedRuntime:false). CONFIG not code. Needs Apple Developer Program + Developer ID
+  cert + notarization. Rides with release work. Stopgap: right-click -> Open.
+- SNIPPET/SUMMARY: the card snippet is the ARTICLE's own snippet (NOT AI-generated) --
+  earlier "AI should replace the snippet" framing was wrong. App-side Analyze writes
+  structured fields (ai.summary etc.), not the snippet. Mostly a non-issue; the
+  structured-field refresh after analyze is the only thing worth a later check.
 
---- CARD ARC: what shipped this session ---
-The unified-card VISUAL redesign is complete and live on all four intel types (News/Social/Documents/Interviews):
-- Slice 0: lost design spec restored to git (docs/unified-source-card-mockup.html + docs/unified-card-model-spec.md).
-- Slice 1: flat card -> title surface + 3 tinted zones (cogwheel=assessment/routing, globe=geography, bust=engaged entities) + collapsible footer.
-- Slice 2a: fixed ActorChips .slice(0,20) data-loss bug (was silently dropping actors #21+ on edit). Cloud-verified no data lost (max 15).
-- Slice 2b: overflow "...+N" grouped popovers (data-driven actor groups by real type field; mentioned-only geo overflow; portal anchoring; shared usePopoverDismiss lifted).
-- Slice 3: click-to-override CONFIDENCE pill (wires to existing updateConfidence, confidence_override=1).
-- Slice 3b: relevance override FOLD-pill with picker (human.relevance over AI REL, provenance-marked, one-click clear; gate-safe - never writes relevance_score).
-- B: retired redundant legacy footer confidence/relevance selects.
-- Routing rename: card footer "Review and annotate" -> "Routing" (resolved a name collision with NewsTab's human-layer footer).
-- Slice 4a: wired IMPLICIT geography confirmation (editing geography stamps geography_confirmed=1; AI-proposed-untouched stays 0). Cloud-verified. Surfaced hasContent + confidenceOverride on SourceCore.
-- Slice 4b-1: 6-DOT ROUTABILITY METER on News (content/AI/tags/confidence/geography/incident). canRoute() is the single source of truth (meter + Approve button read it). Type-aware content check (news>=200c / social non-empty / interview>=10w / doc non-empty). Click flyout listing checks. Incident dot DIM (pending 4b-2). Interim gate on the 5 live checks.
-- Slice S5b-2 step 1 (1e02311): extracted the shared useThematicTagVocabulary(projectBoardId) hook (knownThematic + getKnownTags load + the SINGLE onTagsInvalidate sub + registry create/delete), consumed once per tab.
-- Slice S5b-2 step 2 (37fa4b5): lifted thematic tags into the shared SourceCard as Zone D via ONE TagPicker mount; removed all four tab-local pickers; added canEditTags project-gating on all four tabs (News included) with read-only chips / "Select a project to tag" hint when none; News clears its missing-topic gate only when a topic remains; added a horizontal viewport clamp to the TagPicker dropdown so the panel + its registry-delete trash icon stay on-screen in the rightmost zone (fixed the "can't delete tag" report -- same root cause as the overflow). Renderer-only; typecheck baseline (main 5 / web 55).
+--- ARCHITECTURE NOTES ---
+- cs_articles vs intelligence_sources: TWO article tables. GDELT news is two-hop
+  (cs_articles -> syncFromContestedSkies -> intelligence_sources); manual compose
+  (Social/Doc/Interview) is one-hop (insertSource -> intelligence_sources). The GDELT
+  collection/culling + the learning loop (verdict write-back keyed on url) are
+  Contested-Skies-ONLY; the other 3 projects don't auto-collect yet (Phase 2).
+  claude_analysis is DECOMPOSED into scalar columns on import, NOT carried into
+  analysis_json -- the structured AI (analysis_json.ai) only exists after app-side
+  Analyze, which is explicit-only because GDELT gives no article body.
+- DOCS PASS IN PROGRESS: committing the two architecture diagrams (SourceCard anatomy +
+  ingest->New-Sources lifecycle) to docs/architecture/, and a new
+  docs/architecture/geography-model.md, alongside this HANDOFF refresh.
 
---- KEY DEFERRED ITEMS (banked, do in order) ---
-1. UNIFORM EDITING LAYER (S5b). The core purpose of unified cards: ALL controls editable on ALL types - CONFIDENCE (researcher-selected, NOT relevance), GEOGRAPHY, ACTORS, SUMMARY, STRUCTURED DATA, TAGS. Editable on News from the start; S5b brings the other 3 to parity. NO migration needed for the ready tier (all types already store geo/actors in the SAME structured columns; writers are type-agnostic).
-   TIERS (from the 6-control x 3-type matrix):
-     - S5b-1 / geography+actors+confidence = COMPLETE + SHIPPED (e2f493e), cloud-verified. Evidence below.
-     - S5b-2 [SHIPPED 2026-08-18: 1e02311 step 1 + 37fa4b5 step 2]. RE-SCOPED from capability-lift to a DE-DUP REFACTOR (TagPicker was already shared+editable on all four tabs; this collapsed four tab-local mounts into ONE). Chose FULL CONSOLIDATION: new shared hook useThematicTagVocabulary(projectBoardId) owns knownThematic + getKnownTags load + the SINGLE onTagsInvalidate sub + registry create/delete, consumed once per tab (not per card). Tags now card-native in SourceCard Zone D via one TagPicker mount; all four tab-local pickers removed. All four tabs (News included) gate tag editing on project presence via canEditTags (read-only chips / 'Select a project to tag' hint when none). News clears its missing-topic gate only when a topic remains. TagPicker dropdown got a horizontal viewport clamp so the panel + its registry-delete trash icon stay on-screen in the rightmost zone (fixed the 'can't delete tag' report -- same root cause as the overflow, wiring was fine). Renderer-only; typecheck baseline (main 5 / web 55). NOT pushed.
-     - S5b-3 / BUILD = structured data (+ parts of summary) - writer/column/mapping missing for non-News types. DEFERRED behind the card-arc capstone (see REMAINING WORK ORDER below).
-   S5b-1 EVIDENCE (COMPLETE, cloud-verified 2026-08-18):
-     - Cloud-verified in intelligence_sources: interview 933c951d = confidence set + confidence_override=1; untouched interview 88f0aa3d stays confidence=null / override=0 (B2 invariant holds - NO fake-LOW). social b0c966cf + document a6f10883 both went low/override=0 -> high/override=1, proving the updateConfidence write path on all THREE non-News types (not just interview).
-     - geography_confirmed=1 stamped on all three types via updateCountries (4a parity) - the meter's geography dot can now complete cross-type (unblocks 4b-1b).
-     - DIAGNOSIS OUTCOME = KEEP-AND-FINISH (the uncommitted attempt was sound). SourceCard changed in a SINGLE hunk (guard core.confidence -> (core.confidence || onConfidenceChange); pill value conf -> core.confidence); NO prop-interface change (the onChange handlers pre-existed from earlier slices). The three tabs are line-for-line NewsTab-faithful (only the state setter swapped). B2 PRESERVED: the ConfidencePill unset branch ignores the passed low-palette style, so the upstream core.confidence||'low' coercion (now feeding ONLY confStyle) cannot resurface as a fake LOW.
-     - PILL CYCLE NOTE (guard against future 'bug' reports): an interview (null confidence) SEEDS 'high' on first click via the unset branch; social/document (pre-seeded AI/default 'low', override=0) ADVANCE low->high on first click via the cycle branch. Different entry paths, both correct - a social/document row landing on 'high' after one click is EXPECTED, not a bug.
-
-2. Slice 4b-2 = INCIDENT route-gate control. The gate does NOT pre-determine incident, so "AI proposes, human confirms" doesn't work. DECISION: an explicit "Incident? Yes/No" control the researcher answers; the incident dot lights when answered EITHER way. Then flip canRoute's incident check + the button gate from the interim 5-check to canRoute.all.
-
-3. Slice 4b-1b = extend the routability meter to social/doc/interview + flyout scroll-dismiss. BLOCKED on S5b-1 (their geo/confidence dots can't complete until those controls are editable). Once S5b makes them editable, 4b-1b ships the cross-type gating. The 3 non-News tabs route uniformly via routeToProject + "Send to New sources" (gate that button).
-   4b-1b SCOPE FINDINGS (banked 2026-08-18, from a card-layout diagnostic session):
-   - [DONE in capstone slice 1, 04698b2] The routing footer + 6-dot meter WERE gated on {children} (the guard is at SourceCard.tsx:496, not the ~431/451 cited in older notes), NOT type-gated (zero core.type checks in SourceCard). Only NewsTab passed children (its project selector + gate-error), which is why the footer/meter was News-only. FIX (shipped): meter/footer DECOUPLED from the {children} gate -- renders on its own condition; {children} now gates ONLY the News-specific project selector. Did NOT thread empty children through the other three tabs.
-   - 4b-1b is DEPENDENCY-LADEN, not "add the meter": confidence + geography dots are READY (S5b-1). BUT the incident dot needs 4b-2 (the standalone Incident Yes/No control does not exist yet), and section proposals on non-News types need item 6 (AI-READ tuning) - an empty section rail is uniform blank forms, not uniform editing. Sequence 4b-1b AFTER 4b-2 and item-6 for the non-News types, or ship it with those dots explicitly interim/dim.
-   - PROJECT PICKER -> ZONE A (banked 2026-08-18, decided): the project picker (PROJECT: [Contested Skies]) currently lives in the footer "Routing" section, but Zone A is literally titled "Assessment & ROUTING" - the picker is a routing control and belongs there. HOWEVER it is entangled: the picker is ONE OF THE TWO children NewsTab passes (picker + gate-error) that trip the {children} gate making the footer/meter render at all. So moving the picker into Zone A MUST happen AS PART OF the children-gate decouple, not standalone - moving it alone empties children and the footer/meter stop rendering. SCOPE INTO 4b-1b. Open sub-question for the footer redesign (item 4): once the picker leaves the footer, does the footer "Routing" section still exist / need renaming? Likely footer becomes just the routability readout + send action; Zone A owns all the routing DECISIONS.
-
-4. FOOTER-LAYOUT REDESIGN (after 4b-1b, design-first): the News card footer is 3 stacked bands (Routing + orphaned topic/actions row + Review-and-annotate) = too tall. Deferred until after Slice 4 so the meter is present when redesigning. After this, the CARD ARC IS DONE.
-   ITEM 4 IS GROWING into a card-LAYOUT consolidation pass (not just "footer too tall"). Banked findings 2026-08-18:
-   - CONFIDENCE / RELEVANCE PLACEMENT (SHIPPED - was a near-term slice, done before S5b-2): confidence ConfidencePill currently lives ORPHANED in the kicker row (SourceCard.tsx:193-197); relevance RelevancePill lives correctly in Zone A "Assessment & routing" (:259-285). They are semantic siblings (both AI-proposed, researcher-overridable) but split across regions. DECISION: MOVE confidence into Zone A beside relevance; kicker reverts to pure identity (status/name/date). The two serve DIFFERENT systems - relevance feeds the feedback learning loop; confidence is our editorial assessment - so they need visual differentiation. DESIGN = option B: BOTH keep green/amber/red for the VALUE (high/mid/low) in AI/default state; on HUMAN override each takes a distinct SYSTEM-IDENTITY hue mirroring the existing pattern - relevance already uses INDIGO (HUMAN_PILL/H_MARK ring+mark); confidence takes FUCHSIA via the SAME ring+mark construction (not a different mechanism). Fuchsia chosen because teal=Geography frame, rose reads too close to red/low, indigo=relevance's identity. Do NOT recolor the AI/default states - only the human-set identity diverges. SHIPPED b820f95 (2026-08-18): confidence pill moved from kicker into Zone A as first chip beside relevance; kicker reverted to pure identity (status/name/date). Fuchsia H-mark + ring human-override identity on confidence (mirrors relevance's indigo), layered on top of green/amber/red value colours. PLUS CONF/REL inline field-name prefixes on both pills so each self-identifies (fixed the color-only-differentiation problem: two overridden pills read identically as 'H High' until labeled). ConfidencePill CONF in read+set branches (not unset); RelevancePill REL in human-override state only (aiNode already renders literal 'REL'). B2 preserved throughout.
-
-5. SNIPPET/SUMMARY NOT UPDATED BY AI (separate, adjacent to ARC II): GDELT snippet is supposed to be replaced by a substantive AI summary post-analysis, but isn't (AI-replaces-snippet is unbuilt). Investigate saveAiAnalysis; wire snippet<-AI-summary.
-
-6. AI-READ TUNING (separate arc, after the editing layer): AI analysis must PRE-POPULATE geography/actors/summary/structured for interviews and documents (does News today) so researchers confirm rather than author. SOCIAL stays more-manual for now (auto-population harder; revisit).
-
-7. IMAGE ATTACHMENTS (future arc, design-first, rides with/after ARC II): attach an image to a source + clickable indicator on the published monitor. Needs Supabase Storage (bucket + upload) for dropped files; URLs already supported. ~3-5 slices.
-
---- QUEUED FOLLOW-UPS (post-capstone-slice-1) ---
-- [DONE 04698b2/926dd05] Cross-type completeness/routability meter: lifted the meter + gate off {children} so all four types get it; incident is now a REAL required dimension (no longer "coming soon"); social exempt from the AI dot. THIS WAS THE CARD-ARC CAPSTONE (slice 1).
-- [PARTIAL -- capstone slice 2, still open] Routing project picker (+ CS sections) -> card Zone A: move the project picker out of the footer into Zone A ("Assessment & ROUTING"). The {children} decouple that unblocks this shipped in slice 1; the picker MOVE itself is not done. See REMAINING WORK ORDER item 1.
-- Summary lift (the 'and maybe summary' from the old S5b-2 line): decide whether summary becomes card-native too.
-- Empty-vocab-in-All-view (minor, pre-existing): with the top filter on 'All', the vocabulary hook gets board='' -> empty tag list; separate vocabulary-scoping decision, not a Zone D bug.
-
---- NEXT ARC: CONFIRM-PROVENANCE (finalized 2026-08-22; diagnose done; 3 slices; ZERO data-model work) ---
-MODEL: every AI-populated dimension shows a small-but-noticeable provenance mark; the researcher can CONFIRM-AS-IS in ONE click (AI -> H, no edit needed). Confirm-as-is is the missing action today -- confirmation currently only happens as a SIDE EFFECT of editing, which is the root of the geography + incident bugs. Three paths all yield H: confirm-as-is, add, edit; the x deletes.
-PER-DIMENSION (deliberately NOT uniform):
-  - GATES, need confirm-as-is: CONFIDENCE (confidence_override col), GEOGRAPHY (geography_confirmed col -- MAIN subject countries only; the ghost +mentioned / +region / +Global slots do NOT count), INCIDENT (analysis.human.incident).
-  - RELEVANCE: gets the AI->H look for consistency, does NOT gate.
-  - ACTORS: KEEP the amber AI badge (provenance only), NO confirm action, does NOT gate -- routes on a visual glance.
-  - TAGS: OUT of the arc entirely, untouched -- already correct (AI suggests purple=new / green=existing chips under the AI summary; researcher clicks to add; no AI badge on chips, no confirm flag).
-NO NEW STORAGE: every gating dimension already persists its flag (2 cols + analysis.human.incident). No schema, no migration.
-THREE SLICES:
-  A = lift a shared <ProvenanceMark> primitive. [SHIPPED 3b7f211, NOT pushed] Was 4 hand-copied H-marks (RelevancePill H_MARK indigo, ConfidencePill CONF_H_MARK fuchsia, IncidentChip FORCED_H_MARK rose, + the pattern) and 2 byte-identical amber AI-badges (GeographyChips + ActorChips), NO shared component. Now ONE src/renderer/src/components/source-card/ProvenanceMark.tsx: kind=human (hue prop indigo/fuchsia/rose via a LITERAL per-hue class map so Tailwind keeps the classes) + kind=ai (amber badge, per-site title prop). All 8 render sites routed (RelevancePill x3 -- trigger/picker/read-mode, ConfidencePill x2, IncidentChip x1, GeographyChips x1, ActorChips x1; the diagnose said 6 but RelevancePill reuses its mark 3x), 5 dead consts removed. PURE REFACTOR: byte-identical className/text/aria/titles, zero visual/behavior/gate change. Typecheck baseline (web 55/node 5).
-  B [SHIPPED 06f32fa + 9b04bca] = confirm-as-is action on confidence / geography / incident (fixes bug B1 + B3) + the relevance AI->H look + per-actor provenance. Every AI-populated pill/chip now leads with a small in-pill AI-or-H mark; the three gates confirm-as-is (AI->H, value unchanged) in ONE click via the existing flag setters. Confidence: amber AI in the pill, click confirms confidence_override=1 unchanged (stopPropagation, no cycle). Geography: AI mark leads each subject chip as click-to-confirm stamping geography_confirmed=1 via updateCountries with the current unchanged lists; teal H when confirmed; set-level this slice (all subject chips share the one flag). Incident: H keyed off the human decision -- Yes shows rose H when human===true, No shows rose H when human===false, indigo dot only while unanswered. Relevance: amber AI inside the REL badge when AI-scored / indigo H inside HUMAN_PILL when overridden -- an in-place swap, provenance only, no confirm. Actors: per-chip amber AI or violet H once a human adds/edits; origin persisted inside the existing actors JSON (default ai, human on add/edit), carried through updateActors via JSON.stringify, NO main-process/schema change; whole-set badge removed; non-gating. Added teal + violet hues to ProvenanceMark. Renderer-only; typecheck baseline.
-  GEOGRAPHY PER-COUNTRY ORIGIN [NEXT] = give each subject-country chip its OWN AI/H (like actors), replacing the current set-level geography_confirmed for provenance. Bigger than actors: subject_countries are plain STRINGS today (with REGIONAL/GLOBAL sentinels), so per-country origin means restructuring string[] -> objects and touching the parser, sourceCore, GeographyChips, updateCountries, the sentinels, AND the route gate (which reads geography_confirmed + subjectCountries). Needs its own read-only diagnose first; decide whether the set-level geography_confirmed stays for the GATE or is replaced. Currently geography is set-level (all subject chips share the flag).
-  D = geography 3-action chip (body-click: confirm on 1st click / open sub-region on 2nd; the x deletes) + fix bug B2 (layout reflows).
-BANKED BUGS (all fixed inside this arc):
-  - B1 (geography confirm-without-edit): geography_confirmed=1 is stamped ONLY inside updateCountries, which fires ONLY on a GeographyChips onChange (an actual mutation). The country chip BODY click opens the sub-area editor (setEdit, no onChange), so it never confirms. No no-op confirm path exists.
-  - B2 (LATAM click reflows boxes): two real box-shape changes in GeographyChips -- the typeahead input width toggles !w-56 (disabled) -> w-32 (enabled) when scope goes null -> 'latam', AND the LATAM level button grows (appends a Check glyph) + injects a new violet sentinel chip into the chips row.
-  - B3 (incident invisible confirm): clicking Yes on an AI-flagged incident DOES write human.incident=true and lights the meter dot, BUT the chip render is IDENTICAL before/after -- isIncident was already true (from aiFlagged) so Yes was already lit, state stays 'confirmed', shows the indigo PROPOSED_DOT, never flips to H. The confirm-as-is visual gap in miniature.
-SUPERSEDES: this arc reworks HOW confidence/geography/incident get confirmed; slice 1's decouple/meter/incident-control stand unchanged.
-
---- REMAINING WORK ORDER ---
-1. CONFIRM-PROVENANCE ARC. Slice A [SHIPPED 3b7f211, NOT pushed] = shared <ProvenanceMark>. Slice B [SHIPPED 06f32fa + 9b04bca, NOT pushed] = uniform in-pill AI/H provenance chips + one-click confirm-as-is on confidence/geography/incident (fixes B1 + B3) + relevance AI->H look + per-actor provenance. ZERO data-model work through here.
-   - GEOGRAPHY PER-COUNTRY ORIGIN [NEXT]: give each subject-country chip its own AI/H like actors (Dorian chose per-country). Bigger than actors -- subject_countries are plain STRINGS today (with REGIONAL/GLOBAL sentinels), so per-country origin means restructuring subject_countries string[] -> objects, touching the parser, sourceCore, GeographyChips, updateCountries, the sentinels, AND the route gate (which reads geography_confirmed + subjectCountries). Needs its own read-only diagnose first; decide whether set-level geography_confirmed stays for the gate or is replaced. Currently geography is set-level (all subject chips share the flag).
-   - Slice D (geography 3-action chip + bug B2 layout reflow) after.
-   - DEFERRED: relevance confirm-as-is (needs a numeric REL-score -> High/Med/Low mapping decision -- editorial, not a no-op); "No Anthropic API key configured" on the Re-score button (app/env config, not a code bug, unrelated to this arc).
-2. CAPSTONE SLICE 2 (was part of slice 1's scope): project picker (+ CS sections) -> card Zone A. The {children} decouple that unblocks this shipped in slice 1; only the picker MOVE remains. Open sub-question: once the picker leaves the footer, does the footer "Routing" section still need renaming (likely becomes just the routability readout + send action)?
-3. Phase B: pipeline surfaces replace PipelineSourceCard (converge the article/pipeline card onto the shared SourceCard).
-4. Cleanup: retire categories_json USAGE per type; Social freeform -> structured geo/actors migration.
-
---- AFTER THE CARD ARC ---
-Pivot to ARC II = the PUBLICATION PIPELINE (geography/country-default model - "the next MAJOR priority"). Then the other separable arcs (A2 write-propagation, Phase B PipelineSourceCard convergence).
-
---- WORKING DISCIPLINE (non-negotiable) ---
-Read-only diagnose before any build. One slice at a time. COWORK vs CHAT: switch to Cowork (agentic, Claude-Code-driven) for cross-cutting investigation and multi-file builds; use chat for design decisions and react-and-refine judgment calls. Claude should PROACTIVELY FLAG when a task is Cowork-shaped (e.g. a multi-file build across the shared card + several tabs) rather than waiting to be asked, and note when it makes sense to return to chat. HANDOFF.md carries the full "why" across both loops. Verify writes in cloud SQL, not just UI/mirror. Commit + push immediately on green; verify with git log (this session, "done" repeatedly meant shown-not-committed - always check git log). Code and docs = separate commits. git add specific files only (never -A - scratchpads). ASCII single-quoted commit messages. Confirm ~/newsroom-pm before any git op. Multi-tab/shared-card slices: build -> show diff -> REVIEW before test (enforce the review gate).
+--- WORKING DISCIPLINE (unchanged) ---
+Read-only diagnose before any build. One self-contained copy-paste block at a time.
+Build -> full raw git diff -> REVIEW gate (read raw hunks, not summaries) -> test in-app
+-> cloud-verify writes in Supabase SQL -> commit specific files BY NAME (never git
+add -A; scratchpads stay untracked). Code and docs = separate commits. ASCII single-
+quoted commit messages. Confirm ~/newsroom-pm before any git op. Push on green; verify
+with git log. Main-process changes need npm run rebuild && npm run dev (renderer hot-
+reloads). Shared-component / multi-tab work: build -> diff -> REVIEW -> test -> commit.
 
 === NEXT SESSION FIRST STEP ===
-Read this block, run git status + git log --oneline -8, confirm HEAD 9b04bca (branch ahead of origin/main -- the whole confirm-provenance chain 3b7f211/06f32fa/11acdeb/9b04bca is NOT pushed). CONFIRM-PROVENANCE Slice A and Slice B are both SHIPPED: A = shared <ProvenanceMark> primitive; B = uniform in-pill AI/H provenance chips + one-click confirm-as-is on confidence/geography/incident (fixes B1 + B3) + relevance AI->H look + per-actor provenance (renderer-only, no storage/IPC/schema). NEXT (REMAINING WORK ORDER item 1) is GEOGRAPHY PER-COUNTRY ORIGIN: give each subject-country chip its own AI/H like actors (Dorian chose per-country). This is NOT renderer-only -- subject_countries are plain strings today, so it means restructuring string[] -> objects across the parser, sourceCore, GeographyChips, updateCountries, the sentinels, AND the route gate. COWORK-SHAPED: read-only diagnose FIRST (decide whether set-level geography_confirmed stays for the gate or is replaced), then build -> show diff -> REVIEW gate before test. Then Slice D (geography 3-action chip + B2 reflow fix).
+Read this block. Run git status + git log --oneline -10; confirm HEAD 1485438, origin
+in sync. Card uniformity + geography origin + subregional are DONE. Decide the pivot:
+GATE-STARVATION diagnose (likely first, per design docs) vs PUBLICATION PIPELINE (ARC
+II). Both are diagnose-first. If continuing docs: finish the docs pass (diagrams +
+geography-model.md) noted above.
 
 --- end resume block ---
 --------------------------------------------------------------------------------
