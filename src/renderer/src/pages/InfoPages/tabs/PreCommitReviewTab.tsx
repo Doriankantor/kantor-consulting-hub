@@ -7,6 +7,7 @@ import { IncidentCard, INCIDENTS_COLOR } from './incidentCard'
 import { SECTION_LABELS, sectionLabel } from '../../Intelligence/sectionLabels'
 import { sectionColor } from '../../Intelligence/sectionColors'
 import { resolveIncident } from '../../Intelligence/resolveAnalysis'
+import { REGION_TOKENS, toRegionToken } from '../../Intelligence/geographyVocab'
 
 interface Props {
   pageId: string
@@ -71,7 +72,8 @@ function stripHtml(html?: string): string {
     .trim()
 }
 
-const geoLabel = (g?: string) => (!g || g === 'REGIONAL' ? 'ALL LATAM' : g)
+// Subregional S1: region tokens read as their Title-case Region name (EUROPE -> 'Europe').
+const geoLabel = (g?: string) => (!g || g === 'REGIONAL' ? 'ALL LATAM' : REGION_TOKENS[toRegionToken(g)] ?? g)
 
 // Word-level marked-up diff (read-only). added → green, removed → red+strike, else plain.
 function DiffText({ original, proposed }: { original: string; proposed: string }) {

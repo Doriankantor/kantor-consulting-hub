@@ -20,7 +20,7 @@ import { resolveAnthropicKey } from '../ipc'
 // Geo-2 (slice 2): canonical geography resolver -- snaps a raw country string to its
 // canonical spelling, recognizes the REGIONAL/GLOBAL sentinels, and flags unmapped junk.
 // Reused (not duplicated) from the main-side vocab; the gate path uses the same fn.
-import { resolveRegion } from '../geography'
+import { resolveRegion, REGION_TOKENS } from '../geography'
 
 // Current model. This matches the live relevance-gate / classify path, whose
 // constant is GATE_MODEL = 'claude-haiku-4-5' in ipc/index.ts — a current Haiku 4.5
@@ -940,18 +940,24 @@ function normalizeResult(parsed: Record<string, unknown>): AnalyzeResult {
       if (!s) continue
       const r = resolveRegion(s)
       if ('unmapped' in r) continue // junk -> drop, do not pass freeform through
+      // Subregional S1: ONLY REGIONAL/GLOBAL are sole-entry sentinels. A region token (EUROPE, MENA,
+      // ...) is NOT -- it falls through to the country path below and is kept ADDITIVELY alongside
+      // countries (deduped, counted in the cap), so it neither replaces nor is replaced by them.
+      // A REGIONAL/GLOBAL sentinel still wins outright (Model A, below) -- regions included.
       const isSentinel = r.country === 'REGIONAL' || r.country === 'GLOBAL'
       if (isSentinel) {
         if (!allowSentinel) continue // mentioned_countries: sentinels are not valid
         if (sentinel === null) sentinel = r.country // canonical sentinel spelling
         continue
       }
+      // mentioned_countries takes bare countries ONLY -> a region token there is dropped, like a sentinel.
+      if (!allowSentinel && r.country in REGION_TOKENS) continue
       const key = r.country.toLowerCase()
       if (seen.has(key)) continue
       seen.add(key); countries.push(r.country)
       if (countries.length >= 12) break
     }
-    // Model A: a sentinel is the SOLE entry -- if present, it replaces all countries.
+    // Model A: a sentinel is the SOLE entry -- if present, it replaces all countries (and region tokens).
     if (allowSentinel && sentinel) return [sentinel]
     return countries
   }

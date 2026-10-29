@@ -333,6 +333,30 @@ export const COUNTRY_ALIASES: Record<string, string> = {
 // cell and placement currently says 'REGIONAL', so the rename is deferred.
 export const REGIONAL_SENTINEL = 'REGIONAL'
 
+// Subregional S1: the extra-LATAM REGION TOKENS -- legal, persistent subject_countries members,
+// peers to countries and the REGIONAL/GLOBAL sentinels. FIRST-CLASS geographies: a region token
+// resolves to a real placement geography and routes to its own region cell, like a country.
+// CANONICAL STORED FORM is UPPERCASE_UNDERSCORE, parallel to REGIONAL/GLOBAL. Deliberately NOT
+// here: LATAM (that level is the REGIONAL sentinel), GLOBAL (already a sentinel), and Russia (a
+// one-country region -- the Russia country chip already covers it).
+// RENDERER MIRROR: src/renderer/src/pages/Intelligence/geographyVocab.ts (REGION_TOKENS) --
+// main and renderer do not share modules, so keep the two lists in sync by hand.
+export const REGION_TOKENS: Record<string, Region> = {
+  NORTH_AMERICA: 'North America',
+  EUROPE: 'Europe',
+  MENA: 'MENA',
+  SUB_SAHARAN_AFRICA: 'Sub-Saharan Africa',
+  ASIA: 'Asia',
+  OCEANIA: 'Oceania',
+}
+
+// Normalize any spelling to the canonical token form: trim, upper-case, and collapse runs of
+// whitespace/hyphens to one underscore. So 'EUROPE', 'Europe', 'Sub-Saharan Africa' and
+// 'sub saharan africa' all reach their token; the Region-type Title-case form maps too.
+export function toRegionToken(raw: string): string {
+  return raw.trim().toUpperCase().replace(/[\s-]+/g, '_')
+}
+
 // Minimal MATCH-normalization -- NOT an alias map. Trim, collapse internal
 // whitespace, and title-case each whitespace-separated word so 'mexico' and
 // ' Mexico ' both match the canonical 'Mexico'. Intentionally simple; real
@@ -368,6 +392,14 @@ export function resolveRegion(
   const sentinel = country.trim().toUpperCase()
   if (sentinel === 'REGIONAL') return { region: 'LATAM', country: 'REGIONAL' }
   if (sentinel === 'GLOBAL') return { region: 'GLOBAL', country: 'GLOBAL' }
+  // Subregional S1: a REGION TOKEN resolves to its Region, and the stored "country" is the
+  // canonical token itself (like the sentinels) -- so snapCountries keeps it and
+  // resolvePlacementGeographies routes it as a real placement geography (its own region cell),
+  // never flagged unmapped. Checked BEFORE the country lookup;
+  // no token collides with a country name.
+  const token = toRegionToken(country)
+  const tokenRegion = REGION_TOKENS[token]
+  if (tokenRegion !== undefined) return { region: tokenRegion, country: token }
   const normalized = normalizeCountry(country)
   const canonical = COUNTRY_ALIASES[normalized] ?? normalized
   const region = COUNTRY_TO_REGION[canonical]

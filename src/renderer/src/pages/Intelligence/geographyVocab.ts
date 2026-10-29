@@ -234,6 +234,28 @@ export function lookupCountry(name: string): GeoCountry | undefined {
   return BY_LOWER[name.trim().toLowerCase()]
 }
 
+// Subregional S1: RENDERER MIRROR of REGION_TOKENS in src/main/geography.ts (same hand-sync rule
+// as GEO_COUNTRIES above). The 6 extra-LATAM region tokens, stored in subject_countries in the
+// canonical UPPERCASE_UNDERSCORE form, peers to countries and the REGIONAL/GLOBAL sentinels. Not
+// LATAM (= REGIONAL), not GLOBAL, not Russia. First-class geographies: each routes to its own cell.
+export const REGION_TOKENS: Record<string, string> = {
+  NORTH_AMERICA: 'North America',
+  EUROPE: 'Europe',
+  MENA: 'MENA',
+  SUB_SAHARAN_AFRICA: 'Sub-Saharan Africa',
+  ASIA: 'Asia',
+  OCEANIA: 'Oceania',
+}
+
+// Same normalization as main's toRegionToken: trim, upper-case, whitespace/hyphen runs -> '_'.
+export function toRegionToken(raw: string): string {
+  return raw.trim().toUpperCase().replace(/[\s-]+/g, '_')
+}
+
+export function isRegionToken(value: string): boolean {
+  return toRegionToken(value) in REGION_TOKENS
+}
+
 // True only for a KNOWN LATAM country. Unknown/legacy free-text values return false
 // (the chip falls back to the neutral style in that case -- see GeographyChips).
 export function isLatamCountry(name: string): boolean {

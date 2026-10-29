@@ -3,6 +3,7 @@ import { SECTION_LABELS, sectionLabel } from '../../Intelligence/sectionLabels'
 import { sectionColor } from '../../Intelligence/sectionColors'
 import { Box } from './cellPrimitives'
 import { IncidentCard, INCIDENTS_COLOR } from './incidentCard'
+import { REGION_TOKENS, toRegionToken, isRegionToken } from '../../Intelligence/geographyVocab'
 
 interface Props {
   // publication tables are global CS data — no board/page column yet; pageId
@@ -22,6 +23,12 @@ interface Props {
 const SUPPLIER_AXIS_GEOS = new Set([
   'United States', 'China', 'GLOBAL', 'Ukraine', 'Israel', 'Lebanon', 'Syria', 'Turkey', 'Costa Rica',
 ])
+
+// Subregional S1: extra-LATAM REGION cells (EUROPE, MENA, ...) get their OWN tab group, parallel
+// to the supplier axis -- not folded into SUPPLIER_AXIS_GEOS, which means "re-index debt" (amber,
+// "pending re-index"), while a region cell is a legitimate first-class destination. Like the
+// supplier axis, regions have no Incidents rail (incidents are homed to a single country).
+const noIncidentsGeo = (g: string) => SUPPLIER_AXIS_GEOS.has(g) || isRegionToken(g)
 
 // Loose row aliases — P1a returns untyped any[]; the columns we read are stable.
 type Row = Record<string, any>
@@ -61,7 +68,8 @@ function geoSort(a: string, b: string): number {
   if (b === 'REGIONAL') return 1
   return a.localeCompare(b)
 }
-const geoLabel = (g: string) => (g === 'REGIONAL' ? 'ALL LATAM' : g)
+// Region tokens read as their Title-case Region name (EUROPE -> 'Europe').
+const geoLabel = (g: string) => (g === 'REGIONAL' ? 'ALL LATAM' : REGION_TOKENS[toRegionToken(g)] ?? g)
 
 export default function CellGridTab({ pageId }: Props) {
   void pageId   // intentionally unused (see Props comment)
@@ -107,9 +115,9 @@ export default function CellGridTab({ pageId }: Props) {
   useEffect(() => { load() }, [load])
 
   // ── shape the four flat arrays into a cell map + geography buckets ──────────
-  const { cells, mainGeos, supplierGeos, total } = useMemo(() => {
+  const { cells, mainGeos, regionGeos, supplierGeos, total } = useMemo(() => {
     const cells = new Map<string, Cell>()
-    if (!grid) return { cells, mainGeos: [] as string[], supplierGeos: [] as string[], total: 0 }
+    if (!grid) return { cells, mainGeos: [] as string[], regionGeos: [] as string[], supplierGeos: [] as string[], total: 0 }
 
     const ensure = (geography: string, section_key: string): Cell => {
       const k = cellKey(geography, section_key)
@@ -128,9 +136,10 @@ export default function CellGridTab({ pageId }: Props) {
     const geoSet = new Set<string>()
     for (const c of cells.values()) if (typeCount(c) > 0) geoSet.add(c.geography)
     const all = [...geoSet]
-    const mainGeos = all.filter(g => !SUPPLIER_AXIS_GEOS.has(g)).sort(geoSort)
+    const mainGeos = all.filter(g => !SUPPLIER_AXIS_GEOS.has(g) && !isRegionToken(g)).sort(geoSort)
+    const regionGeos = all.filter(g => isRegionToken(g)).sort(geoSort)
     const supplierGeos = all.filter(g => SUPPLIER_AXIS_GEOS.has(g)).sort(geoSort)
-    return { cells, mainGeos, supplierGeos, total: cells.size }
+    return { cells, mainGeos, regionGeos, supplierGeos, total: cells.size }
   }, [grid])
 
   const getCell = useCallback((geo: string | null, sec: string): Cell | undefined =>
@@ -141,12 +150,12 @@ export default function CellGridTab({ pageId }: Props) {
 
   // Initial selection once data lands: first geography (REGIONAL) + its first populated section.
   useEffect(() => {
-    if (activeGeo || !mainGeos.length && !supplierGeos.length) return
-    const geo = (mainGeos[0] ?? supplierGeos[0])
+    if (activeGeo || !mainGeos.length && !regionGeos.length && !supplierGeos.length) return
+    const geo = (mainGeos[0] ?? regionGeos[0] ?? supplierGeos[0])
     setActiveGeo(geo)
     const first = SECTION_ORDER.find(s => typeCount(cells.get(cellKey(geo, s))) > 0) ?? SECTION_ORDER[0]
     setActiveSection(first)
-  }, [activeGeo, mainGeos, supplierGeos, cells])
+  }, [activeGeo, mainGeos, regionGeos, supplierGeos, cells])
 
   // Slice 3: fetch the incident feed for a geography. Read-only, cloud-direct. Guards a
   // null geo. Returns a promise so Retry can await it; the effect owns staleness dropping.
@@ -181,9 +190,9 @@ export default function CellGridTab({ pageId }: Props) {
     setActiveGeo(geo)
     // Slice 3: in the Incidents view, STAY on incidents across geo switches (the feed
     // refetches for the new geo) — EXCEPT supplier-axis geos, which have no incidents
-    // entry, so bounce to a real section there.
+    // entry, so bounce to a real section there. Region cells likewise (S1).
     if (activeSection === INCIDENTS_VIEW) {
-      if (SUPPLIER_AXIS_GEOS.has(geo)) {
+      if (noIncidentsGeo(geo)) {
         const first = SECTION_ORDER.find(s => typeCount(getCell(geo, s)) > 0) ?? SECTION_ORDER[0]
         setActiveSection(first)
       }
@@ -214,7 +223,8 @@ export default function CellGridTab({ pageId }: Props) {
   const activeCell = getCell(activeGeo, activeSection)
   // Slice 3: the Incidents rail entry shows only for LATAM geos + REGIONAL, never for the
   // supplier-axis geos (they're re-index debt with no incident home — per the feed decision).
-  const incidentsVisible = activeGeo != null && !SUPPLIER_AXIS_GEOS.has(activeGeo)
+  // Region cells (S1) are excluded too -- no single country to home incidents to.
+  const incidentsVisible = activeGeo != null && !noIncidentsGeo(activeGeo)
   const isIncidentsView = activeSection === INCIDENTS_VIEW
 
   return (
@@ -222,6 +232,13 @@ export default function CellGridTab({ pageId }: Props) {
       {/* A. GEOGRAPHY TAB BAR */}
       <div className="shrink-0 px-4 py-2.5 border-b border-gray-100 dark:border-white/[0.06] flex flex-wrap items-center gap-1.5">
         {mainGeos.map(g => <GeoTab key={g} geo={g} active={g === activeGeo} count={popCount(g)} onClick={() => selectGeo(g)} />)}
+        {regionGeos.length > 0 && (
+          <>
+            <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-white/10" />
+            <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-white/30 mr-0.5">regions</span>
+            {regionGeos.map(g => <GeoTab key={g} geo={g} active={g === activeGeo} count={popCount(g)} onClick={() => selectGeo(g)} />)}
+          </>
+        )}
         {supplierGeos.length > 0 && (
           <>
             <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-white/10" />
