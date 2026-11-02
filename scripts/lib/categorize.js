@@ -28,6 +28,7 @@ export const PRIMARY_CATEGORIES = [
   'criminal_vnsa',       // cartel, gang, VNSA activity
   'diplomatic',          // foreign suppliers, transfers
   'supply_chain_export', // China/DJI export, geofencing, component dependency, commercial acquisition
+  'civilian_commercial', // agriculture, firefighting, SAR, mapping, inspection, delivery, police/municipal use, commercial sales/seizures
 ]
 
 export function makeAnthropic(apiKey) {
@@ -39,6 +40,7 @@ export function makeAnthropic(apiKey) {
 // omitted the prompt is byte-identical to the un-calibrated baseline.
 export function buildPrompt({ title, snippet, source, calibrationBlock }) {
   return `You are categorizing a news article for a Latin America drone/UAS intelligence database.
+Civilian and commercial drone use in Latin America is IN SCOPE for this database, not just military, criminal, or security-incident use.
 
 Article title: ${title || ''}
 Article snippet: ${snippet || ''}
@@ -63,6 +65,7 @@ Valid primary categories for this database (Latin American drone activity only):
 - criminal_vnsa       (cartel, gang, VNSA activity)
 - diplomatic          (foreign suppliers, transfers)
 - supply_chain_export (China/DJI export, geofencing, component dependency, commercial acquisition)
+- civilian_commercial (civilian or commercial drone use in Latin America -- agriculture, firefighting, emergency/search and rescue, mapping, infrastructure inspection, commercial delivery, police/municipal operational use, and commercial drone sales or seizures. NOT stories where a drone merely supplied footage or photos of an unrelated event (nature, tourism, concerts, crowds, traffic, weather) -- UNLESS the drone's operation itself led to an arrest, sanction, rescue, or regulatory action.)
 
 If the article doesn't fit any of these categories for Latin American drone activity, set relevance_score to 0.
 
@@ -71,7 +74,7 @@ Respond ONLY with a JSON object, no other text:
   "q1_about_drones": "yes" | "no",
   "q2_latam_country": "yes" | "no",
   "q3_main_topic": "yes" | "no",
-  "primary_category": one of [offensive_use, defensive_systems, military_investment, private_investment, new_technology, regulatory, criminal_vnsa, diplomatic, supply_chain_export],
+  "primary_category": one of [offensive_use, defensive_systems, military_investment, private_investment, new_technology, regulatory, criminal_vnsa, diplomatic, supply_chain_export, civilian_commercial],
   "confidence_suggestion": one of [high, medium, low],
   "confidence_reasoning": "brief explanation",
   "relevance_score": number between 0 and 10,
@@ -99,6 +102,7 @@ export async function categorize(anthropic, { title, snippet, source }, calibrat
     const msg = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 1024,
+      temperature: 0,
       messages: [{ role: 'user', content: prompt }],
     })
     const text = (msg.content || [])
